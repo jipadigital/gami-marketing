@@ -654,22 +654,152 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
 <!-- ==================== CIDADES ==================== -->
 <div class="page" id="pg-cidades">
-  <div class="page-header">
-    <div><div class="page-title">Gestão por Cidade</div><div class="page-sub">Controle individual de cada operação</div></div>
-    <button class="btn btn-primary" onclick="openAI('Qual cidade da Gâmi Delivery precisa mais atenção no marketing agora? Analise: Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís, Cuiabá, Teresina e Vitória.')">Análise IA →</button>
+
+  <!-- LISTA DE CIDADES -->
+  <div id="cidades-lista">
+    <div class="page-header">
+      <div><div class="page-title">Cidades</div><div class="page-sub">Gestão completa por cidade</div></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <input id="cidade-busca" oninput="filtrarCidades()" placeholder="Buscar cidade..." style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+      <button onclick="filtrarCidadeStatus(this,'todos')" class="cf-btn" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--orange);background:var(--orange);color:white;cursor:pointer;font-family:inherit">Todas</button>
+      <button onclick="filtrarCidadeStatus(this,'ativa')" class="cf-btn" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🟢 Ativas</button>
+      <button onclick="filtrarCidadeStatus(this,'atencao')" class="cf-btn" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🟡 Atenção</button>
+      <button onclick="filtrarCidadeStatus(this,'critica')" class="cf-btn" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🔴 Críticas</button>
+    </div>
+    <div id="cidades-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px"></div>
   </div>
-  <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-    ${[['Fortaleza','CE','Carlos Lima','excelente',3,'Motoboys + Restaurantes','#FEE8DF','#993C1D'],['Maceió','AL','Ana Paula','bom',2,'Restaurantes + Bastidores','#EEEDFE','#534AB7'],['João Pessoa','PB','Ricardo Santos','atencao',1,'Tráfego pago','#EAF3DE','#3B6D11'],['Recife','PE','Diego Moraes','bom',2,'Restaurantes','#E6F1FB','#185FA5'],['Natal','RN','Fernanda Teles','atencao',1,'Motoboys','#FAEEDA','#854F0B'],['Aracaju','SE','Paulo Henrique','critico',0,'Sem campanha ativa','#FCEBEB','#A32D2D'],['São Luís','MA','Wendel Alves','bom',1,'Institucional','#E1F5EE','#0F6E56'],['Cuiabá','MT','Fábio Ramos','excelente',2,'Meta batida','#FAEEDA','#854F0B'],['Teresina','PI','Camila Vieira','atencao',1,'Motoboys','#FBEAF0','#993556'],['Vitória','ES','Leandro Faria','bom',1,'Meta batida','#EAF3DE','#3B6D11']].map(([cidade,uf,gestor,status,camps,tags,abg,acol])=>`
-    <div class="city-card" onclick="openAI('Crie um plano de marketing semanal completo para a Gâmi Delivery em ${cidade}, com foco em crescimento e engajamento local.')">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:7px">
-        <div><div style="font-size:14px;font-weight:600;font-family:'Syne',sans-serif">${cidade} <span style="font-size:11px;color:var(--text3);font-family:'DM Sans',sans-serif">${uf}</span></div><div style="font-size:11px;color:var(--text3)">${gestor}</div></div>
-        <span class="sbadge ${status==='excelente'?'sb-ok':status==='bom'?'sb-ok':status==='atencao'?'sb-at':'sb-er'}">${status==='excelente'?'Excelente':status==='bom'?'Bom':status==='atencao'?'Atenção':'Crítico'}</span>
+
+  <!-- PAINEL INDIVIDUAL -->
+  <div id="cidade-painel" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button onclick="voltarCidades()" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 5l-7 7 7 7" stroke="var(--text2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div style="flex:1">
+        <div id="cp-nome" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text)"></div>
+        <div id="cp-meta" style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap"></div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:11px;color:var(--text2)">
-        <span>${camps} campanha${camps!==1?'s':''} ativa${camps!==1?'s':''}</span>
+      <button onclick="resolverCidade()" style="padding:8px 16px;border:none;border-radius:8px;background:var(--orange);color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">⚡ Resolver cidade</button>
+    </div>
+
+    <div class="g2" style="margin-bottom:14px">
+      <div class="card">
+        <div class="card-title">Score da cidade</div>
+        <div style="display:flex;align-items:center;gap:14px;padding:6px 0">
+          <div id="cp-score-circle" style="width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:4px solid var(--border)">
+            <div id="cp-score-val" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text)">—</div>
+          </div>
+          <div style="flex:1">
+            <div id="cp-score-label" style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:6px">Calculando...</div>
+            <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div id="cp-score-bar" style="height:100%;border-radius:3px;background:var(--green);transition:width .5s;width:0%"></div></div>
+            <div id="cp-score-detalhes" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
+          </div>
+        </div>
       </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap"><span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${abg};color:${acol};font-weight:500">${tags}</span></div>
-    </div>`).join('')}
+      <div class="card">
+        <div class="card-title">Alertas automáticos</div>
+        <div id="cp-alertas"></div>
+      </div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab active" onclick="setCidadeTab(this,'overview')">Visão geral</button>
+      <button class="tab" onclick="setCidadeTab(this,'conteudo')">Conteúdo</button>
+      <button class="tab" onclick="setCidadeTab(this,'prioridades')">Prioridades</button>
+      <button class="tab" onclick="setCidadeTab(this,'equipe')">Equipe</button>
+      <button class="tab" onclick="setCidadeTab(this,'insights')">Insights</button>
+      <button class="tab" onclick="setCidadeTab(this,'calendario')">Datas</button>
+    </div>
+
+    <div id="ctab-overview">
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card"><div class="card-title">Performance</div><div id="cp-perf"></div></div>
+        <div class="card"><div class="card-title">Aniversários próximos</div><div id="cp-bdays"></div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Restaurantes parceiros e pontos estratégicos</div>
+        <textarea id="cp-locais-txt" class="inp" style="min-height:70px;resize:vertical;font-size:12px" placeholder="Restaurantes parceiros, pontos estratégicos, leads..."></textarea>
+        <button onclick="salvarCampoLocal('locais')" class="btn btn-ghost btn-sm" style="margin-top:6px">Salvar</button>
+      </div>
+      <div class="ai-bar">
+        <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
+        <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Quer um plano de ação completo para esta cidade?</div>
+        <button class="btn btn-ia btn-sm" onclick="resolverCidade()">Plano de ação ↗</button>
+      </div>
+    </div>
+
+    <div id="ctab-conteudo" style="display:none">
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card">
+          <div class="card-title">Conteúdos programados</div>
+          <div id="cp-posts-list" style="margin-bottom:10px"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input id="cp-novo-post" class="inp" style="flex:1;min-width:120px" placeholder="Título do post..."/>
+            <select id="cp-post-status" class="sel" style="width:auto"><option value="pendente">Pendente</option><option value="producao">Em produção</option><option value="postado">Postado</option></select>
+            <button onclick="addPost()" class="btn btn-primary btn-sm">+</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Checklist diário</div>
+          <div id="cp-checklist"></div>
+        </div>
+      </div>
+      <div class="ai-bar">
+        <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
+        <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Gerar ideias de conteúdo para esta cidade.</div>
+        <button class="btn btn-ia btn-sm" onclick="gerarConteudoCidade()">Gerar ideias ↗</button>
+      </div>
+    </div>
+
+    <div id="ctab-prioridades" style="display:none">
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Prioridades da cidade</div>
+        <div id="cp-prio-list" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="cp-nova-prio" class="inp" style="flex:1;min-width:160px" placeholder="Nova prioridade..."/>
+          <select id="cp-prio-nivel" class="sel" style="width:auto"><option value="alta">🔴 Alta</option><option value="media">🟡 Média</option><option value="baixa">🟢 Baixa</option></select>
+          <button onclick="addPrioridade()" class="btn btn-primary btn-sm">Adicionar</button>
+        </div>
+      </div>
+      <div class="ai-bar">
+        <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
+        <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Sugerir prioridades com base no status desta cidade.</div>
+        <button class="btn btn-ia btn-sm" onclick="sugerirPrioridades()">Sugerir ↗</button>
+      </div>
+    </div>
+
+    <div id="ctab-equipe" style="display:none">
+      <div id="cp-equipe-list"></div>
+    </div>
+
+    <div id="ctab-insights" style="display:none">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div class="card-title" style="margin:0">Insights e observações estratégicas</div>
+          <span style="font-size:10px;color:var(--text3)">Acumula ao longo do tempo</span>
+        </div>
+        <textarea id="cp-insights-txt" class="inp" style="min-height:120px;resize:vertical;font-size:12px;line-height:1.6" placeholder="Anote problemas, oportunidades, ideias, aprendizados desta cidade..."></textarea>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button onclick="salvarCampoLocal('insights')" class="btn btn-ghost btn-sm">Salvar nota</button>
+          <button onclick="gerarInsightIA()" class="btn btn-ia btn-sm">Analisar com IA ↗</button>
+        </div>
+        <div id="cp-insights-historico" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
+    <div id="ctab-calendario" style="display:none">
+      <div class="card">
+        <div class="card-title">Datas importantes da cidade</div>
+        <div id="cp-datas-list" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input id="cp-nova-data-nome" class="inp" style="flex:1;min-width:140px" placeholder="Nome do evento ou data importante..."/>
+          <input id="cp-nova-data-dt" class="inp" type="date" style="width:auto"/>
+          <button onclick="addData()" class="btn btn-primary btn-sm">Adicionar</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -2717,6 +2847,445 @@ function aplicarFiltros(){
 
   renderMetaList(filtradas, ins);
 }
+
+// ===================== MÓDULO CIDADES =====================
+const CIDADES_DATA_DEFAULT = [
+  { id:'c1', nome:'Fortaleza', uf:'CE', gestor:'Carlos Lima', tel:'85999990001', status:'ativa', inicio:'2022-01-10', campanhas:3, posts_semana:5 },
+  { id:'c2', nome:'Maceió',    uf:'AL', gestor:'Ana Paula',   tel:'82999990002', status:'ativa', inicio:'2022-03-05', campanhas:2, posts_semana:4 },
+  { id:'c3', nome:'João Pessoa',uf:'PB',gestor:'Ricardo Santos',tel:'83999990003',status:'atencao',inicio:'2023-01-20',campanhas:1,posts_semana:2 },
+  { id:'c4', nome:'Recife',    uf:'PE', gestor:'Diego Moraes', tel:'81999990004', status:'ativa', inicio:'2022-06-01', campanhas:2, posts_semana:4 },
+  { id:'c5', nome:'Natal',     uf:'RN', gestor:'Fernanda Teles',tel:'84999990005',status:'atencao',inicio:'2022-09-15',campanhas:1,posts_semana:2 },
+  { id:'c6', nome:'Aracaju',   uf:'SE', gestor:'Paulo Henrique',tel:'79999990006',status:'critica',inicio:'2023-06-10',campanhas:0,posts_semana:0 },
+  { id:'c7', nome:'São Luís',  uf:'MA', gestor:'Wendel Alves', tel:'98999990007', status:'ativa', inicio:'2022-11-01', campanhas:1, posts_semana:3 },
+  { id:'c8', nome:'Cuiabá',    uf:'MT', gestor:'Fábio Ramos',  tel:'65999990008', status:'ativa', inicio:'2022-04-05', campanhas:2, posts_semana:5 },
+  { id:'c9', nome:'Teresina',  uf:'PI', gestor:'Camila Vieira',tel:'86999990009', status:'atencao',inicio:'2023-02-14',campanhas:1,posts_semana:2 },
+  { id:'c10',nome:'Vitória',   uf:'ES', gestor:'Leandro Faria',tel:'27999990010', status:'ativa', inicio:'2022-12-01', campanhas:1, posts_semana:3 },
+];
+
+const STATUS_CIDADE = {
+  ativa:   { label:'🟢 Ativa',   bg:'#EAF3DE', color:'#3B6D11', dot:'#1D9E75' },
+  atencao: { label:'🟡 Atenção', bg:'#FAEEDA', color:'#854F0B', dot:'#EF9F27' },
+  critica: { label:'🔴 Crítica', bg:'#FCEBEB', color:'#A32D2D', dot:'#E24B4A' },
+};
+
+function getCidadesData(){
+  try{ return JSON.parse(localStorage.getItem('gami_cidades_v3') || 'null') || JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT)); }
+  catch(e){ return JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT)); }
+}
+function saveCidadesData(d){ try{ localStorage.setItem('gami_cidades_v3', JSON.stringify(d)); }catch(e){} }
+
+function calcScore(c){
+  let score = 0;
+  // Posts frequência (0-30)
+  score += Math.min(c.posts_semana * 6, 30);
+  // Campanhas (0-25)
+  score += Math.min(c.campanhas * 12, 25);
+  // Status base (0-30)
+  if(c.status === 'ativa')   score += 30;
+  if(c.status === 'atencao') score += 15;
+  if(c.status === 'critica') score += 0;
+  // Dados preenchidos (0-15)
+  const prioridades = getCidadeExtra(c.id, 'prioridades') || [];
+  const insights    = getCidadeExtra(c.id, 'insights') || '';
+  if(prioridades.length > 0) score += 8;
+  if(insights.length > 20)   score += 7;
+  return Math.min(Math.round(score), 100);
+}
+
+function scoreColor(s){
+  if(s >= 75) return { bg:'#EAF3DE', color:'#3B6D11', bar:'#1D9E75' };
+  if(s >= 50) return { bg:'#FAEEDA', color:'#854F0B', bar:'#EF9F27' };
+  return { bg:'#FCEBEB', color:'#A32D2D', bar:'#E24B4A' };
+}
+
+function getAlertas(c){
+  const alertas = [];
+  if(c.posts_semana === 0)  alertas.push({ type:'critico', msg:'Nenhum post nos últimos 7 dias' });
+  if(c.posts_semana < 3)    alertas.push({ type:'atencao', msg:'Frequência de posts abaixo do ideal (mín. 3/semana)' });
+  if(c.campanhas === 0)     alertas.push({ type:'critico', msg:'Nenhuma campanha ativa no Meta Ads' });
+  if(c.status === 'critica') alertas.push({ type:'critico', msg:'Cidade em estado crítico — ação imediata necessária' });
+  if(alertas.length === 0)  alertas.push({ type:'ok', msg:'Cidade operando normalmente ✓' });
+  return alertas;
+}
+
+// Local storage per city
+function getCidadeExtra(id, key){
+  try{ return JSON.parse(localStorage.getItem('gami_cidade_'+id+'_'+key) || 'null'); }catch(e){ return null; }
+}
+function saveCidadeExtra(id, key, val){
+  try{ localStorage.setItem('gami_cidade_'+id+'_'+key, JSON.stringify(val)); }catch(e){}
+}
+
+let _cidadeFiltroStatus = 'todos';
+let _cidadeAtualId = null;
+
+function filtrarCidades(){
+  renderCidadesGrid();
+}
+
+function filtrarCidadeStatus(btn, status){
+  _cidadeFiltroStatus = status;
+  document.querySelectorAll('.cf-btn').forEach(b=>{
+    b.style.background='transparent'; b.style.color='var(--text2)'; b.style.borderColor='var(--border)';
+  });
+  btn.style.background='var(--orange)'; btn.style.color='white'; btn.style.borderColor='var(--orange)';
+  renderCidadesGrid();
+}
+
+function renderCidadesGrid(){
+  const grid = document.getElementById('cidades-grid');
+  if(!grid) return;
+  const busca = (document.getElementById('cidade-busca')||{}).value||'';
+  const cidades = getCidadesData().filter(c=>{
+    if(_cidadeFiltroStatus !== 'todos' && c.status !== _cidadeFiltroStatus) return false;
+    if(busca && !c.nome.toLowerCase().includes(busca.toLowerCase())) return false;
+    return true;
+  });
+
+  grid.innerHTML = cidades.map(c=>{
+    const s = STATUS_CIDADE[c.status] || STATUS_CIDADE.ativa;
+    const score = calcScore(c);
+    const sc = scoreColor(score);
+    const alertas = getAlertas(c);
+    const temCritico = alertas.some(a=>a.type==='critico');
+    return `
+    <div onclick="abrirCidade('${c.id}')" style="border:1px solid ${temCritico?'#E24B4A33':'var(--border)'};border-radius:12px;padding:14px;background:var(--surface);cursor:pointer;transition:all .12s;border-left:4px solid ${s.dot}"
+      onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='${temCritico?'#E24B4A33':'var(--border)'}'">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${c.nome} <span style="font-size:11px;color:var(--text3);font-family:'DM Sans',sans-serif">${c.uf}</span></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${c.gestor}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600">${s.label}</span>
+          <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:${sc.color}">${score}</span>
+        </div>
+      </div>
+      <div style="height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;margin-bottom:10px">
+        <div style="height:100%;width:${score}%;background:${sc.bar};border-radius:2px"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)">
+        <span>${c.campanhas} campanha${c.campanhas!==1?'s':''} ativa${c.campanhas!==1?'s':''}</span>
+        <span>${c.posts_semana} posts/semana</span>
+      </div>
+      ${temCritico ? `<div style="margin-top:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function abrirCidade(id){
+  _cidadeAtualId = id;
+  const cidades = getCidadesData();
+  const c = cidades.find(x=>x.id===id);
+  if(!c) return;
+
+  document.getElementById('cidades-lista').style.display='none';
+  document.getElementById('cidade-painel').style.display='block';
+
+  // Header
+  document.getElementById('cp-nome').textContent = c.nome + ' — ' + c.uf;
+  const s = STATUS_CIDADE[c.status]||STATUS_CIDADE.ativa;
+  document.getElementById('cp-meta').innerHTML = `
+    <span style="font-size:11px;padding:2px 9px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600">${s.label}</span>
+    <span style="font-size:11px;color:var(--text3)">Gestor: ${c.gestor}</span>
+    ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\D/g,'')}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:10px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:500"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a5.526 5.526 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z" fill="#3B6D11"/><path d="M11.95 2C6.478 2 2 6.478 2 11.95c0 1.75.455 3.45 1.317 4.946L2 22l5.233-1.29A9.974 9.974 0 0011.954 21.9C17.426 21.9 21.9 17.425 21.9 11.95 21.9 6.478 17.425 2 11.95 2z" stroke="#3B6D11" stroke-width=".8" fill="none"/></svg> WhatsApp</a>` : ''}
+    <span style="font-size:11px;color:var(--text3)">Desde ${c.inicio?c.inicio.split('-').reverse().join('/'):''}</span>`;
+
+  // Score
+  const score = calcScore(c);
+  const sc = scoreColor(score);
+  document.getElementById('cp-score-val').textContent = score;
+  document.getElementById('cp-score-circle').style.border = '4px solid ' + sc.bar;
+  document.getElementById('cp-score-circle').style.background = sc.bg;
+  document.getElementById('cp-score-val').style.color = sc.color;
+  document.getElementById('cp-score-label').textContent = score>=75?'Cidade saudável 🟢':score>=50?'Precisa de atenção 🟡':'Ação urgente necessária 🔴';
+  document.getElementById('cp-score-bar').style.width = score+'%';
+  document.getElementById('cp-score-bar').style.background = sc.bar;
+  document.getElementById('cp-score-detalhes').textContent = `Posts/semana: ${c.posts_semana} · Campanhas: ${c.campanhas} · Status: ${s.label}`;
+
+  // Alertas
+  const alertas = getAlertas(c);
+  document.getElementById('cp-alertas').innerHTML = alertas.map(a=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <div style="width:8px;height:8px;border-radius:50%;background:${a.type==='ok'?'#1D9E75':a.type==='critico'?'#E24B4A':'#EF9F27'};flex-shrink:0"></div>
+      <span style="font-size:12px;color:var(--text)">${a.msg}</span>
+    </div>`).join('').replace(/border-bottom[^;]+;(?=[^<]*<\/div>\s*$)/,'');
+
+  // Performance
+  document.getElementById('cp-perf').innerHTML = `
+    <div class="row">Posts por semana<div class="bar-wrap" style="margin:0 8px"><div class="bar" style="width:${Math.min(c.posts_semana*20,100)}%"></div></div><span style="font-size:11px;color:var(--text3)">${c.posts_semana}</span></div>
+    <div class="row">Campanhas ativas<div class="bar-wrap" style="margin:0 8px"><div class="bar" style="width:${Math.min(c.campanhas*33,100)}%"></div></div><span style="font-size:11px;color:var(--text3)">${c.campanhas}</span></div>
+    <div class="row">Score geral<div class="bar-wrap" style="margin:0 8px"><div class="bar" style="width:${score}%;background:${sc.bar}"></div></div><span style="font-size:11px;color:var(--text3)">${score}/100</span></div>`;
+
+  // Aniversários
+  const pessoas = (() => { try{ return JSON.parse(localStorage.getItem('gami_pessoas_v2')||'[]'); }catch(e){ return []; } })();
+  const equipe = pessoas.filter(p=>p.cidade===c.nome);
+  const bdayWeek = equipe.filter(p=>{
+    if(!p.nascimento) return false;
+    const hoje=new Date(); hoje.setHours(0,0,0,0);
+    const [,m,dd]=p.nascimento.split('-');
+    const bday=new Date(hoje.getFullYear(),parseInt(m)-1,parseInt(dd));
+    const diff=Math.round((bday-hoje)/(1000*60*60*24));
+    return diff>=0 && diff<=14;
+  });
+  document.getElementById('cp-bdays').innerHTML = bdayWeek.length>0 ? bdayWeek.map(p=>{
+    const [,m,dd]=p.nascimento.split('-');
+    const bday=new Date(new Date().getFullYear(),parseInt(m)-1,parseInt(dd));
+    const diff=Math.round((bday-new Date().setHours(0,0,0,0))/(1000*60*60*24));
+    return `<div class="row"><span style="font-size:12px;font-weight:500">${p.nome}</span><span style="font-size:10px;color:var(--text3)">${diff===0?'Hoje!':diff===1?'Amanhã':'Em '+diff+' dias'}</span><button onclick="openAI('Crie um post de aniversário para ${p.nome} da Gâmi em ${c.nome}.')" style="font-size:10px;padding:2px 7px;border:1px solid var(--orange);border-radius:4px;background:transparent;color:var(--orange);cursor:pointer;margin-left:4px">Post ↗</button></div>`;
+  }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px 0">Nenhum aniversário nos próximos 14 dias.</div>';
+
+  // Equipe
+  document.getElementById('cp-equipe-list').innerHTML = equipe.length>0 ? equipe.map(p=>`
+    <div class="person-card">
+      <div class="p-av" style="width:36px;height:36px;background:#FEE8DF;color:#993C1D">${p.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:500">${p.nome}</div><div style="font-size:11px;color:var(--text3)">${p.cargo||''} · ${p.nivel||''}</div></div>
+      ${p.tel?`<a href="https://wa.me/55${p.tel.replace(/\D/g,'')}" target="_blank" class="wa-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a5.526 5.526 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z" fill="#3B6D11"/><path d="M11.95 2C6.478 2 2 6.478 2 11.95c0 1.75.455 3.45 1.317 4.946L2 22l5.233-1.29A9.974 9.974 0 0011.954 21.9C17.426 21.9 21.9 17.425 21.9 11.95 21.9 6.478 17.425 2 11.95 2z" stroke="#3B6D11" stroke-width=".8" fill="none"/></svg></a>`:''}
+    </div>`).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhuma pessoa cadastrada para ${c.nome}.<br><button onclick="nav(document.querySelector('[onclick*=pessoas]'),\'pessoas\')" style="margin-top:8px;font-size:12px;padding:5px 12px;border:1px solid var(--orange);border-radius:6px;background:transparent;color:var(--orange);cursor:pointer">Ir para Pessoas →</button></div>`;
+
+  // Conteúdos programados
+  renderPostsList();
+
+  // Checklist
+  const checkItems = ['Post no feed feito','Stories publicados','Campanha verificada','Contato com gestor','Ideias registradas'];
+  const checkState = getCidadeExtra(id,'checklist') || {};
+  document.getElementById('cp-checklist').innerHTML = checkItems.map((item,i)=>{
+    const done = !!checkState[i];
+    return `<div class="row" onclick="toggleCidadeCheck(${i})" style="cursor:pointer">
+      <div style="width:15px;height:15px;border-radius:4px;border:1.5px solid ${done?'var(--green)':'var(--border2)'};background:${done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${done?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}
+      </div>
+      <span style="font-size:12px;color:var(--text);text-decoration:${done?'line-through':'none'};opacity:${done?'.5':'1'}">${item}</span>
+    </div>`;
+  }).join('');
+
+  // Prioridades
+  renderPrioridadesList();
+
+  // Insights
+  const insights = getCidadeExtra(id,'insights') || '';
+  document.getElementById('cp-insights-txt').value = insights;
+  renderInsightsHistorico();
+
+  // Locais
+  const locais = getCidadeExtra(id,'locais') || '';
+  document.getElementById('cp-locais-txt').value = locais;
+
+  // Datas
+  renderDatasList();
+
+  // Reset tabs
+  setCidadeTab(document.querySelector('#pg-cidades .tab'), 'overview');
+}
+
+function voltarCidades(){
+  _cidadeAtualId = null;
+  document.getElementById('cidade-painel').style.display='none';
+  document.getElementById('cidades-lista').style.display='block';
+}
+
+function setCidadeTab(btn, tab){
+  document.querySelectorAll('#pg-cidades .tab').forEach(t=>t.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  ['overview','conteudo','prioridades','equipe','insights','calendario'].forEach(t=>{
+    const el = document.getElementById('ctab-'+t);
+    if(el) el.style.display = t===tab ? 'block' : 'none';
+  });
+}
+
+function toggleCidadeCheck(idx){
+  if(!_cidadeAtualId) return;
+  const state = getCidadeExtra(_cidadeAtualId,'checklist') || {};
+  state[idx] = !state[idx];
+  saveCidadeExtra(_cidadeAtualId,'checklist',state);
+  // Re-render
+  const checkItems = ['Post no feed feito','Stories publicados','Campanha verificada','Contato com gestor','Ideias registradas'];
+  document.getElementById('cp-checklist').innerHTML = checkItems.map((item,i)=>{
+    const done = !!state[i];
+    return `<div class="row" onclick="toggleCidadeCheck(${i})" style="cursor:pointer">
+      <div style="width:15px;height:15px;border-radius:4px;border:1.5px solid ${done?'var(--green)':'var(--border2)'};background:${done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        ${done?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}
+      </div>
+      <span style="font-size:12px;color:var(--text);text-decoration:${done?'line-through':'none'};opacity:${done?'.5':'1'}">${item}</span>
+    </div>`;
+  }).join('');
+}
+
+// Posts
+function renderPostsList(){
+  const posts = getCidadeExtra(_cidadeAtualId,'posts') || [];
+  const statusStyle = { pendente:{bg:'#FCEBEB',color:'#A32D2D'}, producao:{bg:'#FAEEDA',color:'#854F0B'}, postado:{bg:'#EAF3DE',color:'#3B6D11'} };
+  document.getElementById('cp-posts-list').innerHTML = posts.length===0
+    ? '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhum conteúdo programado.</div>'
+    : posts.map((p,i)=>{
+        const ss = statusStyle[p.status]||statusStyle.pendente;
+        return `<div class="row">
+          <span style="flex:1;font-size:12px;color:var(--text)">${p.titulo}</span>
+          <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${ss.bg};color:${ss.color};font-weight:500">${p.status}</span>
+          <button onclick="removePost(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px;margin-left:4px">×</button>
+        </div>`;
+      }).join('');
+}
+
+function addPost(){
+  const titulo = document.getElementById('cp-novo-post').value.trim();
+  const status = document.getElementById('cp-post-status').value;
+  if(!titulo||!_cidadeAtualId) return;
+  const posts = getCidadeExtra(_cidadeAtualId,'posts') || [];
+  posts.unshift({titulo,status});
+  saveCidadeExtra(_cidadeAtualId,'posts',posts);
+  document.getElementById('cp-novo-post').value='';
+  renderPostsList();
+}
+
+function removePost(idx){
+  const posts = getCidadeExtra(_cidadeAtualId,'posts') || [];
+  posts.splice(idx,1);
+  saveCidadeExtra(_cidadeAtualId,'posts',posts);
+  renderPostsList();
+}
+
+// Prioridades
+function renderPrioridadesList(){
+  const prios = getCidadeExtra(_cidadeAtualId,'prioridades') || [];
+  const icons = {alta:'🔴',media:'🟡',baixa:'🟢'};
+  document.getElementById('cp-prio-list').innerHTML = prios.length===0
+    ? '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma prioridade definida.</div>'
+    : prios.map((p,i)=>`
+      <div class="row">
+        <span style="font-size:14px">${icons[p.nivel]||'🟡'}</span>
+        <span style="flex:1;font-size:12px;color:var(--text)">${p.texto}</span>
+        <button onclick="removePrioridade(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px">×</button>
+      </div>`).join('');
+}
+
+function addPrioridade(){
+  const texto = document.getElementById('cp-nova-prio').value.trim();
+  const nivel = document.getElementById('cp-prio-nivel').value;
+  if(!texto||!_cidadeAtualId) return;
+  const prios = getCidadeExtra(_cidadeAtualId,'prioridades') || [];
+  prios.unshift({texto,nivel});
+  saveCidadeExtra(_cidadeAtualId,'prioridades',prios);
+  document.getElementById('cp-nova-prio').value='';
+  renderPrioridadesList();
+}
+
+function removePrioridade(idx){
+  const prios = getCidadeExtra(_cidadeAtualId,'prioridades') || [];
+  prios.splice(idx,1);
+  saveCidadeExtra(_cidadeAtualId,'prioridades',prios);
+  renderPrioridadesList();
+}
+
+// Insights
+function renderInsightsHistorico(){
+  const hist = getCidadeExtra(_cidadeAtualId,'insights_hist') || [];
+  document.getElementById('cp-insights-historico').innerHTML = hist.map(h=>`
+    <div style="padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px">${h.data}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.5;white-space:pre-wrap">${h.texto}</div>
+    </div>`).join('');
+}
+
+function salvarCampoLocal(campo){
+  if(!_cidadeAtualId) return;
+  if(campo==='insights'){
+    const txt = document.getElementById('cp-insights-txt').value.trim();
+    if(!txt) return;
+    saveCidadeExtra(_cidadeAtualId,'insights',txt);
+    const hist = getCidadeExtra(_cidadeAtualId,'insights_hist') || [];
+    hist.unshift({ texto:txt, data: new Date().toLocaleString('pt-BR') });
+    saveCidadeExtra(_cidadeAtualId,'insights_hist', hist.slice(0,10));
+    renderInsightsHistorico();
+  } else if(campo==='locais'){
+    const txt = document.getElementById('cp-locais-txt').value;
+    saveCidadeExtra(_cidadeAtualId,'locais',txt);
+  }
+  // brief feedback
+  const btn = event.target;
+  const orig = btn.textContent;
+  btn.textContent='Salvo ✓'; btn.style.color='var(--green)';
+  setTimeout(()=>{ btn.textContent=orig; btn.style.color=''; },1500);
+}
+
+// Datas
+function renderDatasList(){
+  const datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
+  document.getElementById('cp-datas-list').innerHTML = datas.length===0
+    ? '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma data importante cadastrada.</div>'
+    : datas.map((d,i)=>{
+        const dt = d.data ? d.data.split('-').reverse().join('/') : '';
+        return `<div class="row">
+          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#E6F1FB;color:#185FA5;font-weight:500">${dt}</span>
+          <span style="flex:1;font-size:12px;color:var(--text)">${d.nome}</span>
+          <button onclick="removeData(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px">×</button>
+        </div>`;
+      }).join('');
+}
+
+function addData(){
+  const nome = document.getElementById('cp-nova-data-nome').value.trim();
+  const data = document.getElementById('cp-nova-data-dt').value;
+  if(!nome||!_cidadeAtualId) return;
+  const datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
+  datas.push({nome,data});
+  datas.sort((a,b)=>a.data.localeCompare(b.data));
+  saveCidadeExtra(_cidadeAtualId,'datas',datas);
+  document.getElementById('cp-nova-data-nome').value='';
+  document.getElementById('cp-nova-data-dt').value='';
+  renderDatasList();
+}
+
+function removeData(idx){
+  const datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
+  datas.splice(idx,1);
+  saveCidadeExtra(_cidadeAtualId,'datas',datas);
+  renderDatasList();
+}
+
+// IA actions
+function resolverCidade(){
+  if(!_cidadeAtualId) return;
+  const c = getCidadesData().find(x=>x.id===_cidadeAtualId);
+  if(!c) return;
+  const score = calcScore(c);
+  const alertas = getAlertas(c).filter(a=>a.type!=='ok').map(a=>a.msg).join(', ');
+  const prios = (getCidadeExtra(_cidadeAtualId,'prioridades')||[]).map(p=>p.texto).join(', ');
+  openAI(`Analise a cidade ${c.nome} da Gâmi Delivery e crie um plano de ação completo.\n\nDados:\n- Score atual: ${score}/100\n- Status: ${c.status}\n- Posts/semana: ${c.posts_semana}\n- Campanhas ativas: ${c.campanhas}\n- Alertas: ${alertas||'nenhum'}\n- Prioridades atuais: ${prios||'não definidas'}\n\nPor favor:\n1. Liste os principais problemas\n2. Sugira 5 ações imediatas\n3. Crie um plano de conteúdo para esta semana\n4. Sugira campanhas para o Meta Ads`);
+}
+
+function gerarConteudoCidade(){
+  if(!_cidadeAtualId) return;
+  const c = getCidadesData().find(x=>x.id===_cidadeAtualId);
+  if(!c) return;
+  openAI(`Gere 5 ideias de conteúdo para o Instagram da Gâmi Delivery em ${c.nome}. Inclua posts de feed, stories e reels. Considere os pilares: captação de motoboys, parcerias com restaurantes e cultura interna. Para cada ideia: título, formato, legenda e hashtags.`);
+}
+
+function sugerirPrioridades(){
+  if(!_cidadeAtualId) return;
+  const c = getCidadesData().find(x=>x.id===_cidadeAtualId);
+  if(!c) return;
+  openAI(`Sugira as 5 prioridades mais importantes de marketing para a cidade ${c.nome} da Gâmi Delivery agora. Status: ${c.status}. Posts/semana: ${c.posts_semana}. Campanhas ativas: ${c.campanhas}. Organize por: 🔴 Alta, 🟡 Média, 🟢 Baixa prioridade.`);
+}
+
+function gerarInsightIA(){
+  if(!_cidadeAtualId) return;
+  const c = getCidadesData().find(x=>x.id===_cidadeAtualId);
+  const insights = document.getElementById('cp-insights-txt').value;
+  openAI(`Com base nas seguintes observações sobre a cidade ${c?c.nome:'esta cidade'} da Gâmi Delivery, analise e sugira insights estratégicos:\n\n${insights||'Nenhuma observação registrada ainda.'}\n\nForneça: principais oportunidades, riscos identificados e próximos passos recomendados.`);
+}
+
+// Init cidades when page opens
+(function(){
+  const origNav2 = window.nav;
+  window.nav = function(el, page){
+    origNav2(el, page);
+    if(page==='cidades'){
+      voltarCidades();
+      renderCidadesGrid();
+    }
+  };
+})();
 </script>
 </body>
 </html>
