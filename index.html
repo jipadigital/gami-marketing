@@ -1009,7 +1009,6 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
       <button class="tab" onclick="setCidadeTab(this,'prioridades')">Prioridades</button>
       <button class="tab" onclick="setCidadeTab(this,'equipe')">Equipe</button>
       <button class="tab" onclick="setCidadeTab(this,'insights')">Insights</button>
-      <button class="tab" onclick="setCidadeTab(this,'machine')">🏍️ Machine</button>
       <button class="tab" onclick="setCidadeTab(this,'calendario')">Datas</button>
     </div>
 
@@ -1027,6 +1026,71 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
         <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
         <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Quer um plano de ação completo para esta cidade?</div>
         <button class="btn btn-ia btn-sm" onclick="resolverCidade()">Plano de ação ↗</button>
+      </div>
+    </div>
+
+    <!-- MACHINE INLINE -->
+    <div style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">
+          <span>🏍️ Machine API</span>
+          <div id="machine-status-dot" style="width:7px;height:7px;border-radius:50%;background:#1D9E75"></div>
+          <span id="machine-status-txt" style="font-size:10px;color:var(--text3);font-weight:400">clique em Sincronizar</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onclick="sincronizarMachine()" id="btn-sync-machine" style="font-size:11px;padding:5px 12px;border:none;border-radius:7px;background:var(--orange);color:white;cursor:pointer;font-family:inherit">↻ Sincronizar</button>
+          <button onclick="analisarCidadeIA()" style="font-size:11px;padding:5px 12px;border:1px solid #8B5CF6;border-radius:7px;background:rgba(139,92,246,.08);color:#8B5CF6;cursor:pointer;font-family:inherit">🤖 IA Analisar</button>
+        </div>
+      </div>
+
+      <!-- IA RESULTADO -->
+      <div id="mch-ia-resultado" style="display:none;margin-bottom:12px;padding:12px;background:rgba(139,92,246,.06);border:1px solid #8B5CF644;border-radius:10px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:14px">🤖</span>
+          <span style="font-size:12px;font-weight:700;color:#C4B5FD">Análise IA — <span id="mch-ia-cidade"></span></span>
+          <button onclick="document.getElementById('mch-ia-resultado').style.display='none'" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">×</button>
+        </div>
+        <div id="mch-ia-texto" style="font-size:12px;color:var(--text2);line-height:1.7;white-space:pre-line"></div>
+      </div>
+
+      <!-- MÉTRICAS MACHINE -->
+      <div class="metrics" style="margin-bottom:12px">
+        <div class="metric"><div class="metric-label">Corridas hoje</div><div class="metric-val" id="mch-corridas" style="color:var(--orange)">—</div><div class="metric-sub" id="mch-corridas-sub">aguardando</div></div>
+        <div class="metric"><div class="metric-label">Motoboys ativos</div><div class="metric-val" id="mch-motoboys" style="color:#1D9E75">—</div><div class="metric-sub" id="mch-mb-sub"></div></div>
+        <div class="metric"><div class="metric-label">Lojas ativas</div><div class="metric-val" id="mch-lojas" style="color:#1E88E5">—</div><div class="metric-sub" id="mch-lj-sub"></div></div>
+        <div class="metric"><div class="metric-label">Ticket médio</div><div class="metric-val" id="mch-ticket" style="color:#EF9F27">—</div><div class="metric-sub">por corrida</div></div>
+        <div class="metric"><div class="metric-label">Taxa conclusão</div><div class="metric-val" id="mch-taxa" style="color:#1D9E75">—</div><div class="metric-sub">concluídas</div></div>
+        <div class="metric"><div class="metric-label">Tempo médio</div><div class="metric-val" id="mch-tempo" style="color:#8E24AA">—</div><div class="metric-sub">min/entrega</div></div>
+      </div>
+
+      <!-- GRÁFICOS L1 -->
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card"><div class="card-title">📈 Corridas por hora</div><div id="mch-chart-horas" style="height:110px;display:flex;align-items:flex-end;gap:3px;padding:0 2px"></div><div id="mch-chart-horas-labels" style="display:flex;gap:3px;padding:4px 2px 0;margin-top:4px"></div></div>
+        <div class="card"><div class="card-title">🚦 Status das corridas</div><div id="mch-chart-status" style="display:flex;flex-direction:column;gap:8px;margin-top:4px"></div></div>
+      </div>
+
+      <!-- GRÁFICOS L2 -->
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="card-title" style="margin:0">🏪 Top lojas</div><span style="font-size:10px;color:var(--text3)">mais pedidos</span></div><div id="mch-top-lojas"></div></div>
+        <div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="card-title" style="margin:0">🏍️ Top motoboys</div><span style="font-size:10px;color:var(--text3)">mais corridas</span></div><div id="mch-top-motoboys"></div></div>
+      </div>
+
+      <!-- GRÁFICOS L3 -->
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card"><div class="card-title">📍 Corridas por área</div><div id="mch-chart-areas" style="display:flex;flex-direction:column;gap:6px"></div></div>
+        <div class="card"><div class="card-title">⏱️ Últimas corridas</div><div id="mch-ultimas-corridas"></div></div>
+      </div>
+
+      <!-- MOTOBOYS -->
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="card-title" style="margin:0">👥 Motoboys</div>
+          <div style="display:flex;gap:5px">
+            <span id="mch-mb-ativos-badge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:600"></span>
+            <span id="mch-mb-inativos-badge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:#FAEEDA;color:#854F0B;font-weight:600"></span>
+          </div>
+        </div>
+        <div id="mch-motoboys-list"></div>
       </div>
     </div>
 
@@ -1091,7 +1155,7 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
     <div 
     <!-- ===== ABA MACHINE API ===== -->
-    <div id="ctab-machine" style="display:none">
+    <div id="ctab-machine" style="display:none;height:0;overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);flex:1">
           <div id="machine-status-dot" style="width:8px;height:8px;border-radius:50%;background:#1D9E75;flex-shrink:0"></div>
@@ -1131,7 +1195,7 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
     </div>
 
 
-id="ctab-calendario" style="display:none">
+<div id="ctab-calendario" style="display:none">
       <div class="card">
         <div class="card-title">Datas importantes da cidade</div>
         <div id="cp-datas-list" style="margin-bottom:10px"></div>
@@ -1144,6 +1208,7 @@ id="ctab-calendario" style="display:none">
     </div>
 
   </div>
+</div>
 </div>
 
 <!-- ==================== PESSOAS ==================== -->
@@ -4492,6 +4557,7 @@ function abrirCidade(id){
 
   document.getElementById('cidades-lista').style.display='none';
   document.getElementById('cidade-painel').style.display='block';
+  setTimeout(initMachineTab, 200);
 
   // Header
   document.getElementById('cp-nome').textContent = c.nome + ' — ' + c.uf;
@@ -4598,7 +4664,7 @@ function voltarCidades(){
 function setCidadeTab(btn, tab){
   document.querySelectorAll('#pg-cidades .tab').forEach(t=>t.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  ['overview','conteudo','prioridades','equipe','insights','machine','calendario'].forEach(t=>{
+  ['overview','conteudo','prioridades','equipe','insights','calendario'].forEach(t=>{
     const el = document.getElementById('ctab-'+t);
     if(el) el.style.display = t===tab ? 'block' : 'none';
   });
