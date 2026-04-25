@@ -2547,6 +2547,80 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
   </div>
 </div>
 
+<!-- ==================== RELATÓRIO DIÁRIO ==================== -->
+<div class="page" id="pg-relatorio-diario">
+  <div class="page-header">
+    <div>
+      <div class="page-title">📊 Relatório Diário</div>
+      <div class="page-sub" id="rd-data-hoje">Gâmi Delivery — 10 cidades</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="gerarRelatorioCompleto()">🤖 Analisar com IA</button>
+      <button class="btn btn-ghost" onclick="exportarRelatorio()">📤 Exportar</button>
+      <button class="btn btn-ghost" onclick="sincronizarMachineGlobal()" id="btn-sync-global">🏍️ Sincronizar Machine</button>
+      <button class="btn btn-primary" onclick="atualizarRelatorio()">↻ Atualizar</button>
+    </div>
+  </div>
+  <div class="metrics" style="margin-bottom:16px">
+    <div class="metric"><div class="metric-label">Total entregas</div><div class="metric-val" id="rd-total-entregas" style="color:var(--orange)">—</div><div class="metric-sub" id="rd-entregas-sub">nas 10 cidades</div></div>
+    <div class="metric"><div class="metric-label">Motoboys ativos</div><div class="metric-val" id="rd-total-motoboys" style="color:#1D9E75">—</div><div class="metric-sub">em operação</div></div>
+    <div class="metric"><div class="metric-label">Empresas ativas</div><div class="metric-val" id="rd-total-empresas" style="color:#1E88E5">—</div><div class="metric-sub">parceiros</div></div>
+    <div class="metric"><div class="metric-label">Score médio</div><div class="metric-val" id="rd-score-medio" style="color:#EF9F27">—</div><div class="metric-sub">das 10 cidades</div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px;overflow-x:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="card-title" style="margin:0">Desempenho por cidade</div>
+      <div style="font-size:11px;color:var(--text3)" id="rd-ultima-atualizacao"></div>
+    </div>
+    <table id="rd-tabela" style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="text-align:left;padding:8px 10px;color:var(--text2);font-weight:600">#</th>
+        <th style="text-align:left;padding:8px 10px;color:var(--text2);font-weight:600">Cidade</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2);font-weight:600">Score</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2);font-weight:600">Entregas</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2);font-weight:600">Motoboys</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2);font-weight:600">Campanhas</th>
+        <th style="text-align:center;padding:8px 10px;color:var(--text2);font-weight:600">Status</th>
+      </tr></thead>
+      <tbody id="rd-tabela-body"></tbody>
+    </table>
+  </div>
+  <div class="g2" style="margin-bottom:14px">
+    <div class="card"><div class="card-title">📈 Score das cidades</div><div id="rd-grafico-score" style="display:flex;flex-direction:column;gap:6px"></div></div>
+    <div class="card"><div class="card-title">🚦 Status geral</div><div id="rd-status-geral" style="display:flex;flex-direction:column;gap:8px"></div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px"><div class="card-title">⚠️ Alertas do dia</div><div id="rd-alertas-lista"></div></div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title">⏰ Lembrete diário</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div><div class="field-label">Horários</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="rh-07" value="07:00" onchange="salvarLembrete()"/> 07:00</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="rh-08" value="08:00" onchange="salvarLembrete()" checked/> 08:00</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="rh-12" value="12:00" onchange="salvarLembrete()"/> 12:00</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="rh-18" value="18:00" onchange="salvarLembrete()"/> 18:00</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px"><input type="checkbox" id="rh-22" value="22:00" onchange="salvarLembrete()"/> 22:00</label>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="ativarLembrete()" id="btn-ativar-lembrete" style="flex:1;padding:9px;border:none;border-radius:8px;background:#1D9E75;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🔔 Ativar lembrete</button>
+        <button onclick="testarLembrete()" style="padding:9px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit">Testar</button>
+      </div>
+      <div id="rd-lembrete-info" style="font-size:11px;color:var(--text3);display:none;padding:8px 12px;background:var(--surface2);border-radius:7px"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" style="margin:0">📝 Relatório em texto</div>
+      <div style="display:flex;gap:6px">
+        <button onclick="copiarRelatorio()" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">📋 Copiar</button>
+        <button onclick="enviarWhatsApp()" style="font-size:11px;padding:5px 10px;border:none;border-radius:6px;background:#1D9E75;color:white;cursor:pointer;font-family:inherit">💬 WhatsApp</button>
+      </div>
+    </div>
+    <div id="rd-texto-relatorio" style="font-size:12px;line-height:1.8;color:var(--text2);white-space:pre-line;font-family:'JetBrains Mono',monospace;background:var(--surface2);padding:14px;border-radius:8px;max-height:400px;overflow-y:auto"></div>
+  </div>
+</div>
+
 <script>
 const COMANDOS_DATA = {
   'Conteúdo e Posts': [
@@ -7007,6 +7081,71 @@ document.addEventListener('DOMContentLoaded',function(){
     window.setCidadeTab=function(el,tab){_orig(el,tab);if(tab==='machine')setTimeout(initMachineTab,50);};
   }
 });
+
+
+// ── PAGE STUBS (páginas com HTML estático não precisam de init) ──
+function carregarCampanhasPage(){
+  // Campanhas tem HTML estático + botão de sync Meta Ads
+  try{ carregarCampanhas(); }catch(e){}
+}
+function renderRankingGami(){
+  try{ renderRanking(); }catch(e){ 
+    // Ranking pode ser estático
+    console.log('Ranking: static page');
+  }
+}
+function initRelatorio(){
+  try{
+    const d = new Date();
+    const dias = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+    const meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    const de = document.getElementById('rd-data-hoje');
+    if(de) de.textContent = dias[d.getDay()+','+d.getDate()+' de '+meses[d.getMonth()]+' de '+d.getFullYear()];
+    atualizarRelatorio();
+    carregarConfigLembrete();
+  }catch(e){ console.warn('initRelatorio:',e); }
+}
+
+
+// ===================== INSTAGRAM API =====================
+
+let _igContas = [];
+let _igCarregado = false;
+
+async function carregarContasInstagram(){
+  if(_igCarregado) return;
+  try{
+    const r = await fetch('/.netlify/functions/instagram?action=list_accounts');
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.contas && d.contas.length > 0){
+      _igContas = d.contas;
+      _igCarregado = true;
+      console.log('Instagram: '+d.contas.length+' contas carregadas');
+      // Atualiza filtro de cidades no inbox
+      const sel = document.getElementById('inbox-filtro-cidade');
+      if(sel){
+        // Mantém opção "todas" e adiciona contas reais
+        sel.innerHTML = '<option value="todas">Todas as cidades</option>' +
+          d.contas.map(c=>`<option value="${c.ig_id}">${c.ig_nome||c.ig_username}</option>`).join('');
+      }
+    }
+  }catch(e){ console.warn('Instagram API:', e); }
+}
+
+async function carregarConversasInstagram(igId){
+  try{
+    const r = await fetch(`/.netlify/functions/instagram?action=conversations&ig_id=${igId}`);
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(e){ return null; }
+}
+
+// Chama quando inbox abre
+function initInboxInstagram(){
+  carregarContasInstagram();
+  renderInboxLista();
+}
 
 // ===================== UNIFIED NAV HANDLER =====================
 const _origNavBase = window.nav;
