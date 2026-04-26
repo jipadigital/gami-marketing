@@ -2009,7 +2009,14 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
           </div>
         </div>
         <div class="card">
-          <div class="card-title">💡 Temas sugeridos</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div class="card-title" style="margin:0">💡 10 temas do dia</div>
+            <button onclick="blogGerarTemas()" style="padding:5px 12px;border:none;border-radius:7px;background:var(--orange);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">⚡ Gerar temas</button>
+          </div>
+          <div id="blog-temas-lista" style="margin-bottom:10px">
+            <div style="text-align:center;padding:12px;color:var(--text3);font-size:12px">Clique em "Gerar temas" para receber 10 ideias do dia</div>
+          </div>
+          <div class="card-title">📌 Temas fixos</div>
           <div id="blog-sugestoes" style="display:flex;flex-direction:column;gap:4px"></div>
         </div>
       </div>
@@ -6238,6 +6245,7 @@ function blogRenderSugestoes(){
   }).join('');
 }
 
+function blogUsarTema(tema,cat){blogUsarSugestao(tema,cat);}
 function blogUsarSugestao(tema,cat){
   var t=document.getElementById('bg-tema'),c=document.getElementById('bg-cat');
   if(t)t.value=tema; if(c)c.value=cat;
@@ -6267,27 +6275,95 @@ async function blogGerarPost(){
   tema=tema.trim();
   var cat=(document.getElementById('bg-cat')||{}).value||'Delivery';
   var cidade=(document.getElementById('bg-cidade')||{}).value||'';
-  var kw=((document.getElementById('bg-kw')||{}).value||'').trim();
+  var kw=((document.getElementById('bg-kw')||{}).value||'').trim()||tema.toLowerCase().slice(0,40);
   var btn=document.getElementById('bg-btn-gerar');
   var preview=document.getElementById('bg-preview-area');
-  if(btn){btn.disabled=true;btn.textContent='Gerando...';}
-  if(preview)preview.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:30px;margin-bottom:8px">⏳</div>IA gerando...</div>';
-  var tams={curto:'600 palavras',medio:'1000 palavras',longo:'2000 palavras'};
-  var prompt='Escreva um artigo para gamidelivery.com.br.\nTema: '+tema+'\nCategoria: '+cat+'\n'+(cidade?'Cidade: '+cidade:'Público geral')+'\nTamanho: '+(tams[_blogTam]||'1000 palavras')+'\n\nInicie com:\n---\nTÍTULO: [título]\nSLUG: [slug]\n---\n\nEscreva em markdown com H2 e H3.';
+  if(btn){btn.disabled=true;btn.textContent='⏳ Gerando...';}
+  if(preview)preview.innerHTML='<div style="text-align:center;padding:60px 20px;color:var(--text3)"><div style="font-size:36px;margin-bottom:12px">✍️</div><div style="font-weight:600;font-size:14px;margin-bottom:6px">IA gerando seu post...</div><div style="font-size:12px">Aguarde 10-30 segundos</div></div>';
+  var tams={curto:'600 palavras com 3 secoes',medio:'1000 a 1200 palavras com 5 secoes',longo:'1800 a 2200 palavras com 8 secoes'};
+  var prompt='Escreva um artigo de blog completo para gamidelivery.com.br.\n\n'+
+    'Tema: '+tema+'\nCategoria: '+cat+'\n'+(cidade?'Cidade: '+cidade:'Para todo o Brasil')+'\nPalavra-chave: '+kw+'\nTamanho: '+(tams[_blogTam]||tams.medio)+'\n\n'+
+    'Estrutura OBRIGATORIA:\n---\nTITULO: [titulo com palavra-chave]\nMETA: [descricao 150 chars]\nSLUG: [url-sem-acentos]\nIMAGEM: [3 palavras em ingles para foto no Unsplash]\n---\n\n'+
+    '[Introducao de 2 paragrafos]\n\n## [Subtitulo 1]\n[Conteudo]\n\n## [Subtitulo 2]\n[Conteudo]\n\n## Conclusao\n[CTA para baixar app Gami]\n\n'+
+    'Use **negrito**, mencione Gami Delivery, escreva em portugues brasileiro.';
   var conteudo=await blogChamarIA(prompt);
-  var post=blogSalvarPost(conteudo||tema,tema,cat,cidade,kw,'rascunho');
-  if(preview&&conteudo)blogRenderPreview(conteudo,preview);
+  if(!conteudo){
+    if(preview)preview.innerHTML='<div style="text-align:center;padding:40px;color:var(--orange)"><div style="font-size:30px;margin-bottom:8px">❌</div><div>Erro ao gerar post.</div><div style="font-size:11px;margin-top:6px;color:var(--text3)">Verifique a ANTHROPIC_API_KEY no Netlify → Environment Variables</div></div>';
+    if(btn){btn.disabled=false;btn.textContent='⚡ Gerar post com IA';}
+    return;
+  }
+  var post=blogSalvarPost(conteudo,tema,cat,cidade,kw,'rascunho');
+  blogMostrarPreviewCompleto(post,preview);
   var actions=document.getElementById('bg-preview-actions');
-  if(actions)actions.innerHTML='<button onclick="blogAprovarPost(\''+post.id+'\')" style="padding:5px 10px;border:1px solid #1D9E75;border-radius:7px;background:#EAF3DE;color:#3B6D11;font-size:11px;cursor:pointer;font-family:inherit">✓ Aprovar</button><button onclick="blogPublicarPost(\''+post.id+'\')" style="padding:5px 10px;border:none;border-radius:7px;background:#1E88E5;color:white;font-size:11px;cursor:pointer;font-family:inherit">🌐 WP</button>';
-  if(btn){btn.disabled=false;btn.textContent='⚡ Gerar post com IA';}
+  if(actions)actions.innerHTML=
+    '<button onclick="blogAprovarPost(&quot;'+post.id+'&quot;)" style="padding:7px 14px;border:1px solid #1D9E75;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">✅ Aprovar</button> '+
+    '<button onclick="blogAprovarEPublicar(&quot;'+post.id+'&quot;)" style="padding:7px 14px;border:none;border-radius:8px;background:#1E88E5;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🌐 Aprovar e publicar no WP</button>';
+  if(btn){btn.disabled=false;btn.textContent='⚡ Gerar novo post';}
 }
+
+function blogMostrarPreviewCompleto(post,el){
+  if(!el)return;
+  var c=post.conteudo||'';
+  var titulo=blogExtrairMeta(c,'TITULO')||post.titulo||'';
+  var meta=blogExtrairMeta(c,'META')||'';
+  var img=blogExtrairMeta(c,'IMAGEM')||'food delivery';
+  var imgUrl='https://source.unsplash.com/800x400/?'+encodeURIComponent(img);
+  var corpo=c.split('---').slice(2).join('---').trim()||c;
+  var html=corpo.replace(/^## (.+)$/gm,'<h2 style="font-size:15px;font-weight:700;margin:14px 0 6px">$1</h2>').replace(/^### (.+)$/gm,'<h3 style="font-size:13px;font-weight:600;margin:10px 0 4px">$1</h3>').replace(/\*\*(.+?)\*\*/g,'<strong style="color:#F4530C">$1</strong>').replace(/\n\n/g,'</p><p style="margin:7px 0">').replace(/\n/g,'<br>');
+  var wrap=document.createElement('div');
+  wrap.style.cssText='border:2px solid #E5E7EB;border-radius:12px;overflow:hidden';
+  var imgEl=document.createElement('img');
+  imgEl.src=imgUrl;imgEl.alt=titulo;
+  imgEl.style.cssText='width:100%;height:180px;object-fit:cover';
+  imgEl.onerror=function(){this.style.display='none';};
+  var inner=document.createElement('div');
+  inner.style.cssText='padding:14px';
+  inner.innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span style="font-size:10px;padding:3px 10px;border-radius:20px;background:#FEF3EE;color:#F4530C;font-weight:600">'+post.categoria+'</span>'+(post.cidade?'<span style="font-size:10px;padding:3px 10px;border-radius:20px;background:#F5F5F5;color:#555">📍 '+post.cidade+'</span>':'')+'<span style="font-size:10px;padding:3px 10px;border-radius:20px;background:#F5F5F5;color:#555">📅 '+post.data+'</span></div><h1 style="font-size:18px;font-weight:800;margin-bottom:8px;line-height:1.3">'+titulo+'</h1>'+(meta?'<p style="font-size:11px;color:#999;font-style:italic;margin-bottom:12px;padding:8px;background:#F5F5F5;border-radius:7px;border-left:3px solid #F4530C">'+meta+'</p>':'')+'<div style="font-size:12px;color:#555;line-height:1.7"><p style="margin:7px 0">'+html+'</p></div>';
+  wrap.appendChild(imgEl);
+  wrap.appendChild(inner);
+  el.innerHTML='';
+  el.appendChild(wrap);
+}
+
+async function blogAprovarEPublicar(id){
+  blogAprovarPost(id);
+  await blogPublicarPost(id);
+}
+
 
 async function blogChamarIA(prompt){
   try{
-    var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2500,messages:[{role:'user',content:prompt}]})});
-    if(r.ok){var d=await r.json();return(d.content||[]).map(function(b){return b.text||'';}).join('');}
+    var r=await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt})});
+    if(r.ok){var d=await r.json();return d.content||null;}
+    console.warn('Blog AI error:',r.status);
   }catch(e){console.warn('Blog IA:',e.message);}
   return null;
+}
+
+async function blogGerarTemas(){
+  var el=document.getElementById('blog-temas-lista');
+  if(el)el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3)">⏳ Gerando temas...</div>';
+  var prompt='Gere 10 ideias de posts para o blog gamidelivery.com.br. Temas variados sobre: delivery, motoboys, gastronomia local, empreendedorismo, dicas de entrega, cidades do nordeste, parcerias com restaurantes.\n\nResponda APENAS com JSON array:\n[{"tema":"...","categoria":"...","cidade":"...","kw":"..."}]\n\nCategorias: Delivery, Motoboy, Gastronomia, Empreendedorismo, Dicas\nCidades (opcional): Fortaleza, Recife, Maceió, João Pessoa, Natal, Aracaju, São Luís, Cuiabá, Teresina, Vitória';
+  try{
+    var r=await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt,json:true})});
+    if(r.ok){
+      var d=await r.json();
+      var txt=d.content||'[]';
+      try{
+        var temas=JSON.parse(txt.replace(/```json|```/g,'').trim());
+        if(el&&temas.length){
+          el.innerHTML=temas.map(function(t,i){
+            return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);margin-bottom:4px">'+
+              '<span style="font-size:11px;font-weight:700;color:var(--orange);width:20px;flex-shrink:0">'+(i+1)+'.</span>'+
+              '<span style="flex:1;font-size:11px">'+t.tema+'</span>'+
+              '<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:var(--surface2);color:var(--text3);flex-shrink:0">'+t.categoria+'</span>'+
+              '<button onclick="blogUsarTema('+JSON.stringify(t.tema)+','+JSON.stringify(t.categoria)+')" style="padding:3px 8px;border:none;border-radius:6px;background:var(--orange);color:white;font-size:10px;cursor:pointer;font-family:inherit;flex-shrink:0">Usar</button>'+
+              '</div>';
+          }).join('');
+        }
+      }catch(e){if(el)el.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px">Erro ao processar temas. Tente novamente.</div>';}
+    }
+  }catch(e){if(el)el.innerHTML='<div style="font-size:12px;color:var(--orange);padding:8px">❌ Erro: '+e.message+'</div>';}
 }
 
 function blogSalvarPost(conteudo,tema,cat,cidade,kw,status){
