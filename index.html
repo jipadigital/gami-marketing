@@ -6167,54 +6167,261 @@ function gerarRelatorioCliente(){
 
 
 // ===================== BLOG & SEO =====================
-
-const BLOG_POSTS_DEF = [
-  {id:'bp1',titulo:'Como se tornar motoboy na Gâmi Delivery em Fortaleza',categoria:'Motoboy',cidade:'Fortaleza',keyword:'motoboy delivery fortaleza',status:'publicado',data:'2026-04-10',visualizacoes:342,conteudo:'',score_seo:87,wp_id:0,wp_link:''},
-  {id:'bp2',titulo:'Os melhores restaurantes parceiros da Gâmi em Recife',categoria:'Gastronomia',cidade:'Recife',keyword:'restaurantes delivery recife',status:'aprovado',data:'2026-04-12',visualizacoes:0,conteudo:'',score_seo:72,wp_id:0,wp_link:''},
-  {id:'bp3',titulo:'Delivery em Natal: como funciona a Gâmi na cidade',categoria:'Delivery',cidade:'Natal',keyword:'delivery natal rn',status:'aguardando',data:'2026-04-14',visualizacoes:0,conteudo:'',score_seo:65,wp_id:0,wp_link:''},
-];
-
-const BLOG_KEYWORDS_DEF = [
-  {kw:'motoboy delivery nordeste',volume:'alto',dificuldade:'média',tipo:'Motoboy'},
-  {kw:'delivery em fortaleza',volume:'alto',dificuldade:'alta',tipo:'Delivery'},
-  {kw:'como ser motoboy',volume:'alto',dificuldade:'média',tipo:'Motoboy'},
-  {kw:'restaurantes com delivery recife',volume:'médio',dificuldade:'média',tipo:'Gastronomia'},
-  {kw:'delivery rápido maceió',volume:'médio',dificuldade:'baixa',tipo:'Delivery'},
-  {kw:'ganhar dinheiro como entregador',volume:'alto',dificuldade:'alta',tipo:'Motoboy'},
-  {kw:'parceria restaurante delivery',volume:'médio',dificuldade:'média',tipo:'Parceiros'},
-  {kw:'gami delivery cadastro motoboy',volume:'baixo',dificuldade:'baixa',tipo:'Motoboy'},
-  {kw:'delivery aracaju',volume:'médio',dificuldade:'baixa',tipo:'Delivery'},
-  {kw:'empreender com delivery',volume:'médio',dificuldade:'média',tipo:'Empreendedorismo'},
-  {kw:'melhores restaurantes joao pessoa',volume:'médio',dificuldade:'média',tipo:'Gastronomia'},
-  {kw:'delivery sao luis maranhao',volume:'médio',dificuldade:'baixa',tipo:'Delivery'},
-  {kw:'como abrir empresa de delivery',volume:'alto',dificuldade:'alta',tipo:'Empreendedorismo'},
-  {kw:'renda extra motoboy',volume:'alto',dificuldade:'média',tipo:'Motoboy'},
-  {kw:'delivery cuiaba mt',volume:'médio',dificuldade:'baixa',tipo:'Delivery'},
-  {kw:'delivery teresina piaui',volume:'médio',dificuldade:'baixa',tipo:'Delivery'},
-  {kw:'motoboy autonomo nordeste',volume:'alto',dificuldade:'média',tipo:'Motoboy'},
-  {kw:'delivery vitoria es',volume:'médio',dificuldade:'baixa',tipo:'Delivery'},
-  {kw:'gastronomia nordestina delivery',volume:'médio',dificuldade:'baixa',tipo:'Gastronomia'},
-  {kw:'franquia delivery brasil',volume:'alto',dificuldade:'alta',tipo:'Empreendedorismo'},
-];
-
+var BLOG_POSTS_KEY = 'gami_blog_posts_v3';
+var BLOG_WP_KEY    = 'gami_wp_cfg_v3';
+var BLOG_CIDADES_LIST = ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
 var BLOG_SUGESTOES_LIST = [
-  {tema:'Como se tornar motoboy na Gâmi Delivery e ganhar bem',categoria:'Motoboy'},
-  {tema:'Os melhores pratos para pedir por delivery em [cidade]',categoria:'Gastronomia'},
-  {tema:'Por que restaurantes escolhem a Gâmi como parceira',categoria:'Parceiros'},
-  {tema:'Quanto ganha um motoboy de delivery no Nordeste',categoria:'Motoboy'},
-  {tema:'Delivery saudável: opções fitness nas cidades da Gâmi',categoria:'Gastronomia'},
-  {tema:'Como a Gâmi ajuda pequenos negócios a crescer',categoria:'Empreendedorismo'},
-  {tema:'Guia completo: primeiro pedido na Gâmi Delivery',categoria:'Delivery'},
-  {tema:'Dicas de segurança no trânsito para motoboys',categoria:'Motoboy'},
-  {tema:'Logística de última milha: como funciona o delivery',categoria:'Logística'},
-  {tema:'Empreenda com a Gâmi: seja gestor de cidade',categoria:'Empreendedorismo'},
+  {tema:'Como se tornar motoboy na Gâmi Delivery e ganhar bem',cat:'Motoboy'},
+  {tema:'Os melhores pratos para pedir por delivery em [cidade]',cat:'Gastronomia'},
+  {tema:'Por que restaurantes escolhem a Gâmi como parceira',cat:'Parcerias'},
+  {tema:'Quanto ganha um motoboy de delivery no Nordeste',cat:'Motoboy'},
+  {tema:'Guia completo: primeiro pedido na Gâmi Delivery',cat:'Delivery'},
 ];
+var _blogTom='informativo', _blogTam='medio', _blogMassaAtiva=false;
 
-const CIDADES_GAMI = ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
+function getBlogPosts(){try{return JSON.parse(localStorage.getItem(BLOG_POSTS_KEY)||'[]');}catch(e){return[];}}
+function saveBlogPosts(v){try{localStorage.setItem(BLOG_POSTS_KEY,JSON.stringify(v));}catch(e){}}
+function getBlogWP(){try{return JSON.parse(localStorage.getItem(BLOG_WP_KEY)||'{}');}catch(e){return{};}}
+function saveBlogWP(v){try{localStorage.setItem(BLOG_WP_KEY,JSON.stringify(v));}catch(e){}}
 
-const getBlogPosts = () => _jGet('gami_blog_posts', BLOG_POSTS_DEF);
-const getBlogKWs   = () => _jGet('gami_blog_kws',   BLOG_KEYWORDS_DEF);
-const saveBlogPosts = v => _jSet('gami_blog_posts', v);
+function initBlogPage(){
+  blogTab('posts');
+  blogCarregarWP();
+  blogRenderSugestoes();
+}
+
+function blogTab(tab){
+  ['posts','gerar','massa','wordpress','seo'].forEach(function(t){
+    var el=document.getElementById('blog-tab-'+t); if(el)el.style.display=t===tab?'block':'none';
+    var btn=document.getElementById('bt-'+t);
+    if(btn){ btn.style.color=t===tab?'var(--orange)':'var(--text3)'; btn.style.borderBottomColor=t===tab?'var(--orange)':'transparent'; btn.style.fontWeight=t===tab?'600':'500'; }
+  });
+  if(tab==='posts') blogRenderPosts();
+  if(tab==='wordpress') blogCarregarWP();
+  if(tab==='gerar') blogRenderSugestoes();
+}
+
+function blogRenderPosts(){
+  var el=document.getElementById('blog-posts-list'); if(!el)return;
+  var fs=(document.getElementById('blog-f-status')||{}).value||'todos';
+  var posts=getBlogPosts();
+  if(fs!=='todos')posts=posts.filter(function(p){return p.status===fs;});
+  posts.sort(function(a,b){return new Date(b.data)-new Date(a.data);});
+  var ct=document.getElementById('blog-posts-count'); if(ct)ct.textContent=posts.length+' post(s)';
+  var sm={rascunho:{bg:'#FAEEDA',cor:'#854F0B',lb:'Rascunho'},aprovado:{bg:'#EAF3DE',cor:'#3B6D11',lb:'Aprovado ✓'},publicado:{bg:'#E3F2FD',cor:'#1565C0',lb:'Publicado 🌐'}};
+  var cc={Delivery:'#1E88E5',Gastronomia:'#EF9F27',Motoboy:'var(--orange)',Empreendedorismo:'#8E24AA'};
+  if(!posts.length){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:36px;margin-bottom:8px">✍️</div><div style="font-weight:500;margin-bottom:8px">Nenhum post ainda</div><button onclick="blogTab(\'massa\')" class="btn btn-primary" style="font-size:12px">🚀 Gerar em massa</button></div>';return;}
+  el.innerHTML=posts.map(function(p){
+    var s=sm[p.status]||sm.rascunho, c=cc[p.categoria]||'#888';
+    return '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-left:4px solid '+c+';border-radius:10px;background:var(--surface);margin-bottom:8px">'+
+      '<div style="flex:1;min-width:0">'+
+      '<div style="font-size:13px;font-weight:600;margin-bottom:5px">'+p.titulo+'</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">'+
+      '<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:'+s.bg+';color:'+s.cor+';font-weight:600">'+s.lb+'</span>'+
+      '<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:var(--surface2);color:var(--text2)">'+p.categoria+'</span>'+
+      (p.cidade?'<span style="font-size:10px;padding:2px 8px;border-radius:8px;background:var(--surface2);color:var(--text2)">📍 '+p.cidade+'</span>':'')+'</div>'+
+      '<div style="font-size:10px;color:var(--text3)">📅 '+p.data+(p.wp_link?' · <a href="'+p.wp_link+'" target="_blank" style="color:var(--blue)">Ver no site ↗</a>':'')+'</div></div>'+
+      '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">'+
+      (p.status==='aprovado'?'<button onclick="blogPublicarPost(\''+p.id+'\')" style="padding:5px 10px;border:none;border-radius:7px;background:#1E88E5;color:white;font-size:11px;cursor:pointer;font-family:inherit">🌐 Publicar</button>':'')+
+      (p.status==='rascunho'?'<button onclick="blogAprovarPost(\''+p.id+'\')" style="padding:5px 10px;border:1px solid #1D9E75;border-radius:7px;background:#EAF3DE;color:#3B6D11;font-size:11px;cursor:pointer;font-family:inherit">✓ Aprovar</button>':'')+
+      '<button onclick="blogExcluirPost(\''+p.id+'\')" style="width:28px;height:28px;border-radius:6px;background:#FCEBEB;border:1px solid #f5b5b5;cursor:pointer;font-size:12px">🗑</button></div></div>';
+  }).join('');
+}
+
+function blogAprovarPost(id){var posts=getBlogPosts(),i=posts.findIndex(function(p){return p.id===id;});if(i>=0)posts[i].status='aprovado';saveBlogPosts(posts);blogRenderPosts();}
+function blogExcluirPost(id){if(!confirm('Excluir post?'))return;saveBlogPosts(getBlogPosts().filter(function(p){return p.id!==id;}));blogRenderPosts();}
+
+function blogRenderSugestoes(){
+  var el=document.getElementById('blog-sugestoes'); if(!el)return;
+  el.innerHTML=BLOG_SUGESTOES_LIST.map(function(s){
+    return '<button onclick="blogUsarSugestao(\''+s.tema.replace(/'/g,"\\'")+"','"+s.cat+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);cursor:pointer;font-family:inherit;text-align:left;width:100%;margin-bottom:3px"><span style="flex:1;font-size:11px">'+s.tema+'</span><span style="font-size:10px;color:var(--orange);flex-shrink:0">Usar ↗</span></button>';
+  }).join('');
+}
+
+function blogUsarSugestao(tema,cat){
+  var t=document.getElementById('bg-tema'),c=document.getElementById('bg-cat');
+  if(t)t.value=tema; if(c)c.value=cat;
+}
+
+function blogSelTom(btn,tom){
+  _blogTom=tom;
+  ['bgt-informativo','bgt-motivacional','bgt-vendas'].forEach(function(id){
+    var b=document.getElementById(id);
+    if(b){b.style.background='var(--surface2)';b.style.borderColor='var(--border)';b.style.color='var(--text2)';b.style.fontWeight='400';}
+  });
+  btn.style.background='#FEF3EE';btn.style.borderColor='var(--orange)';btn.style.color='var(--orange)';btn.style.fontWeight='600';
+}
+
+function blogSelTam(btn,tam){
+  _blogTam=tam;
+  ['bgsz-curto','bgsz-medio','bgsz-longo'].forEach(function(id){
+    var b=document.getElementById(id);
+    if(b){b.style.background='var(--surface2)';b.style.borderColor='var(--border)';b.style.color='var(--text2)';b.style.fontWeight='400';}
+  });
+  btn.style.background='#FEF3EE';btn.style.borderColor='var(--orange)';btn.style.color='var(--orange)';btn.style.fontWeight='600';
+}
+
+async function blogGerarPost(){
+  var tema=(document.getElementById('bg-tema')||{}).value;
+  if(!tema||!tema.trim()){alert('Informe o tema!');return;}
+  tema=tema.trim();
+  var cat=(document.getElementById('bg-cat')||{}).value||'Delivery';
+  var cidade=(document.getElementById('bg-cidade')||{}).value||'';
+  var kw=((document.getElementById('bg-kw')||{}).value||'').trim();
+  var btn=document.getElementById('bg-btn-gerar');
+  var preview=document.getElementById('bg-preview-area');
+  if(btn){btn.disabled=true;btn.textContent='Gerando...';}
+  if(preview)preview.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:30px;margin-bottom:8px">⏳</div>IA gerando...</div>';
+  var tams={curto:'600 palavras',medio:'1000 palavras',longo:'2000 palavras'};
+  var prompt='Escreva um artigo para gamidelivery.com.br.\nTema: '+tema+'\nCategoria: '+cat+'\n'+(cidade?'Cidade: '+cidade:'Público geral')+'\nTamanho: '+(tams[_blogTam]||'1000 palavras')+'\n\nInicie com:\n---\nTÍTULO: [título]\nSLUG: [slug]\n---\n\nEscreva em markdown com H2 e H3.';
+  var conteudo=await blogChamarIA(prompt);
+  var post=blogSalvarPost(conteudo||tema,tema,cat,cidade,kw,'rascunho');
+  if(preview&&conteudo)blogRenderPreview(conteudo,preview);
+  var actions=document.getElementById('bg-preview-actions');
+  if(actions)actions.innerHTML='<button onclick="blogAprovarPost(\''+post.id+'\')" style="padding:5px 10px;border:1px solid #1D9E75;border-radius:7px;background:#EAF3DE;color:#3B6D11;font-size:11px;cursor:pointer;font-family:inherit">✓ Aprovar</button><button onclick="blogPublicarPost(\''+post.id+'\')" style="padding:5px 10px;border:none;border-radius:7px;background:#1E88E5;color:white;font-size:11px;cursor:pointer;font-family:inherit">🌐 WP</button>';
+  if(btn){btn.disabled=false;btn.textContent='⚡ Gerar post com IA';}
+}
+
+async function blogChamarIA(prompt){
+  try{
+    var r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2500,messages:[{role:'user',content:prompt}]})});
+    if(r.ok){var d=await r.json();return(d.content||[]).map(function(b){return b.text||'';}).join('');}
+  }catch(e){console.warn('Blog IA:',e.message);}
+  return null;
+}
+
+function blogSalvarPost(conteudo,tema,cat,cidade,kw,status){
+  var titulo=blogExtrairMeta(conteudo,'TÍTULO')||tema;
+  var slug=blogExtrairMeta(conteudo,'SLUG')||titulo.toLowerCase().replace(/[^a-z0-9\s]/gi,'').replace(/\s+/g,'-').slice(0,60);
+  var post={id:'bp'+Date.now(),titulo:titulo,categoria:cat,cidade:cidade,keyword:kw,status:status,data:new Date().toISOString().split('T')[0],conteudo:conteudo,slug:slug,wp_id:0,wp_link:''};
+  var posts=getBlogPosts();posts.unshift(post);saveBlogPosts(posts);return post;
+}
+function blogExtrairMeta(txt,campo){if(!txt)return'';var m=txt.match(new RegExp(campo+':\\s*(.+)','i'));return m?m[1].trim():'';}
+function blogRenderPreview(conteudo,el){
+  var html=conteudo.replace(/^---[\s\S]*?---\n?/m,'').replace(/^## (.+)$/gm,'<h2 style="font-size:14px;font-weight:700;margin:8px 0 4px">$1</h2>').replace(/^### (.+)$/gm,'<h3 style="font-size:13px;font-weight:600;margin:6px 0 3px">$1</h3>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p style="margin:4px 0">').replace(/\n/g,'<br>');
+  el.innerHTML='<p style="margin:4px 0">'+html+'</p>';
+}
+
+function blogTrocarModo(){
+  var modo=document.querySelector('input[name="blogmodo"]:checked');
+  var m=modo?modo.value:'cidades';
+  var cc=document.getElementById('blog-conf-cidades'),ct=document.getElementById('blog-conf-temas');
+  if(cc)cc.style.display=m==='cidades'?'block':'none';
+  if(ct)ct.style.display=m==='temas'?'block':'none';
+}
+
+async function blogIniciarMassa(){
+  if(_blogMassaAtiva)return;
+  var modo=document.querySelector('input[name="blogmodo"]:checked');
+  var m=modo?modo.value:'cidades';
+  var tam=(document.getElementById('bm-tam')||{}).value||'medio';
+  var acao=(document.getElementById('bm-acao')||{}).value||'rascunho';
+  var temas=[];
+  if(m==='cidades'){
+    var base=(document.getElementById('bm-tema-base')||{}).value;
+    if(!base||!base.trim()){alert('Informe o tema base!');return;}
+    temas=BLOG_CIDADES_LIST.map(function(c){return{tema:base.replace(/\[cidade\]/gi,c),cidade:c,cat:'Delivery',kw:'delivery '+c.toLowerCase()};});
+  }else{
+    var lista=(document.getElementById('bm-temas-lista')||{}).value;
+    if(!lista||!lista.trim()){alert('Informe os temas!');return;}
+    temas=lista.split('\n').filter(function(t){return t.trim();}).map(function(t){return{tema:t.trim(),cidade:'',cat:'Delivery',kw:t.trim().toLowerCase().slice(0,40)};});
+  }
+  _blogMassaAtiva=true;
+  var btn=document.getElementById('bm-btn');
+  if(btn){btn.textContent='⏹ Cancelar';btn.onclick=function(){_blogMassaAtiva=false;btn.textContent='🚀 Iniciar';btn.onclick=blogIniciarMassa;};}
+  var pw=document.getElementById('bm-prog-wrap'),pb=document.getElementById('bm-prog-bar'),pn=document.getElementById('bm-prog-num'),ps=document.getElementById('bm-prog-status'),rd=document.getElementById('bm-resultado'),ac=document.getElementById('bm-acoes');
+  if(pw)pw.style.display='block'; if(rd)rd.innerHTML=''; if(ac)ac.style.display='none';
+  var tams={curto:'600 palavras',medio:'1000 palavras',longo:'2000 palavras'};
+  var gerados=0;
+  for(var i=0;i<temas.length;i++){
+    if(!_blogMassaAtiva)break;
+    var t=temas[i];
+    if(pn)pn.textContent=(i+1)+'/'+temas.length;
+    if(pb)pb.style.width=Math.round(((i+1)/temas.length)*100)+'%';
+    if(ps)ps.textContent='Gerando: "'+t.tema.slice(0,50)+'..."';
+    var itemId='bmi'+i;
+    if(rd)rd.insertAdjacentHTML('beforeend','<div id="'+itemId+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);margin-bottom:5px;font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.tema+'</span></div>');
+    try{
+      var prompt='Escreva artigo para gamidelivery.com.br. Tema: '+t.tema+'. Cidade: '+(t.cidade||'geral')+'. Tamanho: '+(tams[tam]||'1000 palavras')+'. Inicie com ---\nTÍTULO: [título]\nSLUG: [slug]\n---\nEscreva em markdown com H2 e H3.';
+      var conteudo=await blogChamarIA(prompt);
+      var statusFinal=acao==='aprovado'?'aprovado':'rascunho';
+      var post=blogSalvarPost(conteudo||t.tema,t.tema,t.cat,t.cidade,t.kw,statusFinal);
+      gerados++;
+      var itemEl=document.getElementById(itemId);
+      if(itemEl)itemEl.innerHTML='<span style="font-size:14px">✅</span><span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+post.titulo+'</span><span style="font-size:10px;padding:2px 8px;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:600">'+statusFinal+'</span>';
+    }catch(err){var itemEl2=document.getElementById(itemId);if(itemEl2)itemEl2.innerHTML='<span>❌</span><span style="flex:1;font-size:12px;color:var(--text3)">'+t.tema+'</span>';}
+    if(i<temas.length-1&&_blogMassaAtiva)await new Promise(function(r){setTimeout(r,2000);});
+  }
+  _blogMassaAtiva=false;
+  if(btn){btn.textContent='🚀 Iniciar geração em massa';btn.onclick=blogIniciarMassa;}
+  var label=document.getElementById('bm-prog-label');if(label)label.textContent='✅ Concluído! '+gerados+' posts gerados';
+  if(ac)ac.style.display='flex';
+}
+
+function blogCarregarWP(){
+  var cfg=getBlogWP();
+  function sv(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;}
+  sv('bwp-url',cfg.url||'https://www.gamidelivery.com.br');
+  sv('bwp-user',cfg.user||'');
+  sv('bwp-pass',cfg.pass||'');
+  sv('bwp-tags',cfg.tags||'delivery, motoboy, gamidelivery');
+  if(cfg.status){var e=document.getElementById('bwp-pub-status');if(e)e.value=cfg.status;}
+}
+function blogSalvarWP(){
+  var cfg={
+    url:((document.getElementById('bwp-url')||{}).value||'').trim().replace(/\/$/,''),
+    user:((document.getElementById('bwp-user')||{}).value||'').trim(),
+    pass:((document.getElementById('bwp-pass')||{}).value||'').trim(),
+    tags:(document.getElementById('bwp-tags')||{}).value||'delivery, motoboy',
+    status:(document.getElementById('bwp-pub-status')||{}).value||'draft'
+  };
+  saveBlogWP(cfg);
+  var st=document.getElementById('bwp-status');
+  if(st){st.textContent='✓ Salvo!';st.style.color='#1D9E75';setTimeout(function(){st.textContent='';},3000);}
+}
+async function blogTestarWP(){
+  blogSalvarWP();
+  var cfg=getBlogWP();
+  if(!cfg.url||!cfg.user||!cfg.pass){alert('Preencha todos os campos primeiro!');return;}
+  var btn=document.getElementById('bwp-btn-testar'),st=document.getElementById('bwp-status');
+  if(btn)btn.textContent='Testando...';
+  try{
+    var creds=btoa(cfg.user+':'+cfg.pass);
+    var r=await fetch(cfg.url+'/wp-json/wp/v2/posts?per_page=5',{headers:{'Authorization':'Basic '+creds}});
+    if(r.ok){
+      var posts=await r.json();
+      if(st){st.textContent='✅ Conectado! '+posts.length+' posts encontrados.';st.style.color='#1D9E75';}
+      var recEl=document.getElementById('bwp-recentes');
+      if(recEl)recEl.innerHTML=posts.map(function(p){return'<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:11px"><div style="font-weight:500">'+(p.title&&p.title.rendered||'—')+'</div><div style="color:var(--text3)">'+p.status+' · '+new Date(p.date).toLocaleDateString('pt-BR')+'</div></div>';}).join('');
+    }else{if(st){st.textContent='❌ Erro '+r.status+' — verifique credenciais';st.style.color='var(--orange)';}}
+  }catch(e){if(st){st.textContent='❌ '+e.message;st.style.color='var(--orange)';}}
+  if(btn)btn.textContent='🔗 Testar conexão';
+}
+async function blogPublicarPostWP(post){
+  var cfg=getBlogWP();if(!cfg.url||!cfg.user||!cfg.pass)return false;
+  try{
+    var creds=btoa(cfg.user+':'+cfg.pass);
+    var html=(post.conteudo||post.titulo).replace(/^---[\s\S]*?---\n?/m,'').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
+    var r=await fetch(cfg.url+'/wp-json/wp/v2/posts',{method:'POST',headers:{'Authorization':'Basic '+creds,'Content-Type':'application/json'},body:JSON.stringify({title:post.titulo,content:'<p>'+html+'</p>',status:cfg.status||'draft',slug:post.slug||''})});
+    if(r.ok){var d=await r.json();var posts=getBlogPosts();var i=posts.findIndex(function(p){return p.id===post.id;});if(i>=0){posts[i].status='publicado';posts[i].wp_id=d.id;posts[i].wp_link=d.link;}saveBlogPosts(posts);return true;}
+  }catch(e){}
+  return false;
+}
+async function blogPublicarPost(id){
+  var post=getBlogPosts().find(function(p){return p.id===id;});if(!post)return;
+  var cfg=getBlogWP();if(!cfg.url||!cfg.user||!cfg.pass){alert('Configure o WordPress primeiro!');blogTab('wordpress');return;}
+  var ok=await blogPublicarPostWP(post);
+  if(ok){alert('✅ Publicado com sucesso!');blogRenderPosts();}else alert('❌ Erro ao publicar. Verifique a configuração do WordPress.');
+}
+async function blogPublicarTodos(){
+  var cfg=getBlogWP();if(!cfg.url||!cfg.user||!cfg.pass){alert('Configure o WordPress primeiro!');blogTab('wordpress');return;}
+  var posts=getBlogPosts().filter(function(p){return p.status==='aprovado';});
+  if(!posts.length){alert('Nenhum post aprovado.');return;}
+  if(!confirm('Publicar '+posts.length+' post(s) aprovado(s)?'))return;
+  var ok=0;
+  for(var i=0;i<posts.length;i++){if(await blogPublicarPostWP(posts[i]))ok++;await new Promise(function(r){setTimeout(r,800);});}
+  alert('✅ '+ok+'/'+posts.length+' publicados!');blogRenderPosts();
+}
 
 // ===================== UNIFIED NAV HANDLER =====================
 const _origNavBase = window.nav;
