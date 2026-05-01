@@ -632,57 +632,90 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 <!-- ==================== CALENDÁRIO ==================== -->
 <div class="page" id="pg-calendario">
   <div class="page-header">
-    <div><div class="page-title">Calendário de Marketing</div><div class="page-sub">Clique em qualquer dia para planejar</div></div>
-    <button class="btn btn-primary" onclick="openAI('Crie um planejamento de conteúdo completo para a próxima semana na Gâmi Delivery. Inclua datas comemorativas, campanhas por cidade e sugestão de posts por dia.')">Planejar semana →</button>
+    <div>
+      <div class="page-title">📅 Calendário de Marketing</div>
+      <div class="page-sub">Aniversários, datas sazonais e planejamento de conteúdo</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="calHoje()" style="font-size:12px">📍 Hoje</button>
+      <button class="btn btn-ghost" onclick="calMostrarAniversarios()" style="font-size:12px">🎂 Aniversários</button>
+      <button class="btn btn-primary" onclick="openAI('Crie um plano de conteúdo para a semana '+calGetSemanaAtual()+' da Gâmi Delivery com posts para cada cidade')" style="font-size:12px">🤖 Planejar semana</button>
+    </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 360px;gap:14px;align-items:start">
+  <!-- LEGENDA -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+    <span style="font-size:11px;font-weight:600;color:var(--text2)">Legenda:</span>
+    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#FCEBEB;color:#A32D2D">🔴 Feriado</span>
+    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#E3F2FD;color:#1565C0">🔵 Municipal</span>
+    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#FAEEDA;color:#854F0B">🟡 Comemorativo</span>
+    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#EAF3DE;color:#3B6D11">🟢 Nacional</span>
+    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#F3E5F5;color:#6A1B9A">🎂 Aniversário</span>
+    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#FEF3EE;color:var(--orange)">⭐ Destaque</span>
+  </div>
 
-    <!-- CALENDÁRIO INTERATIVO -->
-    <div class="card" id="cal-card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <button id="cal-prev" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="var(--text2)" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-        <div id="cal-month-label" style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif;color:var(--text)">Abril 2026</div>
-        <button id="cal-next" style="width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="var(--text2)" stroke-width="1.5" stroke-linecap="round"/></svg>
-        </button>
-      </div>
-      <div id="cal-grid-render"></div>
-      <div style="display:flex;gap:10px;font-size:10px;color:var(--text3);margin-top:10px;flex-wrap:wrap">
-        <span style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:var(--orange)"></div>Hoje</span>
-        <span style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:#FEE8DF;border:1px solid #F4530C"></div>🇧🇷 Nacional</span>
-        <span style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:#EEEDFE;border:1px solid #7F77DD"></div>🗺️ Regional</span>
-        <span style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:#E6F1FB;border:1px solid #378ADD"></div>🏙️ Municipal</span>
-        <span style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:#EAF3DE;border:1px solid #63992244"></div>Com planejamento</span>
-      </div>
-    </div>
+  <div style="display:grid;grid-template-columns:1fr 320px;gap:14px">
 
-    <!-- PAINEL DO DIA -->
-    <div id="day-panel">
-      <div class="card" style="border:1px solid var(--border)">
-        <div id="day-panel-content">
-          <div style="text-align:center;padding:30px 10px">
-            <div style="font-size:32px;margin-bottom:8px">📅</div>
-            <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">Selecione um dia</div>
-            <div style="font-size:12px;color:var(--text3)">Clique em qualquer data no calendário para ver opções de conteúdo e planejamento.</div>
+    <!-- CALENDÁRIO PRINCIPAL -->
+    <div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <!-- Header mês -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
+          <button onclick="calNavMes(-1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">‹</button>
+          <div style="text-align:center">
+            <div id="cal-month-label" style="font-size:17px;font-weight:800;font-family:'Syne',sans-serif;color:var(--text)"></div>
           </div>
+          <button onclick="calNavMes(1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">›</button>
         </div>
+        <!-- Dias semana -->
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);background:var(--surface2);border-bottom:1px solid var(--border)">
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:700;color:#E24B4A">Dom</div>
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Seg</div>
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Ter</div>
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Qua</div>
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Qui</div>
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Sex</div>
+          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:#1E88E5">Sáb</div>
+        </div>
+        <!-- Grid dias -->
+        <div id="cal-grid-render" style="padding:8px"></div>
       </div>
     </div>
 
-  </div>
+    <!-- SIDEBAR -->
+    <div style="display:flex;flex-direction:column;gap:10px">
 
-  <div class="ai-bar" style="margin-top:14px">
-    <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
-    <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Dia das Mães (11/05) está chegando. Comece a preparar em 2 semanas para garantir qualidade.</div>
-    <button class="btn btn-ia btn-sm" onclick="openAI('Crie uma campanha completa para o Dia das Mães para a Gâmi Delivery. Inclua post de feed, story e sugestão de ação para motoboys e gestores.')">Criar campanha ↗</button>
-  </div>
-</div>
+      <!-- DIA SELECIONADO -->
+      <div class="card" id="cal-day-panel" style="display:none">
+        <div id="cal-day-title" style="font-size:13px;font-weight:700;color:var(--orange);margin-bottom:10px"></div>
+        <div id="cal-day-eventos" style="margin-bottom:10px"></div>
+        <div class="field-label">+ Adicionar planejamento</div>
+        <div style="display:flex;gap:6px;margin-top:4px">
+          <input id="cal-novo-item" class="inp" placeholder="Ex: Post Instagram Fortaleza" style="flex:1;font-size:12px"/>
+          <button onclick="calAdicionarItem()" class="btn btn-primary" style="font-size:12px;padding:6px 10px">+</button>
+        </div>
+        <div id="cal-day-items" style="margin-top:8px"></div>
+        <button onclick="openAI('Crie sugestões de conteúdo para o dia '+selectedDay+' levando em conta as datas comemorativas da Gâmi Delivery')" class="btn btn-ghost" style="width:100%;font-size:11px;margin-top:8px">🤖 Sugerir conteúdo para este dia</button>
+      </div>
 
-<!-- ==================== TAREFAS ==================== -->
-<div class="page" id="pg-tarefas">
+      <!-- EVENTOS DO MÊS -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="card-title" style="margin:0">📋 Eventos do mês</div>
+          <div id="cal-eventos-count" style="font-size:10px;color:var(--text3)"></div>
+        </div>
+        <div id="cal-sidebar-events" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+
+      <!-- PRÓXIMOS ANIVERSÁRIOS -->
+      <div class="card">
+        <div class="card-title">🎂 Próximos aniversários</div>
+        <div id="cal-proximos-bdays" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
+    </div>
+  </div>
+</div><div class="page" id="pg-tarefas">
   <div class="page-header">
     <div><div class="page-title">Tarefas do dia</div><div class="page-sub">Rotina diária + tarefas específicas</div></div>
     <button class="btn btn-primary" onclick="openModal('modal-tarefa')">+ Nova tarefa</button>
@@ -2910,7 +2943,7 @@ let calData = {};
 try{ calData = JSON.parse(localStorage.getItem('gami_cal')||'{}'); }catch(e){}
 function saveCalData(){ try{ localStorage.setItem('gami_cal', JSON.stringify(calData)); }catch(e){} }
 
-let calYear = 2026, calMonth = 3; // 0-indexed, April = 3
+var calYear = new Date().getFullYear(), calMonth = new Date().getMonth(); // Dynamic current month
 let selectedDay = null;
 
 const OPCOES_CONTEUDO = [
@@ -2929,37 +2962,51 @@ const OPCOES_CONTEUDO = [
 ];
 
 function renderCalendar(){
-  const label = document.getElementById('cal-month-label');
+  var label = document.getElementById('cal-month-label');
   if(label) label.textContent = MESES_PT[calMonth] + ' ' + calYear;
 
-  const grid = document.getElementById('cal-grid-render');
+  var grid = document.getElementById('cal-grid-render');
   if(!grid) return;
 
-  const firstDay = new Date(calYear, calMonth, 1).getDay();
-  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear()===calYear && today.getMonth()===calMonth;
+  var firstDay = new Date(calYear, calMonth, 1).getDay();
+  var daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  var today = new Date();
+  var isCurrentMonth = today.getFullYear()===calYear && today.getMonth()===calMonth;
+  var mm = String(calMonth+1).padStart(2,'0');
 
-  let html = '<div class="cal-grid">';
-  DIAS_PT.forEach(d => html += `<div class="cal-head">${d}</div>`);
+  // Build birthdays map for this month
+  var bdayMap = {};
+  var pessoas = getPessoas ? getPessoas() : [];
+  pessoas.forEach(function(p){
+    if(!p.nascimento) return;
+    var parts = p.nascimento.split('-');
+    if(parts.length < 3) return;
+    var pMes = parts[1], pDia = parts[2];
+    if(pMes === mm){
+      var dia = parseInt(pDia);
+      if(!bdayMap[dia]) bdayMap[dia] = [];
+      bdayMap[dia].push(p.nome.split(' ')[0]);
+    }
+  });
 
-  // empty cells before first day
-  for(let i=0;i<firstDay;i++) html += '<div class="cal-day other"></div>';
+  var html = '<div class="cal-grid">';
+  DIAS_PT.forEach(function(d){ html += '<div class="cal-head">'+d+'</div>'; });
 
-  for(let d=1;d<=daysInMonth;d++){
-    const mm = String(calMonth+1).padStart(2,'0');
-    const dd = String(d).padStart(2,'0');
-    const key = `${calYear}-${mm}-${dd}`;
-    const keyShort = `${mm}-${dd}`;
-    const isToday = isCurrentMonth && today.getDate()===d;
-    const isSelected = selectedDay === key;
-    const eventoDay = DATAS_ESPECIAIS[keyShort];
-    const hasEvent = !!eventoDay;
-    const hasPlanned = calData[key] && calData[key].length > 0;
-    const donePlanned = hasPlanned ? calData[key].filter(i=>i.feito).length : 0;
+  for(var i=0;i<firstDay;i++) html += '<div class="cal-day other"></div>';
 
-    // Color per tipo
-    const tipoClass = eventoDay ? (
+  for(var d=1;d<=daysInMonth;d++){
+    var dd = String(d).padStart(2,'0');
+    var key = calYear+'-'+mm+'-'+dd;
+    var keyShort = mm+'-'+dd;
+    var isToday = isCurrentMonth && today.getDate()===d;
+    var isSelected = selectedDay === key;
+    var eventoDay = DATAS_ESPECIAIS[keyShort];
+    var hasEvent = !!eventoDay;
+    var hasPlanned = calData[key] && calData[key].length > 0;
+    var donePlanned = hasPlanned ? calData[key].filter(function(i){return i.feito;}).length : 0;
+    var hasBday = bdayMap[d] && bdayMap[d].length > 0;
+
+    var tipoClass = eventoDay ? (
       eventoDay.destaque          ? 'has-ev-destaque' :
       eventoDay.tipo==='feriado'  ? 'has-ev-nacional' :
       eventoDay.tipo==='nacional' ? 'has-ev-nacional' :
@@ -2968,18 +3015,68 @@ function renderCalendar(){
       eventoDay.tipo==='comemorativo' ? 'has-ev-com' : 'has-ev'
     ) : '';
 
-    let cls = 'cal-day';
+    var cls = 'cal-day';
     if(isToday) cls += ' today';
     else if(hasEvent) cls += ' ' + tipoClass;
     else if(hasPlanned) cls += ' has-planned';
     if(isSelected) cls += ' selected';
 
-    const dot = hasPlanned ? `<div style="position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:${donePlanned===calData[key].length?'var(--green)':'var(--orange)'}"></div>` : '';
+    var dots = '';
+    if(hasPlanned) dots += '<div style="position:absolute;bottom:2px;left:4px;width:4px;height:4px;border-radius:50%;background:'+(donePlanned===calData[key].length?'var(--green)':'var(--orange)')+'"></div>';
+    if(hasBday) dots += '<div style="position:absolute;bottom:2px;right:4px;font-size:7px">🎂</div>';
 
-    html += `<div class="${cls}" style="position:relative" onclick="selectDay(${d}, ${calMonth}, ${calYear})">${d}${dot}</div>`;
+    var bdayTitle = hasBday ? ' title="🎂 '+bdayMap[d].join(', ')+'"' : '';
+
+    html += '<div class="'+cls+'" style="position:relative" onclick="selectDay('+d+','+calMonth+','+calYear+')"'+bdayTitle+'>'+d+dots+'</div>';
   }
   html += '</div>';
   grid.innerHTML = html;
+
+  // Update sidebar with month events
+  renderCalSidebar();
+  renderProximosBdays();
+}
+
+function renderCalSidebar(){
+  var el = document.getElementById('cal-sidebar-events');
+  if(!el) return;
+  var mm = String(calMonth+1).padStart(2,'0');
+  var events = [];
+
+  // Birthdays this month
+  var pessoas = getPessoas ? getPessoas() : [];
+  pessoas.forEach(function(p){
+    if(!p.nascimento) return;
+    var parts = p.nascimento.split('-');
+    if(parts.length < 3) return;
+    if(parts[1] === mm){
+      var age = calYear - parseInt(parts[0]);
+      events.push({dia:parseInt(parts[2]),tipo:'bday',label:'🎂 '+p.nome.split(' ').slice(0,2).join(' ')+' ('+age+' anos)',cor:'#8B5CF6'});
+    }
+  });
+
+  // Special dates this month
+  Object.keys(DATAS_ESPECIAIS).forEach(function(k){
+    var parts = k.split('-');
+    if(parts[0] === mm){
+      var ev = DATAS_ESPECIAIS[k];
+      var cor = ev.tipo==='feriado'?'#E24B4A':ev.tipo==='municipal'?'#1E88E5':ev.tipo==='comemorativo'?'#EF9F27':'#1D9E75';
+      events.push({dia:parseInt(parts[1]),tipo:ev.tipo,label:(ev.emoji||'📅')+' '+ev.nome,cor:cor});
+    }
+  });
+
+  events.sort(function(a,b){return a.dia-b.dia;});
+
+  if(!events.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Nenhum evento este mês</div>';
+    return;
+  }
+  el.innerHTML = events.map(function(e){
+    return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'+
+      '<div style="width:28px;height:28px;border-radius:8px;background:'+e.cor+'22;color:'+e.cor+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+String(e.dia).padStart(2,'0')+'</div>'+
+      '<div style="font-size:11px;color:var(--text2);line-height:1.4;padding-top:2px">'+e.label+'</div>'+
+      '</div>';
+  }).join('');
 }
 
 function selectDay(d, m, y){
