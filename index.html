@@ -403,7 +403,8 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
   </div><!-- /nav-jipa -->
 
-  <div class="sb-user">
+  <button id="btn-sync-supa" onclick="syncTudo(true)" style="margin:8px 12px 4px;width:calc(100% - 24px);padding:8px;border:none;border-radius:8px;background:linear-gradient(135deg,#1D9E75,#16A085);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">☁️ Salvar tudo no servidor</button>
+<div class="sb-user">
       <div class="sb-avatar">CF</div>
       <div>
         <div style="font-size:12px;font-weight:500;color:var(--text)">Cleyton Frank</div>
@@ -3478,6 +3479,7 @@ function setPessoaFiltro(btn, filtro){
   });
   btn.style.background='var(--orange)'; btn.style.color='white'; btn.style.borderColor='var(--orange)';
   renderPessoas();
+  if(typeof syncPessoas==='function')syncPessoas();
 }
 
 function renderPessoas(){
@@ -6490,6 +6492,85 @@ async function blogPublicarTodos(){
   for(var i=0;i<posts.length;i++){if(await blogPublicarPostWP(posts[i]))ok++;await new Promise(function(r){setTimeout(r,800);});}
   alert('✅ '+ok+'/'+posts.length+' publicados!');blogRenderPosts();
 }
+
+
+// ===================== SUPABASE SYNC =====================
+var SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
+var SUPA_KEY = 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
+
+function supaHeaders(){
+  return {'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY};
+}
+async function supaUpsert(tabela, dados){
+  try{
+    var r=await fetch(SUPA_URL+'/rest/v1/'+tabela+'?on_conflict=id',{
+      method:'POST',
+      headers:Object.assign({},supaHeaders(),{'Prefer':'resolution=merge-duplicates'}),
+      body:JSON.stringify(Array.isArray(dados)?dados:[dados])
+    });
+    return r.ok;
+  }catch(e){return false;}
+}
+async function supaSelect(tabela, filtro){
+  try{
+    var url=SUPA_URL+'/rest/v1/'+tabela+'?select=*';
+    if(filtro)url+='&'+filtro;
+    var r=await fetch(url,{headers:supaHeaders()});
+    if(r.ok)return await r.json();
+  }catch(e){}
+  return null;
+}
+async function supaDelete(tabela, id){
+  try{
+    var r=await fetch(SUPA_URL+'/rest/v1/'+tabela+'?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:supaHeaders()});
+    return r.ok;
+  }catch(e){return false;}
+}
+async function syncPessoas(){
+  var p=getPessoas();if(!p.length)return;
+  return await supaUpsert('pessoas',p);
+}
+async function loadPessoasFromSupa(){
+  var d=await supaSelect('pessoas','order=nome.asc');
+  if(d&&d.length){_jSet('gami_pessoas',d);return d;}
+  return null;
+}
+async function syncBlogPosts(){
+  var p=getBlogPosts?getBlogPosts():[];if(!p.length)return;
+  return await supaUpsert('blog_posts',p);
+}
+async function loadBlogFromSupa(){
+  var d=await supaSelect('blog_posts','order=created_at.desc');
+  if(d&&d.length){if(typeof saveBlogPosts==='function')saveBlogPosts(d);return d;}
+  return null;
+}
+async function syncConfig(chave,valor){
+  return await supaUpsert('configuracoes',{chave:chave,valor:valor,updated_at:new Date().toISOString()});
+}
+async function loadConfigFromSupa(chave){
+  var d=await supaSelect('configuracoes','chave=eq.'+chave);
+  if(d&&d.length)return d[0].valor;
+  return null;
+}
+async function syncTudo(mostrarFeedback){
+  var btn=document.getElementById('btn-sync-supa');
+  if(mostrarFeedback&&btn){btn.textContent='⏳ Salvando...';btn.disabled=true;}
+  try{
+    await Promise.all([syncPessoas(),syncBlogPosts()]);
+    var wpCfg=typeof getBlogWP==='function'?getBlogWP():null;
+    if(wpCfg&&wpCfg.url)await syncConfig('wp_config',wpCfg);
+    if(mostrarFeedback&&btn){btn.textContent='✅ Salvo!';setTimeout(function(){btn.textContent='☁️ Salvar tudo';btn.disabled=false;},2000);}
+  }catch(e){
+    if(mostrarFeedback&&btn){btn.textContent='❌ Erro';btn.disabled=false;}
+  }
+}
+async function initSupabase(){
+  await Promise.all([loadPessoasFromSupa(),loadBlogFromSupa()]);
+  var wpCfg=await loadConfigFromSupa('wp_config');
+  if(wpCfg&&typeof saveBlogWP==='function')saveBlogWP(wpCfg);
+}
+setInterval(function(){syncTudo(false);},5*60*1000);
+document.addEventListener('DOMContentLoaded',function(){setTimeout(initSupabase,1500);});
 
 // ===================== UNIFIED NAV HANDLER =====================
 const _origNavBase = window.nav;
