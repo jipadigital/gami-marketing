@@ -643,6 +643,15 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
     </div>
   </div>
 
+  <!-- TABS -->
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;overflow-x:auto">
+    <button id="calt-calendario" onclick="calAba('calendario')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--orange);cursor:pointer;font-family:inherit;border-bottom:2px solid var(--orange);margin-bottom:-2px;white-space:nowrap">📅 Calendário</button>
+    <button id="calt-aniversarios" onclick="calAba('aniversarios')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🎂 Aniversariantes</button>
+    <button id="calt-datas" onclick="calAba('datas')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">📌 Datas sazonais</button>
+  </div>
+
+  <!-- TAB CALENDÁRIO -->
+  <div id="cal-tab-calendario">
   <!-- LEGENDA -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
     <span style="font-size:11px;font-weight:600;color:var(--text2)">Legenda:</span>
@@ -6668,6 +6677,158 @@ async function initSupabase(){
 }
 setInterval(function(){syncTudo(false);},5*60*1000);
 document.addEventListener('DOMContentLoaded',function(){setTimeout(initSupabase,1500);});
+
+
+
+function calAba(aba){
+  ['calendario','aniversarios','datas'].forEach(function(t){
+    var el=document.getElementById('cal-tab-'+t);
+    var btn=document.getElementById('calt-'+t);
+    if(el)el.style.display=t===aba?'block':'none';
+    if(btn){btn.style.color=t===aba?'var(--orange)':'var(--text3)';btn.style.borderBottomColor=t===aba?'var(--orange)':'transparent';btn.style.fontWeight=t===aba?'600':'500';}
+  });
+  if(aba==='aniversarios') renderAniversariantesFull();
+  if(aba==='datas') renderDatasSazonais();
+}
+
+function renderAniversariantesFull(){
+  var el=document.getElementById('cal-bdays-content'); if(!el)return;
+  var pessoas=getPessoas?getPessoas():[];
+  var hoje=new Date();
+  var mesAtual=hoje.getMonth()+1;
+
+  // Group by month
+  var porMes={};
+  for(var m=1;m<=12;m++) porMes[m]=[];
+  
+  pessoas.forEach(function(p){
+    if(!p.nascimento)return;
+    var parts=p.nascimento.split('-');
+    if(parts.length<3)return;
+    var mes=parseInt(parts[1]),dia=parseInt(parts[2]);
+    var ano=parseInt(parts[0]);
+    var idade=hoje.getFullYear()-ano;
+    // If birthday already passed this year
+    var bdayThisYear=new Date(hoje.getFullYear(),mes-1,dia);
+    if(bdayThisYear<hoje) idade=hoje.getFullYear()-ano;
+    else idade=hoje.getFullYear()-ano;
+    
+    var diff=Math.ceil((new Date(bdayThisYear<hoje?hoje.getFullYear()+1:hoje.getFullYear(),mes-1,dia)-hoje)/(1000*60*60*24));
+    porMes[mes].push({nome:p.nome,cidade:p.cidade||'',dia:dia,mes:mes,idade:idade,diff:diff,id:p.id});
+  });
+
+  // Sort each month by day
+  for(var m=1;m<=12;m++) porMes[m].sort(function(a,b){return a.dia-b.dia;});
+
+  var meses=['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  
+  // Start from current month
+  var html='';
+  for(var i=0;i<12;i++){
+    var m=((mesAtual-1+i)%12)+1;
+    if(!porMes[m].length)continue;
+    var isMesAtual=m===mesAtual;
+    html+='<div style="margin-bottom:16px">';
+    html+='<div style="font-size:13px;font-weight:700;color:'+(isMesAtual?'var(--orange)':'var(--text2)')+';margin-bottom:8px;padding:6px 10px;background:'+(isMesAtual?'#FEF3EE':'var(--surface2)')+';border-radius:8px;'+(isMesAtual?'border-left:3px solid var(--orange)':'')+'">'+meses[m]+(isMesAtual?' — mês atual':'')+'</div>';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">';
+    porMes[m].forEach(function(p){
+      var isHoje=p.diff===0,isProximo=p.diff<=7;
+      var ini=p.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+      var cor=isHoje?'var(--orange)':isProximo?'#8B5CF6':'var(--text3)';
+      var badge=isHoje?'🎉 Hoje!':isProximo?'Em '+p.diff+'d':'';
+      html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface)'+(isHoje?';border-color:var(--orange);background:#FEF3EE':'')+(isProximo&&!isHoje?';border-color:#C4B5FD;background:#F5F3FF':'')+'">';
+      html+='<div style="width:34px;height:34px;border-radius:50%;background:#F3E5F5;color:#8B5CF6;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">'+ini+'</div>';
+      html+='<div style="flex:1;min-width:0">';
+      html+='<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome.split(' ').slice(0,3).join(' ')+'</div>';
+      html+='<div style="font-size:10px;color:var(--text3)">'+String(p.dia).padStart(2,'0')+'/'+String(p.mes).padStart(2,'0')+' · '+p.cidade+' · '+p.idade+' anos</div>';
+      html+='</div>';
+      if(badge)html+='<span style="font-size:10px;font-weight:700;color:'+cor+';flex-shrink:0">'+badge+'</span>';
+      html+='</div>';
+    });
+    html+='</div></div>';
+  }
+  if(!html)html='<div style="text-align:center;padding:40px;color:var(--text3)">Nenhum aniversário cadastrado nas pessoas.</div>';
+  el.innerHTML=html;
+}
+
+function renderDatasSazonais(){
+  var el=document.getElementById('cal-datas-content'); if(!el)return;
+  var hoje=new Date();
+  var mesAtual=hoje.getMonth()+1;
+  var meses=['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  var tipos={feriado:{cor:'#FCEBEB',txt:'#A32D2D',lb:'Feriado'},nacional:{cor:'#EAF3DE',txt:'#3B6D11',lb:'Nacional'},municipal:{cor:'#E3F2FD',txt:'#1565C0',lb:'Municipal'},comemorativo:{cor:'#FAEEDA',txt:'#854F0B',lb:'Comemorativo'},regional:{cor:'#F3E5F5',txt:'#6A1B9A',lb:'Regional'}};
+  
+  // Group by month
+  var porMes={};
+  for(var m=1;m<=12;m++) porMes[m]=[];
+  Object.keys(DATAS_ESPECIAIS).forEach(function(k){
+    var parts=k.split('-');
+    var m=parseInt(parts[0]),d=parseInt(parts[1]);
+    var ev=DATAS_ESPECIAIS[k];
+    porMes[m].push({dia:d,mes:m,key:k,ev:ev});
+  });
+  for(var m=1;m<=12;m++) porMes[m].sort(function(a,b){return a.dia-b.dia;});
+
+  var html='';
+  for(var i=0;i<12;i++){
+    var m=((mesAtual-1+i)%12)+1;
+    if(!porMes[m].length)continue;
+    var isMesAtual=m===mesAtual;
+    html+='<div style="margin-bottom:16px">';
+    html+='<div style="font-size:13px;font-weight:700;color:'+(isMesAtual?'var(--orange)':'var(--text2)')+';margin-bottom:8px;padding:6px 10px;background:'+(isMesAtual?'#FEF3EE':'var(--surface2)')+';border-radius:8px">'+meses[m]+(isMesAtual?' — mês atual':'')+'</div>';
+    porMes[m].forEach(function(d){
+      var tp=tipos[d.ev.tipo]||tipos.comemorativo;
+      html+='<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-bottom:5px">';
+      html+='<div style="width:34px;height:34px;border-radius:8px;background:'+tp.cor+';display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0"><div style="font-size:8px;font-weight:600;color:'+tp.txt+'">'+String(d.mes).padStart(2,'0')+'</div><div style="font-size:13px;font-weight:800;color:'+tp.txt+'">'+String(d.dia).padStart(2,'0')+'</div></div>';
+      html+='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600">'+(d.ev.emoji||'📅')+' '+d.ev.nome+'</div>';
+      html+='<div style="display:flex;gap:5px;margin:3px 0"><span style="font-size:9px;padding:1px 6px;border-radius:6px;background:'+tp.cor+';color:'+tp.txt+'">'+tp.lb+'</span>'+(d.ev.cidade?'<span style="font-size:9px;padding:1px 6px;border-radius:6px;background:var(--surface2);color:var(--text3)">'+d.ev.cidade+'</span>':'')+'</div>';
+      if(d.ev.sugestao)html+='<div style="font-size:10px;color:var(--text3);margin-top:2px">💡 '+d.ev.sugestao.slice(0,80)+'...</div>';
+      html+='</div></div>';
+    });
+    html+='</div>';
+  }
+  el.innerHTML=html;
+}
+
+// ── Calendar helper functions ──
+function calHoje(){
+  var hoje = new Date();
+  calYear = hoje.getFullYear();
+  calMonth = hoje.getMonth();
+  renderCalendar();
+}
+
+function calGetSemanaAtual(){
+  var hoje = new Date();
+  var inicio = new Date(hoje);
+  inicio.setDate(hoje.getDate() - hoje.getDay());
+  var fim = new Date(inicio);
+  fim.setDate(inicio.getDate() + 6);
+  var fmt = function(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); };
+  return fmt(inicio)+' a '+fmt(fim);
+}
+
+function calMostrarAniversarios(){
+  renderProximosBdays();
+  var el = document.getElementById('cal-proximos-bdays');
+  if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function calAdicionarItem(){
+  var input = document.getElementById('cal-novo-item');
+  if(!input || !input.value.trim() || !selectedDay) return;
+  var texto = input.value.trim();
+  if(!calData[selectedDay]) calData[selectedDay] = [];
+  calData[selectedDay].push({texto:texto, feito:false, id:'ci'+Date.now()});
+  try{ localStorage.setItem('gami_cal_data', JSON.stringify(calData)); }catch(e){}
+  input.value = '';
+  selectDay(
+    parseInt(selectedDay.split('-')[2]),
+    parseInt(selectedDay.split('-')[1])-1,
+    parseInt(selectedDay.split('-')[0])
+  );
+  renderCalendar();
+}
 
 // ===================== UNIFIED NAV HANDLER =====================
 const _origNavBase = window.nav;
