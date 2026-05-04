@@ -2775,6 +2775,18 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
 <script>
 
+function _safeGet(key, fallback){
+  try{
+    var v=localStorage.getItem(key);
+    if(!v||v==='undefined'||v==='null') return fallback;
+    return JSON.parse(v);
+  }catch(e){ return fallback; }
+}
+function _safeSet(key, val){
+  try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){}
+}
+
+
 
 
 
@@ -3692,8 +3704,12 @@ var PESSOAS_DEFAULT = [
 ];
 
 function getPessoas(){
-  try{ const r=localStorage.getItem('gami_pessoas_v2'); return r?JSON.parse(r):JSON.parse(JSON.stringify(PESSOAS_DEFAULT)); }
-  catch(e){ return JSON.parse(JSON.stringify(PESSOAS_DEFAULT)); }
+  try{
+    var r=localStorage.getItem('gami_pessoas_v2');
+    if(!r||r==='undefined'||r==='null') return JSON.parse(JSON.stringify(PESSOAS_DEFAULT));
+    var parsed=JSON.parse(r);
+    return Array.isArray(parsed)&&parsed.length>0?parsed:JSON.parse(JSON.stringify(PESSOAS_DEFAULT));
+  }catch(e){ return JSON.parse(JSON.stringify(PESSOAS_DEFAULT)); }
 }
 function savePessoas(list){ try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(list)); }catch(e){} }
 
@@ -4751,8 +4767,12 @@ var STATUS_CIDADE = {
 };
 
 function getCidadesData(){
-  try{ return JSON.parse(localStorage.getItem('gami_cidades_v3') || 'null') || JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT)); }
-  catch(e){ return JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT)); }
+  try{
+    var r=localStorage.getItem('gami_cidades_v3');
+    if(!r||r==='undefined'||r==='null') return JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT));
+    var parsed=JSON.parse(r);
+    return Array.isArray(parsed)&&parsed.length>0?parsed:JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT));
+  }catch(e){ return JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT)); }
 }
 function saveCidadesData(d){ try{ localStorage.setItem('gami_cidades_v3', JSON.stringify(d)); }catch(e){} }
 
@@ -7675,6 +7695,7 @@ if(document.readyState==='loading'){
 } else {
   setTimeout(_appStart,100);
 }
+
 
 
 
