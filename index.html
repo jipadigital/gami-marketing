@@ -2776,6 +2776,8 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 <script>
 
 
+
+
 function _safeGet(key, fallback){
   try{
     var v=localStorage.getItem(key);
@@ -3117,7 +3119,7 @@ var DATAS_ESPECIAIS = {
 
 // Armazena planejamentos por dia: { 'YYYY-MM-DD': [{tipo, texto, feito}] }
 var calData = {};
-try{ calData = JSON.parse(localStorage.getItem('gami_cal')||'{}'); }catch(e){}
+try{ var r=localStorage.getItem('gami_cal'); calData=(r&&r!='undefined')?JSON.parse(r):{} }catch(e){calData={}}
 function saveCalData(){ try{ localStorage.setItem('gami_cal', JSON.stringify(calData)); }catch(e){} }
 
 var calYear = new Date().getFullYear(), calMonth = new Date().getMonth(); // Dynamic current month
@@ -3519,7 +3521,7 @@ var ROTINA_ITEMS = [
 // Load rotina state (resets daily)
 function getRotinaKey(){ const d=new Date(); return `gami_rotina_${d.getFullYear()}_${d.getMonth()}_${d.getDate()}`; }
 var rotinaState = {};
-try{ rotinaState = JSON.parse(localStorage.getItem(getRotinaKey())||'{}'); }catch(e){}
+try{ var rr=localStorage.getItem(getRotinaKey()); rotinaState=(rr&&rr!='undefined')?JSON.parse(rr):{} }catch(e){rotinaState={}}
 function saveRotinaState(){ try{ localStorage.setItem(getRotinaKey(), JSON.stringify(rotinaState)); }catch(e){} }
 
 function renderRotina(){
@@ -7612,96 +7614,139 @@ function tfAtualizarRotinaBar(){
 }
 
 
-// ===================== NAV HOOKS & APP INIT =====================
 
-// Override nav with full page hooks
-(function(){
-  var _baseNav = window.nav;
-  window.nav = function(el, page){
-    try{
-      document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
-      if(el) el.classList.add('active');
-      document.querySelectorAll('.page').forEach(function(p){
-        p.classList.remove('active');
-        p.style.display='none';
-      });
-      var pg=document.getElementById('pg-'+page);
-      if(pg){ pg.classList.add('active'); pg.style.display='block'; pg.style.visibility=''; pg.style.opacity=''; }
-      try{document.getElementById('main-content').scrollTop=0;}catch(e){}
-    }catch(e){ console.error('nav base:',e); }
-    var _s=function(fn,d){setTimeout(function(){try{fn();}catch(e){console.warn('init:',e);}},d||60);};
-    if(page==='dashboard')        { _s(initDashboard); _s(renderAlertasCampanhas,100); }
-    if(page==='calendario')       { _s(function(){renderCalendar();renderProximosBdays();}); }
-    if(page==='tarefas')          { _s(initTarefas); }
-    if(page==='campanhas')        { _s(function(){try{syncMeta();}catch(e){}}); }
-    if(page==='cidades')          { _s(function(){voltarCidades();renderCidadesGrid();}); }
-    if(page==='pessoas')          { _s(renderPessoas); }
-    if(page==='inbox')            { _s(renderInboxLista); }
-    if(page==='blog')             { _s(initBlogPage); }
-    if(page==='comandos')         { _s(function(){try{renderCmdTab('Conteúdo e Posts');}catch(e){}}); }
-    if(page==='jipa-dashboard')   { _s(initJipaDashboard); }
-    if(page==='jipa-clientes')    { _s(renderJipaClientes); }
-    if(page==='jipa-tarefas')     { _s(renderJipaTarefas); }
-    if(page==='jipa-conteudo')    { _s(renderJipaConteudo); }
-    if(page==='jipa-trafego')     { _s(renderJipaTrafego); }
-    if(page==='jipa-financeiro')  { _s(renderJipaFinanceiro); }
-    if(page==='jipa-pipeline')    { _s(renderJipaPipeline); }
-    if(page==='jipa-propostas')   { _s(renderJipaPropostas); }
-    if(page==='jipa-relatorios')  { _s(renderJipaRelatorios); }
-    if(page==='jipa-midia')       { _s(initMidiaJipa); }
-  };
-})();
-
-// App startup
-function _appStart(){
+// ===================== APP INIT - DEFINITIVO =====================
+function _safeLS(key){
   try{
-    // Show dashboard
-    var pg=document.getElementById('pg-dashboard');
+    var v = localStorage.getItem(key);
+    if(!v || v === 'undefined' || v === 'null' || v === '') return null;
+    return JSON.parse(v);
+  }catch(e){ 
+    localStorage.removeItem(key); // remove corrupted
+    return null; 
+  }
+}
+
+function _appStart(){
+  // Clean corrupted localStorage keys
+  var keys = ['gami_pessoas_v2','gami_cidades_v3','gami_blog_posts_v3',
+               'gami_wp_cfg_v3','gami_meta_camps','gami_cal','gami_tf_v2_projetos'];
+  keys.forEach(function(k){
+    try{
+      var v = localStorage.getItem(k);
+      if(v === 'undefined' || v === 'null'){
+        localStorage.removeItem(k);
+      }
+    }catch(e){}
+  });
+
+  // Show dashboard
+  try{
+    document.querySelectorAll('.page').forEach(function(p){
+      p.classList.remove('active');
+      p.style.display = 'none';
+    });
+    var pg = document.getElementById('pg-dashboard');
     if(pg){ pg.style.display='block'; pg.classList.add('active'); }
-    var nG=document.getElementById('nav-gami');
-    var nJ=document.getElementById('nav-jipa');
+    var nG = document.getElementById('nav-gami');
+    var nJ = document.getElementById('nav-jipa');
     if(nG) nG.style.display='block';
     if(nJ) nJ.style.display='none';
-    // Mark first nav item active
-    var firstNav=document.querySelector('#nav-gami .nav-item');
-    if(firstNav) firstNav.classList.add('active');
-    // Restore sidebar
-    var saved=localStorage.getItem('gami_sb_collapsed');
-    var sb=document.querySelector('.sidebar');
-    if(window.innerWidth<=768||saved==='1'){
-      if(sb) sb.classList.add('collapsed');
-    }
-    // Mobile: close sidebar on nav click
-    document.querySelectorAll('.nav-item').forEach(function(item){
-      item.addEventListener('click',function(){
-        if(window.innerWidth<=768){
-          var s=document.querySelector('.sidebar');
-          var o=document.getElementById('sidebar-overlay');
-          if(s) s.classList.add('collapsed');
-          if(o) o.classList.remove('visible');
-        }
-      });
+    var first = document.querySelector('#nav-gami .nav-item');
+    if(first) first.classList.add('active');
+    // Sidebar
+    var sb = document.querySelector('.sidebar');
+    var saved = localStorage.getItem('gami_sb_collapsed');
+    if(window.innerWidth <= 768 && sb) sb.classList.add('collapsed');
+    else if(saved === '1' && sb) sb.classList.add('collapsed');
+  }catch(e){ console.warn('layout:', e); }
+
+  // Init dashboard safely
+  setTimeout(function(){
+    try{ initDashboard(); }catch(e){ console.warn('initDashboard:', e); }
+  }, 200);
+  
+  setTimeout(function(){
+    try{ renderAlertasCampanhas(); }catch(e){}
+  }, 400);
+
+  // Load Supabase
+  setTimeout(function(){
+    try{ initSupabase(); }catch(e){ console.warn('supabase:', e); }
+  }, 1500);
+  
+  // Auto sync
+  setInterval(function(){
+    try{ syncTudo(false); }catch(e){}
+  }, 5*60*1000);
+}
+
+// Nav function - definitive
+window.nav = function(el, page){
+  try{
+    document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+    if(el) el.classList.add('active');
+    document.querySelectorAll('.page').forEach(function(p){
+      p.classList.remove('active');
+      p.style.display = 'none';
     });
-  }catch(e){ console.warn('layout:',e); }
-  setTimeout(function(){try{initDashboard();}catch(e){console.warn('dash:',e);}},100);
-  setTimeout(function(){try{renderAlertasCampanhas();}catch(e){}},200);
-  setTimeout(function(){try{initSupabase();}catch(e){console.warn('supa:',e);}},1500);
-  setInterval(function(){try{syncTudo(false);}catch(e){}},5*60*1000);
-}
+    var pg = document.getElementById('pg-'+page);
+    if(pg){
+      pg.classList.add('active');
+      pg.style.display = 'block';
+      pg.style.visibility = 'visible';
+      pg.style.opacity = '1';
+      try{ document.getElementById('main-content').scrollTop = 0; }catch(e){}
+    }
+  }catch(e){ console.error('nav:', e); }
 
-if(document.readyState==='loading'){
-  document.addEventListener('DOMContentLoaded',function(){setTimeout(_appStart,100);});
+  function s(fn, d){ setTimeout(function(){ try{ fn(); }catch(e){ console.warn(page+' init:', e.message); } }, d||80); }
+
+  if(page==='dashboard')      { s(initDashboard); s(renderAlertasCampanhas,150); }
+  if(page==='calendario')     { s(function(){ renderCalendar(); setTimeout(renderProximosBdays,100); }); }
+  if(page==='tarefas')        { s(initTarefas); }
+  if(page==='campanhas')      { s(function(){ try{syncMeta();}catch(e){} }); }
+  if(page==='cidades')        { s(function(){ voltarCidades(); renderCidadesGrid(); }); }
+  if(page==='pessoas')        { s(renderPessoas); }
+  if(page==='inbox')          { s(renderInboxLista); }
+  if(page==='blog')           { s(initBlogPage); }
+  if(page==='ranking')        { s(function(){ if(typeof renderRanking==='function') renderRanking(); }); }
+  if(page==='ideias')         { s(function(){ if(typeof renderIdeias==='function') renderIdeias(); }); }
+  if(page==='scripts')        { s(function(){ if(typeof renderScripts==='function') renderScripts(); }); }
+  if(page==='comandos')       { s(function(){ try{renderCmdTab('Conteúdo e Posts');}catch(e){} }); }
+  if(page==='relatorio-diario'){ s(function(){ if(typeof initRelatorio==='function') initRelatorio(); }); }
+  if(page==='jipa-dashboard') { s(initJipaDashboard); }
+  if(page==='jipa-clientes')  { s(renderJipaClientes); }
+  if(page==='jipa-tarefas')   { s(renderJipaTarefas); }
+  if(page==='jipa-conteudo')  { s(renderJipaConteudo); }
+  if(page==='jipa-trafego')   { s(renderJipaTrafego); }
+  if(page==='jipa-financeiro'){ s(renderJipaFinanceiro); }
+  if(page==='jipa-pipeline')  { s(renderJipaPipeline); }
+  if(page==='jipa-propostas') { s(renderJipaPropostas); }
+  if(page==='jipa-relatorios'){ s(renderJipaRelatorios); }
+  if(page==='jipa-midia')     { s(initMidiaJipa); }
+};
+
+// Sidebar toggle
+window.toggleSidebar = function(){
+  var sb = document.querySelector('.sidebar');
+  var ov = document.getElementById('sidebar-overlay');
+  if(!sb) return;
+  sb.classList.toggle('collapsed');
+  var c = sb.classList.contains('collapsed');
+  if(window.innerWidth <= 768 && ov) ov.classList.toggle('visible', !c);
+  try{ localStorage.setItem('gami_sb_collapsed', c?'1':'0'); }catch(e){}
+};
+
+// Kick off
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(_appStart, 50); });
 } else {
-  setTimeout(_appStart,100);
+  setTimeout(_appStart, 50);
 }
-
-
-
-
 
 </script>
 
 
-<script src="fix.js"></script>
 </body>
 </html>
