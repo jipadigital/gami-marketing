@@ -2775,6 +2775,7 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
 <script>
 
+
 const COMANDOS_DATA = {
   'Conteúdo e Posts': [
     {cmd:'Gere uma legenda de post para Instagram da Gâmi para [TIPO] em [CIDADE]',desc:'Legenda completa com emoji, CTA e hashtags',ex:'Gere uma legenda de post para Instagram da Gâmi para captação de motoboys em Fortaleza'},
@@ -7590,7 +7591,88 @@ function tfAtualizarRotinaBar(){
 }
 
 
+// ===================== NAV HOOKS & APP INIT =====================
 
+// Override nav with full page hooks
+(function(){
+  var _baseNav = window.nav;
+  window.nav = function(el, page){
+    try{
+      document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
+      if(el) el.classList.add('active');
+      document.querySelectorAll('.page').forEach(function(p){
+        p.classList.remove('active');
+        p.style.display='none';
+      });
+      var pg=document.getElementById('pg-'+page);
+      if(pg){ pg.classList.add('active'); pg.style.display='block'; pg.style.visibility=''; pg.style.opacity=''; }
+      try{document.getElementById('main-content').scrollTop=0;}catch(e){}
+    }catch(e){ console.error('nav base:',e); }
+    var _s=function(fn,d){setTimeout(function(){try{fn();}catch(e){console.warn('init:',e);}},d||60);};
+    if(page==='dashboard')        { _s(initDashboard); _s(renderAlertasCampanhas,100); }
+    if(page==='calendario')       { _s(function(){renderCalendar();renderProximosBdays();}); }
+    if(page==='tarefas')          { _s(initTarefas); }
+    if(page==='campanhas')        { _s(function(){try{syncMeta();}catch(e){}}); }
+    if(page==='cidades')          { _s(function(){voltarCidades();renderCidadesGrid();}); }
+    if(page==='pessoas')          { _s(renderPessoas); }
+    if(page==='inbox')            { _s(renderInboxLista); }
+    if(page==='blog')             { _s(initBlogPage); }
+    if(page==='comandos')         { _s(function(){try{renderCmdTab('Conteúdo e Posts');}catch(e){}}); }
+    if(page==='jipa-dashboard')   { _s(initJipaDashboard); }
+    if(page==='jipa-clientes')    { _s(renderJipaClientes); }
+    if(page==='jipa-tarefas')     { _s(renderJipaTarefas); }
+    if(page==='jipa-conteudo')    { _s(renderJipaConteudo); }
+    if(page==='jipa-trafego')     { _s(renderJipaTrafego); }
+    if(page==='jipa-financeiro')  { _s(renderJipaFinanceiro); }
+    if(page==='jipa-pipeline')    { _s(renderJipaPipeline); }
+    if(page==='jipa-propostas')   { _s(renderJipaPropostas); }
+    if(page==='jipa-relatorios')  { _s(renderJipaRelatorios); }
+    if(page==='jipa-midia')       { _s(initMidiaJipa); }
+  };
+})();
+
+// App startup
+function _appStart(){
+  try{
+    // Show dashboard
+    var pg=document.getElementById('pg-dashboard');
+    if(pg){ pg.style.display='block'; pg.classList.add('active'); }
+    var nG=document.getElementById('nav-gami');
+    var nJ=document.getElementById('nav-jipa');
+    if(nG) nG.style.display='block';
+    if(nJ) nJ.style.display='none';
+    // Mark first nav item active
+    var firstNav=document.querySelector('#nav-gami .nav-item');
+    if(firstNav) firstNav.classList.add('active');
+    // Restore sidebar
+    var saved=localStorage.getItem('gami_sb_collapsed');
+    var sb=document.querySelector('.sidebar');
+    if(window.innerWidth<=768||saved==='1'){
+      if(sb) sb.classList.add('collapsed');
+    }
+    // Mobile: close sidebar on nav click
+    document.querySelectorAll('.nav-item').forEach(function(item){
+      item.addEventListener('click',function(){
+        if(window.innerWidth<=768){
+          var s=document.querySelector('.sidebar');
+          var o=document.getElementById('sidebar-overlay');
+          if(s) s.classList.add('collapsed');
+          if(o) o.classList.remove('visible');
+        }
+      });
+    });
+  }catch(e){ console.warn('layout:',e); }
+  setTimeout(function(){try{initDashboard();}catch(e){console.warn('dash:',e);}},100);
+  setTimeout(function(){try{renderAlertasCampanhas();}catch(e){}},200);
+  setTimeout(function(){try{initSupabase();}catch(e){console.warn('supa:',e);}},1500);
+  setInterval(function(){try{syncTudo(false);}catch(e){}},5*60*1000);
+}
+
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',function(){setTimeout(_appStart,100);});
+} else {
+  setTimeout(_appStart,100);
+}
 
 </script>
 
