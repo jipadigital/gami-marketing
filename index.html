@@ -3513,6 +3513,38 @@ function getPessoas(){
 }
 function savePessoas(list){ try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(list)); }catch(e){} }
 
+/* ============== HELPERS DE CIDADE (suporte multi-cidades) ============== */
+/* Retorna SEMPRE um array de cidades, mesmo se a pessoa tiver string única */
+function pessoaCidades(p){
+  if(!p) return [];
+  const c = p.cidade;
+  if(Array.isArray(c)) return c.filter(Boolean);
+  if(typeof c === 'string'){
+    if(!c) return [];
+    // Pode ter vindo serializado: ["Fortaleza","Maceió"]
+    if(c.startsWith('[')){
+      try { const a = JSON.parse(c); return Array.isArray(a) ? a.filter(Boolean) : [c]; } catch(e){}
+    }
+    return [c];
+  }
+  return [];
+}
+
+/* Mostra cidade(s) no formato curto: "Fortaleza" ou "Fortaleza, Maceió +1" */
+function pessoaCidadeLabel(p){
+  const cs = pessoaCidades(p);
+  if(cs.length === 0) return '—';
+  if(cs.length === 1) return cs[0];
+  if(cs.length === 2) return cs.join(', ');
+  return cs[0]+', '+cs[1]+' +'+(cs.length-2);
+}
+
+/* True se a pessoa atende essa cidade (suporta multi-cidades) */
+function pessoaAtendeCidade(p, cidade){
+  if(!p || !cidade) return false;
+  return pessoaCidades(p).includes(cidade);
+}
+
 /* ============== BACKUP / RESTORE PESSOAS ============== */
 function exportarBackupPessoas(){
   try {
@@ -3793,7 +3825,8 @@ function renderPessoas(){
     if(pessoaFiltro!=='Todos' && p.cargo!==pessoaFiltro) return false;
     if(busca){
       const b=busca.toLowerCase();
-      if(!p.nome.toLowerCase().includes(b) && !p.cidade.toLowerCase().includes(b) && !(p.cargo||'').toLowerCase().includes(b)) return false;
+      const cidadesStr = pessoaCidades(p).join(' ').toLowerCase();
+      if(!p.nome.toLowerCase().includes(b) && !cidadesStr.includes(b) && !(p.cargo||'').toLowerCase().includes(b)) return false;
     }
     return true;
   });
@@ -3853,13 +3886,30 @@ function renderPessoas(){
                 })()}
                 ${(()=>{
                   const isGestor = ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(p.cargo);
-                  if(isGestor && p.cidade && p.cidade !== 'Matriz'){
-                    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:20px;background:#E6F6FE;color:#0E7AB8;font-weight:600;border:1.5px solid #1AB8F044">
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#1AB8F0"/></svg>
-                      ${p.cidade}
+                  const cs = (typeof pessoaCidades==='function') ? pessoaCidades(p) : (p.cidade ? [p.cidade] : []);
+                  const cidadeLabel = (typeof pessoaCidadeLabel==='function') ? pessoaCidadeLabel(p) : (cs[0]||'');
+                  const principal = cs[0] || '';
+                  
+                  if(cs.length === 0 || principal === 'Matriz'){
+                    return `<span style="font-size:11px;color:var(--text3)">· ${cidadeLabel}</span>`;
+                  }
+                  
+                  // Multi-cidade: badge especial roxo
+                  if(cs.length > 1){
+                    return `<span title="${cs.join(', ')}" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:20px;background:#EEEDFE;color:#3C3489;font-weight:600;border:1.5px solid #7F77DD55">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#7F77DD"/></svg>
+                      ${cidadeLabel}
                     </span>`;
                   }
-                  return `<span style="font-size:11px;color:var(--text3)">· ${p.cidade}</span>`;
+                  
+                  // Cidade única, gestor: azul
+                  if(isGestor){
+                    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:20px;background:#E6F6FE;color:#0E7AB8;font-weight:600;border:1.5px solid #1AB8F044">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#1AB8F0"/></svg>
+                      ${principal}
+                    </span>`;
+                  }
+                  return `<span style="font-size:11px;color:var(--text3)">· ${principal}</span>`;
                 })()}
               </div>
               <div style="font-size:11px;color:var(--text3);margin-top:1px">${p.nascimento?`Nasc. ${fmtNasc(p.nascimento)}`:''}${p.entrada?` · Desde ${fmtNasc(p.entrada)}`:''}</div>
@@ -3908,6 +3958,8 @@ function openPessoaModal(id){
     // Armazena ID para salvar
     window._editandoPessoaId = id || null;
     window._editandoPessoaFoto = d.foto || null;
+    // Atualiza UI das cidades baseado na categoria atual
+    if(typeof atualizarUICategoriaCidades === 'function') atualizarUICategoriaCidades();
   }, 50);
 
   // compute avatar color safely here (not inside template literal)
@@ -4085,15 +4137,19 @@ function openPessoaModal(id){
         </div>
       </div>
       <div class="field span2" id="pf-cidade-wrap">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
           <div class="field-label" style="margin:0">Cidade de atuação</div>
           <span id="pf-cidade-required" style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FCEBEB;color:#A32D2D;font-weight:600;display:${(p&&(p.categoria==='Gestor'||p.cargo==='Gestor de Cidade'||p.cargo==='Gestor Regional'||p.cargo==='Gestor de Operações'))||(!p)?'inline':'none'}">Obrigatório para Gestor</span>
+          <span id="pf-cidade-multi-hint" style="font-size:10px;padding:2px 7px;border-radius:10px;background:#E6F6FE;color:#0E7AB8;font-weight:600;display:none">Selecione 1 ou mais (multi-cidades)</span>
+          <button id="pf-cidade-todas" type="button" onclick="selecionarTodasCidades()" style="margin-left:auto;font-size:10px;padding:3px 9px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;display:none">Selecionar todas</button>
         </div>
-        <input type="hidden" id="pf-cidade" value="${d.cidade}"/>
+        <input type="hidden" id="pf-cidade" value='${(()=>{ const v=d.cidade||''; if(typeof v==='string' && (v.startsWith('[')||v.startsWith('"'))) return v; try { return JSON.stringify(v); } catch(e){ return JSON.stringify(v||''); } })()}'/>
         <div id="pf-cidade-btns" style="display:flex;flex-wrap:wrap;gap:6px">
           ${CIDADE_OPTS.map(c => {
             const isMatriz = c === 'Matriz';
-            const sel = d.cidade === c;
+            // d.cidade pode ser string única OU array (multi-cidades)
+            const cidadesAtuais = Array.isArray(d.cidade) ? d.cidade : (d.cidade ? [d.cidade] : []);
+            const sel = cidadesAtuais.includes(c);
             return `<button type="button"
               id="cidade-btn-${c.replace(/ /g,'-')}"
               onclick="selectCidade(this,'${c}')"
@@ -4130,19 +4186,38 @@ function salvarPessoa(existingId){
   const nome = document.getElementById('pf-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return; }
   const cargo_val = document.getElementById('pf-cargo').value;
-  const cidade_val = document.getElementById('pf-cidade').value;
+  const categoria_val = document.getElementById('pf-categoria').value;
+  
+  // Lê cidades como array
+  const cidades_arr = (typeof lerCidadesSelecionadas === 'function') ? lerCidadesSelecionadas() : [];
   const isGestor = ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(cargo_val);
-  if(isGestor && (!cidade_val || cidade_val === 'Matriz' || cidade_val === '')){
+  
+  if(isGestor && (cidades_arr.length === 0 || (cidades_arr.length === 1 && cidades_arr[0] === 'Matriz'))){
     alert('Gestores precisam ter uma cidade de atuação definida.'); return;
   }
+  
+  // Decide se salva como string (1 cidade) ou array (multi-cidades)
+  // Para Suporte/Marketing com 2+ cidades, salva como array
+  const isMulti = (typeof CATEGORIAS_MULTICIDADE !== 'undefined') && CATEGORIAS_MULTICIDADE.includes(categoria_val);
+  let cidadeFinal;
+  if(isMulti && cidades_arr.length > 1){
+    cidadeFinal = cidades_arr;  // array
+  } else if(cidades_arr.length === 1){
+    cidadeFinal = cidades_arr[0];  // string única
+  } else if(cidades_arr.length === 0){
+    cidadeFinal = '';
+  } else {
+    cidadeFinal = cidades_arr[0];  // fallback: pega só a primeira
+  }
+  
   const pessoas = getPessoas();
   const novo = {
     id: existingId || uid_p(),
     nome,
-    cargo:      document.getElementById('pf-cargo').value,
-    categoria:  document.getElementById('pf-categoria').value,
+    cargo:      cargo_val,
+    categoria:  categoria_val,
     nivel:      document.getElementById('pf-nivel').value,
-    cidade:     document.getElementById('pf-cidade').value,
+    cidade:     cidadeFinal,
     tel:        document.getElementById('pf-tel').value,
     nascimento: document.getElementById('pf-nasc').value,
     entrada:    document.getElementById('pf-entrada').value,
@@ -4344,6 +4419,9 @@ function selectCategoria(btn, catNome){
   // clear function selection
   const fnInp = document.getElementById('pf-cargo');
   if(fnInp) fnInp.value = '';
+  
+  // Atualiza UI de cidades (multi vs single)
+  if(typeof atualizarUICategoriaCidades === 'function') atualizarUICategoriaCidades();
 
   // Reset all category buttons
   document.querySelectorAll('[id^="cat-btn-"]').forEach(b=>{
@@ -4413,37 +4491,125 @@ function selectFuncao(btn, funcao){
 }
 
 // ---- CIDADE PICKER ----
-function selectCidade(btn, cidade){
+/* Categorias que podem atuar em múltiplas cidades */
+var CATEGORIAS_MULTICIDADE = ['Suporte', 'Marketing'];
+
+function isMultiCidade(){
+  const cat = (document.getElementById('pf-categoria')||{}).value || '';
+  const cargo = (document.getElementById('pf-cargo')||{}).value || '';
+  // Se categoria já está marcada, usa ela. Senão tenta deduzir pelo cargo
+  if(CATEGORIAS_MULTICIDADE.includes(cat)) return true;
+  if(/Suporte|Marketing/i.test(cargo)) return true;
+  return false;
+}
+
+/* Lê as cidades selecionadas como array */
+function lerCidadesSelecionadas(){
+  const v = (document.getElementById('pf-cidade')||{}).value || '';
+  if(!v) return [];
+  try {
+    const parsed = JSON.parse(v);
+    if(Array.isArray(parsed)) return parsed;
+    if(typeof parsed === 'string') return parsed ? [parsed] : [];
+    return [];
+  } catch(e){
+    return v ? [v] : [];
+  }
+}
+
+/* Salva as cidades selecionadas como JSON no input hidden */
+function salvarCidadesSelecionadas(arr){
   const inp = document.getElementById('pf-cidade');
-  if(inp) inp.value = cidade;
+  if(!inp) return;
+  inp.value = JSON.stringify(arr);
+}
 
-  // Reset all buttons
-  document.querySelectorAll('[id^="cidade-btn-"]').forEach(b=>{
-    const isMatriz = b.id === 'cidade-btn-Matriz';
-    b.style.opacity   = '0.55';
-    b.style.transform = 'scale(1)';
-    b.style.boxShadow = 'none';
-    b.style.fontWeight = '400';
-    b.style.background = 'var(--surface2)';
-    b.style.color = 'var(--text2)';
-    b.style.borderColor = isMatriz ? '#888780' : '#1AB8F0';
-  });
-
-  // Highlight selected
+/* Atualiza o visual de UM botão pra refletir se está selecionado */
+function pintarBotaoCidade(btn, selected, cidade){
   const isMatriz = cidade === 'Matriz';
-  btn.style.opacity    = '1';
-  btn.style.transform  = 'scale(1.07)';
-  btn.style.boxShadow  = isMatriz ? '0 2px 8px rgba(0,0,0,0.15)' : '0 2px 8px rgba(26,184,240,0.25)';
-  btn.style.fontWeight = '600';
-  btn.style.background = isMatriz ? '#F1EFE8' : '#E6F6FE';
-  btn.style.color      = isMatriz ? '#5F5E5A' : '#0E7AB8';
-  btn.style.borderColor = isMatriz ? '#888780' : '#1AB8F0';
+  if(selected){
+    btn.style.opacity    = '1';
+    btn.style.transform  = 'scale(1.05)';
+    btn.style.boxShadow  = isMatriz ? '0 2px 8px rgba(0,0,0,0.15)' : '0 2px 8px rgba(26,184,240,0.25)';
+    btn.style.fontWeight = '600';
+    btn.style.background = isMatriz ? '#F1EFE8' : '#E6F6FE';
+    btn.style.color      = isMatriz ? '#5F5E5A' : '#0E7AB8';
+    btn.style.borderColor = isMatriz ? '#888780' : '#1AB8F0';
+  } else {
+    btn.style.opacity   = '0.55';
+    btn.style.transform = 'scale(1)';
+    btn.style.boxShadow = 'none';
+    btn.style.fontWeight = '400';
+    btn.style.background = 'var(--surface2)';
+    btn.style.color = 'var(--text2)';
+    btn.style.borderColor = isMatriz ? '#888780' : '#1AB8F0';
+  }
+}
+
+function selectCidade(btn, cidade){
+  const multi = isMultiCidade();
+  let cidades = lerCidadesSelecionadas();
+  
+  if(multi){
+    // Toggle: adiciona se não tinha, remove se já tinha
+    if(cidades.includes(cidade)){
+      cidades = cidades.filter(function(c){ return c !== cidade; });
+    } else {
+      cidades.push(cidade);
+    }
+  } else {
+    // Single: substitui tudo por essa
+    cidades = [cidade];
+  }
+  
+  salvarCidadesSelecionadas(cidades);
+  
+  // Repinta TODOS os botões com base nas cidades atuais
+  document.querySelectorAll('[id^="cidade-btn-"]').forEach(function(b){
+    const c = b.id.replace('cidade-btn-','').replace(/-/g,' ');
+    // Cidade pode ter sido escapada com hífen: precisa achar o original
+    const original = (window.CIDADE_OPTS||[]).find(function(x){ return x.replace(/ /g,'-') === b.id.replace('cidade-btn-',''); }) || c;
+    pintarBotaoCidade(b, cidades.includes(original), original);
+  });
 
   // Show/hide required warning based on cargo
   const cargo = (document.getElementById('pf-cargo')||{}).value||'';
   const isGestor = ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(cargo);
   const req = document.getElementById('pf-cidade-required');
-  if(req) req.style.display = isGestor && (!cidade || cidade==='Matriz') ? 'inline' : 'none';
+  if(req) req.style.display = (isGestor && cidades.length === 0) ? 'inline' : 'none';
+}
+
+/* Mostra ou esconde o botão "Selecionar todas" + dica multi conforme categoria */
+function atualizarUICategoriaCidades(){
+  const multi = isMultiCidade();
+  const btnTodas = document.getElementById('pf-cidade-todas');
+  const hint = document.getElementById('pf-cidade-multi-hint');
+  if(btnTodas) btnTodas.style.display = multi ? 'inline-block' : 'none';
+  if(hint) hint.style.display = multi ? 'inline' : 'none';
+  
+  // Se trocou de multi pra single e tem mais de 1 cidade, mantém só a primeira
+  if(!multi){
+    const cidades = lerCidadesSelecionadas();
+    if(cidades.length > 1){
+      salvarCidadesSelecionadas([cidades[0]]);
+      // Repinta os botões
+      document.querySelectorAll('[id^="cidade-btn-"]').forEach(function(b){
+        const id = b.id.replace('cidade-btn-','');
+        const original = (window.CIDADE_OPTS||[]).find(function(x){ return x.replace(/ /g,'-') === id; }) || id.replace(/-/g,' ');
+        pintarBotaoCidade(b, cidades[0] === original, original);
+      });
+    }
+  }
+}
+
+function selecionarTodasCidades(){
+  const todas = (window.CIDADE_OPTS||[]).filter(function(c){ return c !== 'Matriz'; });
+  salvarCidadesSelecionadas(todas);
+  document.querySelectorAll('[id^="cidade-btn-"]').forEach(function(b){
+    const id = b.id.replace('cidade-btn-','');
+    const original = (window.CIDADE_OPTS||[]).find(function(x){ return x.replace(/ /g,'-') === id; }) || id.replace(/-/g,' ');
+    pintarBotaoCidade(b, todas.includes(original), original);
+  });
 }
 
 // Show cidade field as required when Gestor cargo is selected
@@ -4451,8 +4617,10 @@ function onCargoChange(){
   const cargo = (document.getElementById('pf-cargo')||{}).value||'';
   const isGestor = ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(cargo);
   const req = document.getElementById('pf-cidade-required');
-  const cidade = (document.getElementById('pf-cidade')||{}).value||'';
-  if(req) req.style.display = isGestor && (!cidade || cidade==='Matriz') ? 'inline' : 'none';
+  const cidades = (typeof lerCidadesSelecionadas === 'function') ? lerCidadesSelecionadas() : [];
+  if(req) req.style.display = isGestor && cidades.length === 0 ? 'inline' : 'none';
+  // Atualiza UI multi-cidade conforme nova categoria
+  if(typeof atualizarUICategoriaCidades === 'function') atualizarUICategoriaCidades();
 }
 
 // ===================== META ADS INTEGRATION =====================
@@ -5107,7 +5275,8 @@ function abrirCidade(id){
 
   // Aniversários
   const pessoas = (() => { try{ return JSON.parse(localStorage.getItem('gami_pessoas_v2')||'[]'); }catch(e){ return []; } })();
-  const equipe = pessoas.filter(p=>p.cidade===c.nome);
+  // Inclui multi-cidades: pessoa aparece em TODAS as cidades que atende
+  const equipe = pessoas.filter(p => (typeof pessoaAtendeCidade==='function') ? pessoaAtendeCidade(p, c.nome) : p.cidade===c.nome);
   const bdayWeek = equipe.filter(p=>{
     if(!p.nascimento) return false;
     const hoje=new Date(); hoje.setHours(0,0,0,0);
@@ -8147,9 +8316,13 @@ function renderCarreira(){
   if(cidHost){
     var porCidade = {};
     pessoas.forEach(function(p){
-      var c = p.cidade || 'Sem cidade';
-      if(!porCidade[c]) porCidade[c] = [];
-      porCidade[c].push(p);
+      var cidades = (typeof pessoaCidades === 'function') ? pessoaCidades(p) : (p.cidade ? [p.cidade] : []);
+      if(cidades.length === 0) cidades = ['Sem cidade'];
+      // Pessoa multi-cidade conta em CADA cidade que atende
+      cidades.forEach(function(c){
+        if(!porCidade[c]) porCidade[c] = [];
+        porCidade[c].push(p);
+      });
     });
     var ordemCidades = ['Matriz','Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
     var ordCidKeys = ordemCidades.filter(function(c){ return porCidade[c]; });
