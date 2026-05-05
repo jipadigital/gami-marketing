@@ -275,6 +275,56 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 </head>
 <body>
 
+<script>
+/* BULLETPROOF NAV - DEFINED FIRST, OVERRIDES EVERYTHING */
+window.nav = function(el, page){
+  console.log('[nav] navegando para:', page);
+  try {
+    // remove active from all nav items
+    document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+    if(el) el.classList.add('active');
+    // hide all pages with !important via inline style
+    document.querySelectorAll('.page').forEach(function(p){
+      p.classList.remove('active');
+      p.setAttribute('style', 'display:none !important');
+    });
+    // show target page
+    var pg = document.getElementById('pg-' + page);
+    if(pg){
+      pg.classList.add('active');
+      pg.setAttribute('style', 'display:block !important; visibility:visible !important; opacity:1 !important');
+      // run init function if exists
+      var initMap = {
+        'dashboard':       function(){ if(typeof initDashboard==='function') initDashboard(); },
+        'calendario':      function(){ if(typeof renderCalendar==='function') renderCalendar(); },
+        'tarefas':         function(){ if(typeof initTarefas==='function') initTarefas(); },
+        'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
+        'cidades':         function(){ if(typeof voltarCidades==='function'){voltarCidades(); renderCidadesGrid();} },
+        'pessoas':         function(){ if(typeof renderPessoas==='function') renderPessoas(); },
+        'inbox':           function(){ if(typeof renderInboxLista==='function') renderInboxLista(); },
+        'blog':            function(){ if(typeof initBlogPage==='function') initBlogPage(); },
+        'ranking':         function(){ if(typeof renderRanking==='function') renderRanking(); },
+        'ideias':          function(){ if(typeof renderIdeias==='function') renderIdeias(); },
+        'scripts':         function(){ if(typeof renderScripts==='function') renderScripts(); },
+        'comandos':        function(){ if(typeof renderCmdTab==='function') try{renderCmdTab('Conteúdo e Posts');}catch(e){} },
+        'culture':         function(){ if(typeof renderCulture==='function') renderCulture(); },
+        'carreira':        function(){ if(typeof renderCarreira==='function') renderCarreira(); },
+        'portal':          function(){ if(typeof renderPortal==='function') renderPortal(); },
+        'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); }
+      };
+      if(initMap[page]) setTimeout(initMap[page], 80);
+      try{ document.getElementById('main-content').scrollTop = 0; }catch(e){}
+    } else {
+      console.error('[nav] pagina nao encontrada: pg-' + page);
+    }
+  } catch(err){
+    console.error('[nav] erro:', err);
+  }
+};
+/* Block any later override of window.nav */
+Object.defineProperty(window, 'nav', { value: window.nav, writable: false, configurable: false });
+</script>
+
 <!-- Mobile/Desktop toggle -->
 <button id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Menu">
   <svg id="tog-ico" width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -2657,24 +2707,8 @@ function copiarCmd(texto, btn){
 }
 
 // NAV
-function nav(el, page){
-  try{
-    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-    if(el) el.classList.add('active');
-    document.querySelectorAll('.page').forEach(p=>{
-      p.classList.remove('active');
-      p.style.display='none';
-    });
-    const pg = document.getElementById('pg-'+page);
-    if(pg){
-      pg.classList.add('active');
-      pg.style.display='block';
-      pg.style.visibility='';
-      pg.style.opacity='';
-      try{document.getElementById('main-content').scrollTop=0;}catch(e){}
-    }
-    if(page==='comandos') try{renderCmdTab('Conteúdo e Posts');}catch(e){}
-  }catch(err){ console.error('nav error:',err); }
+function nav_OLD_DISABLED(el, page){
+  /* disabled - using bulletproof window.nav defined at top of body */
 }
 
 // MODAL
@@ -7354,8 +7388,9 @@ function _appStart(){
   }, 5*60*1000);
 }
 
-// Nav function - definitive
-window.nav = function(el, page){
+// Nav function - definitive (DISABLED: bulletproof nav defined at top of body)
+try { /* legacy nav removed - using bulletproof version */
+var _legacy_nav_disabled = function(el, page){
   try{
     document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
     if(el) el.classList.add('active');
@@ -7393,6 +7428,7 @@ window.nav = function(el, page){
   if(page==='portal')         { s(function(){ if(typeof renderPortal==='function') renderPortal(); }); }
   if(page==='guia-n8n')       { /* static page, nothing to init */ }
 };
+} catch(__e){ /* silent */ }
 
 // Sidebar toggle
 window.toggleSidebar = function(){
