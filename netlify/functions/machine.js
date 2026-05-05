@@ -6,8 +6,6 @@
 //
 // VARIÁVEIS DE AMBIENTE NECESSÁRIAS (configurar no painel Netlify):
 //   MACHINE_BASE_URL          ex: https://api.taximachine.com.br/api/integracao
-//   MACHINE_AUTH_USERNAME     login do usuário Gestor na Machine
-//   MACHINE_AUTH_PASSWORD     senha do usuário Gestor
 //   MACHINE_API_KEY_FORTALEZA mch_api_9HUXyIM4TJtglW12J3JAfXLz
 //   MACHINE_API_KEY_RECIFE    mch_api_1U24cU6Jrpnbo4CDiHW4XzTX
 //   MACHINE_API_KEY_MACEIO    mch_api_7qZTetNUI6jLJDUUyc9rylda
@@ -17,6 +15,9 @@
 //   MACHINE_API_KEY_SAOLUIS   mch_api_9HUXyIM4TJtglW12J3JAfXLz
 //   MACHINE_API_KEY_CUIABA    mch_api_4oL92M6ZF5eLxG5bHYsrrWMC
 //   MACHINE_API_KEY_TERESINA  mch_api_RjJkmPUGdbcrSyD4cpAiUrEo
+//
+// Opcional (deprecated - mantido por compatibilidade):
+//   MACHINE_AUTH_USERNAME / MACHINE_AUTH_PASSWORD - se precisar Basic Auth
 
 const CITY_KEY_MAP = {
   'fortaleza':    'MACHINE_API_KEY_FORTALEZA',
@@ -37,7 +38,6 @@ const CITY_KEY_MAP = {
 };
 
 exports.handler = async function(event) {
-  // CORS pro frontend
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -52,19 +52,18 @@ exports.handler = async function(event) {
   try {
     const params = event.queryStringParameters || {};
     const cidade = (params.cidade || '').toLowerCase().trim();
-    const endpoint = params.endpoint;  // ex: 'consultarCorridas', 'condutor', 'empresa'
+    const endpoint = params.endpoint;
     
     if (!cidade) {
       return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'parâmetro cidade obrigatório' })};
     }
     if (!endpoint) {
-      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'parâmetro endpoint obrigatório' })};
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'parâmetro endpoint obrigatório (ex: consultarCorridas, condutor, empresa)' })};
     }
     
-    // Resolve a chave da cidade
     const envKeyName = CITY_KEY_MAP[cidade];
     if (!envKeyName) {
-      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'cidade não mapeada: ' + cidade })};
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'cidade não mapeada: ' + cidade, cidades_validas: Object.keys(CITY_KEY_MAP) })};
     }
     const apiKey = process.env[envKeyName];
     if (!apiKey) {
@@ -72,37 +71,47 @@ exports.handler = async function(event) {
     }
     
     const baseUrl = process.env.MACHINE_BASE_URL;
-    const username = process.env.MACHINE_AUTH_USERNAME;
-    const password = process.env.MACHINE_AUTH_PASSWORD;
-    
-    if (!baseUrl || !username || !password) {
-      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'credenciais Machine não configuradas no Netlify (MACHINE_BASE_URL, MACHINE_AUTH_USERNAME, MACHINE_AUTH_PASSWORD)' })};
+    if (!baseUrl) {
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'MACHINE_BASE_URL não configurada no Netlify' })};
     }
     
-    // Monta query da API real (passa todos os params exceto cidade e endpoint)
+    // Monta query da API real
     const apiParams = new URLSearchParams();
-    apiParams.set('api_key', apiKey);
     Object.keys(params).forEach(k => {
       if (k !== 'cidade' && k !== 'endpoint') apiParams.set(k, params[k]);
     });
+    const queryString = apiParams.toString();
     
-    const url = baseUrl.replace(/\/$/, '') + '/' + endpoint + '?' + apiParams.toString();
-    const basicAuth = Buffer.from(username + ':' + password).toString('base64');
+    const url = baseUrl.replace(/\/$/, '') + '/' + endpoint + (queryString ? '?' + queryString : '');
+    
+    // Auth: API key vai no header (a forma mais comum em APIs REST)
+    // Se a Machine usar outro padrão (querystring api_key), tentamos ambos
+    const requestHeaders = {
+      'Authorization': 'Bearer ' + apiKey,
+      'X-API-KEY': apiKey,
+      'apikey': apiKey,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    
+    // Se tiver Basic Auth configurado, adiciona como fallback
+    const username = process.env.MACHINE_AUTH_USERNAME;
+    const password = process.env.MACHINE_AUTH_PASSWORD;
+    if (username && password) {
+      requestHeaders['Authorization'] = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+      requestHeaders['X-API-KEY'] = apiKey;
+    }
     
     const resp = await fetch(url, {
       method: event.httpMethod === 'POST' ? 'POST' : 'GET',
-      headers: {
-        'Authorization': 'Basic ' + basicAuth,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
+      headers: requestHeaders,
       body: event.httpMethod === 'POST' ? event.body : undefined
     });
     
     const text = await resp.text();
     let data;
     try { data = JSON.parse(text); }
-    catch(e) { data = { success: false, error: 'resposta não-JSON', raw: text.slice(0, 500) }; }
+    catch(e) { data = { success: false, error: 'resposta não-JSON', raw: text.slice(0, 500), url_chamada: url }; }
     
     return {
       statusCode: resp.status,
@@ -114,7 +123,7 @@ exports.handler = async function(event) {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ success: false, error: err.message })
+      body: JSON.stringify({ success: false, error: err.message, stack: err.stack ? err.stack.split('\n').slice(0,3).join(' | ') : null })
     };
   }
 };
