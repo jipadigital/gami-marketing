@@ -2,6 +2,9 @@
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
 <head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gâmi Marketing Platform</title>
@@ -7931,8 +7934,73 @@ function renderPortal(){
 
 
 
-<!-- VERSION BADGE - REMOVE WHEN DONE TESTING -->
-<div id="__version_badge" style="position:fixed;bottom:8px;right:8px;background:#1D9E75;color:white;padding:6px 12px;border-radius:6px;font-family:sans-serif;font-size:11px;font-weight:700;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,.2);cursor:pointer" onclick="this.style.display='none'">v3-CLEAN ✓ (clique para fechar)</div>
+
+<!-- VERSION TEST PANEL -->
+<div id="__test_panel" style="position:fixed;bottom:8px;right:8px;background:#1D9E75;color:white;padding:10px 14px;border-radius:8px;font-family:sans-serif;font-size:11px;font-weight:700;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:280px">
+  <div id="__test_title">v4-FIX ✓ Carregando teste...</div>
+  <div id="__test_log" style="font-weight:400;font-size:10px;margin-top:4px;line-height:1.4;opacity:.95;max-height:120px;overflow-y:auto"></div>
+  <button onclick="document.getElementById('__test_panel').style.display='none'" style="margin-top:6px;padding:3px 10px;border:1px solid rgba(255,255,255,.4);border-radius:5px;background:rgba(0,0,0,.15);color:white;font-size:10px;cursor:pointer">fechar</button>
+</div>
+<script>
+// Self-test that runs after the page loads
+(function(){
+  var log = function(msg, ok){
+    var el = document.getElementById('__test_log');
+    if(el) el.innerHTML += (ok===false?'❌ ':ok===true?'✓ ':'• ') + msg + '<br>';
+  };
+  
+  // Capture global errors
+  window.addEventListener('error', function(e){
+    log('ERRO: ' + (e.message||'').slice(0,80), false);
+    document.getElementById('__test_panel').style.background = '#E24B4A';
+  });
+
+  // Run tests after everything loads
+  setTimeout(function(){
+    var panel = document.getElementById('__test_panel');
+    var title = document.getElementById('__test_title');
+    if(!panel) return;
+    
+    var passed = 0, failed = 0;
+    
+    if(typeof window.nav === 'function'){ log('window.nav existe', true); passed++; }
+    else { log('window.nav NAO EXISTE', false); failed++; }
+    
+    if(typeof window.openAI === 'function'){ log('openAI existe', true); passed++; }
+    else { log('openAI nao existe', false); failed++; }
+    
+    if(document.getElementById('pg-tarefas')){ log('pagina tarefas presente', true); passed++; }
+    else { log('pagina tarefas FALTANDO', false); failed++; }
+    
+    if(document.getElementById('pg-cidades')){ log('pagina cidades presente', true); passed++; }
+    else { log('pagina cidades FALTANDO', false); failed++; }
+    
+    // Test if nav() actually works on tarefas
+    try {
+      window.nav(null, 'tarefas');
+      var pgT = document.getElementById('pg-tarefas');
+      if(pgT && (pgT.classList.contains('active') || pgT.style.display === 'block')){
+        log('nav(tarefas) FUNCIONA', true); passed++;
+      } else {
+        log('nav(tarefas) nao mostra pagina', false); failed++;
+      }
+      // Go back to dashboard
+      window.nav(null, 'dashboard');
+    } catch(e) {
+      log('nav() ERRO: ' + e.message.slice(0,60), false);
+      failed++;
+    }
+    
+    if(failed === 0){
+      title.textContent = 'v4-FIX ✓ TUDO OK ('+passed+' testes)';
+      panel.style.background = '#1D9E75';
+    } else {
+      title.textContent = 'v4-FIX ⚠ ' + failed + ' erros';
+      panel.style.background = '#E24B4A';
+    }
+  }, 1500);
+})();
+</script>
 
 </body>
 </html>
