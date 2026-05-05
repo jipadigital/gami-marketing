@@ -6266,7 +6266,10 @@ async function syncPessoas(){
 }
 async function loadPessoasFromSupa(){
   var d=await supaSelect('pessoas','order=nome.asc');
-  if(d&&d.length){_jSet('gami_pessoas_v2',d);return d;}
+  if(d&&d.length){
+    try{ if(typeof savePessoas==='function') savePessoas(d); else localStorage.setItem('gami_pessoas_v2',JSON.stringify(d)); }catch(e){}
+    return d;
+  }
   return null;
 }
 async function syncBlogPosts(){
@@ -7385,6 +7388,10 @@ window.nav = function(el, page){
   if(page==='scripts')        { s(function(){ if(typeof renderScripts==='function') renderScripts(); }); }
   if(page==='comandos')       { s(function(){ try{renderCmdTab('Conteúdo e Posts');}catch(e){} }); }
   if(page==='relatorio-diario'){ s(function(){ if(typeof initRelatorio==='function') initRelatorio(); }); }
+  if(page==='culture')        { s(function(){ if(typeof renderCulture==='function') renderCulture(); }); }
+  if(page==='carreira')       { s(function(){ if(typeof renderCarreira==='function') renderCarreira(); }); }
+  if(page==='portal')         { s(function(){ if(typeof renderPortal==='function') renderPortal(); }); }
+  if(page==='guia-n8n')       { /* static page, nothing to init */ }
 };
 
 // Sidebar toggle
@@ -7889,21 +7896,7 @@ function renderIdeiasRapidas(){
   }
 })();
 
-// Hook into nav so the pages init when opened
-(function(){
-  var origNav = window.nav;
-  if(typeof origNav === 'function'){
-    window.nav = function(el, page){
-      origNav.apply(this, arguments);
-      if(page === 'culture')  setTimeout(renderCulture,  60);
-      if(page === 'carreira') setTimeout(renderCarreira, 60);
-      if(page === 'portal')   setTimeout(renderPortal,   60);
-      if(page === 'ranking')  setTimeout(renderRanking,  60);
-      if(page === 'ideias')   setTimeout(renderIdeias,   60);
-      if(page === 'scripts')  setTimeout(renderScripts,  60);
-    };
-  }
-})();
+// nav wrapper removed - inlined into main nav function
 
 /* ===================== PORTAL GÂMI ===================== */
 function renderPortal(){
