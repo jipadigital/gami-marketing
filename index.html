@@ -4978,6 +4978,7 @@ function abrirCidade(id){
   const cidades = getCidadesData();
   const c = cidades.find(x=>x.id===id);
   if(!c) return;
+  window.__cidadeAtual = c;
 
   document.getElementById('cidades-lista').style.display='none';
   document.getElementById('cidade-painel').style.display='block';
@@ -7647,6 +7648,50 @@ function copiarRelatorio(){
 }
 function exportarRelatorio(){openAI('Formate um relatório diário da Gâmi Delivery em formato de email para enviar à diretoria.');}
 function sincronizarMachineGlobal(){atualizarRelatorio();alert('Dados sincronizados!');}
+
+/* Sincroniza dados da Machine API para a cidade aberta atualmente */
+async function sincronizarMachine(){
+  var cidade = window.__cidadeAtual;
+  if(!cidade || !cidade.nome){
+    alert('Nenhuma cidade aberta. Clique em uma cidade primeiro.');
+    return;
+  }
+  
+  var btn = document.getElementById('btn-sync-machine');
+  var btnTxt = btn ? btn.textContent : '';
+  if(btn){ btn.textContent = '⏳ Sincronizando...'; btn.disabled = true; }
+  
+  // Normaliza nome da cidade pra slug
+  var cidadeSlug = (cidade.nome || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'').trim();
+  
+  try {
+    // Chama a function do Netlify (proxy seguro)
+    var url = '/.netlify/functions/machine?cidade=' + encodeURIComponent(cidadeSlug) + '&endpoint=consultarCorridas';
+    var resp = await fetch(url);
+    var data = await resp.json();
+    
+    if(!resp.ok || data.error || data.success === false){
+      var msg = data.error || (data.errors && data.errors.join(', ')) || 'Erro desconhecido';
+      throw new Error(typeof msg === 'object' ? JSON.stringify(msg) : String(msg));
+    }
+    
+    // Sucesso - guarda dados e atualiza tela
+    window.__machineData = window.__machineData || {};
+    window.__machineData[cidade.id] = { ts: Date.now(), data: data };
+    
+    // Renderiza dados na tela (se houver função de render)
+    if(typeof renderMachineData === 'function') renderMachineData(cidade.id, data);
+    
+    if(btn){ btn.textContent = '✓ Sincronizado'; btn.disabled = false; }
+    setTimeout(function(){ if(btn) btn.textContent = btnTxt; }, 2000);
+    
+  } catch(err){
+    if(btn){ btn.textContent = btnTxt; btn.disabled = false; }
+    alert('Erro ao sincronizar com Machine API:\n\n' + err.message + '\n\nVerifique:\n• Variáveis MACHINE_* no Netlify\n• Chave da cidade ' + cidadeSlug + ' configurada\n• Endpoint correto');
+  }
+}
 function testarLembrete(){alert('Lembrete de teste enviado!');}
 function ativarLembrete(){alert('Lembretes ativados! Você receberá notificações diárias.');}
 function enviarWhatsApp(){
