@@ -1,138 +1,120 @@
-const https = require('https');
+// Netlify Function: proxy seguro para a Machine API
+// Mantém credenciais escondidas no servidor (variáveis de ambiente Netlify)
+//
+// USO PELO FRONTEND:
+//   GET  /.netlify/functions/machine?cidade=fortaleza&endpoint=consultarCorridas&data=2026-05-05
+//
+// VARIÁVEIS DE AMBIENTE NECESSÁRIAS (configurar no painel Netlify):
+//   MACHINE_BASE_URL          ex: https://api.taximachine.com.br/api/integracao
+//   MACHINE_AUTH_USERNAME     login do usuário Gestor na Machine
+//   MACHINE_AUTH_PASSWORD     senha do usuário Gestor
+//   MACHINE_API_KEY_FORTALEZA mch_api_9HUXyIM4TJtglW12J3JAfXLz
+//   MACHINE_API_KEY_RECIFE    mch_api_1U24cU6Jrpnbo4CDiHW4XzTX
+//   MACHINE_API_KEY_MACEIO    mch_api_7qZTetNUI6jLJDUUyc9rylda
+//   MACHINE_API_KEY_JOAOPESSOA mch_api_GFxZZaTMSyNxHZWxh2AYBBhO
+//   MACHINE_API_KEY_NATAL     mch_api_h1QuswRFxqNGQfue0RaDgEYb
+//   MACHINE_API_KEY_ARACAJU   mch_api_QheteUpBZChzh7SFhbJ99S12
+//   MACHINE_API_KEY_SAOLUIS   mch_api_9HUXyIM4TJtglW12J3JAfXLz
+//   MACHINE_API_KEY_CUIABA    mch_api_4oL92M6ZF5eLxG5bHYsrrWMC
+//   MACHINE_API_KEY_TERESINA  mch_api_RjJkmPUGdbcrSyD4cpAiUrEo
 
-const MACHINE_API_KEY = process.env.MACHINE_API_KEY || '';
-
-// Mapeamento de cidades para IDs (será preenchido conforme Machine retornar)
-const CIDADE_MAP = {
-  'fortaleza':   { nome: 'Fortaleza',   uf: 'CE' },
-  'recife':      { nome: 'Recife',      uf: 'PE' },
-  'maceio':      { nome: 'Maceió',      uf: 'AL' },
-  'joaopessoa':  { nome: 'João Pessoa', uf: 'PB' },
-  'natal':       { nome: 'Natal',       uf: 'RN' },
-  'aracaju':     { nome: 'Aracaju',     uf: 'SE' },
-  'saoluis':     { nome: 'São Luís',    uf: 'MA' },
-  'cuiaba':      { nome: 'Cuiabá',      uf: 'MT' },
-  'teresina':    { nome: 'Teresina',    uf: 'PI' },
-  'vitoria':     { nome: 'Vitória',     uf: 'ES' },
+const CITY_KEY_MAP = {
+  'fortaleza':    'MACHINE_API_KEY_FORTALEZA',
+  'recife':       'MACHINE_API_KEY_RECIFE',
+  'maceio':       'MACHINE_API_KEY_MACEIO',
+  'maceió':       'MACHINE_API_KEY_MACEIO',
+  'joaopessoa':   'MACHINE_API_KEY_JOAOPESSOA',
+  'joao pessoa':  'MACHINE_API_KEY_JOAOPESSOA',
+  'joão pessoa':  'MACHINE_API_KEY_JOAOPESSOA',
+  'natal':        'MACHINE_API_KEY_NATAL',
+  'aracaju':      'MACHINE_API_KEY_ARACAJU',
+  'saoluis':      'MACHINE_API_KEY_SAOLUIS',
+  'sao luis':     'MACHINE_API_KEY_SAOLUIS',
+  'são luís':     'MACHINE_API_KEY_SAOLUIS',
+  'cuiaba':       'MACHINE_API_KEY_CUIABA',
+  'cuiabá':       'MACHINE_API_KEY_CUIABA',
+  'teresina':     'MACHINE_API_KEY_TERESINA',
 };
 
-function httpsRequest(options, body) {
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch(e) { resolve({ status: res.statusCode, body: data }); }
-      });
-    });
-    req.on('error', reject);
-    if(body) req.write(body);
-    req.end();
-  });
-}
-
-async function fetchMachineAPI(path, apiKey) {
-  const result = await httpsRequest({
-    hostname: 'api.machine.global',
-    path: '/v1' + path,
-    method: 'GET',
-    headers: {
-      'Authorization': 'Bearer ' + apiKey,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    }
-  });
-  return result;
-}
-
-exports.handler = async (event) => {
+exports.handler = async function(event) {
+  // CORS pro frontend
   const headers = {
     'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json'
   };
-
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
-  if (event.httpMethod !== 'POST') return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
-
-  let body;
-  try { body = JSON.parse(event.body || '{}'); }
-  catch(e) { return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON' }) }; }
-
-  const { endpoint, cidade, centralId, apiKey: clientApiKey } = body;
-
-  // Usa chave do servidor primeiro, depois a do cliente
-  const apiKey = MACHINE_API_KEY || clientApiKey;
-
-  if (!apiKey) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'MACHINE_API_KEY não configurada no servidor' }) };
+  
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
   }
-
-  if (!endpoint) {
-    return { statusCode: 400, headers, body: JSON.stringify({ error: 'endpoint é obrigatório' }) };
-  }
-
+  
   try {
-    // Se pediu TODAS as cidades (dashboard geral)
-    if (endpoint === 'todas_cidades') {
-      const resultados = {};
-
-      // Busca dados gerais
-      const [condutores, solicitacoes, centrais] = await Promise.all([
-        fetchMachineAPI('/condutor', apiKey),
-        fetchMachineAPI('/solicitacao', apiKey),
-        fetchMachineAPI('/central', apiKey).catch(() => ({ status: 404, body: [] })),
-      ]);
-
-      // Tenta agrupar por cidade
-      const todasSolicitacoes = Array.isArray(condutores.body) ? condutores.body : 
-                                (condutores.body?.data || condutores.body?.result || []);
-      const todasEntregas     = Array.isArray(solicitacoes.body) ? solicitacoes.body :
-                                (solicitacoes.body?.data || solicitacoes.body?.result || []);
-
-      resultados.condutores   = todasSolicitacoes;
-      resultados.solicitacoes = todasEntregas;
-      resultados.centrais     = Array.isArray(centrais.body) ? centrais.body : 
-                                (centrais.body?.data || []);
-      resultados.total_condutores   = todasSolicitacoes.length;
-      resultados.total_solicitacoes = todasEntregas.length;
-
-      return { statusCode: 200, headers, body: JSON.stringify({ data: resultados, ok: true }) };
+    const params = event.queryStringParameters || {};
+    const cidade = (params.cidade || '').toLowerCase().trim();
+    const endpoint = params.endpoint;  // ex: 'consultarCorridas', 'condutor', 'empresa'
+    
+    if (!cidade) {
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'parâmetro cidade obrigatório' })};
     }
-
-    // Endpoint específico por cidade
-    let path = '/' + endpoint;
-    if (centralId) path += '?central_id=' + centralId;
-    if (cidade)    path += (centralId ? '&' : '?') + 'cidade=' + encodeURIComponent(cidade);
-
-    const result = await fetchMachineAPI(path, apiKey);
-
-    if (result.status === 401) {
-      return { statusCode: 401, headers, body: JSON.stringify({ error: 'API Key inválida', status: 401 }) };
+    if (!endpoint) {
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'parâmetro endpoint obrigatório' })};
     }
-    if (result.status === 403) {
-      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Sem permissão', status: 403 }) };
+    
+    // Resolve a chave da cidade
+    const envKeyName = CITY_KEY_MAP[cidade];
+    if (!envKeyName) {
+      return { statusCode: 400, headers, body: JSON.stringify({ success: false, error: 'cidade não mapeada: ' + cidade })};
     }
-    if (result.status === 404) {
-      return { statusCode: 404, headers, body: JSON.stringify({ error: 'Endpoint não encontrado', status: 404 }) };
+    const apiKey = process.env[envKeyName];
+    if (!apiKey) {
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'chave da cidade não configurada no Netlify: ' + envKeyName })};
     }
-
-    // Normaliza resposta
-    const data = Array.isArray(result.body) ? result.body :
-                 (result.body?.data || result.body?.result || result.body);
-
+    
+    const baseUrl = process.env.MACHINE_BASE_URL;
+    const username = process.env.MACHINE_AUTH_USERNAME;
+    const password = process.env.MACHINE_AUTH_PASSWORD;
+    
+    if (!baseUrl || !username || !password) {
+      return { statusCode: 500, headers, body: JSON.stringify({ success: false, error: 'credenciais Machine não configuradas no Netlify (MACHINE_BASE_URL, MACHINE_AUTH_USERNAME, MACHINE_AUTH_PASSWORD)' })};
+    }
+    
+    // Monta query da API real (passa todos os params exceto cidade e endpoint)
+    const apiParams = new URLSearchParams();
+    apiParams.set('api_key', apiKey);
+    Object.keys(params).forEach(k => {
+      if (k !== 'cidade' && k !== 'endpoint') apiParams.set(k, params[k]);
+    });
+    
+    const url = baseUrl.replace(/\/$/, '') + '/' + endpoint + '?' + apiParams.toString();
+    const basicAuth = Buffer.from(username + ':' + password).toString('base64');
+    
+    const resp = await fetch(url, {
+      method: event.httpMethod === 'POST' ? 'POST' : 'GET',
+      headers: {
+        'Authorization': 'Basic ' + basicAuth,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: event.httpMethod === 'POST' ? event.body : undefined
+    });
+    
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch(e) { data = { success: false, error: 'resposta não-JSON', raw: text.slice(0, 500) }; }
+    
     return {
-      statusCode: 200,
+      statusCode: resp.status,
       headers,
-      body: JSON.stringify({ data, status: result.status, ok: result.status < 400 })
+      body: JSON.stringify(data)
     };
-
-  } catch(err) {
+    
+  } catch (err) {
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ error: err.message, ok: false })
+      body: JSON.stringify({ success: false, error: err.message })
     };
   }
 };
