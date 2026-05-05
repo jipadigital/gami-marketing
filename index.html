@@ -2,9 +2,6 @@
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
 <head>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gâmi Marketing Platform</title>
@@ -272,35 +269,12 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 .status-row{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
 .status-row:last-child{border-bottom:none}
 </style>
-
-<style id="__nav_force_visible">
-/* FORCED VISIBILITY OVERRIDE - DEFINED LAST FOR HIGHEST PRIORITY */
-.page { display: none; }
-.page.active,
-.page[data-active="true"] {
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  position: relative !important;
-  z-index: 1 !important;
-  height: auto !important;
-  overflow: visible !important;
-}
-#main-content {
-  display: block !important;
-  flex: 1 !important;
-  overflow-y: auto !important;
-  height: 100vh !important;
-  min-height: 100vh !important;
-}
-</style>
 </head>
 <body>
 
 <script>
 /* BULLETPROOF NAV - DEFINED FIRST, OVERRIDES EVERYTHING */
 window.nav = function(el, page){
-  console.log('[nav] navegando para:', page);
   try {
     // remove active from all nav items
     document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
@@ -2603,6 +2577,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
     <div id="carreira-time"></div>
   </div>
+
+  <!-- DISTRIBUIÇÃO POR CATEGORIA -->
+  <div class="card" id="carreira-categorias" style="margin-bottom:14px"></div>
+
+  <!-- DISTRIBUIÇÃO POR CIDADE -->
+  <div class="card" id="carreira-cidades" style="margin-bottom:14px"></div>
+
+  <!-- PRÓXIMOS DA PROMOÇÃO -->
+  <div class="card" id="carreira-promocao" style="margin-bottom:14px"></div>
 
   <!-- CRITÉRIOS DE PROMOÇÃO -->
   <div class="card" id="carreira-criterios" style="margin-bottom:14px"></div>
@@ -7748,6 +7731,123 @@ function renderCarreira(){
     }
   }
 
+  // ----- DISTRIBUIÇÃO POR CATEGORIA -----
+  var catHost = document.getElementById('carreira-categorias');
+  if(catHost){
+    var categorias = [
+      {nome:'Diretoria', cor:'#FFB300', icon:'⭐', desc:'Estratégia e direção da empresa'},
+      {nome:'Gerência',  cor:'#7F77DD', icon:'👔', desc:'Liderança operacional e gestão'},
+      {nome:'Gestor',    cor:'#1E88E5', icon:'🎯', desc:'Gestores de cidade — operação local'},
+      {nome:'Colaborador',cor:'#1D9E75', icon:'💪', desc:'Suporte, marketing, prospecção'}
+    ];
+    var totalP = pessoas.length || 1;
+    catHost.innerHTML =
+      '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🏢</span> Distribuição por Categoria</div>'+
+      '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Como o time Gâmi está estruturado hoje</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">'+
+      categorias.map(function(cat){
+        var qtd = pessoas.filter(function(p){ return p.categoria === cat.nome; }).length;
+        var pct = totalP > 0 ? Math.round((qtd/totalP)*100) : 0;
+        return '<div style="border:1px solid var(--border);border-left:3px solid '+cat.cor+';border-radius:10px;padding:12px;background:var(--surface)">'+
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
+            '<span style="font-size:20px">'+cat.icon+'</span>'+
+            '<div style="flex:1">'+
+              '<div style="font-size:12px;font-weight:700;color:var(--text)">'+cat.nome+'</div>'+
+              '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+cat.desc+'</div>'+
+            '</div>'+
+          '</div>'+
+          '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">'+
+            '<span style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:'+cat.cor+';line-height:1">'+qtd+'</span>'+
+            '<span style="font-size:10px;color:var(--text3)">pessoa'+(qtd!==1?'s':'')+' · '+pct+'%</span>'+
+          '</div>'+
+          '<div style="height:5px;background:var(--bg);border-radius:3px;overflow:hidden">'+
+            '<div style="height:100%;width:'+pct+'%;background:'+cat.cor+';transition:width .4s"></div>'+
+          '</div>'+
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  // ----- DISTRIBUIÇÃO POR CIDADE -----
+  var cidHost = document.getElementById('carreira-cidades');
+  if(cidHost){
+    var porCidade = {};
+    pessoas.forEach(function(p){
+      var c = p.cidade || 'Sem cidade';
+      if(!porCidade[c]) porCidade[c] = [];
+      porCidade[c].push(p);
+    });
+    var ordemCidades = ['Matriz','Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
+    var ordCidKeys = ordemCidades.filter(function(c){ return porCidade[c]; });
+    Object.keys(porCidade).forEach(function(c){ if(ordCidKeys.indexOf(c)<0) ordCidKeys.push(c); });
+    var maxQtd = Math.max.apply(null, Object.values(porCidade).map(function(l){return l.length;}).concat([1]));
+
+    cidHost.innerHTML =
+      '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">📍</span> Distribuição por Cidade</div>'+
+      '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Onde o time Gâmi está espalhado</div>'+
+      '<div style="display:flex;flex-direction:column;gap:8px">'+
+      ordCidKeys.map(function(cidade){
+        var lista = porCidade[cidade];
+        var pct = (lista.length/maxQtd) * 100;
+        var corCidade = cidade === 'Matriz' ? '#FFB300' : '#1E88E5';
+        return '<div style="display:flex;align-items:center;gap:10px">'+
+          '<div style="width:110px;font-size:11px;font-weight:600;color:var(--text);flex-shrink:0">'+cidade+'</div>'+
+          '<div style="flex:1;height:22px;background:var(--bg);border-radius:11px;overflow:hidden;position:relative">'+
+            '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,'+corCidade+'AA,'+corCidade+');border-radius:11px;display:flex;align-items:center;padding:0 10px;color:white;font-size:10px;font-weight:600;min-width:30px">'+lista.length+'</div>'+
+          '</div>'+
+          '<div style="font-size:10px;color:var(--text3);width:80px;text-align:right;flex-shrink:0">'+lista.length+' pessoa'+(lista.length>1?'s':'')+'</div>'+
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  // ----- PRÓXIMOS DA PROMOÇÃO -----
+  var promHost = document.getElementById('carreira-promocao');
+  if(promHost){
+    var hoje = new Date();
+    var proximos = pessoas.map(function(p){
+      if(!p.entrada || !p.nivel) return null;
+      if(p.nivel === 'Diretor' || p.nivel === 'Gerente') return null;
+      var entrada = new Date(p.entrada);
+      if(isNaN(entrada.getTime())) return null;
+      var meses = (hoje.getFullYear() - entrada.getFullYear())*12 + (hoje.getMonth() - entrada.getMonth());
+      // Se está há 6+ meses na empresa (mínimo para promoção)
+      // Para simplicidade, considera "próximo da promoção" quem tem 5+ meses no nível atual
+      // (assume que cada nível dura 6 meses)
+      var mesesNoNivel = meses % 6;
+      var mesesParaProm = 6 - mesesNoNivel;
+      if(meses < 5) return null;
+      return Object.assign({}, p, {meses:meses, mesesParaProm:mesesParaProm});
+    }).filter(Boolean).sort(function(a,b){ return a.mesesParaProm - b.mesesParaProm; }).slice(0,8);
+
+    if(proximos.length === 0){
+      promHost.innerHTML =
+        '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🎯</span> Próximos da promoção</div>'+
+        '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Time elegível para subir de nível em breve</div>'+
+        '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Cadastre as datas de entrada das pessoas para ver quem está próximo da promoção.</div>';
+    } else {
+      promHost.innerHTML =
+        '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🎯</span> Próximos da promoção</div>'+
+        '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Time elegível para subir de nível em breve · '+proximos.length+' pessoa'+(proximos.length>1?'s':'')+'</div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">'+
+        proximos.map(function(p){
+          var ac = (function(nome){ try{ return avColor(nome); }catch(e){ return {bg:'#EEE',color:'#333'}; } })(p.nome);
+          var ini = (function(nome){ try{ return initials(nome); }catch(e){ return (nome||'?')[0]; } })(p.nome);
+          var statusCor = p.mesesParaProm <= 1 ? '#1D9E75' : (p.mesesParaProm <= 2 ? '#FFB300' : '#1E88E5');
+          var statusTxt = p.mesesParaProm <= 1 ? 'Pronto!' : (p.mesesParaProm <= 2 ? 'Quase lá' : 'Em desenvolvimento');
+          return '<div style="border:1px solid var(--border);border-left:3px solid '+statusCor+';border-radius:10px;padding:10px 12px;background:var(--surface);display:flex;gap:10px;align-items:center">'+
+            '<div style="width:36px;height:36px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0">'+ini+'</div>'+
+            '<div style="flex:1;min-width:0">'+
+              '<div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.nome+'</div>'+
+              '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(p.nivel||'')+' · '+(p.cidade||'')+'</div>'+
+            '</div>'+
+            '<div style="text-align:right;flex-shrink:0">'+
+              '<div style="font-size:9px;font-weight:700;color:'+statusCor+';text-transform:uppercase;letter-spacing:.5px">'+statusTxt+'</div>'+
+              '<div style="font-size:9px;color:var(--text3);margin-top:1px">'+p.meses+' meses</div>'+
+            '</div>'+
+          '</div>';
+        }).join('') + '</div>';
+    }
+  }
+
   // ----- CRITÉRIOS -----
   var critHost = document.getElementById('carreira-criterios');
   if(critHost){
@@ -8065,110 +8165,6 @@ function renderPortal(){
 
 
 
-
-<!-- VERSION TEST PANEL -->
-<div id="__test_panel" style="position:fixed;bottom:8px;right:8px;background:#1D9E75;color:white;padding:10px 14px;border-radius:8px;font-family:sans-serif;font-size:11px;font-weight:700;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:300px">
-  <div id="__test_title">v5-DIAG ✓ Carregando teste...</div>
-  <div id="__test_log" style="font-weight:400;font-size:10px;margin-top:4px;line-height:1.4;opacity:.95;max-height:200px;overflow-y:auto"></div>
-  <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
-    <button onclick="window.__diagnose()" style="padding:4px 8px;border:1px solid rgba(255,255,255,.5);border-radius:5px;background:rgba(0,0,0,.2);color:white;font-size:10px;cursor:pointer;font-weight:700">🔍 DIAGNOSTICAR</button>
-    <button onclick="document.getElementById('__test_panel').style.display='none'" style="padding:4px 8px;border:1px solid rgba(255,255,255,.4);border-radius:5px;background:rgba(0,0,0,.15);color:white;font-size:10px;cursor:pointer">fechar</button>
-  </div>
-</div>
-<script>
-window.__diagnose = function(){
-  var log = document.getElementById('__test_log');
-  log.innerHTML = '🔍 Diagnosticando...<br>';
-  
-  // navigate to tarefas first
-  try { window.nav(null, 'tarefas'); } catch(e){}
-  
-  setTimeout(function(){
-    var p = document.getElementById('pg-tarefas');
-    if(!p){ log.innerHTML += '❌ pg-tarefas NAO EXISTE'; return; }
-    var r = p.getBoundingClientRect();
-    var cs = getComputedStyle(p);
-    var parent = p.parentElement;
-    var pcs = getComputedStyle(parent);
-    var pr = parent.getBoundingClientRect();
-    
-    log.innerHTML = '<b>DIAGNOSTICO:</b><br>'+
-      '— pg-tarefas:<br>'+
-      'display: <b>'+cs.display+'</b><br>'+
-      'visibility: '+cs.visibility+'<br>'+
-      'opacity: '+cs.opacity+'<br>'+
-      'width: '+Math.round(r.width)+'px<br>'+
-      'height: '+Math.round(r.height)+'px<br>'+
-      'top: '+Math.round(r.top)+'<br>'+
-      'classes: '+p.className+'<br>'+
-      '— PAI ('+parent.id+'):<br>'+
-      'display: <b>'+pcs.display+'</b><br>'+
-      'width: '+Math.round(pr.width)+'px<br>'+
-      'height: '+Math.round(pr.height)+'px<br>'+
-      'top: '+Math.round(pr.top);
-  }, 200);
-};
-</script>
-<script>
-// Self-test that runs after the page loads
-(function(){
-  var log = function(msg, ok){
-    var el = document.getElementById('__test_log');
-    if(el) el.innerHTML += (ok===false?'❌ ':ok===true?'✓ ':'• ') + msg + '<br>';
-  };
-  
-  // Capture global errors
-  window.addEventListener('error', function(e){
-    log('ERRO: ' + (e.message||'').slice(0,80), false);
-    document.getElementById('__test_panel').style.background = '#E24B4A';
-  });
-
-  // Run tests after everything loads
-  setTimeout(function(){
-    var panel = document.getElementById('__test_panel');
-    var title = document.getElementById('__test_title');
-    if(!panel) return;
-    
-    var passed = 0, failed = 0;
-    
-    if(typeof window.nav === 'function'){ log('window.nav existe', true); passed++; }
-    else { log('window.nav NAO EXISTE', false); failed++; }
-    
-    if(typeof window.openAI === 'function'){ log('openAI existe', true); passed++; }
-    else { log('openAI nao existe', false); failed++; }
-    
-    if(document.getElementById('pg-tarefas')){ log('pagina tarefas presente', true); passed++; }
-    else { log('pagina tarefas FALTANDO', false); failed++; }
-    
-    if(document.getElementById('pg-cidades')){ log('pagina cidades presente', true); passed++; }
-    else { log('pagina cidades FALTANDO', false); failed++; }
-    
-    // Test if nav() actually works on tarefas
-    try {
-      window.nav(null, 'tarefas');
-      var pgT = document.getElementById('pg-tarefas');
-      if(pgT && (pgT.classList.contains('active') || pgT.style.display === 'block')){
-        log('nav(tarefas) FUNCIONA', true); passed++;
-      } else {
-        log('nav(tarefas) nao mostra pagina', false); failed++;
-      }
-      // Go back to dashboard
-      window.nav(null, 'dashboard');
-    } catch(e) {
-      log('nav() ERRO: ' + e.message.slice(0,60), false);
-      failed++;
-    }
-    
-    if(failed === 0){
-      title.textContent = 'v4-FIX ✓ TUDO OK ('+passed+' testes)';
-      panel.style.background = '#1D9E75';
-    } else {
-      title.textContent = 'v4-FIX ⚠ ' + failed + ' erros';
-      panel.style.background = '#E24B4A';
-    }
-  }, 1500);
-})();
-</script>
 
 </body>
 </html>
