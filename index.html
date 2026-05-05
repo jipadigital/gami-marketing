@@ -4179,17 +4179,103 @@ function deletePessoa(id){
 
 
 // ---- FOTO HELPERS ----
-function previewFoto(input){
+async function previewFoto(input){
   if(!input.files||!input.files[0]) return;
   const file = input.files[0];
-  const reader = new FileReader();
-  reader.onload = function(e){
-    const b64 = e.target.result;
-    document.getElementById('pf-foto-data').value = b64;
-    const preview = document.getElementById('pf-foto-preview');
-    if(preview) preview.innerHTML = `<img src="${b64}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`;
-  };
-  reader.readAsDataURL(file);
+  const preview = document.getElementById('pf-foto-preview');
+  
+  // Validações
+  if(!/^image\/(jpeg|png|webp|gif)$/.test(file.type)){
+    alert('Formato inválido. Use JPG, PNG, WebP ou GIF.');
+    return;
+  }
+  if(file.size > 5*1024*1024){
+    alert('Foto muito grande (máx 5MB).');
+    return;
+  }
+  
+  // Mostra loading no preview
+  if(preview){
+    preview.innerHTML = '<div style="font-size:10px;color:var(--text3);text-align:center">⏳<br>Enviando...</div>';
+  }
+  
+  try {
+    // 1) Comprime a imagem para ~600x600 max
+    const blob = await comprimirImagem(file, 600, 0.85);
+    
+    // 2) Sobe pro Supabase Storage
+    const url = await uploadFotoSupabase(blob);
+    
+    // 3) Salva URL no campo hidden e atualiza preview
+    document.getElementById('pf-foto-data').value = url;
+    if(preview){
+      preview.innerHTML = '<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>';
+    }
+    
+  } catch(err){
+    if(preview){
+      const nome = (document.getElementById('pf-nome')||{}).value||'?';
+      const ini = nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+      preview.textContent = ini;
+    }
+    alert('Erro ao enviar foto: '+err.message+'\n\nA foto não foi salva.');
+  }
+}
+
+/* Comprime imagem usando canvas */
+function comprimirImagem(file, maxDim, quality){
+  return new Promise(function(resolve, reject){
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const img = new Image();
+      img.onload = function(){
+        let w = img.width, h = img.height;
+        if(w > h && w > maxDim){ h = h*maxDim/w; w = maxDim; }
+        else if(h > maxDim){ w = w*maxDim/h; h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function(blob){
+          if(!blob) return reject(new Error('Falha ao comprimir imagem'));
+          resolve(blob);
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = function(){ reject(new Error('Não foi possível ler a imagem')); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function(){ reject(new Error('Falha ao ler o arquivo')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* Sobe blob pro Supabase Storage e retorna URL pública */
+async function uploadFotoSupabase(blob){
+  if(typeof SUPA_URL === 'undefined' || typeof SUPA_KEY === 'undefined'){
+    throw new Error('Supabase não configurado');
+  }
+  // Gera nome único: timestamp_random.jpg
+  const fileName = Date.now()+'_'+Math.random().toString(36).slice(2,8)+'.jpg';
+  const uploadUrl = SUPA_URL+'/storage/v1/object/pessoas-fotos/'+fileName;
+  
+  const resp = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPA_KEY,
+      'Authorization': 'Bearer '+SUPA_KEY,
+      'Content-Type': 'image/jpeg',
+      'x-upsert': 'true'
+    },
+    body: blob
+  });
+  
+  if(!resp.ok){
+    const txt = await resp.text();
+    throw new Error('Status '+resp.status+(txt? ': '+txt.slice(0,150) : ''));
+  }
+  
+  // Retorna URL pública
+  return SUPA_URL+'/storage/v1/object/public/pessoas-fotos/'+fileName;
 }
 
 function updateFotoPreview(){
