@@ -1467,6 +1467,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <button class="btn btn-ghost" onclick="exportarBackupPessoas()" title="Baixe um arquivo .json com todos os dados — guarde em local seguro" style="font-size:11px">💾 Exportar backup</button>
       <button class="btn btn-ghost" onclick="document.getElementById('input-import-pessoas').click()" title="Restaure os dados de um arquivo .json salvo anteriormente" style="font-size:11px">📂 Importar backup</button>
       <input type="file" id="input-import-pessoas" accept=".json" style="display:none" onchange="importarBackupPessoas(this)"/>
+      <button class="btn btn-ghost" onclick="forcarSincronizacaoPessoas()" title="Apaga as pessoas extras no servidor e mantém só as do navegador" style="font-size:11px;border-color:#1D9E7533;color:#1D9E75">🔧 Forçar sincronização</button>
       <button class="btn btn-primary" onclick="openPessoaModal(null)">+ Adicionar pessoa</button>
     </div>
   </div>
@@ -3606,6 +3607,51 @@ async function resetarPessoasCompleto(){
   
   // Recarrega a página pra estado limpo
   setTimeout(function(){ location.reload(); }, 500);
+}
+
+/* Força sincronização: apaga do Supabase tudo que não está no navegador */
+async function forcarSincronizacaoPessoas(){
+  var p = getPessoas();
+  if(!p || !p.length){
+    alert('Não há pessoas cadastradas no navegador. Importe um backup primeiro.');
+    return;
+  }
+  if(!confirm('Forçar sincronização?\n\nIsso vai APAGAR do servidor todas as pessoas que NÃO estão no navegador agora.\n\nNo navegador: ' + p.length + ' pessoa(s)\n\nContinuar?')) return;
+  
+  var btn = event.target;
+  var txt = btn.textContent;
+  btn.textContent = '⏳ Sincronizando...';
+  btn.disabled = true;
+  
+  try {
+    // Busca IDs atuais no Supabase
+    var existentes = await supaSelect('pessoas','select=id');
+    var idsLocais = new Set(p.map(function(x){ return x.id; }));
+    var idsParaApagar = (existentes||[]).filter(function(x){ return !idsLocais.has(x.id); }).map(function(x){ return x.id; });
+    
+    var apagados = 0;
+    for(var i=0; i<idsParaApagar.length; i++){
+      try {
+        var r = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(idsParaApagar[i]),{
+          method:'DELETE', headers: supaHeaders()
+        });
+        if(r.ok || r.status === 204) apagados++;
+      } catch(e){}
+    }
+    
+    // Sobe os atuais
+    await supaUpsert('pessoas', p);
+    
+    alert('✓ Sincronização concluída!\n\n' +
+          '• ' + p.length + ' pessoas confirmadas no servidor\n' +
+          '• ' + apagados + ' pessoas extras removidas do servidor\n\n' +
+          'Recarregando a página...');
+    setTimeout(function(){ location.reload(); }, 800);
+  } catch(e){
+    btn.textContent = txt;
+    btn.disabled = false;
+    alert('Erro: ' + e.message);
+  }
 }
 
 function importarBackupPessoas(inputEl){
@@ -6561,8 +6607,27 @@ async function supaDelete(tabela, id){
   }catch(e){return false;}
 }
 async function syncPessoas(){
-  var p=getPessoas();if(!p||!p.length)return;
-  return await supaUpsert('pessoas',p);
+  var p=getPessoas();
+  if(!p) return;
+  // Garante que o Supabase fica IDÊNTICO ao localStorage (substitui tudo, não só adiciona)
+  // Passo 1: pega IDs atuais no Supabase
+  try {
+    var existentes = await supaSelect('pessoas','select=id');
+    var idsLocais = new Set(p.map(function(x){ return x.id; }));
+    var idsParaApagar = (existentes||[]).filter(function(x){ return !idsLocais.has(x.id); }).map(function(x){ return x.id; });
+    
+    // Passo 2: apaga do Supabase os que não estão no localStorage
+    for(var i=0; i<idsParaApagar.length; i++){
+      try {
+        await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(idsParaApagar[i]),{
+          method:'DELETE', headers: supaHeaders()
+        });
+      } catch(e){}
+    }
+  } catch(e){ /* segue mesmo se a limpeza falhar */ }
+  
+  // Passo 3: upsert dos atuais (insere/atualiza)
+  if(p.length) return await supaUpsert('pessoas',p);
 }
 async function loadPessoasFromSupa(){
   var d=await supaSelect('pessoas','order=nome.asc');
