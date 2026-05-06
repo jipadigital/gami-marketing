@@ -6912,11 +6912,24 @@ async function supaDelete(tabela, id){
 async function syncPessoas(){
   var p=getPessoas();
   if(!p) return;
+  
+  // CRÍTICO: Normaliza TODAS as pessoas pra ter os mesmos campos.
+  // Se objetos tiverem chaves diferentes, Supabase rejeita o lote inteiro
+  // com "All object keys must match" (PGRST102).
+  var camposPadrao = ['id','nome','cargo','categoria','nivel','cidade','tel','email','nascimento','entrada','obs','foto'];
+  var pessoasNormalizadas = p.map(function(pessoa){
+    var novo = {};
+    camposPadrao.forEach(function(c){ novo[c] = pessoa[c] !== undefined ? pessoa[c] : ''; });
+    // cidade pode ser array (multi-cidades) — converte pra JSON string
+    if(Array.isArray(novo.cidade)) novo.cidade = JSON.stringify(novo.cidade);
+    return novo;
+  });
+  
   // Garante que o Supabase fica IDÊNTICO ao localStorage (substitui tudo, não só adiciona)
   // Passo 1: pega IDs atuais no Supabase
   try {
     var existentes = await supaSelect('pessoas','select=id');
-    var idsLocais = new Set(p.map(function(x){ return x.id; }));
+    var idsLocais = new Set(pessoasNormalizadas.map(function(x){ return x.id; }));
     var idsParaApagar = (existentes||[]).filter(function(x){ return !idsLocais.has(x.id); }).map(function(x){ return x.id; });
     
     // Passo 2: apaga do Supabase os que não estão no localStorage
@@ -6930,11 +6943,39 @@ async function syncPessoas(){
   } catch(e){ /* segue mesmo se a limpeza falhar */ }
   
   // Passo 3: upsert dos atuais (insere/atualiza)
-  if(p.length) return await supaUpsert('pessoas',p);
+  if(pessoasNormalizadas.length){
+    var r = await fetch(SUPA_URL+'/rest/v1/pessoas?on_conflict=id',{
+      method:'POST',
+      headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
+      body: JSON.stringify(pessoasNormalizadas)
+    });
+    if(!r.ok){
+      var errTxt = await r.text();
+      console.error('syncPessoas falhou:', r.status, errTxt);
+      throw new Error('Sync falhou: ' + r.status + ' ' + errTxt.slice(0,100));
+    }
+    return true;
+  }
+}
+
+/* Também aplica conversão na leitura: se cidade veio como JSON string, converte de volta pra array */
+function normalizarCidadeAposLeitura(pessoas){
+  if(!Array.isArray(pessoas)) return pessoas;
+  return pessoas.map(function(p){
+    if(typeof p.cidade === 'string' && p.cidade.startsWith('[')){
+      try {
+        var arr = JSON.parse(p.cidade);
+        if(Array.isArray(arr)) p.cidade = arr;
+      } catch(e){}
+    }
+    return p;
+  });
 }
 async function loadPessoasFromSupa(){
   var d=await supaSelect('pessoas','order=nome.asc');
   if(d&&d.length){
+    // Converte cidade JSON string de volta para array (multi-cidades)
+    if(typeof normalizarCidadeAposLeitura === 'function') d = normalizarCidadeAposLeitura(d);
     // CRITICAL: NÃO chamar savePessoas() aqui (dispararia sync de volta).
     // Salva direto no localStorage como cache silencioso.
     try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(d)); }catch(e){}
