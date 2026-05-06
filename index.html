@@ -1,4 +1,4 @@
-<!-- v11.1 - gerencia multi-cidade - 06/05/2026 -->
+<!-- v12 - broches PNG senioridade + cidades - 06/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -277,6 +277,57 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 /* STATUS ROW */
 .status-row{display:flex;align-items:center;gap:9px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px}
 .status-row:last-child{border-bottom:none}
+/* ============== BROCHES PNG (senioridade + cidades) ============== */
+.broche-mini {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--surface2);
+  flex-shrink: 0;
+  position: relative;
+  cursor: help;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.broche-mini:hover {
+  transform: scale(1.5);
+  z-index: 10;
+}
+.broche-mini::after {
+  content: attr(data-label);
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+.broche-mini:hover::after { opacity: 1; }
+
+.broches-cidades {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+.broches-cidades .broche-mini:not(:first-child) {
+  margin-left: -10px;
+  border: 2px solid white;
+}
+.broches-cidades .broche-mini {
+  border: 2px solid white;
+}
+
 </style>
 </head>
 <body>
@@ -3446,6 +3497,41 @@ var AV_COLORS = [
   {bg:'#E1F5EE',color:'#0F6E56'},{bg:'#FAECE7',color:'#0E7AB8'},
 ];
 var NIVEL_OPTS  = ['Júnior I','Júnior II','Júnior III','Pleno I','Pleno II','Pleno III','Sênior I','Sênior II','Sênior III','Gerente','Diretor'];
+
+/* ============== BROCHES PNG ============== */
+var MAPA_SENIORIDADE = {
+  'Júnior I':   'junior-1', 'Júnior II':  'junior-2', 'Júnior III': 'junior-3',
+  'Pleno I':    'pleno-1',  'Pleno II':   'pleno-2',  'Pleno III':  'pleno-3',
+  'Sênior I':   'senior-1', 'Sênior II':  'senior-2', 'Sênior III': 'senior-3',
+  'Gerente':    'gerente'
+};
+
+function brochSenioridadeHTML(valor){
+  if(!valor) return '';
+  var arquivo = MAPA_SENIORIDADE[valor];
+  if(!arquivo) return '';
+  return '<div class="broche-mini" style="background-image: url(\'/broches-gami/senioridade/'+arquivo+'.png\')" data-label="'+valor+'"></div>';
+}
+
+function brochCidadeHTML(nomeCidade){
+  if(!nomeCidade) return '';
+  var slug = nomeCidade
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'-')
+    .replace(/[^a-z0-9-]/g,'');
+  return '<div class="broche-mini" style="background-image: url(\'/broches-gami/cidades/'+slug+'.png\')" data-label="'+nomeCidade+'"></div>';
+}
+
+function brochesCidadesHTML(listaCidades){
+  if(!listaCidades || !listaCidades.length) return '';
+  // Filtra "Matriz" (não tem broche, é sede)
+  var filtered = listaCidades.filter(function(c){ return c && c !== 'Matriz'; });
+  if(!filtered.length) return '';
+  var broches = filtered.map(brochCidadeHTML).join('');
+  return '<div class="broches-cidades">'+broches+'</div>';
+}
 var NIVEL_COLOR = {
   'Júnior I':   { bg:'#F5F5F5', color:'#212121', border:'#BDBDBD' },
   'Júnior II':  { bg:'#BDBDBD', color:'#212121', border:'#9E9E9E' },
@@ -3945,38 +4031,28 @@ function renderPessoas(){
                 ${bdayWeekP&&!bdayHoje?`<span style="font-size:9px;padding:2px 7px;border-radius:10px;background:#FAEEDA;color:#854F0B;font-weight:500">🎂 Em ${dias} dias</span>`:''}
               </div>
               <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:3px">
-                ${nivelChip(p.nivel)}
                 ${(()=>{
+                  // Senioridade: broche PNG ou fallback para chip (caso seja Diretor ou nível sem broche)
+                  if(typeof MAPA_SENIORIDADE !== 'undefined' && MAPA_SENIORIDADE[p.nivel]){
+                    return brochSenioridadeHTML(p.nivel);
+                  }
+                  return nivelChip(p.nivel);
+                })()}
+                ${(()=>{
+                  // Cargo / função / setor: MANTÉM como balão (Marketing, Comercial, Suporte etc)
                   const fnC = FUNCAO_COLOR[p.cargo] || CARGO_COLOR[p.cargo] || {bg:'#F1EFE8',color:'#5F5E5A',dot:'#D4C8BE'};
                   const fnChip = p.cargo ? `<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:${fnC.bg};color:${fnC.color};font-weight:600;border:1px solid ${fnC.dot}">${p.cargo}</span>` : '';
                   return fnChip;
                 })()}
                 ${(()=>{
-                  const isGestor = ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(p.cargo);
+                  // Cidades: broches PNG sobrepostos (todas as cidades aparecem)
                   const cs = (typeof pessoaCidades==='function') ? pessoaCidades(p) : (p.cidade ? [p.cidade] : []);
-                  const cidadeLabel = (typeof pessoaCidadeLabel==='function') ? pessoaCidadeLabel(p) : (cs[0]||'');
-                  const principal = cs[0] || '';
-                  
-                  if(cs.length === 0 || principal === 'Matriz'){
-                    return `<span style="font-size:11px;color:var(--text3)">· ${cidadeLabel}</span>`;
+                  if(typeof brochesCidadesHTML === 'function'){
+                    var html = brochesCidadesHTML(cs);
+                    if(html) return html;
                   }
-                  
-                  // Multi-cidade: badge especial roxo
-                  if(cs.length > 1){
-                    return `<span title="${cs.join(', ')}" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:20px;background:#EEEDFE;color:#3C3489;font-weight:600;border:1.5px solid #7F77DD55">
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#7F77DD"/></svg>
-                      ${cidadeLabel}
-                    </span>`;
-                  }
-                  
-                  // Cidade única, gestor: azul
-                  if(isGestor){
-                    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 9px;border-radius:20px;background:#E6F6FE;color:#0E7AB8;font-weight:600;border:1.5px solid #1AB8F044">
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#1AB8F0"/></svg>
-                      ${principal}
-                    </span>`;
-                  }
-                  return `<span style="font-size:11px;color:var(--text3)">· ${principal}</span>`;
+                  // Fallback caso função não exista ou cidade seja Matriz/vazio
+                  return cs.length === 0 ? '' : `<span style="font-size:11px;color:var(--text3)">· ${cs.join(', ')}</span>`;
                 })()}
               </div>
               <div style="font-size:11px;color:var(--text3);margin-top:1px">${p.nascimento?`Nasc. ${fmtNasc(p.nascimento)}`:''}${p.entrada?` · Desde ${fmtNasc(p.entrada)}`:''}</div>
