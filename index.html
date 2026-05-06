@@ -1,4 +1,4 @@
-<!-- v12.5 - reconhecimento sincroniza supabase - 06/05/2026 -->
+<!-- v12.6 - ranking abril + fotos + broches trilha - 06/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -6706,8 +6706,9 @@ function renderAniversariantesMes(){
    5) RANKING DE CIDADES POR CORRIDAS
    ============================ */
 function _rankingKey(){
-  var d = new Date();
-  return 'gami_ranking_'+d.getFullYear()+'_'+(d.getMonth()+1);
+  // SIMULAÇÃO: travado em ABRIL/2026 enquanto Machine API não está conectada.
+  // Quando integrar, voltar pra: var d=new Date(); return 'gami_ranking_'+d.getFullYear()+'_'+(d.getMonth()+1);
+  return 'gami_ranking_2026_4';
 }
 
 function getRankingCidades(){
@@ -6727,23 +6728,34 @@ function renderRankingCidades(){
   var label = document.getElementById('ranking-mes-label');
   if(!host) return;
   
-  var hoje = new Date();
-  var nomeMes = hoje.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
-  if(label) label.textContent = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+  // Mês fixo: Abril/2026 (simulação enquanto Machine API não conecta)
+  var nomeMes = 'Abril de 2026';
+  if(label) label.textContent = nomeMes;
   
   var dados = getRankingCidades();
   var cidades = _cidadesRanking();
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  
+  // Função helper: encontra o gestor de uma cidade
+  function gestorDaCidade(nomeCidade){
+    return pessoas.find(function(p){
+      var ehGestor = /Gestor/i.test(p.cargo||'') || (p.categoria||'') === 'Gestor';
+      if(!ehGestor) return false;
+      var cs = (typeof pessoaCidades==='function') ? pessoaCidades(p) : [p.cidade];
+      return cs.indexOf(nomeCidade) >= 0;
+    });
+  }
   
   // Monta ranking ordenado
   var lista = cidades.map(function(c){
-    return {cidade:c, corridas: parseInt(dados[c])||0};
+    return {cidade:c, corridas: parseInt(dados[c])||0, gestor: gestorDaCidade(c)};
   }).sort(function(a,b){ return b.corridas - a.corridas; });
   
   // Estado vazio
   var temDados = lista.some(function(x){ return x.corridas > 0; });
   if(!temDados){
     host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">'
-      + 'Nenhum dado de corridas ainda este mês.<br>'
+      + 'Nenhum dado de corridas em '+nomeMes+'.<br>'
       + '<button onclick="abrirModalRanking()" style="margin-top:10px;padding:8px 16px;border:none;border-radius:8px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✏️ Adicionar números</button>'
       + '</div>';
     return;
@@ -6762,10 +6774,31 @@ function renderRankingCidades(){
                  : 'var(--gami-blue)';
     var bgRow = idx < 3 ? 'linear-gradient(90deg, rgba(255,215,0,.06), transparent)' : 'transparent';
     
-    return '<div style="display:grid;grid-template-columns:30px 24px 1fr 80px 60px;gap:8px;align-items:center;padding:7px 8px;border-radius:8px;background:'+bgRow+';margin-bottom:3px">'
+    // Broche da cidade (PNG)
+    var brocheCidade = (typeof brochCidadeHTML === 'function') 
+      ? brochCidadeHTML(item.cidade) 
+      : '';
+    
+    // Foto/avatar do gestor
+    var gestorHTML = '';
+    if(item.gestor){
+      var g = item.gestor;
+      var iniciais = g.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+      var avatarConteudo = g.foto 
+        ? '<img src="'+g.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>'
+        : '<span style="font-size:10px;font-weight:700;color:#0E7AB8">'+iniciais+'</span>';
+      gestorHTML = '<div title="Gestor: '+g.nome+'" style="display:flex;align-items:center;gap:5px">'
+        + '<div style="width:28px;height:28px;border-radius:50%;background:#E6F6FE;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'+avatarConteudo+'</div>'
+        + '<span style="font-size:10px;color:var(--text3);white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis">'+g.nome.split(' ')[0]+'</span>'
+        + '</div>';
+    }
+    
+    return '<div style="display:grid;grid-template-columns:28px 22px 36px 1fr 130px 90px 60px;gap:8px;align-items:center;padding:8px;border-radius:8px;background:'+bgRow+';margin-bottom:4px">'
       + '<span style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:800;color:var(--text2);text-align:center">'+pos+'°</span>'
       + '<span style="font-size:18px">'+medalha+'</span>'
+      + brocheCidade
       + '<span style="font-size:12px;font-weight:600;color:var(--text)">'+item.cidade+'</span>'
+      + gestorHTML
       + '<div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+corBarra+';border-radius:3px;transition:width 0.5s"></div></div>'
       + '<span style="font-size:12px;font-weight:700;color:var(--text);text-align:right">'+item.corridas.toLocaleString('pt-BR')+'</span>'
       + '</div>';
@@ -6775,8 +6808,7 @@ function renderRankingCidades(){
 function abrirModalRanking(){
   var dados = getRankingCidades();
   var cidades = _cidadesRanking();
-  var hoje = new Date();
-  var nomeMes = hoje.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+  var nomeMes = 'Abril de 2026';
   
   var modal = document.getElementById('modal-ranking');
   if(!modal){
@@ -6797,7 +6829,7 @@ function abrirModalRanking(){
   }).join('');
   
   inner.innerHTML = '<div class="modal-head">'
-    + '<div class="modal-title">🏆 Ranking de '+nomeMes.charAt(0).toUpperCase()+nomeMes.slice(1)+'</div>'
+    + '<div class="modal-title">🏆 Ranking de '+nomeMes+'</div>'
     + '<button class="modal-close" onclick="document.getElementById(\'modal-ranking\').classList.remove(\'open\')">×</button></div>'
     + '<div style="padding:4px 0">'
     + '<div style="font-size:11px;color:var(--text3);margin-bottom:14px;font-style:italic">Digite o número de corridas de cada cidade no mês.</div>'
@@ -9356,12 +9388,20 @@ function renderCarreira(){
       var c = COLORS[n.nome] || {bg:'#F1EFE8',color:'#5F5E5A',border:'#D4C8BE'};
       var qtd = pessoas.filter(function(p){ return p.nivel === n.nome; }).length;
       var arrow = idx < niveis.length-1 ? '<div style="font-size:14px;color:var(--text3);align-self:center">→</div>' : '';
+      
+      // Broche PNG do nível (grande, no topo do card)
+      var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[n.nome] : null;
+      var brocheHTML = arquivoBroche 
+        ? '<div style="width:56px;height:56px;border-radius:50%;background-image:url(\'/broches-gami/senioridade/'+arquivoBroche+'.png\');background-size:cover;background-position:center;background-color:'+c.bg+';margin:0 auto 8px;box-shadow:0 2px 5px rgba(0,0,0,.12);border:2px solid white"></div>'
+        : '<div style="width:56px;height:56px;border-radius:50%;background:'+c.bg+';color:'+c.color+';display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-family:Syne,sans-serif;font-size:14px;font-weight:800;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,.12)">'+(idx+1)+'</div>';
+      
       return '<div style="display:flex;gap:6px;align-items:center">'+
-        '<div style="border:1px solid '+c.border+';border-radius:8px;padding:8px 10px;background:'+c.bg+';color:'+c.color+';min-width:115px">'+
+        '<div style="border:1px solid '+c.border+';border-radius:10px;padding:12px 10px 10px;background:'+c.bg+';color:'+c.color+';min-width:130px;text-align:center">'+
+          brocheHTML +
           '<div style="font-size:11px;font-weight:700;letter-spacing:.2px">'+n.nome+'</div>'+
           '<div style="font-size:9px;opacity:.85;margin-top:2px">'+n.faixa+' na faixa</div>'+
           '<div style="font-size:9px;opacity:.7">tempo: '+n.total+'</div>'+
-          (qtd>0 ? '<div style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.4);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
+          (qtd>0 ? '<div style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.5);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
         '</div>'+
         arrow+
       '</div>';
@@ -9520,8 +9560,12 @@ function renderCarreira(){
           var ini = (function(nome){ try{ return initials(nome); }catch(e){ return (nome||'?')[0]; } })(p.nome);
           var statusCor = p.mesesParaProm <= 1 ? '#1D9E75' : (p.mesesParaProm <= 2 ? '#FFB300' : '#1E88E5');
           var statusTxt = p.mesesParaProm <= 1 ? 'Pronto!' : (p.mesesParaProm <= 2 ? 'Quase lá' : 'Em desenvolvimento');
+          // Avatar com foto OU iniciais (fallback)
+          var avatarConteudo = p.foto 
+            ? '<img src="'+p.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>'
+            : ini;
           return '<div style="border:1px solid var(--border);border-left:3px solid '+statusCor+';border-radius:10px;padding:10px 12px;background:var(--surface);display:flex;gap:10px;align-items:center">'+
-            '<div style="width:36px;height:36px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0">'+ini+'</div>'+
+            '<div style="width:40px;height:40px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;overflow:hidden">'+avatarConteudo+'</div>'+
             '<div style="flex:1;min-width:0">'+
               '<div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.nome+'</div>'+
               '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(p.nivel||'')+' · '+(p.cidade||'')+'</div>'+
