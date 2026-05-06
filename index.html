@@ -1,4 +1,4 @@
-<!-- v12.6 - ranking abril + fotos + broches trilha - 06/05/2026 -->
+<!-- v12.7 - cor automatica trilha brocheS - 06/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3533,6 +3533,59 @@ function brochesCidadesHTML(listaCidades){
   if(!filtered.length) return '';
   var broches = filtered.map(brochCidadeHTML).join('');
   return '<div class="broches-cidades">'+broches+'</div>';
+}
+
+/* ============== EXTRAIR COR DOMINANTE DE UMA IMAGEM ============== */
+/* Usa canvas pra ler pixels e calcular cor predominante (com cache) */
+var _corCache = {};
+function extrairCorDominante(url, callback){
+  if(!url) return callback(null);
+  // Verifica cache
+  if(_corCache[url]){ callback(_corCache[url]); return; }
+  var img = new Image();
+  img.crossOrigin = 'Anonymous';
+  img.onload = function(){
+    try {
+      var canvas = document.createElement('canvas');
+      var size = 32; // amostra pequena pra performance
+      canvas.width = size; canvas.height = size;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, size, size);
+      var data = ctx.getImageData(0, 0, size, size).data;
+      
+      // Acumula pixels coloridos (ignora transparente, branco puro e preto puro)
+      var rTotal = 0, gTotal = 0, bTotal = 0, count = 0;
+      for(var i = 0; i < data.length; i += 4){
+        var r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+        if(a < 200) continue; // ignora transparente
+        // Ignora cores muito claras (quase brancas) e muito escuras (quase pretas)
+        var luminancia = (r + g + b) / 3;
+        if(luminancia > 240 || luminancia < 25) continue;
+        // Ignora cinza puro (saturação muito baixa)
+        var max = Math.max(r,g,b), min = Math.min(r,g,b);
+        if(max - min < 15) continue;
+        rTotal += r; gTotal += g; bTotal += b; count++;
+      }
+      
+      if(count === 0){
+        // fallback: pega cor central
+        var idx = (size/2 * size + size/2) * 4;
+        var resultado = [data[idx]||128, data[idx+1]||128, data[idx+2]||128];
+        _corCache[url] = resultado;
+        callback(resultado);
+        return;
+      }
+      
+      var rgb = [Math.round(rTotal/count), Math.round(gTotal/count), Math.round(bTotal/count)];
+      _corCache[url] = rgb;
+      callback(rgb);
+    } catch(e){
+      console.warn('extrair cor:', e);
+      callback(null);
+    }
+  };
+  img.onerror = function(){ callback(null); };
+  img.src = url;
 }
 var NIVEL_COLOR = {
   'Júnior I':   { bg:'#F5F5F5', color:'#212121', border:'#BDBDBD' },
@@ -9383,29 +9436,61 @@ function renderCarreira(){
       {nome:'Sênior III',faixa:'6 meses', total:'4 anos'},
       {nome:'Gerente',   faixa:'6 meses', total:'4 anos e 6 meses'},
     ];
-    var COLORS = (typeof NIVEL_COLOR !== 'undefined') ? NIVEL_COLOR : {};
+    
+    // Renderiza com cor neutra primeiro, depois extrai cor de cada broche e aplica
     trilhaHost.innerHTML = niveis.map(function(n, idx){
-      var c = COLORS[n.nome] || {bg:'#F1EFE8',color:'#5F5E5A',border:'#D4C8BE'};
       var qtd = pessoas.filter(function(p){ return p.nivel === n.nome; }).length;
       var arrow = idx < niveis.length-1 ? '<div style="font-size:14px;color:var(--text3);align-self:center">→</div>' : '';
-      
-      // Broche PNG do nível (grande, no topo do card)
       var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[n.nome] : null;
-      var brocheHTML = arquivoBroche 
-        ? '<div style="width:56px;height:56px;border-radius:50%;background-image:url(\'/broches-gami/senioridade/'+arquivoBroche+'.png\');background-size:cover;background-position:center;background-color:'+c.bg+';margin:0 auto 8px;box-shadow:0 2px 5px rgba(0,0,0,.12);border:2px solid white"></div>'
-        : '<div style="width:56px;height:56px;border-radius:50%;background:'+c.bg+';color:'+c.color+';display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-family:Syne,sans-serif;font-size:14px;font-weight:800;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,.12)">'+(idx+1)+'</div>';
+      var cardId = 'trilha-card-'+idx;
+      var brocheUrl = arquivoBroche ? '/broches-gami/senioridade/'+arquivoBroche+'.png' : '';
       
+      var brocheHTML = arquivoBroche 
+        ? '<div style="width:56px;height:56px;border-radius:50%;background-image:url(\''+brocheUrl+'\');background-size:cover;background-position:center;background-color:#F5F7FA;margin:0 auto 8px;box-shadow:0 2px 5px rgba(0,0,0,.12);border:2px solid white"></div>'
+        : '<div style="width:56px;height:56px;border-radius:50%;background:#F1EFE8;color:#5F5E5A;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-family:Syne,sans-serif;font-size:14px;font-weight:800;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,.12)">'+(idx+1)+'</div>';
+      
+      // Card neutro inicial — cor será aplicada via JS após extrair do PNG
       return '<div style="display:flex;gap:6px;align-items:center">'+
-        '<div style="border:1px solid '+c.border+';border-radius:10px;padding:12px 10px 10px;background:'+c.bg+';color:'+c.color+';min-width:130px;text-align:center">'+
+        '<div id="'+cardId+'" data-broche="'+brocheUrl+'" style="border:1px solid #E1E7EE;border-radius:10px;padding:12px 10px 10px;background:#F5F7FA;color:#0B2542;min-width:130px;text-align:center;transition:all 0.4s ease">'+
           brocheHTML +
           '<div style="font-size:11px;font-weight:700;letter-spacing:.2px">'+n.nome+'</div>'+
           '<div style="font-size:9px;opacity:.85;margin-top:2px">'+n.faixa+' na faixa</div>'+
           '<div style="font-size:9px;opacity:.7">tempo: '+n.total+'</div>'+
-          (qtd>0 ? '<div style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.5);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
+          (qtd>0 ? '<div class="trilha-badge-qtd" style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.55);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
         '</div>'+
         arrow+
       '</div>';
     }).join('');
+    
+    // Após renderizar, aplica extração automática de cor para cada card que tem broche
+    setTimeout(function(){
+      niveis.forEach(function(n, idx){
+        var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[n.nome] : null;
+        if(!arquivoBroche) return;
+        var card = document.getElementById('trilha-card-'+idx);
+        if(!card) return;
+        var url = card.dataset.broche;
+        extrairCorDominante(url, function(rgb){
+          if(!rgb) return;
+          var r = rgb[0], g = rgb[1], b = rgb[2];
+          // Cor de fundo: clarinha (mistura com branco)
+          var bgR = Math.round(r + (255-r)*0.85);
+          var bgG = Math.round(g + (255-g)*0.85);
+          var bgB = Math.round(b + (255-b)*0.85);
+          // Cor da borda: tom médio
+          var bdR = Math.round(r + (255-r)*0.55);
+          var bdG = Math.round(g + (255-g)*0.55);
+          var bdB = Math.round(b + (255-b)*0.55);
+          // Cor do texto: tom escuro (mistura com preto)
+          var txR = Math.round(r * 0.45);
+          var txG = Math.round(g * 0.45);
+          var txB = Math.round(b * 0.45);
+          card.style.background = 'rgb('+bgR+','+bgG+','+bgB+')';
+          card.style.borderColor = 'rgb('+bdR+','+bdG+','+bdB+')';
+          card.style.color = 'rgb('+txR+','+txG+','+txB+')';
+        });
+      });
+    }, 100);
   }
 
   // ----- TIME POR NÍVEL -----
