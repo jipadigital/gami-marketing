@@ -1,4 +1,4 @@
-<!-- v12.4 - broches 32px hover 2x - 06/05/2026 -->
+<!-- v12.5 - reconhecimento sincroniza supabase - 06/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -6512,7 +6512,33 @@ function getReconhecimento(){
   try { return JSON.parse(localStorage.getItem(_reconhecimentoKey())||'null'); } catch(e){ return null; }
 }
 function saveReconhecimento(obj){
+  // 1. Salva localStorage (cache local)
   try { localStorage.setItem(_reconhecimentoKey(), JSON.stringify(obj)); } catch(e){}
+  
+  // 2. Salva no Supabase em paralelo (sincroniza com outros dispositivos)
+  if(typeof syncConfig === 'function'){
+    if(typeof mostrarSalvando === 'function') mostrarSalvando();
+    syncConfig('reconhecimento_semana', obj)
+      .then(function(){ if(typeof mostrarSalvo === 'function') mostrarSalvo(); })
+      .catch(function(err){ 
+        console.warn('Erro ao salvar reconhecimento no servidor:', err);
+        if(typeof mostrarErroSalvar === 'function') mostrarErroSalvar(err);
+      });
+  }
+}
+
+/* Carrega do Supabase ao abrir o site */
+async function loadReconhecimentoFromSupa(){
+  if(typeof loadConfigFromSupa !== 'function') return null;
+  try {
+    var rec = await loadConfigFromSupa('reconhecimento_semana');
+    if(rec && rec.nome){
+      // Atualiza localStorage com o que veio do servidor
+      try { localStorage.setItem(_reconhecimentoKey(), JSON.stringify(rec)); } catch(e){}
+      return rec;
+    }
+  } catch(e){ console.warn('loadReconhecimento:', e); }
+  return null;
 }
 
 function renderReconhecimento(){
@@ -6613,6 +6639,10 @@ function salvarReconhecimento(){
 function limparReconhecimento(){
   if(!confirm('Apagar o reconhecimento atual?')) return;
   try { localStorage.removeItem(_reconhecimentoKey()); } catch(e){}
+  // Limpa também no Supabase (escreve objeto vazio)
+  if(typeof syncConfig === 'function'){
+    syncConfig('reconhecimento_semana', {}).catch(function(e){ console.warn(e); });
+  }
   document.getElementById('modal-reconhecimento').classList.remove('open');
   renderReconhecimento();
 }
@@ -7721,6 +7751,11 @@ async function initSupabase(){
     var wpCfg = await loadConfigFromSupa('wp_config');
     if(wpCfg && typeof saveBlogWP === 'function') saveBlogWP(wpCfg);
     
+    // Carrega Reconhecimento da Semana do servidor (sincroniza entre dispositivos)
+    if(typeof loadReconhecimentoFromSupa === 'function'){
+      try { await loadReconhecimentoFromSupa(); } catch(e){ console.warn('reconhecimento:', e); }
+    }
+    
     // CRÍTICO: depois de carregar do servidor, força re-render das telas
     // pra mostrar os dados atualizados (não o cache antigo)
     if(typeof renderPessoas === 'function'){
@@ -7731,6 +7766,9 @@ async function initSupabase(){
     }
     if(typeof renderDashTopCidades === 'function'){
       try { renderDashTopCidades(); } catch(e){}
+    }
+    if(typeof renderReconhecimento === 'function'){
+      try { renderReconhecimento(); } catch(e){}
     }
     
     // Mostra badge discreta confirmando carga
