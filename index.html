@@ -3594,6 +3594,38 @@ function pessoaAtendeCidade(p, cidade){
   return pessoaCidades(p).includes(cidade);
 }
 
+/* ============== HELPERS DE CIDADE (suporte multi-cidades) ============== */
+/* Retorna SEMPRE um array de cidades, mesmo se a pessoa tiver string única */
+function pessoaCidades(p){
+  if(!p) return [];
+  const c = p.cidade;
+  if(Array.isArray(c)) return c.filter(Boolean);
+  if(typeof c === 'string'){
+    if(!c) return [];
+    // Pode ter vindo serializado: ["Fortaleza","Maceió"]
+    if(c.startsWith('[')){
+      try { const a = JSON.parse(c); return Array.isArray(a) ? a.filter(Boolean) : [c]; } catch(e){}
+    }
+    return [c];
+  }
+  return [];
+}
+
+/* Mostra cidade(s) no formato curto: "Fortaleza" ou "Fortaleza, Maceió +1" */
+function pessoaCidadeLabel(p){
+  const cs = pessoaCidades(p);
+  if(cs.length === 0) return '—';
+  if(cs.length === 1) return cs[0];
+  if(cs.length === 2) return cs.join(', ');
+  return cs[0]+', '+cs[1]+' +'+(cs.length-2);
+}
+
+/* True se a pessoa atende essa cidade (suporta multi-cidades) */
+function pessoaAtendeCidade(p, cidade){
+  if(!p || !cidade) return false;
+  return pessoaCidades(p).includes(cidade);
+}
+
 /* ============== BACKUP / RESTORE PESSOAS ============== */
 function exportarBackupPessoas(){
   try {
