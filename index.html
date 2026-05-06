@@ -3594,38 +3594,6 @@ function pessoaAtendeCidade(p, cidade){
   return pessoaCidades(p).includes(cidade);
 }
 
-/* ============== HELPERS DE CIDADE (suporte multi-cidades) ============== */
-/* Retorna SEMPRE um array de cidades, mesmo se a pessoa tiver string única */
-function pessoaCidades(p){
-  if(!p) return [];
-  const c = p.cidade;
-  if(Array.isArray(c)) return c.filter(Boolean);
-  if(typeof c === 'string'){
-    if(!c) return [];
-    // Pode ter vindo serializado: ["Fortaleza","Maceió"]
-    if(c.startsWith('[')){
-      try { const a = JSON.parse(c); return Array.isArray(a) ? a.filter(Boolean) : [c]; } catch(e){}
-    }
-    return [c];
-  }
-  return [];
-}
-
-/* Mostra cidade(s) no formato curto: "Fortaleza" ou "Fortaleza, Maceió +1" */
-function pessoaCidadeLabel(p){
-  const cs = pessoaCidades(p);
-  if(cs.length === 0) return '—';
-  if(cs.length === 1) return cs[0];
-  if(cs.length === 2) return cs.join(', ');
-  return cs[0]+', '+cs[1]+' +'+(cs.length-2);
-}
-
-/* True se a pessoa atende essa cidade (suporta multi-cidades) */
-function pessoaAtendeCidade(p, cidade){
-  if(!p || !cidade) return false;
-  return pessoaCidades(p).includes(cidade);
-}
-
 /* ============== BACKUP / RESTORE PESSOAS ============== */
 function exportarBackupPessoas(){
   try {
@@ -7004,14 +6972,42 @@ async function syncTudo(mostrarFeedback){
   }
 }
 async function initSupabase(){
-  await Promise.all([loadPessoasFromSupa(),loadBlogFromSupa()]);
-  var wpCfg=await loadConfigFromSupa('wp_config');
-  if(wpCfg&&typeof saveBlogWP==='function')saveBlogWP(wpCfg);
+  try {
+    // Carrega do Supabase como FONTE DA VERDADE
+    await Promise.all([loadPessoasFromSupa(), loadBlogFromSupa()]);
+    var wpCfg = await loadConfigFromSupa('wp_config');
+    if(wpCfg && typeof saveBlogWP === 'function') saveBlogWP(wpCfg);
+    
+    // CRÍTICO: depois de carregar do servidor, força re-render das telas
+    // pra mostrar os dados atualizados (não o cache antigo)
+    if(typeof renderPessoas === 'function'){
+      try { renderPessoas(); } catch(e){ console.warn('renderPessoas erro:', e); }
+    }
+    if(typeof renderCarreira === 'function'){
+      try { renderCarreira(); } catch(e){}
+    }
+    if(typeof renderDashTopCidades === 'function'){
+      try { renderDashTopCidades(); } catch(e){}
+    }
+    
+    // Mostra badge discreta confirmando carga
+    if(typeof getStatusBadge === 'function'){
+      var b = getStatusBadge();
+      b.style.background = '#E6F6FE';
+      b.style.color = '#0E7AB8';
+      b.style.border = '1px solid #1AB8F033';
+      b.textContent = '☁️ Dados sincronizados';
+      b.style.display = 'block';
+      setTimeout(function(){ b.style.display = 'none'; }, 1500);
+    }
+  } catch(err){
+    console.error('initSupabase erro:', err);
+  }
 }
 /* IMPORTANTE: removido setInterval automático (causava sobrescrita de dados).
    Salvamento agora é feito a CADA edição (no savePessoas/saveCidadesData/etc.)
    diretamente, sem timer em background. */
-document.addEventListener('DOMContentLoaded',function(){setTimeout(initSupabase,1500);});
+document.addEventListener('DOMContentLoaded',function(){setTimeout(initSupabase,300);});
 
 
 
@@ -8091,10 +8087,10 @@ function _appStart(){
     try{ renderAlertasCampanhas(); }catch(e){}
   }, 400);
 
-  // Load Supabase
+  // Load Supabase ASAP (sem delay, é fonte da verdade)
   setTimeout(function(){
     try{ initSupabase(); }catch(e){ console.warn('supabase:', e); }
-  }, 1500);
+  }, 200);
   
   // IMPORTANTE: sync automático REMOVIDO.
   // Cada edição já salva direto no Supabase via savePessoas / saveCidadesData.
