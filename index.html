@@ -8507,8 +8507,27 @@ async function syncPessoas(){
     });
     if(!r.ok){
       var errTxt = await r.text();
-      console.error('syncPessoas falhou:', r.status, errTxt);
-      throw new Error('Sync falhou: ' + r.status + ' ' + errTxt.slice(0,100));
+      console.error('syncPessoas tentativa 1 falhou:', r.status, errTxt);
+      // FALLBACK: se a coluna `niveis` ainda não existe no Supabase, retira o campo
+      // e tenta de novo. O usuário ainda vê os múltiplos níveis localmente porque
+      // o Cloud Mirror sincroniza via tabela `configuracoes`.
+      var colMissing = /column.*niveis.*does not exist|Could not find the .niveis. column/i.test(errTxt);
+      if(colMissing){
+        console.warn('Coluna `niveis` ausente na tabela pessoas — retentando sem ela. Rode o SQL em docs/supabase-schema.sql pra adicionar.');
+        var pessoasSemNiveis = pessoasNormalizadas.map(function(x){
+          var c = Object.assign({}, x); delete c.niveis; return c;
+        });
+        var r2 = await fetch(SUPA_URL+'/rest/v1/pessoas?on_conflict=id',{
+          method:'POST',
+          headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
+          body: JSON.stringify(pessoasSemNiveis)
+        });
+        if(r2.ok) return true;
+        var err2 = await r2.text();
+        console.error('syncPessoas tentativa 2 falhou:', r2.status, err2);
+        throw new Error('Sync falhou (mesmo sem niveis): ' + r2.status + ' ' + err2.slice(0,200));
+      }
+      throw new Error('Sync falhou: ' + r.status + ' ' + errTxt.slice(0,200));
     }
     return true;
   }
