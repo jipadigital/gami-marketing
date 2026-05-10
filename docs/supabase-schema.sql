@@ -57,6 +57,12 @@ create trigger configuracoes_updated_at
   before update on public.configuracoes
   for each row execute function public.set_updated_at();
 
+-- 6) Coluna `niveis` na tabela pessoas (multi-níveis: Diretor + Gestor)
+--    Armazenada como text contendo JSON array (ex: '["Diretor","Gestor"]').
+alter table public.pessoas
+  add column if not exists niveis text;
+
 -- ====== VERIFICAÇÃO ======
 -- Depois de rodar, confirma que está OK:
 -- select count(*) from public.configuracoes where chave like 'gami_%';
+-- select id, nome, nivel, niveis from public.pessoas where niveis is not null;
