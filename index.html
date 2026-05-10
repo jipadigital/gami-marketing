@@ -7315,26 +7315,29 @@ function renderInboxChips(){
   var totalGeral = (_inboxDados||[]).length;
   var totalNaoLidas = (_inboxDados||[]).filter(function(m){return !m.lida;}).length;
 
-  // Ordem fixa preferida (cidades operantes); cidades extras aparecem no fim
+  // SEMPRE mostra as 10 cidades operantes (mesmo sem mensagens) + extras com tráfego
   var ordem = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
-  var presentes = Object.keys(byCidade);
-  var listaCid = ordem.filter(function(c){ return presentes.indexOf(c) >= 0; })
-    .concat(presentes.filter(function(c){ return ordem.indexOf(c) < 0; }));
+  var extras = Object.keys(byCidade).filter(function(c){ return ordem.indexOf(c) < 0; });
+  var listaCid = ordem.concat(extras);
 
-  function chip(label, key, total, naoLidas, isActive){
-    var bg = isActive ? '#1AB8F0' : 'var(--surface)';
-    var color = isActive ? '#fff' : 'var(--text2)';
+  function chip(label, key, total, naoLidas, isActive, isEmpty){
+    var bg = isActive ? '#1AB8F0' : (isEmpty ? 'var(--surface2)' : 'var(--surface)');
+    var color = isActive ? '#fff' : (isEmpty ? 'var(--text3)' : 'var(--text2)');
     var border = isActive ? '#1AB8F0' : 'var(--border)';
-    var badge = naoLidas > 0
-      ? '<span style="display:inline-block;margin-left:6px;min-width:18px;padding:1px 6px;border-radius:9px;background:'+(isActive?'#fff':'#E24B4A')+';color:'+(isActive?'#1AB8F0':'#fff')+';font-size:10px;font-weight:700;text-align:center">'+naoLidas+'</span>'
-      : (total > 0 ? '<span style="margin-left:5px;font-size:10px;opacity:.6">·'+total+'</span>' : '');
-    return '<button onclick="setInboxCidade(\''+key.replace(/'/g,"\\'")+'\')" style="display:inline-flex;align-items:center;gap:0;padding:6px 11px;border:1px solid '+border+';border-radius:18px;background:'+bg+';color:'+color+';font-size:12px;font-weight:'+(isActive?'600':'500')+';cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s">'+label+badge+'</button>';
+    var opacity = isEmpty && !isActive ? '.7' : '1';
+    var badge = '';
+    if(naoLidas > 0){
+      badge = '<span style="display:inline-block;margin-left:6px;min-width:18px;padding:1px 6px;border-radius:9px;background:'+(isActive?'#fff':'#E24B4A')+';color:'+(isActive?'#1AB8F0':'#fff')+';font-size:10px;font-weight:700;text-align:center">'+naoLidas+'</span>';
+    } else if(total > 0){
+      badge = '<span style="margin-left:5px;font-size:10px;opacity:.6">·'+total+'</span>';
+    }
+    return '<button onclick="setInboxCidade(\''+key.replace(/'/g,"\\'")+'\')" style="display:inline-flex;align-items:center;gap:0;padding:6px 11px;border:1px solid '+border+';border-radius:18px;background:'+bg+';color:'+color+';font-size:12px;font-weight:'+(isActive?'600':'500')+';cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s;opacity:'+opacity+'">'+label+badge+'</button>';
   }
 
-  var html = chip('Todas', 'todas', totalGeral, totalNaoLidas, active === 'todas');
+  var html = chip('Todas', 'todas', totalGeral, totalNaoLidas, active === 'todas', totalGeral === 0);
   listaCid.forEach(function(c){
-    var d = byCidade[c];
-    html += chip(c, c, d.total, d.naoLidas, active === c);
+    var d = byCidade[c] || { total:0, naoLidas:0 };
+    html += chip(c, c, d.total, d.naoLidas, active === c, d.total === 0);
   });
   host.innerHTML = html;
 }
