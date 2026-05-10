@@ -1711,14 +1711,48 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 <!-- ==================== PORTAL ==================== -->
 <div class="page" id="pg-portal">
   <div class="page-header">
-    <div><div class="page-title">Portal Gâmi</div><div class="page-sub">Materiais, treinamentos e recursos</div></div>
-    <button class="btn btn-primary" onclick="openAI('Sugira quais conteúdos de treinamento a Gâmi Delivery deveria criar para capacitar gestores regionais nos próximos 90 dias.')">Sugerir conteúdos →</button>
+    <div>
+      <div class="page-title">🔗 Portal Gâmi</div>
+      <div class="page-sub">portal.gamidelivery.com.br — embedado dentro do dashboard</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="recarregarPortal()" title="Recarregar o portal">↻ Recarregar</button>
+      <a class="btn btn-primary" href="https://portal.gamidelivery.com.br/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">Abrir em nova aba ↗</a>
+    </div>
   </div>
-  <div class="portal-grid" id="portal-grid"></div>
-  <div class="ai-bar" style="margin-top:14px">
-    <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
-    <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Comece pelo guia de onboarding para novos gestores — é o material que gera mais impacto imediato na expansão.</div>
-    <button class="btn btn-ia btn-sm" onclick="openAI('Crie um guia completo de onboarding para novos gestores da Gâmi Delivery, incluindo processos, responsabilidades, primeiros 30 dias e dicas de marketing local.')">Criar guia ↗</button>
+
+  <div id="portal-wrap" style="position:relative;width:100%;height:calc(100vh - 180px);min-height:540px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)">
+
+    <!-- Loader -->
+    <div id="portal-loader" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface);z-index:2">
+      <div style="width:40px;height:40px;border:3px solid #1AB8F0;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:14px"></div>
+      <div style="font-size:13px;color:var(--text2);font-weight:500">Carregando Portal Gâmi…</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Se já fez login antes, vai abrir autenticado direto</div>
+    </div>
+
+    <!-- Fallback (caso iframe seja bloqueado) -->
+    <div id="portal-fallback" style="display:none;position:absolute;inset:0;z-index:3;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 100%);color:#fff;display:none;align-items:center;justify-content:center;padding:24px;text-align:center">
+      <div>
+        <div style="font-size:48px;margin-bottom:14px">🔒</div>
+        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;margin-bottom:8px">O Portal Gâmi não permite ser embutido</div>
+        <div style="font-size:13px;opacity:.92;line-height:1.6;max-width:480px;margin:0 auto 22px">Por uma configuração de segurança do site (<code style="background:rgba(255,255,255,.15);padding:2px 6px;border-radius:4px;font-size:11px">X-Frame-Options</code>), ele não pode aparecer dentro de outra página.</div>
+        <a href="https://portal.gamidelivery.com.br/" target="_blank" rel="noopener" style="display:inline-block;background:#FFD93D;color:#0D2B5C;border:none;padding:11px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-decoration:none">Abrir Portal em nova aba ↗</a>
+      </div>
+    </div>
+
+    <!-- Iframe do portal -->
+    <iframe
+      id="portal-iframe"
+      src="https://portal.gamidelivery.com.br/"
+      style="width:100%;height:100%;border:none;display:block"
+      referrerpolicy="no-referrer-when-downgrade"
+      allow="autoplay; clipboard-read; clipboard-write; geolocation; microphone; camera"
+      onload="portalIframeOK()">
+    </iframe>
+  </div>
+
+  <div style="margin-top:10px;padding:10px 14px;background:var(--surface2);border-radius:10px;font-size:11px;color:var(--text3);line-height:1.6">
+    💡 <strong>Como funciona:</strong> seu navegador guarda os cookies da sessão do Portal automaticamente. Se você já entrou no portal alguma vez, o iframe abre logado. Se não, faça login uma vez aqui dentro do iframe — nas próximas visitas vem autenticado direto.
   </div>
 </div>
 
@@ -11126,28 +11160,58 @@ function renderIdeiasRapidas(){
 // nav wrapper removed - inlined into main nav function
 
 /* ===================== PORTAL GÂMI ===================== */
+/* ============================ PORTAL GÂMI (iframe) ============================
+   Embute portal.gamidelivery.com.br dentro da plataforma. Cookies do navegador
+   mantêm a sessão entre visitas — se o colaborador já fez login antes, o iframe
+   abre autenticado automaticamente. Se o portal bloqueia iframe via
+   X-Frame-Options/CSP frame-ancestors, mostramos fallback "abrir em nova aba".
+*/
+var _PORTAL_TIMER = null;
+var _PORTAL_OK = false;
+
 function renderPortal(){
-  var host = document.getElementById('portal-grid');
-  if(!host) return;
-  var items = [
-    ['Portal de Treinamento','Capacitação da equipe','#185FA5','Crie um índice de conteúdos para o portal de treinamento de gestores da Gâmi Delivery.'],
-    ['Portal do Conhecimento','Processos e documentação','#7F77DD','Crie um guia de processos internos da Gâmi Delivery para gestores regionais.'],
-    ['Drive da Empresa','Materiais institucionais','#1D9E75','Liste os materiais institucionais que a Gâmi Delivery deveria ter no drive.'],
-    ['Drive do Motoboy','Guias e materiais','#1AB8F0','Crie um guia completo para motoboys da Gâmi com dicas de como ganhar mais.'],
-    ['Identidade Visual','Logos, cores, manual','#D4537E','Crie o manual de identidade visual resumido da Gâmi Delivery.'],
-    ['Scripts e Roteiros','Vendas e conteúdo','#BA7517','Crie scripts de vendas para gestores captarem novos restaurantes parceiros.'],
-    ['Vídeos Institucionais','Apresentação e cultura','#185FA5','Crie o roteiro de um vídeo institucional de apresentação da Gâmi Delivery.'],
-    ['Proposta Comercial','Modelos prontos','#3B6D11','Crie uma proposta comercial completa da Gâmi para restaurantes parceiros.'],
-    ['Mídias e E-books','Materiais educativos','#534AB7','Crie o índice de um e-book sobre como ser um motoboy de sucesso na Gâmi.'],
-  ];
-  host.innerHTML = items.map(function(it){
-    var nome = it[0], desc = it[1], color = it[2], prompt = it[3].replace(/'/g,"\\'");
-    return '<div class="portal-card" onclick="openAI(\''+prompt+'\')">'+
-      '<div class="portal-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="'+color+'" stroke-width="1.5"/><path d="M7 8h10M7 12h7M7 16h5" stroke="'+color+'" stroke-width="1.5" stroke-linecap="round"/></svg></div>'+
-      '<div style="font-size:12px;font-weight:500;color:var(--text)">'+nome+'</div>'+
-      '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+desc+'</div>'+
-    '</div>';
-  }).join('');
+  // Reset estado a cada vez que a aba é aberta
+  _PORTAL_OK = false;
+  var loader   = document.getElementById('portal-loader');
+  var fallback = document.getElementById('portal-fallback');
+  var iframe   = document.getElementById('portal-iframe');
+  if(loader)   loader.style.display = 'flex';
+  if(fallback) fallback.style.display = 'none';
+
+  // Garante src vivo (caso queira recarregar)
+  if(iframe && !iframe.src){ iframe.src = 'https://portal.gamidelivery.com.br/'; }
+
+  // Se em 6s o iframe não disparou o onload, presume bloqueio
+  if(_PORTAL_TIMER) clearTimeout(_PORTAL_TIMER);
+  _PORTAL_TIMER = setTimeout(function(){
+    if(!_PORTAL_OK){
+      if(loader) loader.style.display = 'none';
+      if(fallback) fallback.style.display = 'flex';
+      console.warn('Portal não carregou em 6s — provável bloqueio por X-Frame-Options.');
+    }
+  }, 6000);
+}
+
+function portalIframeOK(){
+  // Chamado quando o iframe dispara onload com sucesso
+  _PORTAL_OK = true;
+  if(_PORTAL_TIMER) { clearTimeout(_PORTAL_TIMER); _PORTAL_TIMER = null; }
+  var loader = document.getElementById('portal-loader');
+  if(loader) loader.style.display = 'none';
+}
+
+function recarregarPortal(){
+  var iframe = document.getElementById('portal-iframe');
+  var loader = document.getElementById('portal-loader');
+  var fallback = document.getElementById('portal-fallback');
+  if(loader)   loader.style.display = 'flex';
+  if(fallback) fallback.style.display = 'none';
+  if(iframe){
+    // Adiciona cache-buster pra forçar reload mesmo se já carregou
+    var url = 'https://portal.gamidelivery.com.br/?_t=' + Date.now();
+    iframe.src = url;
+  }
+  renderPortal();
 }
 
 </script>
