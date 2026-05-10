@@ -1525,21 +1525,20 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <a href="https://business.facebook.com/settings/instagram-accounts" target="_blank" style="margin-left:auto;font-size:11px;padding:4px 10px;border:1px solid var(--orange);border-radius:6px;color:var(--orange);text-decoration:none;white-space:nowrap">Conectar →</a>
   </div>
 
-  <!-- FILTROS -->
+  <!-- CHIPS DE CIDADES (filtro rápido por cidade com contador de não lidas) -->
+  <div id="inbox-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
+
+  <!-- FILTROS (busca + status) -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-    <input id="inbox-busca" oninput="filtrarInbox()" placeholder="Buscar conversa..." style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
-    <select id="inbox-filtro-cidade" onchange="filtrarInbox()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
-      <option value="todas">Todas as cidades</option>
-      <option>Fortaleza</option><option>Maceió</option><option>João Pessoa</option>
-      <option>Recife</option><option>Natal</option><option>Aracaju</option>
-      <option>São Luís</option><option>Cuiabá</option><option>Teresina</option><option>Vitória</option>
-    </select>
+    <input id="inbox-busca" oninput="filtrarInbox()" placeholder="Buscar por @usuário ou texto da mensagem..." style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
     <select id="inbox-filtro-status" onchange="filtrarInbox()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer">
-      <option value="todas">Todas</option>
+      <option value="todas">Todos os status</option>
       <option value="nao_lida">Não lidas</option>
       <option value="respondida">Respondidas</option>
       <option value="pendente">Pendentes</option>
     </select>
+    <!-- compat: select escondido que guarda a cidade ativa (manipulado pelos chips) -->
+    <select id="inbox-filtro-cidade" style="display:none"><option value="todas" selected>todas</option></select>
   </div>
 
   <!-- LAYOUT: LISTA + CONVERSA -->
@@ -7296,9 +7295,71 @@ var _inboxCidade = 'todas';
 let _inboxAtual  = null;
 let _inboxDados  = JSON.parse(JSON.stringify(INBOX_DEMO));
 
+/* Chips de cidades no topo do inbox: cada chip mostra cidade + contador de
+   não lidas. O chip ativo destaca em azul Gâmi e atualiza o filtro de cidade. */
+function renderInboxChips(){
+  var host = document.getElementById('inbox-chips');
+  if(!host) return;
+  var hidden = document.getElementById('inbox-filtro-cidade');
+  var active = (hidden && hidden.value) ? hidden.value : 'todas';
+
+  // Conta total + não lidas por cidade
+  var byCidade = {};
+  (_inboxDados||[]).forEach(function(m){
+    var c = m.cidade || '—';
+    if(!byCidade[c]) byCidade[c] = { total:0, naoLidas:0 };
+    byCidade[c].total++;
+    if(!m.lida) byCidade[c].naoLidas++;
+  });
+
+  var totalGeral = (_inboxDados||[]).length;
+  var totalNaoLidas = (_inboxDados||[]).filter(function(m){return !m.lida;}).length;
+
+  // Ordem fixa preferida (cidades operantes); cidades extras aparecem no fim
+  var ordem = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
+  var presentes = Object.keys(byCidade);
+  var listaCid = ordem.filter(function(c){ return presentes.indexOf(c) >= 0; })
+    .concat(presentes.filter(function(c){ return ordem.indexOf(c) < 0; }));
+
+  function chip(label, key, total, naoLidas, isActive){
+    var bg = isActive ? '#1AB8F0' : 'var(--surface)';
+    var color = isActive ? '#fff' : 'var(--text2)';
+    var border = isActive ? '#1AB8F0' : 'var(--border)';
+    var badge = naoLidas > 0
+      ? '<span style="display:inline-block;margin-left:6px;min-width:18px;padding:1px 6px;border-radius:9px;background:'+(isActive?'#fff':'#E24B4A')+';color:'+(isActive?'#1AB8F0':'#fff')+';font-size:10px;font-weight:700;text-align:center">'+naoLidas+'</span>'
+      : (total > 0 ? '<span style="margin-left:5px;font-size:10px;opacity:.6">·'+total+'</span>' : '');
+    return '<button onclick="setInboxCidade(\''+key.replace(/'/g,"\\'")+'\')" style="display:inline-flex;align-items:center;gap:0;padding:6px 11px;border:1px solid '+border+';border-radius:18px;background:'+bg+';color:'+color+';font-size:12px;font-weight:'+(isActive?'600':'500')+';cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s">'+label+badge+'</button>';
+  }
+
+  var html = chip('Todas', 'todas', totalGeral, totalNaoLidas, active === 'todas');
+  listaCid.forEach(function(c){
+    var d = byCidade[c];
+    html += chip(c, c, d.total, d.naoLidas, active === c);
+  });
+  host.innerHTML = html;
+}
+
+function setInboxCidade(cidade){
+  var hidden = document.getElementById('inbox-filtro-cidade');
+  if(hidden){
+    // Garante que tenha option dessa cidade (pra .value funcionar)
+    if(!Array.prototype.find.call(hidden.options, function(o){return o.value===cidade;})){
+      var opt = document.createElement('option');
+      opt.value = cidade; opt.textContent = cidade;
+      hidden.appendChild(opt);
+    }
+    hidden.value = cidade;
+  }
+  renderInboxChips();
+  renderInboxLista();
+}
+
 function renderInboxLista(){
   const el = document.getElementById('inbox-lista');
   if(!el) return;
+
+  // Atualiza chips sempre que a lista é re-renderizada
+  if(typeof renderInboxChips === 'function') renderInboxChips();
 
   const busca  = (document.getElementById('inbox-busca')||{}).value||'';
   const cidade = (document.getElementById('inbox-filtro-cidade')||{}).value||'todas';
@@ -7568,8 +7629,28 @@ async function sincronizarInbox(){
   // 4) Ordena por última atualização desc
   convs.sort(function(a,b){ return new Date(b.updated||0) - new Date(a.updated||0); });
 
+  // Esconde aviso de demo (já estamos conectados, não mostrar mais)
+  var notice = document.getElementById('inbox-demo-notice');
+  if(notice) notice.style.display = 'none';
+
   if(!convs.length){
-    _setInboxStatus('✅ Conectado · Nenhuma conversa nas últimas mensagens.','#1D9E75');
+    // Limpa demos pra evitar mostrar dados falsos enquanto bar diz "Conectado"
+    _inboxDados = [];
+    _inboxAtual = null;
+    if(typeof renderInboxLista==='function') renderInboxLista();
+    var listaEl = document.getElementById('inbox-lista');
+    if(listaEl){
+      listaEl.innerHTML = '<div style="padding:30px 20px;text-align:center;font-size:12px;color:var(--text3);line-height:1.6">'+
+        '<div style="font-size:32px;margin-bottom:8px">📭</div>'+
+        '<div><strong>Nenhuma DM nas últimas 24h.</strong></div>'+
+        '<div style="margin-top:6px;opacity:.85">Quando alguém mandar uma mensagem em qualquer das 10 contas IG, aparece aqui. Clique em ↻ Sincronizar pra atualizar.</div>'+
+        '</div>';
+    }
+    var conv = document.getElementById('inbox-mensagens');
+    if(conv){
+      conv.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:8px">💬</div><div style="font-size:13px">Sem conversas pra exibir</div></div>';
+    }
+    _setInboxStatus('✅ Conectado · 10 contas IG monitoradas · sem DMs nas últimas 24h.','#1D9E75');
     return;
   }
 
@@ -7577,11 +7658,7 @@ async function sincronizarInbox(){
   _inboxAtual = null;
   if(typeof renderInboxLista==='function') renderInboxLista();
 
-  // Esconde aviso de demo
-  var notice = document.getElementById('inbox-demo-notice');
-  if(notice) notice.style.display = 'none';
-
-  _setInboxStatus('✅ '+convs.length+' conversas reais carregadas · '+contas.length+' contas IG.','#1D9E75');
+  _setInboxStatus('✅ '+convs.length+' conversas carregadas de '+contas.length+' contas IG.','#1D9E75');
 }
 
 
