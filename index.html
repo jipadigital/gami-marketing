@@ -8142,6 +8142,151 @@ async function loadConfigFromSupa(chave){
   if(d&&d.length)return d[0].valor;
   return null;
 }
+
+/* ===================== SUPABASE CLOUD MIRROR =====================
+   Espelha automaticamente todo localStorage com chaves gami_* na tabela
+   `configuracoes` do Supabase. Funciona como wrapper transparente:
+   - Toda gravação localStorage.setItem('gami_*') é enfileirada pra envio.
+   - Envio é debounced (1.5s) e em lote, pra economizar requests.
+   - No boot, faz pull antes de qualquer escrita pra evitar sobrescrever.
+   - Black-list garante que UI state e caches não sobem ao servidor.
+*/
+var _GAMI_CLOUD_READY = false;          // só envia depois do pull inicial
+var _GAMI_CLOUD_PEND  = {};              // fila de chaves pendentes
+var _GAMI_CLOUD_TIMER = null;
+var _GAMI_CLOUD_BACKLOG_BEFORE_READY = []; // edits feitos antes do pull
+var GAMI_CLOUD_BLACKLIST = [
+  'gami_sb_collapsed',     // UI state
+  'gami_meta_camps',       // cache de API Meta (regenerável)
+  'gami_pessoas_v2'        // tem sync própria na tabela `pessoas`
+];
+
+function _gamiSyncBadge(text, color){
+  var el = (typeof getStatusBadge === 'function') ? getStatusBadge() : null;
+  if(!el) return;
+  el.style.background = color === 'green' ? '#EAF3DE' : color === 'red' ? '#FCEBEB' : '#E3F2FD';
+  el.style.color      = color === 'green' ? '#3B6D11' : color === 'red' ? '#A32D2D' : '#1565C0';
+  el.style.border     = '1px solid ' + (color === 'green' ? '#1D9E7555' : color === 'red' ? '#E24B4A55' : '#1565C055');
+  el.textContent = text;
+  el.style.display = 'block';
+}
+function _gamiHideSyncBadge(){
+  var el = (typeof getStatusBadge === 'function') ? getStatusBadge() : null;
+  if(el) el.style.display = 'none';
+}
+
+function _gamiCloudQueue(key, value){
+  if(!_GAMI_CLOUD_READY){
+    // Ainda não baixou do servidor — guarda pra mandar depois do pull
+    _GAMI_CLOUD_BACKLOG_BEFORE_READY.push({key:key, value:value});
+    return;
+  }
+  _GAMI_CLOUD_PEND[key] = value;
+  if(_GAMI_CLOUD_TIMER) clearTimeout(_GAMI_CLOUD_TIMER);
+  _GAMI_CLOUD_TIMER = setTimeout(_gamiCloudFlush, 1500);
+}
+
+async function _gamiCloudFlush(){
+  var keys = Object.keys(_GAMI_CLOUD_PEND);
+  if(!keys.length) return;
+  var batch = _GAMI_CLOUD_PEND;
+  _GAMI_CLOUD_PEND = {};
+
+  _gamiSyncBadge('💾 Sincronizando ' + keys.length + ' alteração' + (keys.length>1?'es':'') + '…', 'blue');
+
+  try{
+    var registros = keys.map(function(k){
+      var v = batch[k];
+      // null = remoção; o supa não suporta null direto então guardamos como string vazia + flag
+      return {
+        chave: k,
+        valor: (v === null || v === undefined) ? '' : (typeof v === 'string' ? v : JSON.stringify(v)),
+        updated_at: new Date().toISOString()
+      };
+    });
+    var r = await fetch(SUPA_URL + '/rest/v1/configuracoes?on_conflict=chave', {
+      method: 'POST',
+      headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
+      body: JSON.stringify(registros)
+    });
+    if(r.ok){
+      _gamiSyncBadge('✓ Salvo na nuvem', 'green');
+      setTimeout(_gamiHideSyncBadge, 1500);
+    } else {
+      _gamiSyncBadge('⚠️ Erro HTTP ' + r.status, 'red');
+      console.warn('cloudFlush HTTP', r.status, await r.text());
+      // Re-enfileira pra próxima tentativa
+      Object.keys(batch).forEach(function(k){ _GAMI_CLOUD_PEND[k] = batch[k]; });
+    }
+  }catch(e){
+    _gamiSyncBadge('⚠️ Sem conexão — salvo localmente', 'red');
+    console.warn('cloudFlush:', e);
+    Object.keys(batch).forEach(function(k){ _GAMI_CLOUD_PEND[k] = batch[k]; });
+    setTimeout(_gamiHideSyncBadge, 3000);
+  }
+}
+
+// Hooka localStorage.setItem/removeItem GLOBALMENTE pra capturar tudo
+(function(){
+  var origSet    = Storage.prototype.setItem;
+  var origRemove = Storage.prototype.removeItem;
+  // Guarda referências puras pra usar no pull (evita loop)
+  window._gamiOrigSetItem = origSet;
+
+  Storage.prototype.setItem = function(key, value){
+    origSet.call(this, key, value);
+    if(this !== window.localStorage) return;
+    if(typeof key !== 'string' || key.indexOf('gami_') !== 0) return;
+    if(GAMI_CLOUD_BLACKLIST.indexOf(key) >= 0) return;
+    _gamiCloudQueue(key, value);
+  };
+  Storage.prototype.removeItem = function(key){
+    origRemove.call(this, key);
+    if(this !== window.localStorage) return;
+    if(typeof key !== 'string' || key.indexOf('gami_') !== 0) return;
+    if(GAMI_CLOUD_BLACKLIST.indexOf(key) >= 0) return;
+    _gamiCloudQueue(key, null);
+  };
+})();
+
+// Pull no boot: baixa todas as chaves gami_* do supa pro localStorage
+async function gamiCloudPull(){
+  try{
+    // Filtro chave LIKE 'gami_%' (em PostgREST: chave=like.gami_%)
+    var r = await fetch(SUPA_URL + '/rest/v1/configuracoes?select=chave,valor&chave=like.gami_*', {
+      headers: supaHeaders()
+    });
+    if(!r.ok){ _GAMI_CLOUD_READY = true; return 0; }
+    var rows = await r.json();
+    if(!Array.isArray(rows)){ _GAMI_CLOUD_READY = true; return 0; }
+
+    var setRaw = window._gamiOrigSetItem; // bypassa o hook (pra não re-enviar)
+    var aplicadas = 0;
+    rows.forEach(function(row){
+      if(!row || !row.chave) return;
+      if(GAMI_CLOUD_BLACKLIST.indexOf(row.chave) >= 0) return;
+      var v = row.valor;
+      if(v === null || v === undefined) return;
+      // Se valor é objeto/array (Postgres jsonb), converte; se já é string, usa como veio
+      var s = (typeof v === 'string') ? v : JSON.stringify(v);
+      if(s === '') return; // tratado como deleção
+      try{ setRaw.call(window.localStorage, row.chave, s); aplicadas++; }catch(e){}
+    });
+    return aplicadas;
+  }catch(e){
+    console.warn('gamiCloudPull:', e);
+    return 0;
+  } finally {
+    _GAMI_CLOUD_READY = true;
+    // Drena qualquer edit feito ANTES do pull terminar
+    if(_GAMI_CLOUD_BACKLOG_BEFORE_READY.length){
+      _GAMI_CLOUD_BACKLOG_BEFORE_READY.forEach(function(it){ _GAMI_CLOUD_PEND[it.key] = it.value; });
+      _GAMI_CLOUD_BACKLOG_BEFORE_READY = [];
+      if(_GAMI_CLOUD_TIMER) clearTimeout(_GAMI_CLOUD_TIMER);
+      _GAMI_CLOUD_TIMER = setTimeout(_gamiCloudFlush, 800);
+    }
+  }
+}
 async function syncTudo(mostrarFeedback){
   var btn=document.getElementById('btn-sync-supa');
   if(mostrarFeedback&&btn){btn.textContent='⏳ Salvando...';btn.disabled=true;}
@@ -8156,6 +8301,15 @@ async function syncTudo(mostrarFeedback){
 }
 async function initSupabase(){
   try {
+    // 0) PULL universal — baixa TODAS as chaves gami_* do servidor pro
+    //    localStorage ANTES de qualquer escrita local (evita race condition
+    //    onde edits feitos no boot sobrescrevem o que está no servidor).
+    var puxadas = await gamiCloudPull();
+    if(puxadas > 0){
+      _gamiSyncBadge('☁️ ' + puxadas + ' chaves sincronizadas do servidor', 'blue');
+      setTimeout(_gamiHideSyncBadge, 1800);
+    }
+
     // Carrega do Supabase como FONTE DA VERDADE
     await Promise.all([loadPessoasFromSupa(), loadBlogFromSupa()]);
     var wpCfg = await loadConfigFromSupa('wp_config');
@@ -8180,6 +8334,15 @@ async function initSupabase(){
     if(typeof renderReconhecimento === 'function'){
       try { renderReconhecimento(); } catch(e){}
     }
+    // Telas que dependem de chaves localStorage agora sincronizadas via Cloud Mirror
+    if(typeof initTarefas === 'function'){ try { initTarefas(); } catch(e){} }
+    if(typeof renderCalendar === 'function'){ try { renderCalendar(); } catch(e){} }
+    if(typeof renderRecados === 'function'){ try { renderRecados(); } catch(e){} }
+    if(typeof renderPulse === 'function'){ try { renderPulse(); } catch(e){} }
+    if(typeof renderRanking === 'function'){ try { renderRanking(); } catch(e){} }
+    if(typeof renderIdeias === 'function'){ try { renderIdeias(); } catch(e){} }
+    if(typeof renderScripts === 'function'){ try { renderScripts(); } catch(e){} }
+    if(typeof renderCidadesGrid === 'function'){ try { renderCidadesGrid(); } catch(e){} }
     
     // Mostra badge discreta confirmando carga
     if(typeof getStatusBadge === 'function'){
