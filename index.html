@@ -34,6 +34,17 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 #sidebar-toggle{display:none}
 #sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99}
 
+@keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
+
+/* ===== TABLET (iPad portrait até desktop pequeno) ===== */
+@media(max-width:1024px){
+  .page{padding:18px 18px!important}
+  .g3{grid-template-columns:repeat(2,1fr)!important}
+  #cidades-grid{grid-template-columns:repeat(2,1fr)!important}
+  .metrics{grid-template-columns:repeat(2,1fr)!important}
+}
+
+/* ===== MOBILE / iPad em retrato ===== */
 @media(max-width:768px){
   .sidebar{
     position:fixed;left:0;top:0;bottom:0;z-index:100;
@@ -45,16 +56,44 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
   #sidebar-toggle{
     display:flex;align-items:center;justify-content:center;
     position:fixed;top:14px;left:14px;z-index:101;
-    width:36px;height:36px;border-radius:10px;
+    width:40px;height:40px;border-radius:10px;
     background:var(--orange);border:none;cursor:pointer;
     box-shadow:0 2px 8px rgba(26,184,240,.4);
   }
   #sidebar-overlay.visible{display:block}
-  .page{padding:16px 14px!important}
+  .page{padding:14px 12px!important}
+  .page-title{font-size:18px!important}
+  .page-sub{font-size:11px!important}
   .page-header{flex-wrap:wrap;gap:8px}
   .g2,.g3{grid-template-columns:1fr!important}
-  .metrics{grid-template-columns:repeat(2,1fr)!important}
+  .metrics{grid-template-columns:repeat(2,1fr)!important;gap:8px!important}
   #cidades-grid{grid-template-columns:1fr!important}
+  .card{padding:12px!important}
+  .modal{width:96vw!important;max-width:96vw!important;max-height:88vh;overflow-y:auto}
+  /* Tabelas com scroll horizontal */
+  table{display:block;overflow-x:auto;white-space:nowrap}
+  /* Botões fáceis de tocar */
+  .btn,.btn-primary,.btn-ghost{min-height:38px;padding:8px 14px!important}
+  input.inp,select.sel,textarea.inp{font-size:14px!important;padding:9px 11px!important}
+  /* Inbox: layout vira 1 coluna no celular */
+  #inbox-layout{grid-template-columns:1fr!important}
+  /* Chips de cidades quebram com scroll horizontal */
+  #inbox-chips{flex-wrap:nowrap!important;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+  /* Dashboard hero menor */
+  #dia-ia-resultado{padding:12px!important}
+}
+
+/* ===== Mobile pequeno (~iPhone SE) ===== */
+@media(max-width:380px){
+  .metrics{grid-template-columns:1fr!important}
+  .page-title{font-size:16px!important}
+  .card{padding:10px!important}
+}
+
+/* ===== Toques touch-friendly (qualquer tela com touch) ===== */
+@media(hover:none) and (pointer:coarse){
+  .nav-item{padding:11px 12px!important}
+  button{min-height:36px}
 }
 
 @media(min-width:769px){
@@ -523,6 +562,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="mam-resumo" style="padding:8px 16px;background:rgba(26,184,240,.04);border-bottom:1px solid var(--border);font-size:11px;color:var(--text2)"></div>
     <div id="mam-lista" style="padding:8px"></div>
     <div id="mam-vazio" style="display:none;padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhum compromisso hoje. <span style="color:var(--gami-blue);font-weight:600;cursor:pointer" onclick="adicionarItemAgenda()">Adicionar primeiro item →</span></div>
+    <!-- Resultado inline da IA "Projetar meu dia" -->
+    <div id="dia-ia-resultado" style="display:none;border-top:1px solid var(--border);padding:14px 16px;background:linear-gradient(180deg,rgba(26,184,240,.04) 0%,rgba(26,184,240,0) 100%)"></div>
   </div>
 
   <!-- 2. RECONHECIMENTO DA SEMANA -->
@@ -1277,6 +1318,11 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div class="g2" style="margin-bottom:12px">
         <div class="card"><div class="card-title">Performance</div><div id="cp-perf"></div></div>
         <div class="card"><div class="card-title">Aniversários próximos</div><div id="cp-bdays"></div></div>
+      </div>
+      <!-- 📅 Datas comemorativas da cidade -->
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">📅 Datas comemorativas</div>
+        <div id="cp-datas-comemorativas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:6px"></div>
       </div>
       <div class="card" style="margin-bottom:12px">
         <div class="card-title">Restaurantes parceiros e pontos estratégicos</div>
@@ -2621,6 +2667,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
 <!-- ==================== PLANO DE CARREIRA ==================== -->
 <div class="page" id="pg-carreira">
+  <style>
+    @keyframes carr-pulse-glow { 0%,100%{ box-shadow:0 0 0 0 rgba(255,179,0,.4); } 50%{ box-shadow:0 0 0 10px rgba(255,179,0,0); } }
+    @keyframes carr-fadeup { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
+    .carr-section { animation: carr-fadeup .5s ease both; }
+    .carr-trilha-card:hover { transform: translateY(-4px) scale(1.04); box-shadow:0 8px 18px rgba(13,43,92,.15); }
+    .carr-fase-card:hover { transform: translateY(-3px); }
+    .carr-fase-card { transition: all .25s ease; }
+  </style>
+
   <div class="page-header">
     <div>
       <div class="page-title">🚀 Plano de Carreira</div>
@@ -2629,8 +2684,25 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <button class="btn btn-primary" onclick="openAI('Sugira um plano de desenvolvimento individual de 90 dias para um colaborador da Gâmi Delivery que está na fase de Desenvolvimento (Júnior II/III), focando em registrar aprendizados e buscar resultados consistentes.')">PDI com IA ↗</button>
   </div>
 
+  <!-- HERO de carreira -->
+  <div class="card carr-section" style="margin-bottom:14px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border:none;color:white;padding:0;overflow:hidden;position:relative">
+    <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,217,61,.18),transparent 70%);pointer-events:none"></div>
+    <div style="position:absolute;bottom:-40px;left:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.1),transparent 70%);pointer-events:none"></div>
+    <div style="position:relative;padding:24px 26px;display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center">
+      <div>
+        <div style="display:inline-block;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:14px;margin-bottom:10px;font-weight:700">TRILHA GÂMI</div>
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px;line-height:1.15">Crescer aqui é <span style="background:linear-gradient(90deg,#FFD93D,#FFB300);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">construir uma história</span></div>
+        <div style="font-size:12px;opacity:.92;line-height:1.6;max-width:520px">10 níveis · 5 fases · cada faixa com 6 meses. Toda promoção é resultado de aprendizado real, não tempo de casa.</div>
+      </div>
+      <div style="text-align:center;background:rgba(255,255,255,.13);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px 18px;min-width:120px">
+        <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:#FFD93D">4,5</div>
+        <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.85">anos até Gerente</div>
+      </div>
+    </div>
+  </div>
+
   <!-- MÉTRICAS -->
-  <div class="metrics" id="carreira-metrics" style="margin-bottom:14px"></div>
+  <div class="metrics carr-section" id="carreira-metrics" style="margin-bottom:14px"></div>
 
   <!-- 5 FASES DA JORNADA -->
   <div class="card" id="carreira-fases" style="margin-bottom:14px"></div>
@@ -5290,6 +5362,7 @@ var CIDADES_DATA_DEFAULT = [
   { id:'c8', nome:'Cuiabá',     uf:'MT', gestor:'João Bergue',                 tel:'69992698433', status:'ativa',  inicio:'2025-07-09', campanhas:0, posts_semana:0, machine_api:'mch_api_4oL92M6ZF5eLxG5bHYsrrWMC', instagram_conectado:false },
   { id:'c9', nome:'Teresina',   uf:'PI', gestor:'Rosimar Siqueira (MAZINHO)',  tel:'69984356443', status:'ativa',  inicio:'2025-10-26', campanhas:0, posts_semana:0, machine_api:'mch_api_RjJkmPUGdbcrSyD4cpAiUrEo', instagram_conectado:false },
   { id:'c10',nome:'Vitória',    uf:'ES', gestor:'Wesley Dias',                 tel:'69992019665', status:'ativa',  inicio:'2026-01-17', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
+  { id:'c11',nome:'Campo Grande',uf:'MS',gestor:'João Duarte',                 tel:'',            status:'atencao',inicio:'2026-05-09', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
 ];
 
 var STATUS_CIDADE = {
@@ -5587,6 +5660,141 @@ function renderIntegracoesStatus(){
     '</div>';
 }
 
+/* Datas comemorativas e culturais por cidade.
+   Formato: 'MM-DD' → array de eventos. Aniversário da cidade marcado com type:'aniversario'. */
+var DATAS_CIDADES = {
+  'Fortaleza': [
+    { mes:4, dia:13, nome:'Aniversário de Fortaleza', tipo:'aniversario', icone:'🎂' },
+    { mes:6, dia:24, nome:'São João — festa junina forte', tipo:'cultural', icone:'🔥' },
+    { mes:9, dia:7,  nome:'Independência do Brasil',     tipo:'nacional', icone:'🇧🇷' },
+  ],
+  'Recife': [
+    { mes:3, dia:12, nome:'Aniversário do Recife', tipo:'aniversario', icone:'🎂' },
+    { mes:2, dia:13, nome:'Carnaval (Galo da Madrugada)', tipo:'cultural', icone:'🎭' },
+    { mes:6, dia:24, nome:'São João pernambucano',  tipo:'cultural', icone:'🔥' },
+  ],
+  'Maceió': [
+    { mes:12,dia:9,  nome:'Aniversário de Maceió',  tipo:'aniversario', icone:'🎂' },
+    { mes:6, dia:24, nome:'São João alagoano',      tipo:'cultural', icone:'🔥' },
+    { mes:9, dia:16, nome:'Emancipação Política',   tipo:'cultural', icone:'⭐' },
+  ],
+  'João Pessoa': [
+    { mes:8, dia:5,  nome:'Aniversário de João Pessoa', tipo:'aniversario', icone:'🎂' },
+    { mes:6, dia:24, nome:'São João paraibano',         tipo:'cultural', icone:'🔥' },
+    { mes:7, dia:5,  nome:'Festa das Neves',            tipo:'cultural', icone:'⛪' },
+  ],
+  'Natal': [
+    { mes:12,dia:25, nome:'Aniversário de Natal (Natal)', tipo:'aniversario', icone:'🎄' },
+    { mes:12,dia:7,  nome:'Carnatal',                     tipo:'cultural', icone:'🎭' },
+    { mes:6, dia:24, nome:'São João potiguar',           tipo:'cultural', icone:'🔥' },
+  ],
+  'Aracaju': [
+    { mes:3, dia:17, nome:'Aniversário de Aracaju',   tipo:'aniversario', icone:'🎂' },
+    { mes:7, dia:8,  dia_alt:7, nome:'Emancipação Política de SE', tipo:'cultural', icone:'⭐' },
+    { mes:6, dia:24, nome:'São João sergipano',       tipo:'cultural', icone:'🔥' },
+  ],
+  'São Luís': [
+    { mes:9, dia:8,  nome:'Aniversário de São Luís', tipo:'aniversario', icone:'🎂' },
+    { mes:6, dia:24, nome:'Bumba Meu Boi (junho)',   tipo:'cultural', icone:'🐂' },
+    { mes:7, dia:28, nome:'Adesão do Maranhão',      tipo:'cultural', icone:'⭐' },
+  ],
+  'Cuiabá': [
+    { mes:4, dia:8,  nome:'Aniversário de Cuiabá',     tipo:'aniversario', icone:'🎂' },
+    { mes:7, dia:8,  nome:'Emancipação de MT',         tipo:'cultural', icone:'⭐' },
+    { mes:6, dia:24, nome:'São João cuiabano',         tipo:'cultural', icone:'🔥' },
+  ],
+  'Teresina': [
+    { mes:8, dia:16, nome:'Aniversário de Teresina', tipo:'aniversario', icone:'🎂' },
+    { mes:10,dia:19, nome:'Dia do Piauí',             tipo:'cultural', icone:'⭐' },
+    { mes:6, dia:24, nome:'São João piauiense',       tipo:'cultural', icone:'🔥' },
+  ],
+  'Vitória': [
+    { mes:9, dia:8,  nome:'Aniversário de Vitória',  tipo:'aniversario', icone:'🎂' },
+    { mes:5, dia:23, nome:'Colonização do ES',       tipo:'cultural', icone:'⭐' },
+    { mes:4, dia:1,  nome:'Festa da Penha',          tipo:'cultural', icone:'⛪' },
+  ],
+  'Campo Grande': [
+    { mes:8, dia:26, nome:'Aniversário de Campo Grande', tipo:'aniversario', icone:'🎂' },
+    { mes:10,dia:11, nome:'Emancipação do MS',           tipo:'cultural', icone:'⭐' },
+    { mes:6, dia:24, nome:'São João sul-mato-grossense', tipo:'cultural', icone:'🔥' },
+  ],
+};
+
+function _proximaOcorrencia(mes, dia){
+  var hoje = new Date();
+  var ano = hoje.getFullYear();
+  var d = new Date(ano, mes-1, dia);
+  if(d < new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())) d = new Date(ano+1, mes-1, dia);
+  return d;
+}
+function _diasAte(d){
+  var hoje = new Date();
+  hoje.setHours(0,0,0,0);
+  return Math.round((d - hoje) / 86400000);
+}
+
+function renderDatasCidade(nomeCidade){
+  var datas = DATAS_CIDADES[nomeCidade] || [];
+  if(!datas.length){
+    return '<div style="font-size:11px;color:var(--text3);font-style:italic;padding:8px">Sem datas cadastradas para '+nomeCidade+'.</div>';
+  }
+  var enriquecidas = datas.map(function(d){
+    var prox = _proximaOcorrencia(d.mes, d.dia);
+    return Object.assign({}, d, { proxima: prox, diasAte: _diasAte(prox) });
+  }).sort(function(a,b){ return a.diasAte - b.diasAte; });
+
+  var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  return enriquecidas.map(function(d){
+    var corBg = d.tipo === 'aniversario' ? 'linear-gradient(135deg,#FFD93D 0%,#FFB300 100%)'
+              : d.tipo === 'nacional'    ? 'linear-gradient(135deg,#1AB8F0 0%,#0E7AB8 100%)'
+              : 'var(--surface)';
+    var corText = (d.tipo === 'aniversario' || d.tipo === 'nacional') ? '#fff' : 'var(--text)';
+    var corBadge = d.diasAte === 0 ? '#E24B4A'
+                 : d.diasAte <= 7 ? '#EF9F27'
+                 : d.diasAte <= 30 ? '#1D9E75' : 'var(--text3)';
+    var labelDias = d.diasAte === 0 ? 'É HOJE 🎉'
+                  : d.diasAte === 1 ? 'Amanhã'
+                  : d.diasAte <= 30 ? 'Em '+d.diasAte+' dias'
+                  : 'Em '+Math.round(d.diasAte/30)+' meses';
+    return '<div style="background:'+corBg+';color:'+corText+';border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div style="font-size:22px;flex-shrink:0">'+d.icone+'</div>'+
+      '<div style="flex:1;min-width:140px">'+
+        '<div style="font-size:12px;font-weight:600;line-height:1.3">'+d.nome+'</div>'+
+        '<div style="font-size:10px;opacity:.85;margin-top:2px">'+String(d.dia).padStart(2,'0')+' de '+meses[d.mes-1]+'</div>'+
+      '</div>'+
+      '<div style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:11px;background:rgba(255,255,255,.85);color:'+corBadge+';white-space:nowrap">'+labelDias+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+/* Busca pessoa pelo nome (case-insensitive, ignora acentos/espaços extras).
+   Retorna { foto, nome, cargo, nivel } pronto pra render do avatar do gestor. */
+function _findPessoaByNome(nome){
+  if(!nome) return null;
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  if(!pessoas || !pessoas.length) return null;
+  var alvo = (typeof _slugify === 'function') ? _slugify(nome) : nome.toLowerCase();
+  // 1) match exato
+  var hit = pessoas.find(function(p){ return (p.nome||'').toLowerCase() === nome.toLowerCase(); });
+  // 2) primeiro nome / parcial
+  if(!hit) hit = pessoas.find(function(p){
+    var s = (typeof _slugify === 'function') ? _slugify(p.nome||'') : (p.nome||'').toLowerCase();
+    return s.indexOf(alvo) === 0 || alvo.indexOf(s.split(' ')[0]) >= 0;
+  });
+  return hit || null;
+}
+/* HTML do avatar circular do gestor, com fallback pra inicial colorida. */
+function _gestorAvatarHTML(nomeGestor, size){
+  var p = _findPessoaByNome(nomeGestor);
+  var s = size || 32;
+  if(p && p.foto){
+    return '<div style="width:'+s+'px;height:'+s+'px;border-radius:50%;background-image:url(\''+p.foto+'\');background-size:cover;background-position:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.18);flex-shrink:0"></div>';
+  }
+  var inicial = (nomeGestor||'?').trim().charAt(0).toUpperCase();
+  var ac = (typeof avColor === 'function') ? avColor(nomeGestor||'?') : { bg:'#0E7AB8', color:'#fff' };
+  return '<div style="width:'+s+'px;height:'+s+'px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:'+(s*.42)+'px;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.18);flex-shrink:0">'+inicial+'</div>';
+}
+
 function renderCidadesGrid(){
   const grid = document.getElementById('cidades-grid');
   if(!grid) return;
@@ -5610,13 +5818,16 @@ function renderCidadesGrid(){
     return `
     <div onclick="abrirCidade('${c.id}')" style="border:1px solid ${temCritico?'#E24B4A33':'var(--border)'};border-radius:12px;padding:14px;background:var(--surface);cursor:pointer;transition:all .12s;border-left:4px solid ${s.dot}"
       onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='${temCritico?'#E24B4A33':'var(--border)'}'">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
-        <div>
-          <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${c.nome} <span style="font-size:11px;color:var(--text3);font-family:'DM Sans',sans-serif">${c.uf}</span></div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${c.gestor}</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;gap:8px">
+        <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:0">
+          ${_gestorAvatarHTML(c.gestor, 38)}
+          <div style="min-width:0">
+            <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome} <span style="font-size:11px;color:var(--text3);font-family:'DM Sans',sans-serif">${c.uf}</span></div>
+            <div style="font-size:11px;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${c.gestor}</div>
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600">${s.label}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600;white-space:nowrap">${s.label}</span>
           <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:${sc.color}">${score}</span>
         </div>
       </div>
@@ -5647,8 +5858,14 @@ function abrirCidade(id){
   document.getElementById('cp-nome').textContent = c.nome + ' — ' + c.uf;
   const s = STATUS_CIDADE[c.status]||STATUS_CIDADE.ativa;
   document.getElementById('cp-meta').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;background:var(--surface2);border-radius:22px;border:1px solid var(--border)">
+      ${_gestorAvatarHTML(c.gestor, 32)}
+      <div style="display:flex;flex-direction:column;line-height:1.2">
+        <span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:600">Gestor</span>
+        <span style="font-size:12px;color:var(--text);font-weight:600">${c.gestor||'—'}</span>
+      </div>
+    </div>
     <span style="font-size:11px;padding:2px 9px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600">${s.label}</span>
-    <span style="font-size:11px;color:var(--text3)">Gestor: ${c.gestor}</span>
     ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\D/g,'')}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:10px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:500"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a5.526 5.526 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z" fill="#3B6D11"/><path d="M11.95 2C6.478 2 2 6.478 2 11.95c0 1.75.455 3.45 1.317 4.946L2 22l5.233-1.29A9.974 9.974 0 0011.954 21.9C17.426 21.9 21.9 17.425 21.9 11.95 21.9 6.478 17.425 2 11.95 2z" stroke="#3B6D11" stroke-width=".8" fill="none"/></svg> WhatsApp</a>` : ''}
     <span style="font-size:11px;color:var(--text3)">Desde ${c.inicio?c.inicio.split('-').reverse().join('/'):''}</span>`;
 
@@ -5696,6 +5913,10 @@ function abrirCidade(id){
     const diff=Math.round((bday-new Date().setHours(0,0,0,0))/(1000*60*60*24));
     return `<div class="row"><span style="font-size:12px;font-weight:500">${p.nome}</span><span style="font-size:10px;color:var(--text3)">${diff===0?'Hoje!':diff===1?'Amanhã':'Em '+diff+' dias'}</span><button onclick="openAI('Crie um post de aniversário para ${p.nome} da Gâmi em ${c.nome}.')" style="font-size:10px;padding:2px 7px;border:1px solid var(--orange);border-radius:4px;background:transparent;color:var(--orange);cursor:pointer;margin-left:4px">Post ↗</button></div>`;
   }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px 0">Nenhum aniversário nos próximos 14 dias.</div>';
+
+  // 📅 Datas comemorativas da cidade
+  var hostDC = document.getElementById('cp-datas-comemorativas');
+  if(hostDC && typeof renderDatasCidade === 'function') hostDC.innerHTML = renderDatasCidade(c.nome);
 
   // Equipe
   document.getElementById('cp-equipe-list').innerHTML = equipe.length>0 ? equipe.map(p=>`
@@ -6678,47 +6899,89 @@ function agendaToggleManual(idx){
   renderMinhaAgenda();
 }
 
+/* Modal de adicionar tarefa rápida — sincronizado com a aba Tarefas (mesma fonte
+   de dados via getTarefas/saveTarefas). Substitui os prompt/confirm nativos. */
 function adicionarItemAgenda(){
-  // Pergunta: tarefa de verdade (vai pra Tarefas) ou anotação rápida só na agenda?
-  var titulo = prompt('O que você quer adicionar à sua agenda hoje?');
-  if(!titulo || !titulo.trim()) return;
-  
-  var tipo = confirm('Adicionar como TAREFA (aparece também na página Tarefas)?\n\n• OK = Tarefa de verdade (vai pra Tarefas)\n• Cancelar = Só anotação rápida (fica só aqui)');
-  
-  if(tipo){
-    // Adiciona como tarefa real no sistema de Tarefas
+  var existing = document.getElementById('modal-quicktask');
+  if(existing) existing.remove();
+  var modal = document.createElement('div');
+  modal.id = 'modal-quicktask';
+  modal.className = 'modal-overlay open';
+  modal.innerHTML =
+    '<div class="modal" style="width:440px;max-width:92vw">'+
+      '<div class="modal-head">'+
+        '<div class="modal-title">+ Nova tarefa de hoje</div>'+
+        '<button class="modal-close" onclick="document.getElementById(\'modal-quicktask\').remove()">×</button>'+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:12px;padding:6px 0">'+
+        '<div>'+
+          '<div class="field-label" style="margin-bottom:6px">O que precisa ser feito?</div>'+
+          '<input id="qt-titulo" class="inp" placeholder="Ex: Postar carrossel de Maceió, ligar pro Talis..." autofocus/>'+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+          '<div>'+
+            '<div class="field-label" style="margin-bottom:6px">Horário (opcional)</div>'+
+            '<input id="qt-hora" class="inp" type="time"/>'+
+          '</div>'+
+          '<div>'+
+            '<div class="field-label" style="margin-bottom:6px">Prioridade</div>'+
+            '<select id="qt-prio" class="sel"><option value="alta">🔴 Alta</option><option value="media" selected>🟡 Média</option><option value="baixa">🟢 Baixa</option></select>'+
+          '</div>'+
+        '</div>'+
+        '<div>'+
+          '<div class="field-label" style="margin-bottom:6px">Tipo</div>'+
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="tarefa" checked/> 📋 Tarefa (aparece também em Tarefas)</label>'+
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="agenda"/> 📌 Só agenda (rápido)</label>'+
+          '</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;margin-top:6px">'+
+          '<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'modal-quicktask\').remove()">Cancelar</button>'+
+          '<button class="btn btn-primary" style="flex:2" onclick="salvarQuickTask()">Adicionar</button>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+  setTimeout(function(){ var i=document.getElementById('qt-titulo'); if(i) i.focus(); }, 50);
+  // Enter pra salvar
+  modal.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && document.activeElement && document.activeElement.id === 'qt-titulo') salvarQuickTask();
+    if(e.key === 'Escape') modal.remove();
+  });
+}
+
+function salvarQuickTask(){
+  var titulo = (document.getElementById('qt-titulo')||{}).value || '';
+  titulo = titulo.trim();
+  if(!titulo){ alert('Digite o que precisa ser feito.'); return; }
+  var hora  = (document.getElementById('qt-hora')||{}).value || '';
+  var prio  = (document.getElementById('qt-prio')||{}).value || 'media';
+  var tipoEl = document.querySelector('input[name="qt-tipo"]:checked');
+  var tipo  = tipoEl ? tipoEl.value : 'tarefa';
+
+  if(tipo === 'tarefa'){
     if(typeof getTarefas === 'function' && typeof saveTarefas === 'function'){
       var tarefas = getTarefas('diario');
-      var novaTarefa = {
+      tarefas.push({
         id: 'tf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-        texto: titulo.trim(),
-        prio: 'media',
+        texto: titulo,
+        prio: prio,
         cat: 'Outro',
         prazo: '',
+        hora: hora,
         feito: false,
         criadaEm: new Date().toISOString()
-      };
-      tarefas.push(novaTarefa);
+      });
       saveTarefas('diario', null, tarefas);
-      renderMinhaAgenda();
-      // Re-renderiza Tarefas se estiver aberta
       if(typeof tfRenderDiario === 'function') try { tfRenderDiario(); } catch(e){}
-      return;
     }
+  } else {
+    var manuais = (typeof getAgendaItensManuais === 'function') ? getAgendaItensManuais() : [];
+    manuais.push({titulo:titulo, hora:hora, icone:'⭐', feito:false});
+    if(typeof saveAgendaItensManuais === 'function') saveAgendaItensManuais(manuais);
   }
-  
-  // Adiciona como anotação rápida (só na agenda)
-  var hora = prompt('Em que horário? (ex: 14:30 — deixe vazio se não tiver hora)') || '';
-  if(hora && !/^\d{1,2}:\d{2}$/.test(hora)){
-    alert('Formato de hora inválido. Deixando sem horário.');
-    hora = '';
-  }
-  if(hora && hora.length === 4) hora = '0'+hora;
-  
-  var manuais = getAgendaItensManuais();
-  manuais.push({titulo:titulo.trim(), hora:hora, icone:'⭐', feito:false});
-  saveAgendaItensManuais(manuais);
-  renderMinhaAgenda();
+  document.getElementById('modal-quicktask').remove();
+  if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda();
 }
 
 function removerItemAgenda(manualIdx){
@@ -6734,20 +6997,45 @@ function removerItemAgenda(manualIdx){
 /* ============================
    2) PROJETAR DIA COM IA
    ============================ */
-function projetarDiaIA(){
-  var itens = coletarItensAgendaHoje();
-  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+/* Markdown muito simples → HTML (suficiente pra IA): h2/h3, bold, listas, p */
+function _mdToHtml(md){
+  if(!md) return '';
+  var s = String(md);
+  s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s = s.replace(/^### (.+)$/gm,'<h4 style="font-size:13px;font-weight:700;margin:12px 0 4px;color:var(--text)">$1</h4>');
+  s = s.replace(/^## (.+)$/gm,'<h3 style="font-size:14px;font-weight:700;margin:14px 0 6px;color:var(--text)">$1</h3>');
+  s = s.replace(/^# (.+)$/gm,'<h2 style="font-size:15px;font-weight:800;margin:14px 0 6px;color:var(--text)">$1</h2>');
+  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/`(.+?)`/g,'<code style="background:var(--surface2);padding:1px 5px;border-radius:4px;font-size:11px">$1</code>');
+  // Listas com - ou *
+  s = s.replace(/(^|\n)([\-\*] .+(\n[\-\*] .+)*)/g, function(m, pre, lst){
+    var items = lst.split('\n').map(function(l){ return '<li>'+l.replace(/^[\-\*] /,'')+'</li>'; }).join('');
+    return pre+'<ul style="margin:6px 0 6px 20px;padding:0">'+items+'</ul>';
+  });
+  // Parágrafos: junta linhas que sobraram
+  s = s.split(/\n{2,}/).map(function(p){
+    if(/^<(h\d|ul|ol|p|div)/.test(p.trim())) return p;
+    return '<p style="margin:6px 0;line-height:1.55">'+p.replace(/\n/g,'<br>')+'</p>';
+  }).join('\n');
+  return s;
+}
+
+async function projetarDiaIA(){
+  var host = document.getElementById('dia-ia-resultado');
+  if(!host){ alert('Bloco de resultado não encontrado. Recarregue a página.'); return; }
+
+  var itens = (typeof coletarItensAgendaHoje === 'function') ? coletarItensAgendaHoje() : [];
   var hoje = new Date();
   var saud = hoje.getHours() < 12 ? 'Bom dia' : hoje.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
   var diaSemana = hoje.toLocaleDateString('pt-BR',{weekday:'long'});
-  
-  var promptIA = saud+'! Projete meu dia de hoje ('+diaSemana+', '+hoje.toLocaleDateString('pt-BR')+') na Gâmi Delivery (agência de marketing).\n\n';
+
+  var promptIA = saud+'! Projete meu dia de hoje ('+diaSemana+', '+hoje.toLocaleDateString('pt-BR')+') na Gâmi Delivery (agência de marketing/operações).\n\n';
   promptIA += 'AGENDA E TAREFAS DE HOJE ('+itens.length+' itens):\n';
   if(itens.length === 0){
     promptIA += '(nenhum item agendado — sugira o que pode ser feito)\n';
   } else {
     itens.forEach(function(it){
-      promptIA += '- '+(it.hora?'['+it.hora+'] ':'')+it.icone+' '+it.titulo+' ('+it.tipo+')\n';
+      promptIA += '- '+(it.hora?'['+it.hora+'] ':'')+(it.icone||'')+' '+it.titulo+' ('+(it.tipo||'')+')\n';
     });
   }
   promptIA += '\nMonte um cronograma realista hora por hora, com:\n';
@@ -6755,12 +7043,34 @@ function projetarDiaIA(){
   promptIA += '2. Bloco de foco profundo (90 min)\n';
   promptIA += '3. Pausas estratégicas\n';
   promptIA += '4. Dica motivacional curta no final\n';
-  promptIA += 'Tom: amigo prático, breve, brasileiro. Use emojis com moderação.';
-  
-  if(typeof openAI === 'function'){
-    openAI(promptIA);
-  } else {
-    alert('Função de IA não disponível agora. Tente recarregar a página.');
+  promptIA += 'Use cabeçalhos ## e listas. Tom: amigo prático, breve, brasileiro. Use emojis com moderação.';
+
+  // UI: mostra spinner
+  host.style.display = 'block';
+  host.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:var(--text2);font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--gami-blue);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div> Projetando seu dia…</div>';
+
+  try{
+    var r = await fetch('/.netlify/functions/blog-ai',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prompt: promptIA, max_tokens: 1200})
+    });
+    var data = await r.json();
+    var conteudo = (data && data.content) ? data.content : '';
+    if(!conteudo){
+      host.innerHTML = '<div style="font-size:12px;color:var(--orange)">⚠️ Não consegui gerar o cronograma. '+(data && data.error ? data.error : 'Tente de novo em alguns segundos.')+'</div>';
+      return;
+    }
+    host.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
+        '<div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#0E7AB8;text-transform:uppercase">✨ Plano do dia</div>'+
+        '<div style="flex:1;height:1px;background:var(--border)"></div>'+
+        '<button onclick="document.getElementById(\'dia-ia-resultado\').style.display=\'none\'" title="Fechar" style="background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px">×</button>'+
+        '<button onclick="projetarDiaIA()" title="Gerar de novo" style="background:transparent;border:1px solid var(--border);border-radius:5px;color:var(--text3);cursor:pointer;font-size:11px;padding:3px 9px">↻ Refazer</button>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--text);line-height:1.55">'+_mdToHtml(conteudo)+'</div>';
+  }catch(e){
+    host.innerHTML = '<div style="font-size:12px;color:var(--orange)">⚠️ Erro de rede: '+e.message+'</div>';
   }
 }
 
