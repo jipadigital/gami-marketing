@@ -3578,7 +3578,7 @@ var AV_COLORS = [
   {bg:'#FAEEDA',color:'#854F0B'},{bg:'#FBEAF0',color:'#993556'},
   {bg:'#E1F5EE',color:'#0F6E56'},{bg:'#FAECE7',color:'#0E7AB8'},
 ];
-var NIVEL_OPTS  = ['Júnior I','Júnior II','Júnior III','Pleno I','Pleno II','Pleno III','Sênior I','Sênior II','Sênior III','Gerente','Diretor'];
+var NIVEL_OPTS  = ['Júnior I','Júnior II','Júnior III','Pleno I','Pleno II','Pleno III','Sênior I','Sênior II','Sênior III','Gestor','Gerente','Diretor'];
 
 /* ============== BROCHES PNG ============== */
 var MAPA_SENIORIDADE = {
@@ -3677,13 +3677,14 @@ var NIVEL_COLOR = {
   'Sênior I':   { bg:'#8E24AA', color:'#FFFFFF', border:'#6A1B9A' },
   'Sênior II':  { bg:'#5E35B1', color:'#FFFFFF', border:'#4527A0' },
   'Sênior III': { bg:'#212121', color:'#FFFFFF', border:'#FFD700' },
+  'Gestor':     { bg:'#EF9F27', color:'#FFFFFF', border:'#BA7517' },
   'Gerente':    { bg:'#FFB300', color:'#212121', border:'#FFC107' },
   'Diretor':    { bg:'#FFD700', color:'#212121', border:'#FFB300' },
 };
 function nivelChip(nivel){
   const n = NIVEL_COLOR[nivel] || { bg:'#F1EFE8', color:'#5F5E5A', border:'#D4C8BE' };
   const isSenior3 = nivel === 'Sênior III';
-  const isDir = nivel === 'Diretor' || nivel === 'Gerente';
+  const isDir = nivel === 'Diretor' || nivel === 'Gerente' || nivel === 'Gestor';
   const star = isDir ? ' ★' : '';
   const borderStyle = isSenior3 ? `2px solid #FFD700` : `1px solid ${n.border}`;
   return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:2px 9px;border-radius:20px;background:${n.bg};color:${n.color};border:${borderStyle};letter-spacing:.2px">${nivel}${star}</span>`;
@@ -4392,6 +4393,12 @@ function openPessoaModal(id){
             <div style="font-size:9px;font-weight:600;letter-spacing:.6px;color:var(--text3);text-transform:uppercase;margin-bottom:5px">Liderança</div>
             <div style="display:flex;flex-wrap:wrap;gap:6px">
               <button type="button"
+                id="nivel-btn-Gestor"
+                onclick="selectNivel(this, 'Gestor')"
+                style="padding:6px 14px;border-radius:20px;border:1.5px solid #BA7517;background:#EF9F27;color:#FFFFFF;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;opacity:${d.nivel==='Gestor'?1:0.45};transform:${d.nivel==='Gestor'?'scale(1.05)':'scale(1)'};box-shadow:${d.nivel==='Gestor'?'0 2px 8px rgba(0,0,0,0.18)':'none'}"
+                title="Gestor de cidade — sem trilha de senioridade"
+              >Gestor ★</button>
+              <button type="button"
                 id="nivel-btn-Gerente"
                 onclick="selectNivel(this, 'Gerente')"
                 style="padding:6px 14px;border-radius:20px;border:1.5px solid #FFC107;background:#FFB300;color:#212121;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;opacity:${d.nivel==='Gerente'?1:0.45};transform:${d.nivel==='Gerente'?'scale(1.05)':'scale(1)'};box-shadow:${d.nivel==='Gerente'?'0 2px 8px rgba(0,0,0,0.18)':'none'}"
@@ -4408,7 +4415,7 @@ function openPessoaModal(id){
       <div class="field span2" style="margin-bottom:6px">
         <div class="field-label" style="margin-bottom:6px">Referência de senioridade</div>
         <div style="display:flex;flex-wrap:wrap;gap:5px">
-          ${['Júnior I','Júnior II','Júnior III','Pleno I','Pleno II','Pleno III','Sênior I','Sênior II','Sênior III','Gerente','Diretor'].map(n=>nivelChip(n)).join('')}
+          ${['Júnior I','Júnior II','Júnior III','Pleno I','Pleno II','Pleno III','Sênior I','Sênior II','Sênior III','Gestor','Gerente','Diretor'].map(n=>nivelChip(n)).join('')}
         </div>
       </div>
       <div class="field span2" id="pf-cidade-wrap">
@@ -4659,6 +4666,7 @@ var _NIVEL_STYLE = {
   'Sênior I': {bg:'#8E24AA',color:'#FFFFFF',border:'1.5px solid #6A1B9A'},
   'Sênior II': {bg:'#5E35B1',color:'#FFFFFF',border:'1.5px solid #4527A0'},
   'Sênior III': {bg:'#212121',color:'#FFFFFF',border:'2px solid #FFD700'},
+  'Gestor': {bg:'#EF9F27',color:'#FFFFFF',border:'1.5px solid #BA7517'},
   'Gerente': {bg:'#FFB300',color:'#212121',border:'1.5px solid #FFC107'},
   'Diretor': {bg:'#FFD700',color:'#212121',border:'1.5px solid #FFB300'}
 };
@@ -10159,11 +10167,11 @@ function renderCarreira(){
   var metricsHost = document.getElementById('carreira-metrics');
   if(metricsHost){
     var totalTime = pessoas.length;
-    var emProgresso = pessoas.filter(function(p){ 
-      return p.nivel && p.nivel !== 'Diretor' && p.nivel !== 'Gerente';
+    var emProgresso = pessoas.filter(function(p){
+      return p.nivel && p.nivel !== 'Diretor' && p.nivel !== 'Gerente' && p.nivel !== 'Gestor';
     }).length;
-    var lideres = pessoas.filter(function(p){ 
-      return p.nivel === 'Gerente' || p.nivel === 'Diretor' || p.cargo === 'Diretoria' || (p.cargo||'').indexOf('Gerente')===0;
+    var lideres = pessoas.filter(function(p){
+      return p.nivel === 'Gestor' || p.nivel === 'Gerente' || p.nivel === 'Diretor' || p.cargo === 'Diretoria' || (p.cargo||'').indexOf('Gerente')===0;
     }).length;
     var seniores = pessoas.filter(function(p){ return (p.nivel||'').indexOf('Sênior')===0; }).length;
     metricsHost.innerHTML =
@@ -10396,7 +10404,8 @@ function renderCarreira(){
     var hoje = new Date();
     var proximos = pessoas.map(function(p){
       if(!p.entrada || !p.nivel) return null;
-      if(p.nivel === 'Diretor' || p.nivel === 'Gerente') return null;
+      // Gestor/Gerente/Diretor não fazem trilha automática de senioridade
+      if(p.nivel === 'Gestor' || p.nivel === 'Diretor' || p.nivel === 'Gerente') return null;
       var entrada = new Date(p.entrada);
       if(isNaN(entrada.getTime())) return null;
       var meses = (hoje.getFullYear() - entrada.getFullYear())*12 + (hoje.getMonth() - entrada.getMonth());
