@@ -562,7 +562,28 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       .rk-cidade { font-size:12px!important; }
       .rk-num { font-size:12px!important; }
     }
+
+    /* MODO FOCO: esconde tudo do dashboard exceto blocos com data-mf-keep="true" */
+    #pg-dashboard.modo-foco-on > *:not([data-mf-keep="true"]):not(style):not(#modo-foco-panel):not(#mf-fab) { display:none!important; }
+    #pg-dashboard.modo-foco-on { background:linear-gradient(180deg,rgba(15,52,96,.04) 0%,transparent 200px); }
+    #pg-dashboard.modo-foco-on [data-mf-keep="true"] { animation: dash-fadeup .4s ease both; }
+    #pg-dashboard.modo-foco-on #mf-banner { display:flex!important; }
+    /* Banner-header de modo foco */
+    #mf-banner { display:none; align-items:center; gap:14px; padding:14px 18px; background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 100%); color:white; border-radius:12px; margin-bottom:14px; box-shadow:0 4px 14px rgba(13,43,92,.18); }
+    #mf-banner .mf-title { flex:1; font-family:'Syne',sans-serif; font-size:18px; font-weight:700; letter-spacing:-.3px }
+    #mf-banner .mf-sub { font-size:12px; opacity:.85; margin-top:2px; font-weight:400 }
+    #mf-banner button { background:#FFD93D; color:#0D2B5C; border:none; padding:8px 16px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap }
   </style>
+
+  <!-- BANNER MODO FOCO (só visível quando modo-foco-on) -->
+  <div id="mf-banner" data-mf-keep="true">
+    <div style="font-size:24px">🎯</div>
+    <div style="flex:1">
+      <div class="mf-title">Modo Foco ativado</div>
+      <div class="mf-sub">Mostrando apenas Compromissos, Stickies e Recados.</div>
+    </div>
+    <button onclick="toggleModoFoco()">✕ Sair do modo foco</button>
+  </div>
 
   <!-- ====== 1. SAUDAÇÃO ANIMADA + DATA + FRASE MOTIVACIONAL ====== -->
   <div class="dash-section" style="margin-bottom:14px;padding:22px 26px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border-radius:16px;position:relative;overflow:hidden">
@@ -623,29 +644,20 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dash-clima-cidades" class="dash-clima-faixa" style="display:flex;gap:10px;overflow-x:auto;padding:4px 2px;scrollbar-width:thin"></div>
   </div>
 
-  <!-- ====== 4. PULSE — COMO VOCÊ ESTÁ HOJE? + STICKIES PESSOAIS ====== -->
-  <div class="g2 dash-section" style="margin-bottom:14px">
-    <div class="card" style="margin:0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div class="card-title" style="margin:0">💙 Como você está hoje?</div>
-        <span id="pulse-count" style="font-size:10px;color:var(--text3)">0 votos hoje</span>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;font-style:italic">📊 Resposta anônima · Mostra a média do time</div>
-      <div id="pulse-buttons" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;justify-content:space-between"></div>
-      <div id="pulse-resultado"></div>
-      <div id="pulse-grafico-semana" style="margin-top:10px"></div>
+  <!-- ====== 4. PULSE — COMO VOCÊ ESTÁ HOJE? ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="card-title" style="margin:0">💙 Como você está hoje?</div>
+      <span id="pulse-count" style="font-size:10px;color:var(--text3)">0 votos hoje</span>
     </div>
-    <div class="card" style="margin:0;background:linear-gradient(180deg,#FFFEF7 0%,#FFFCEC 100%)">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="card-title" style="margin:0;color:#854F0B">📋 Stickies pessoais</div>
-        <span style="font-size:10px;color:#854F0Bcc;font-style:italic">Só você vê · auto-salva</span>
-      </div>
-      <div id="dash-stickies" class="dash-stickies-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
-    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;font-style:italic">📊 Resposta anônima · Mostra a média do time</div>
+    <div id="pulse-buttons" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;justify-content:space-between"></div>
+    <div id="pulse-resultado"></div>
+    <div id="pulse-grafico-semana" style="margin-top:10px"></div>
   </div>
 
   <!-- ====== 5. COMPROMISSOS DE HOJE (com Streak no header) ====== -->
-  <div class="card dash-section" style="margin-bottom:14px;padding:0;overflow:hidden">
+  <div class="card dash-section" data-mf-keep="true" style="margin-bottom:14px;padding:0;overflow:hidden">
     <div style="background:linear-gradient(135deg,#0B2542,#1A3D6B);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:18px">📋</span>
@@ -666,8 +678,17 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dia-ia-resultado" style="display:none;border-top:1px solid var(--border);padding:14px 16px;background:linear-gradient(180deg,rgba(26,184,240,.04) 0%,rgba(26,184,240,0) 100%)"></div>
   </div>
 
+  <!-- ====== 5b. STICKIES PESSOAIS ====== -->
+  <div class="card dash-section" data-mf-keep="true" style="margin-bottom:14px;background:linear-gradient(180deg,#FFFEF7 0%,#FFFCEC 100%)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" style="margin:0;color:#854F0B">📋 Stickies pessoais</div>
+      <span style="font-size:10px;color:#854F0Bcc;font-style:italic">Só você vê · auto-salva</span>
+    </div>
+    <div id="dash-stickies" class="dash-stickies-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
+  </div>
+
   <!-- ====== 6. MURAL DE RECADOS ====== -->
-  <div class="card dash-section" style="margin-bottom:14px">
+  <div class="card dash-section" data-mf-keep="true" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="card-title" style="margin:0">📌 Mural de recados</div>
       <button onclick="adicionarRecado()" style="font-size:11px;padding:5px 12px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600">+ Adicionar recado</button>
@@ -6899,14 +6920,12 @@ function _icoClima(condicao, chuvaPct){
 function _renderClimaCard(item){
   var ico = _icoClima(item.condicao, item.chuvaPct);
   var corChuva = item.chuvaPct >= 60 ? '#1565C0' : item.chuvaPct >= 30 ? '#0E7AB8' : '#1AB8F0';
-  var alerta = item.chuvaPct >= 60 ? '<div style="font-size:9px;font-weight:700;color:#fff;background:#E24B4A;padding:2px 7px;border-radius:8px;margin-top:5px;letter-spacing:.4px">⚠️ ENTREGA AFETADA</div>' : '';
   return '<div class="clima-card" style="flex:0 0 140px;padding:11px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;text-align:center">'+
     '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.nome+' <span style="color:var(--text3);font-weight:400">'+item.uf+'</span></div>'+
     '<div style="font-size:30px;line-height:1;margin:6px 0">'+ico+'</div>'+
     '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--text);line-height:1">'+(item.temp != null ? item.temp+'°' : '—')+'</div>'+
     '<div style="font-size:10px;color:var(--text3);margin-top:3px;text-transform:capitalize">'+(item.condicao||'—')+'</div>'+
     '<div style="font-size:10px;color:'+corChuva+';font-weight:600;margin-top:4px">💧 '+(item.chuvaPct != null ? item.chuvaPct+'% chuva' : '—')+'</div>'+
-    alerta+
   '</div>';
 }
 function renderClimaCidades(){
@@ -7825,25 +7844,34 @@ function renderPulse(){
 var _modoFoco = false;
 function toggleModoFoco(){
   _modoFoco = !_modoFoco;
+  const dashboard = document.getElementById('pg-dashboard');
   const panel = document.getElementById('modo-foco-panel');
   const btn   = document.getElementById('btn-foco');
-  if(panel) panel.style.display = _modoFoco ? 'block' : 'none';
-  if(btn)   btn.style.background = _modoFoco ? 'var(--orange)' : 'var(--surface2)';
-  if(btn)   btn.style.color      = _modoFoco ? 'white' : 'var(--text2)';
-  if(btn)   btn.style.borderColor= _modoFoco ? 'var(--orange)' : 'var(--border)';
 
+  // Aplica/remove classe que controla a visibilidade dos blocos
+  if(dashboard){
+    if(_modoFoco) dashboard.classList.add('modo-foco-on');
+    else          dashboard.classList.remove('modo-foco-on');
+  }
+
+  // Painel antigo "Top 3 Prioridades" não é mais usado em modo foco —
+  // mantemos oculto. O modo foco agora exibe os blocos reais
+  // (Compromissos / Stickies / Mural de recados).
+  if(panel) panel.style.display = 'none';
+
+  // Atualiza visual do botão "Modo foco" no hero
+  if(btn){
+    btn.style.background  = _modoFoco ? 'rgba(255,217,61,.85)' : 'rgba(255,255,255,.12)';
+    btn.style.color       = _modoFoco ? '#0D2B5C' : 'white';
+    btn.style.borderColor = _modoFoco ? '#FFD93D' : 'rgba(255,255,255,.25)';
+    btn.innerHTML = _modoFoco
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Sair do modo foco'
+      : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Modo foco';
+  }
+
+  // No modo foco, scroll volta ao topo pra ver compromissos primeiro
   if(_modoFoco){
-    // Build top 3 urgent tasks
-    const hoje = new Date().toISOString().split('T')[0];
-    const state = JSON.parse(localStorage.getItem('gami_rotina_'+hoje)||'{}');
-    const ROTINA = ['Ver prioridades das cidades','Postar stories (3-5)','Postar no feed ou Reels','Responder mensagens','Interagir com perfis','Analisar cidades','Ajustar campanhas','Falar com gestores','Salvar ideias','Fazer relatório'];
-    const pendentes = ROTINA.filter((_,i)=>!state[i]).slice(0,3);
-    const el = document.getElementById('foco-tarefas');
-    if(el) el.innerHTML = pendentes.map((t,i)=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.08);border-radius:8px;border:1px solid rgba(255,255,255,.12)">
-        <div style="width:22px;height:22px;border-radius:50%;background:var(--orange);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${i+1}</div>
-        <span style="font-size:13px;color:white;font-weight:500">${t}</span>
-      </div>`).join('');
+    try { document.getElementById('main-content').scrollTop = 0; } catch(e){}
   }
 }
 
