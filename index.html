@@ -4550,17 +4550,24 @@ function salvarPessoa(existingId){
   
   // Lê cidades como array
   const cidades_arr = (typeof lerCidadesSelecionadas === 'function') ? lerCidadesSelecionadas() : [];
-  const isGestor = ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(cargo_val);
-  
-  if(isGestor && (cidades_arr.length === 0 || (cidades_arr.length === 1 && cidades_arr[0] === 'Matriz'))){
-    alert('Gestores precisam ter uma cidade de atuação definida.'); return;
+  // Checa se é Gestor (categoria, cargo legado OU nível Gestor entre os múltiplos)
+  let niveisSel = [];
+  try { niveisSel = JSON.parse((document.getElementById('pf-niveis')||{}).value || '[]'); } catch(e){}
+  const isGestor = categoria_val === 'Gestor'
+                || ['Gestor de Cidade','Gestor Regional','Gestor de Operações'].includes(cargo_val)
+                || (Array.isArray(niveisSel) && niveisSel.indexOf('Gestor') >= 0);
+
+  // Gestor precisa ter PELO MENOS uma cidade que não seja só Matriz
+  const semCidadeReal = cidades_arr.length === 0
+                     || (cidades_arr.length === 1 && cidades_arr[0] === 'Matriz');
+  if(isGestor && semCidadeReal){
+    alert('Gestores precisam ter uma cidade de atuação definida (além da Matriz).'); return;
   }
-  
-  // Decide se salva como string (1 cidade) ou array (multi-cidades)
-  // Multi: categoria Suporte/Marketing OU cargo contém "Suporte"/"Marketing"
-  // (na estrutura Gâmi, esses cargos podem estar dentro da categoria "Colaborador")
+
+  // Multi-cidade ativa por categoria, cargo OU nível
   const isMulti = (typeof CATEGORIAS_MULTICIDADE !== 'undefined' && CATEGORIAS_MULTICIDADE.includes(categoria_val))
-                || /Suporte|Marketing|Prospec|Ger[eê]nci|Gerente/i.test(cargo_val);
+                || /Suporte|Marketing|Prospec|Ger[eê]nci|Gerente|Diretor/i.test(cargo_val)
+                || (Array.isArray(niveisSel) && niveisSel.some(function(n){ return (typeof NIVEIS_MULTICIDADE !== 'undefined') && NIVEIS_MULTICIDADE.indexOf(n) >= 0; }));
   let cidadeFinal;
   if(isMulti && cidades_arr.length > 1){
     cidadeFinal = cidades_arr;  // array
@@ -4801,6 +4808,8 @@ function selectNivel(btn, nivel){
   }
   _setCurrentNiveis(atuais);
   _refreshNivelButtons();
+  // Atualiza UI de multi-cidade na hora (caso tenha entrado/saído de Gestor/Diretor/Gerente)
+  if(typeof atualizarUICategoriaCidades === 'function') atualizarUICategoriaCidades();
 }
 
 // ---- CARGO: agora é nível ÚNICO (categoria = cargo) ----
@@ -4857,14 +4866,20 @@ function selectFuncao(btn, funcao){
 
 // ---- CIDADE PICKER ----
 /* Categorias que podem atuar em múltiplas cidades */
-var CATEGORIAS_MULTICIDADE = ['Suporte', 'Marketing', 'Gerência', 'Gerencia'];
+var CATEGORIAS_MULTICIDADE = ['Suporte', 'Marketing', 'Gerência', 'Gerencia', 'Prospecção', 'Prospeccao', 'Diretoria', 'Gestor'];
+var NIVEIS_MULTICIDADE     = ['Gestor', 'Gerente', 'Diretor'];
 
 function isMultiCidade(){
   const cat = (document.getElementById('pf-categoria')||{}).value || '';
   const cargo = (document.getElementById('pf-cargo')||{}).value || '';
-  // Se categoria já está marcada, usa ela. Senão tenta deduzir pelo cargo
   if(CATEGORIAS_MULTICIDADE.includes(cat)) return true;
-  if(/Suporte|Marketing|Prospec|Ger[eê]nci|Gerente/i.test(cargo)) return true;
+  if(/Suporte|Marketing|Prospec|Ger[eê]nci|Gerente|Diretor/i.test(cargo)) return true;
+  // Se algum dos níveis selecionados é Gestor/Gerente/Diretor → multi-cidade
+  try{
+    const niveisRaw = (document.getElementById('pf-niveis')||{}).value || '[]';
+    const niveis = JSON.parse(niveisRaw);
+    if(Array.isArray(niveis) && niveis.some(function(n){ return NIVEIS_MULTICIDADE.indexOf(n) >= 0; })) return true;
+  }catch(e){}
   return false;
 }
 
@@ -4989,7 +5004,9 @@ function onCargoChange(){
 }
 
 // ===================== META ADS INTEGRATION =====================
-var META_TOKEN = 'EAAYlZCLBk17EBREN22qH5CpZAhsje6xIp3CwWahcSckdYihzWftVIZCWZC3xlwdI0QeqLPXuzi22IIdZABrkOeVlTBEjXgGL9mNZBmSsYpTxE7wItZAJrqCyRa2diy03ec91x9eINeixezRUgrye6ajkOYKR155SAydgZCjjqsuA97lqhZA7Df4cad4f23kldZB5sRRJO7poTdcNAM'; // token longa duração
+// 🔐 Tokens NÃO devem ficar hardcoded no front. Use sempre as Netlify Functions
+// (/.netlify/functions/meta) que leem de process.env.META_USER_TOKEN.
+var META_TOKEN = '';  // não usado diretamente no front — chamadas vão pelo proxy
 var META_ACCOUNT = 'act_1130346225232397';
 var META_API = 'https://graph.facebook.com/v19.0';
 
