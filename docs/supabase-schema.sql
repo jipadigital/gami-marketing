@@ -62,6 +62,54 @@ create trigger configuracoes_updated_at
 alter table public.pessoas
   add column if not exists niveis text;
 
+-- 7) Tabela posts_agendados — sistema de agendamento Instagram
+create table if not exists public.posts_agendados (
+  id text primary key,
+  cidade_id text,                  -- c1..c11
+  cidade_nome text,                -- redundante pra facilitar listar
+  ig_id text not null,             -- Instagram Business Account ID (de list_accounts)
+  ig_username text,                -- pra exibir
+  tipo text not null,              -- 'feed' | 'story' | 'reel' | 'carousel'
+  midia_urls text not null,        -- JSON array de URLs públicas
+  legenda text default '',
+  agendado_para timestamptz not null,
+  status text not null default 'pendente', -- pendente|publicando|publicado|falho|cancelado
+  ig_creation_id text,             -- ID temporário do container Meta
+  ig_post_id text,                 -- ID do post final
+  ig_permalink text,               -- link público do post
+  erro text,                       -- mensagem em caso de falha
+  tentativas int default 0,
+  criado_por text,                 -- nome ou email do criador
+  criado_em timestamptz default now(),
+  publicado_em timestamptz
+);
+
+create index if not exists posts_agendados_status_idx on public.posts_agendados (status);
+create index if not exists posts_agendados_agendado_idx on public.posts_agendados (agendado_para);
+create index if not exists posts_agendados_cidade_idx on public.posts_agendados (cidade_id);
+
+-- RLS
+alter table public.posts_agendados enable row level security;
+drop policy if exists "Permitir todos lerem posts_agendados" on public.posts_agendados;
+create policy "Permitir todos lerem posts_agendados" on public.posts_agendados
+  for select using (true);
+drop policy if exists "Permitir todos escreverem posts_agendados" on public.posts_agendados;
+create policy "Permitir todos escreverem posts_agendados" on public.posts_agendados
+  for insert with check (true);
+drop policy if exists "Permitir todos atualizarem posts_agendados" on public.posts_agendados;
+create policy "Permitir todos atualizarem posts_agendados" on public.posts_agendados
+  for update using (true) with check (true);
+drop policy if exists "Permitir todos apagarem posts_agendados" on public.posts_agendados;
+create policy "Permitir todos apagarem posts_agendados" on public.posts_agendados
+  for delete using (true);
+
+-- 8) Storage bucket "posts-instagram" — mídias dos posts agendados
+-- ⚠️ Storage buckets devem ser criados pela UI do Supabase OU via JS API,
+--    não direto via SQL. Crie manualmente:
+--    Supabase Dashboard → Storage → New bucket → name: posts-instagram → public: ✓
+--    File size limit: 50MB (pra reels/vídeos)
+--    Allowed MIME types: image/jpeg, image/png, image/webp, video/mp4, video/quicktime
+
 -- ====== VERIFICAÇÃO ======
 -- Depois de rodar, confirma que está OK:
 -- select count(*) from public.configuracoes where chave like 'gami_%';

@@ -1133,6 +1133,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <button id="mkt-tab-visao"     onclick="marketingAba('visao')"     class="mkt-tab-btn"     style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:600;color:var(--gami-blue);cursor:pointer;font-family:inherit;border-bottom:2.5px solid var(--gami-blue);margin-bottom:-1px;white-space:nowrap">📊 Visão Geral</button>
     <button id="mkt-tab-campanhas" onclick="marketingAba('campanhas')" class="mkt-tab-btn" style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📣 Campanhas</button>
     <button id="mkt-tab-inbox"     onclick="marketingAba('inbox')"     class="mkt-tab-btn"     style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📬 Inbox Instagram <span id="mkt-inbox-badge" style="display:none;margin-left:5px;background:#E24B4A;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px">0</span></button>
+    <button id="mkt-tab-agenda"    onclick="marketingAba('agenda')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📅 Agendamento</button>
     <button id="mkt-tab-conteudo"  onclick="marketingAba('conteudo')"  class="mkt-tab-btn"  style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">🎨 Conteúdo</button>
     <button id="mkt-tab-ideias"    onclick="marketingAba('ideias')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">💡 Banco de Ideias</button>
     <button id="mkt-tab-scripts"   onclick="marketingAba('scripts')"   class="mkt-tab-btn"   style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📝 Scripts</button>
@@ -1181,6 +1182,197 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <!-- placeholders para os outros painéis (preenchidos via marketingAba) -->
   <div id="mkt-painel-campanhas" class="mkt-painel" style="display:none"></div>
   <div id="mkt-painel-inbox"     class="mkt-painel" style="display:none"></div>
+
+  <!-- ========== SUB-ABA: AGENDAMENTO INSTAGRAM ========== -->
+  <div id="mkt-painel-agenda" class="mkt-painel" style="display:none">
+    <style>
+      @keyframes ag-fadeup { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
+      .ag-section { animation: ag-fadeup .4s ease both; }
+      .ag-card-post { transition: transform .2s ease, box-shadow .2s ease; cursor:pointer; }
+      .ag-card-post:hover { transform: translateY(-3px); box-shadow:0 6px 14px rgba(13,43,92,.15); }
+      .ag-status { display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:700;padding:3px 9px;border-radius:11px;letter-spacing:.4px;text-transform:uppercase; }
+      .ag-status-pendente   { background:#FAEEDA; color:#854F0B; }
+      .ag-status-publicando { background:#E3F2FD; color:#1565C0; }
+      .ag-status-publicado  { background:#EAF3DE; color:#3B6D11; }
+      .ag-status-falho      { background:#FCEBEB; color:#A32D2D; }
+      .ag-status-cancelado  { background:#F1EFE8; color:#5F5E5A; text-decoration:line-through; }
+      .ag-tab-btn { padding:7px 14px; border:none; border-radius:7px; background:transparent; color:var(--text3); font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
+      .ag-tab-btn.active { background:linear-gradient(135deg,#1AB8F0,#0E7AB8); color:white; box-shadow:0 2px 6px rgba(14,122,184,.25); }
+      .ag-cidade-chip { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1.5px solid var(--border);border-radius:18px;background:var(--surface);cursor:pointer;font-size:11px;font-weight:500;transition:all .15s; }
+      .ag-cidade-chip.selected { background:#1AB8F0; color:white; border-color:#1AB8F0; transform:scale(1.04); }
+      .ag-cidade-chip:hover { border-color:#1AB8F0; }
+      .ag-tipo-card { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:14px 10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;background:var(--surface);transition:all .15s;text-align:center; }
+      .ag-tipo-card.selected { border-color:#1AB8F0; background:linear-gradient(135deg,#E6F6FE,#fff); box-shadow:0 3px 10px rgba(26,184,240,.18); transform: scale(1.04); }
+      .ag-tipo-card:hover { border-color:#1AB8F0; }
+      .ag-preview-mockup { background:white; border:1px solid var(--border); border-radius:14px; overflow:hidden; max-width:340px; margin:0 auto; box-shadow:0 4px 14px rgba(13,43,92,.12); }
+      @media(max-width:768px){
+        .ag-grid-2{grid-template-columns:1fr!important}
+        .ag-grid-4{grid-template-columns:repeat(2,1fr)!important}
+      }
+    </style>
+
+    <!-- HERO -->
+    <div class="ag-section" style="margin-bottom:14px;padding:20px 22px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border-radius:14px;position:relative;overflow:hidden;color:white">
+      <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,217,61,.15),transparent 70%);pointer-events:none"></div>
+      <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div style="display:inline-block;font-size:9px;letter-spacing:1.6px;text-transform:uppercase;background:rgba(255,255,255,.2);padding:4px 11px;border-radius:14px;margin-bottom:8px;font-weight:700">📅 AGENDAMENTO INSTAGRAM</div>
+          <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-.4px;margin-bottom:4px">Agende posts pras 11 contas IG</div>
+          <div style="font-size:12px;opacity:.92;line-height:1.55;max-width:560px">Foto, carrossel, reel ou story. Programa hora, escolhe cidade(s), legenda. Sistema publica sozinho.</div>
+        </div>
+        <button onclick="abrirAgendamentoNovo()" style="padding:11px 20px;border:none;border-radius:9px;background:#FFD93D;color:#0D2B5C;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;box-shadow:0 3px 10px rgba(255,217,61,.3)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+          Novo post
+        </button>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="ag-section ag-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+      <div class="card" style="margin:0;padding:14px;text-align:center;border-left:3px solid #EF9F27">
+        <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:4px">Pendentes</div>
+        <div id="ag-stat-pendente" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#854F0B">0</div>
+      </div>
+      <div class="card" style="margin:0;padding:14px;text-align:center;border-left:3px solid #1565C0">
+        <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:4px">Publicando</div>
+        <div id="ag-stat-publicando" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#1565C0">0</div>
+      </div>
+      <div class="card" style="margin:0;padding:14px;text-align:center;border-left:3px solid #1D9E75">
+        <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:4px">Publicados</div>
+        <div id="ag-stat-publicado" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#3B6D11">0</div>
+      </div>
+      <div class="card" style="margin:0;padding:14px;text-align:center;border-left:3px solid #E24B4A">
+        <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:4px">Falhos</div>
+        <div id="ag-stat-falho" style="font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:#A32D2D">0</div>
+      </div>
+    </div>
+
+    <!-- FILTROS + LISTA -->
+    <div class="card ag-section" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="ag-tab-btn active" data-filtro="todos"      onclick="agSetFiltro(this,'todos')">Todos</button>
+          <button class="ag-tab-btn"        data-filtro="pendente"   onclick="agSetFiltro(this,'pendente')">⏳ Pendentes</button>
+          <button class="ag-tab-btn"        data-filtro="publicando" onclick="agSetFiltro(this,'publicando')">📤 Publicando</button>
+          <button class="ag-tab-btn"        data-filtro="publicado"  onclick="agSetFiltro(this,'publicado')">✓ Publicados</button>
+          <button class="ag-tab-btn"        data-filtro="falho"      onclick="agSetFiltro(this,'falho')">⚠️ Falhos</button>
+        </div>
+        <button onclick="agRecarregar()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↻ Atualizar</button>
+      </div>
+      <div id="ag-lista" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;min-height:120px"></div>
+    </div>
+
+  </div>
+
+  <!-- Modal de criar/editar agendamento (fora do painel pra ficar global) -->
+  <div id="ag-modal" class="modal-overlay">
+    <div class="modal" style="max-width:920px;width:96vw;max-height:92vh;overflow-y:auto">
+      <div class="modal-head">
+        <div class="modal-title">📅 Novo agendamento Instagram</div>
+        <button class="modal-close" onclick="document.getElementById('ag-modal').classList.remove('open')">×</button>
+      </div>
+      <div class="ag-grid-2" style="display:grid;grid-template-columns:1fr 360px;gap:18px;padding:8px 0">
+        <!-- COLUNA ESQUERDA: formulário -->
+        <div>
+          <!-- 1. Tipo -->
+          <div style="margin-bottom:14px">
+            <div class="field-label" style="margin-bottom:8px">1. Tipo de publicação</div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+              <div class="ag-tipo-card selected" data-tipo="feed" onclick="agSelectTipo(this,'feed')"><div style="font-size:22px">📷</div><div style="font-size:11px;font-weight:600">Feed</div></div>
+              <div class="ag-tipo-card" data-tipo="carousel" onclick="agSelectTipo(this,'carousel')"><div style="font-size:22px">🎴</div><div style="font-size:11px;font-weight:600">Carrossel</div></div>
+              <div class="ag-tipo-card" data-tipo="reel" onclick="agSelectTipo(this,'reel')"><div style="font-size:22px">🎬</div><div style="font-size:11px;font-weight:600">Reel</div></div>
+              <div class="ag-tipo-card" data-tipo="story" onclick="agSelectTipo(this,'story')"><div style="font-size:22px">🔮</div><div style="font-size:11px;font-weight:600">Story</div></div>
+            </div>
+          </div>
+
+          <!-- 2. Cidades -->
+          <div style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div class="field-label" style="margin:0">2. Cidades</div>
+              <div style="display:flex;gap:6px">
+                <button onclick="agToggleTodas(true)" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text3);cursor:pointer;font-family:inherit">Todas</button>
+                <button onclick="agToggleTodas(false)" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text3);cursor:pointer;font-family:inherit">Limpar</button>
+              </div>
+            </div>
+            <div id="ag-cidades-chips" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+            <div id="ag-cidades-aviso" style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic">Selecione 1+ cidades. Cada uma vai gerar um post separado.</div>
+          </div>
+
+          <!-- 3. Mídia -->
+          <div style="margin-bottom:14px">
+            <div class="field-label" style="margin-bottom:6px">3. Mídia <span id="ag-midia-count" style="font-size:11px;color:var(--text3);font-weight:500;margin-left:4px"></span></div>
+            <div id="ag-dropzone" onclick="document.getElementById('ag-file-input').click()" style="border:2px dashed var(--border);border-radius:10px;padding:24px;text-align:center;background:var(--surface2);cursor:pointer;transition:all .2s">
+              <div style="font-size:32px;margin-bottom:6px">⬆️</div>
+              <div style="font-size:12px;color:var(--text2);font-weight:600">Clique pra escolher imagens/vídeos</div>
+              <div style="font-size:10px;color:var(--text3);margin-top:3px">JPG, PNG, MP4 · max 10MB</div>
+            </div>
+            <input id="ag-file-input" type="file" accept="image/*,video/mp4" multiple style="display:none" onchange="agOnFiles(this.files)"/>
+            <div id="ag-midia-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
+          </div>
+
+          <!-- 4. Legenda -->
+          <div style="margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <div class="field-label" style="margin:0">4. Legenda</div>
+              <button onclick="agGerarLegendaIA()" style="font-size:10px;padding:4px 10px;border:1px solid var(--orange);border-radius:6px;background:transparent;color:var(--orange);cursor:pointer;font-family:inherit;font-weight:600">✨ Gerar com IA</button>
+            </div>
+            <textarea id="ag-legenda" oninput="agAtualizarPreview()" placeholder="Escreva a legenda… use {cidade} pra substituir pelo nome da cidade selecionada (ex: 'Aprovado em {cidade}!')" class="inp" style="width:100%;min-height:100px;resize:vertical;font-size:13px;line-height:1.5"></textarea>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px">💡 <strong>{cidade}</strong> vira o nome da cidade automaticamente em cada post.</div>
+          </div>
+
+          <!-- 5. Data e hora -->
+          <div style="margin-bottom:14px">
+            <div class="field-label" style="margin-bottom:6px">5. Quando publicar?</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="ag-data" type="date" class="inp"/>
+              <input id="ag-hora" type="time" class="inp" value="09:00"/>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+              <button onclick="agQuickTime('agora')" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">Em 5 min</button>
+              <button onclick="agQuickTime('hoje-tarde')" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">Hoje 14h</button>
+              <button onclick="agQuickTime('amanha-9')" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">Amanhã 9h</button>
+            </div>
+          </div>
+
+          <!-- AÇÕES -->
+          <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--border)">
+            <button class="btn btn-ghost" style="flex:1" onclick="document.getElementById('ag-modal').classList.remove('open')">Cancelar</button>
+            <button class="btn btn-primary" style="flex:2" onclick="agSalvar()">📅 Agendar postagem</button>
+          </div>
+        </div>
+
+        <!-- COLUNA DIREITA: Preview Instagram -->
+        <div>
+          <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:8px">Pré-visualização</div>
+          <div class="ag-preview-mockup" id="ag-preview-mockup">
+            <!-- Header IG -->
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #f0f0f0">
+              <div id="ag-preview-foto" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);padding:2px"><div style="width:100%;height:100%;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#666">G</div></div>
+              <div style="flex:1">
+                <div id="ag-preview-username" style="font-size:13px;font-weight:600;color:#262626">gamidelivery</div>
+                <div id="ag-preview-cidade" style="font-size:11px;color:#8e8e8e">Brasil</div>
+              </div>
+              <div style="font-size:18px;color:#262626">⋯</div>
+            </div>
+            <!-- Mídia -->
+            <div id="ag-preview-midia" style="width:100%;aspect-ratio:1/1;background:#fafafa;display:flex;align-items:center;justify-content:center;color:#bdbdbd;font-size:13px">Sem mídia ainda</div>
+            <!-- Ações IG -->
+            <div style="padding:10px 12px">
+              <div style="display:flex;gap:14px;align-items:center;margin-bottom:8px">
+                <span style="font-size:22px">🤍</span>
+                <span style="font-size:22px">💬</span>
+                <span style="font-size:22px">📤</span>
+                <span style="font-size:22px;margin-left:auto">🔖</span>
+              </div>
+              <div style="font-size:13px;color:#262626;line-height:1.4"><strong id="ag-preview-username2">gamidelivery</strong> <span id="ag-preview-legenda" style="white-space:pre-wrap"></span></div>
+              <div style="font-size:10px;color:#8e8e8e;text-transform:uppercase;letter-spacing:.4px;margin-top:6px">Agendado para <span id="ag-preview-quando">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="mkt-painel-conteudo"  class="mkt-painel" style="display:none"></div>
   <div id="mkt-painel-ideias"    class="mkt-painel" style="display:none"></div>
   <div id="mkt-painel-scripts"   class="mkt-painel" style="display:none"></div>
@@ -9554,7 +9746,7 @@ function tarefaAba(aba){
 /* ============================================================ */
 function marketingAba(aba){
   // Mostra/esconde painéis
-  ['visao','campanhas','inbox','conteudo','ideias','scripts'].forEach(function(t){
+  ['visao','campanhas','inbox','agenda','conteudo','ideias','scripts'].forEach(function(t){
     var painel = document.getElementById('mkt-painel-'+t);
     if(painel) painel.style.display = (t === aba) ? 'block' : 'none';
     var btn = document.getElementById('mkt-tab-'+t);
@@ -9564,6 +9756,7 @@ function marketingAba(aba){
       btn.style.fontWeight = (t === aba) ? '600' : '500';
     }
   });
+  if(aba === 'agenda' && typeof agInit === 'function') agInit();
   
   // Carrega conteúdo das páginas originais para dentro dos painéis (uma vez só)
   if(aba === 'campanhas'){
@@ -11625,6 +11818,393 @@ function renderIdeiasRapidas(){
    abre autenticado automaticamente. Se o portal bloqueia iframe via
    X-Frame-Options/CSP frame-ancestors, mostramos fallback "abrir em nova aba".
 */
+/* ====================== AGENDAMENTO INSTAGRAM ======================
+   Sistema completo de criar/listar/publicar posts agendados via Graph API.
+   Backend: /.netlify/functions/posts-agenda + posts-publicar + posts-upload.
+*/
+var _AG_FILTRO = 'todos';
+var _AG_POSTS  = [];
+var _AG_FORM   = { tipo:'feed', cidades:[], midias:[] };
+
+function agInit(){
+  agRecarregar();
+  if(typeof renderClimaCidades === 'function'){} // noop, só pra garantir
+}
+
+async function agRecarregar(){
+  try{
+    var r = await fetch('/.netlify/functions/posts-agenda?action=listar&limite=200');
+    var d = await r.json();
+    _AG_POSTS = d.posts || [];
+    agAtualizarStats();
+    agRenderLista();
+  }catch(e){
+    console.warn('agRecarregar:', e);
+    var host = document.getElementById('ag-lista');
+    if(host) host.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">⚠️ Não foi possível carregar agendamentos. Verifique se a tabela posts_agendados existe no Supabase.</div>';
+  }
+}
+
+function agAtualizarStats(){
+  var st = { pendente:0, publicando:0, publicado:0, falho:0 };
+  _AG_POSTS.forEach(function(p){ if(st[p.status] !== undefined) st[p.status]++; });
+  ['pendente','publicando','publicado','falho'].forEach(function(k){
+    var el = document.getElementById('ag-stat-'+k);
+    if(el) el.textContent = st[k];
+  });
+}
+
+function agSetFiltro(btn, f){
+  _AG_FILTRO = f;
+  document.querySelectorAll('#mkt-painel-agenda .ag-tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  agRenderLista();
+}
+
+function _agFmtData(iso){
+  if(!iso) return '—';
+  try{
+    var d = new Date(iso);
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mm = String(d.getMinutes()).padStart(2,'0');
+    return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}) + ' · ' + hh+':'+mm;
+  }catch(e){return iso;}
+}
+function _agTipoIcone(t){ return t==='feed'?'📷':t==='carousel'?'🎴':t==='reel'?'🎬':t==='story'?'🔮':'📝'; }
+
+function agRenderLista(){
+  var host = document.getElementById('ag-lista');
+  if(!host) return;
+  var lista = _AG_POSTS.slice();
+  if(_AG_FILTRO !== 'todos') lista = lista.filter(function(p){ return p.status === _AG_FILTRO; });
+  if(!lista.length){
+    host.innerHTML = '<div style="grid-column:1/-1;padding:30px 20px;text-align:center;color:var(--text3);font-size:12px;font-style:italic">'+
+      '<div style="font-size:36px;margin-bottom:8px">📭</div>'+
+      'Nenhum post '+(_AG_FILTRO==='todos'?'agendado':_AG_FILTRO)+' por enquanto. Clique em <strong>+ Novo post</strong> pra começar.'+
+      '</div>';
+    return;
+  }
+  host.innerHTML = lista.map(function(p){
+    var midias = Array.isArray(p.midia_urls) ? p.midia_urls : [];
+    var thumb = midias[0] || '';
+    var thumbHTML = thumb
+      ? '<div style="width:100%;aspect-ratio:1/1;background-image:url(\''+thumb+'\');background-size:cover;background-position:center;border-radius:8px"></div>'
+      : '<div style="width:100%;aspect-ratio:1/1;background:var(--surface2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px">'+_agTipoIcone(p.tipo)+'</div>';
+    var legendaCurta = (p.legenda||'').slice(0, 80) + ((p.legenda||'').length > 80 ? '…' : '');
+    var btnAction = '';
+    if(p.status === 'pendente'){
+      btnAction = '<button onclick="event.stopPropagation();agPublicarAgora(\''+p.id+'\')" title="Publicar agora" style="font-size:10px;padding:3px 8px;border:1px solid #1AB8F0;border-radius:5px;background:transparent;color:#1AB8F0;cursor:pointer;font-family:inherit">▶</button>'+
+                  '<button onclick="event.stopPropagation();agCancelar(\''+p.id+'\')" title="Cancelar" style="font-size:10px;padding:3px 8px;border:1px solid #f5b5b5;border-radius:5px;background:transparent;color:#A32D2D;cursor:pointer;font-family:inherit">✕</button>';
+    } else if(p.status === 'falho'){
+      btnAction = '<button onclick="event.stopPropagation();agRepublicar(\''+p.id+'\')" title="Tentar de novo" style="font-size:10px;padding:3px 8px;border:1px solid #EF9F27;border-radius:5px;background:transparent;color:#EF9F27;cursor:pointer;font-family:inherit">↻ Tentar</button>';
+    } else if(p.status === 'publicado' && p.ig_permalink){
+      btnAction = '<a href="'+p.ig_permalink+'" target="_blank" rel="noopener" style="font-size:10px;padding:3px 8px;border:1px solid var(--green);border-radius:5px;background:transparent;color:#3B6D11;cursor:pointer;font-family:inherit;text-decoration:none">Ver no IG ↗</a>';
+    }
+    var erroBox = p.erro ? '<div style="margin-top:6px;padding:5px 7px;background:#FCEBEB;border-radius:5px;font-size:10px;color:#A32D2D" title="'+p.erro.replace(/"/g,'&quot;')+'">⚠️ '+p.erro.slice(0,80)+(p.erro.length>80?'…':'')+'</div>' : '';
+    return '<div class="ag-card-post card" style="padding:10px;display:flex;flex-direction:column;gap:8px;margin:0">'+
+      thumbHTML+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:5px">'+
+        '<span class="ag-status ag-status-'+p.status+'">'+p.status+'</span>'+
+        '<span style="font-size:10px;color:var(--text3)">'+_agTipoIcone(p.tipo)+' '+p.tipo+'</span>'+
+      '</div>'+
+      '<div style="font-size:11px;font-weight:600;color:var(--text);line-height:1.3">📍 '+(p.cidade_nome||p.ig_username||'—')+'</div>'+
+      (legendaCurta ? '<div style="font-size:11px;color:var(--text3);line-height:1.4;min-height:30px">'+legendaCurta+'</div>' : '<div style="min-height:30px"></div>')+
+      '<div style="font-size:10px;color:var(--text3);font-weight:500">⏰ '+_agFmtData(p.agendado_para)+'</div>'+
+      erroBox+
+      (btnAction ? '<div style="display:flex;gap:5px;flex-wrap:wrap">'+btnAction+'</div>' : '')+
+      '</div>';
+  }).join('');
+}
+
+/* ===== Modal de novo agendamento ===== */
+function abrirAgendamentoNovo(){
+  _AG_FORM = { tipo:'feed', cidades:[], midias:[] };
+  // Reset form
+  ['ag-legenda'].forEach(function(id){var el=document.getElementById(id); if(el) el.value='';});
+  // Data padrão: amanhã 9h
+  var amanha = new Date(); amanha.setDate(amanha.getDate()+1);
+  document.getElementById('ag-data').value = amanha.toISOString().split('T')[0];
+  document.getElementById('ag-hora').value = '09:00';
+  // Tipo padrão feed
+  document.querySelectorAll('#ag-modal .ag-tipo-card').forEach(function(c){ c.classList.toggle('selected', c.dataset.tipo === 'feed'); });
+  // Renderiza chips de cidades
+  agRenderCidadesChips();
+  agRenderMidiaPreview();
+  agAtualizarPreview();
+  document.getElementById('ag-modal').classList.add('open');
+}
+
+function agRenderCidadesChips(){
+  var host = document.getElementById('ag-cidades-chips');
+  if(!host) return;
+  // Pega contas IG conectadas (do cache do sync)
+  var contas = (typeof getIgMap === 'function') ? getIgMap() : {};
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  // Lista de cidades com seu ig_username (a partir do mapa salvo OU do CIDADES_DATA_DEFAULT)
+  var html = cidades.map(function(c){
+    var igUser = contas[c.id] || ''; // username salvo no cache
+    var sel = _AG_FORM.cidades.find(function(x){ return x.cidade_id === c.id; });
+    return '<button type="button" class="ag-cidade-chip'+(sel?' selected':'')+'" onclick="agToggleCidade(\''+c.id+'\',\''+(c.nome||'').replace(/'/g,"\\'")+'\',\''+igUser+'\')">📍 '+c.nome+(igUser?' · @'+igUser:'')+'</button>';
+  }).join('');
+  host.innerHTML = html;
+}
+
+async function agToggleCidade(cidadeId, cidadeNome, igUsername){
+  // Pra agendar precisamos do ig_id de fato. Como o cache só tem username, vamos buscar via list_accounts
+  if(!_AG_IG_ACCOUNTS_CACHE){
+    try{
+      var r = await fetch('/.netlify/functions/instagram?action=list_accounts');
+      var d = await r.json();
+      _AG_IG_ACCOUNTS_CACHE = d.contas || [];
+    }catch(e){ _AG_IG_ACCOUNTS_CACHE = []; }
+  }
+  var conta = _AG_IG_ACCOUNTS_CACHE.find(function(x){ return x.ig_username === igUsername; });
+  var idx = _AG_FORM.cidades.findIndex(function(x){ return x.cidade_id === cidadeId; });
+  if(idx >= 0){
+    _AG_FORM.cidades.splice(idx, 1);
+  } else {
+    if(!conta){
+      alert('Cidade '+cidadeNome+' ainda não tem Instagram associado. Vá em Cidades → 📸 Sincronizar IG ao vivo primeiro.');
+      return;
+    }
+    _AG_FORM.cidades.push({
+      cidade_id: cidadeId, cidade_nome: cidadeNome,
+      ig_id: conta.ig_id, ig_username: conta.ig_username,
+    });
+  }
+  agRenderCidadesChips();
+  agAtualizarPreview();
+}
+var _AG_IG_ACCOUNTS_CACHE = null;
+
+function agToggleTodas(marcar){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  if(marcar){
+    // Tenta selecionar todas com IG conhecido
+    var contas = (typeof getIgMap === 'function') ? getIgMap() : {};
+    cidades.forEach(function(c){
+      var u = contas[c.id];
+      if(!u) return;
+      if(!_AG_IG_ACCOUNTS_CACHE) return; // sem cache, ignora
+      var ig = _AG_IG_ACCOUNTS_CACHE.find(function(x){ return x.ig_username === u; });
+      if(ig && !_AG_FORM.cidades.find(function(x){return x.cidade_id===c.id;})){
+        _AG_FORM.cidades.push({cidade_id:c.id, cidade_nome:c.nome, ig_id:ig.ig_id, ig_username:ig.ig_username});
+      }
+    });
+  } else {
+    _AG_FORM.cidades = [];
+  }
+  agRenderCidadesChips();
+  agAtualizarPreview();
+}
+
+function agSelectTipo(card, tipo){
+  _AG_FORM.tipo = tipo;
+  document.querySelectorAll('#ag-modal .ag-tipo-card').forEach(function(c){ c.classList.toggle('selected', c === card); });
+  agAtualizarPreview();
+}
+
+/* ===== Mídia: upload pro Supabase Storage ===== */
+async function agOnFiles(files){
+  if(!files || !files.length) return;
+  var box = document.getElementById('ag-midia-preview');
+  if(!box) return;
+  for(var i=0; i<files.length; i++){
+    var file = files[i];
+    if(file.size > 10 * 1024 * 1024){
+      alert('Arquivo "'+file.name+'" tem mais de 10MB. Reduza antes.');
+      continue;
+    }
+    var localUrl = URL.createObjectURL(file);
+    var tempItem = { url:'', loading:true, file:file, localUrl:localUrl };
+    _AG_FORM.midias.push(tempItem);
+    agRenderMidiaPreview();
+    // Faz upload assíncrono
+    try{
+      var b64 = await _agFileToBase64(file);
+      var r = await fetch('/.netlify/functions/posts-upload', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({filename:file.name, contentType:file.type, dataBase64:b64})
+      });
+      var d = await r.json();
+      if(d.url){
+        tempItem.url = d.url;
+        tempItem.loading = false;
+      } else {
+        alert('Upload falhou: '+(d.error||'erro')+' '+(d.detalhe||''));
+        var idx = _AG_FORM.midias.indexOf(tempItem);
+        if(idx >= 0) _AG_FORM.midias.splice(idx,1);
+      }
+    }catch(e){
+      alert('Erro upload: '+e.message);
+      var idx2 = _AG_FORM.midias.indexOf(tempItem);
+      if(idx2 >= 0) _AG_FORM.midias.splice(idx2,1);
+    }
+    agRenderMidiaPreview();
+    agAtualizarPreview();
+  }
+}
+function _agFileToBase64(file){
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onload = function(){ resolve(fr.result.split(',')[1]); };
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+function agRemoverMidia(idx){
+  _AG_FORM.midias.splice(idx, 1);
+  agRenderMidiaPreview();
+  agAtualizarPreview();
+}
+function agRenderMidiaPreview(){
+  var box = document.getElementById('ag-midia-preview');
+  var ct = document.getElementById('ag-midia-count');
+  if(!box) return;
+  if(ct) ct.textContent = _AG_FORM.midias.length ? '· '+_AG_FORM.midias.length+' arquivo(s)' : '';
+  if(!_AG_FORM.midias.length){ box.innerHTML = ''; return; }
+  box.innerHTML = _AG_FORM.midias.map(function(m, i){
+    var src = m.url || m.localUrl || '';
+    var loadingOverlay = m.loading ? '<div style="position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px">⬆️ Enviando…</div>' : '';
+    return '<div style="position:relative;width:80px;height:80px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">'+
+      '<div style="width:100%;height:100%;background-image:url(\''+src+'\');background-size:cover;background-position:center"></div>'+
+      loadingOverlay+
+      '<button onclick="agRemoverMidia('+i+')" style="position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;background:#E24B4A;color:white;border:none;cursor:pointer;font-size:11px;font-weight:700;line-height:1">×</button>'+
+    '</div>';
+  }).join('');
+}
+
+/* ===== Quick time ===== */
+function agQuickTime(modo){
+  var d = new Date();
+  if(modo === 'agora'){ d.setMinutes(d.getMinutes()+5); }
+  else if(modo === 'hoje-tarde'){ d.setHours(14,0,0,0); }
+  else if(modo === 'amanha-9'){ d.setDate(d.getDate()+1); d.setHours(9,0,0,0); }
+  document.getElementById('ag-data').value = d.toISOString().split('T')[0];
+  document.getElementById('ag-hora').value = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  agAtualizarPreview();
+}
+
+/* ===== Preview Instagram ===== */
+function agAtualizarPreview(){
+  var legenda = (document.getElementById('ag-legenda')||{}).value || '';
+  var data = (document.getElementById('ag-data')||{}).value || '';
+  var hora = (document.getElementById('ag-hora')||{}).value || '';
+  var cidadeAtiva = _AG_FORM.cidades[0];
+  var u = cidadeAtiva ? '@'+cidadeAtiva.ig_username : 'gamidelivery';
+  var localizacao = cidadeAtiva ? cidadeAtiva.cidade_nome : 'Brasil';
+  var legendaPreview = legenda.replace(/\{cidade\}/g, cidadeAtiva ? cidadeAtiva.cidade_nome : '[cidade]');
+
+  var u1 = document.getElementById('ag-preview-username');
+  var u2 = document.getElementById('ag-preview-username2');
+  var c  = document.getElementById('ag-preview-cidade');
+  var l  = document.getElementById('ag-preview-legenda');
+  var q  = document.getElementById('ag-preview-quando');
+  var m  = document.getElementById('ag-preview-midia');
+  if(u1) u1.textContent = (cidadeAtiva ? cidadeAtiva.ig_username : 'gamidelivery');
+  if(u2) u2.textContent = (cidadeAtiva ? cidadeAtiva.ig_username : 'gamidelivery');
+  if(c)  c.textContent = localizacao;
+  if(l)  l.textContent = legendaPreview;
+  if(q)  q.textContent = (data && hora) ? (data.split('-').reverse().join('/')+' às '+hora) : '—';
+  if(m){
+    var midia = _AG_FORM.midias[0];
+    if(midia){
+      var src = midia.url || midia.localUrl;
+      m.style.backgroundImage = 'url('+src+')';
+      m.style.backgroundSize = 'cover';
+      m.style.backgroundPosition = 'center';
+      m.innerHTML = '';
+    } else {
+      m.style.backgroundImage = '';
+      m.innerHTML = 'Sem mídia ainda';
+    }
+  }
+}
+
+/* ===== Gerar legenda com IA ===== */
+async function agGerarLegendaIA(){
+  var ta = document.getElementById('ag-legenda');
+  if(!ta) return;
+  var cidadesNames = _AG_FORM.cidades.map(function(c){return c.cidade_nome;}).join(', ');
+  var tipo = _AG_FORM.tipo;
+  var prompt = 'Crie uma legenda para Instagram da Gâmi Delivery. Tipo: '+tipo+'. Cidades: '+(cidadesNames||'genérico')+'. Use {cidade} como placeholder pra cidade. Retorne APENAS a legenda, com hashtags ao final, sem explicações. Tom amigável e brasileiro.';
+  ta.value = '✨ Gerando…';
+  try{
+    var r = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt, max_tokens:400})});
+    var d = await r.json();
+    ta.value = (d.content||'').trim();
+  }catch(e){ ta.value = ''; alert('Erro ao gerar: '+e.message); }
+  agAtualizarPreview();
+}
+
+/* ===== Salvar agendamento ===== */
+async function agSalvar(){
+  var legenda = (document.getElementById('ag-legenda')||{}).value || '';
+  var data = (document.getElementById('ag-data')||{}).value;
+  var hora = (document.getElementById('ag-hora')||{}).value;
+  if(!_AG_FORM.cidades.length){ alert('Selecione pelo menos 1 cidade.'); return; }
+  if(!_AG_FORM.midias.length){ alert('Adicione pelo menos 1 mídia.'); return; }
+  if(_AG_FORM.midias.some(function(m){return m.loading;})){ alert('Aguarde upload das mídias terminar.'); return; }
+  if(!data || !hora){ alert('Defina data e hora.'); return; }
+  if(_AG_FORM.tipo === 'carousel' && _AG_FORM.midias.length < 2){ alert('Carrossel precisa de 2+ mídias.'); return; }
+
+  var agendadoPara = new Date(data+'T'+hora+':00').toISOString();
+  var midiaUrls = _AG_FORM.midias.map(function(m){return m.url;});
+
+  // Cria 1 post por cidade
+  var sucessos = 0, erros = [];
+  for(var i=0; i<_AG_FORM.cidades.length; i++){
+    var c = _AG_FORM.cidades[i];
+    var legendaFinal = legenda.replace(/\{cidade\}/g, c.cidade_nome);
+    try{
+      var r = await fetch('/.netlify/functions/posts-agenda?action=criar',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          cidade_id: c.cidade_id,
+          cidade_nome: c.cidade_nome,
+          ig_id: c.ig_id,
+          ig_username: c.ig_username,
+          tipo: _AG_FORM.tipo,
+          midia_urls: midiaUrls,
+          legenda: legendaFinal,
+          agendado_para: agendadoPara,
+        })
+      });
+      var d = await r.json();
+      if(d.ok) sucessos++;
+      else erros.push(c.cidade_nome+': '+(d.error||'erro'));
+    }catch(e){ erros.push(c.cidade_nome+': '+e.message); }
+  }
+  if(sucessos > 0) alert('✅ '+sucessos+' agendamento(s) criado(s)!'+(erros.length?'\n\nFalhas:\n'+erros.join('\n'):''));
+  else alert('❌ Nenhum agendamento foi criado.\n'+erros.join('\n'));
+  document.getElementById('ag-modal').classList.remove('open');
+  agRecarregar();
+}
+
+/* ===== Ações ===== */
+async function agPublicarAgora(id){
+  if(!confirm('Publicar este post AGORA?')) return;
+  try{
+    var r = await fetch('/.netlify/functions/posts-publicar?id='+encodeURIComponent(id));
+    var d = await r.json();
+    if(d.ok) alert('✅ Publicado! '+(d.permalink||''));
+    else alert('❌ Falha: '+(d.erro||d.error||'erro'));
+  }catch(e){ alert('Erro: '+e.message); }
+  agRecarregar();
+}
+async function agCancelar(id){
+  if(!confirm('Cancelar este agendamento?')) return;
+  await fetch('/.netlify/functions/posts-agenda?action=cancelar&id='+encodeURIComponent(id),{method:'POST'});
+  agRecarregar();
+}
+async function agRepublicar(id){
+  await fetch('/.netlify/functions/posts-agenda?action=republicar&id='+encodeURIComponent(id),{method:'POST'});
+  alert('Reagendado como pendente. O cron vai pegar na próxima rodada (até 15 min) ou clica em ▶ pra publicar agora.');
+  agRecarregar();
+}
+
 var _PORTAL_TIMER = null;
 var _PORTAL_OK = false;
 
