@@ -507,31 +507,59 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
 <!-- ==================== DASHBOARD ==================== -->
 <div class="page active" id="pg-dashboard">
+  <style>
+    @keyframes dash-fadeup { 0%{opacity:0;transform:translateY(14px)} 100%{opacity:1;transform:translateY(0)} }
+    @keyframes dash-shine { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+    @keyframes dash-stamp { 0%{transform:rotate(-2deg) scale(.96)} 50%{transform:rotate(-2deg) scale(1.02)} 100%{transform:rotate(-2deg) scale(1)} }
+    .dash-section { animation: dash-fadeup .5s ease both; }
+    .dash-section:nth-child(2){animation-delay:.05s}
+    .dash-section:nth-child(3){animation-delay:.1s}
+    .dash-section:nth-child(4){animation-delay:.15s}
+    .dash-section:nth-child(5){animation-delay:.2s}
+    .dash-section:nth-child(6){animation-delay:.25s}
+    .pulse-emoji-btn { transition: transform .2s ease, background .2s; cursor:pointer; }
+    .pulse-emoji-btn:hover { transform: translateY(-3px) scale(1.08); }
+    .clima-card { transition: transform .2s ease, box-shadow .2s ease; }
+    .clima-card:hover { transform: translateY(-2px); box-shadow:0 6px 14px rgba(13,43,92,.12); }
+    .mural-foto { transition: transform .25s ease, z-index 0s; }
+    .mural-foto:hover { transform: scale(1.18); z-index:5; box-shadow:0 4px 12px rgba(13,43,92,.25); }
+    .stickie-yellow { background:linear-gradient(135deg,#FFF59D 0%,#FFEE58 100%); border:1px solid #F9A825; transform:rotate(-1.2deg); box-shadow:0 4px 10px rgba(0,0,0,.1); position:relative; }
+    .stickie-yellow:nth-child(2){transform:rotate(.8deg)}
+    .stickie-yellow:nth-child(3){transform:rotate(-.6deg)}
+    .stickie-yellow textarea{background:transparent;border:none;width:100%;font-family:'Caveat',cursive,inherit;font-size:14px;line-height:1.5;color:#5C4810;resize:none;outline:none}
+    .streak-flame { font-size:22px; animation: dash-stamp 2s ease-in-out infinite; display:inline-block }
+    @media(max-width:768px){
+      .dash-clima-faixa{flex-wrap:nowrap!important;overflow-x:auto;padding-bottom:6px}
+      .dash-stickies-grid{grid-template-columns:1fr!important}
+    }
+  </style>
 
-  <!-- HERO: SAUDAÇÃO + CLIMA + AÇÕES -->
-  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-    <div>
-      <div class="page-title" id="dash-saudacao">Bom dia, time Gâmi 👋</div>
-      <div class="page-sub" id="dash-data-hoje"></div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <div id="dash-clima" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">
-        <div id="dash-clima-ico" style="font-size:20px">⛅</div>
-        <div>
-          <div id="dash-clima-temp" style="font-size:15px;font-weight:700;color:var(--text)">--°C</div>
-          <div id="dash-clima-desc" style="font-size:10px;color:var(--text3)">Florianópolis</div>
+  <!-- ====== 1. SAUDAÇÃO ANIMADA + DATA + FRASE MOTIVACIONAL ====== -->
+  <div class="dash-section" style="margin-bottom:14px;padding:22px 26px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border-radius:16px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,217,61,.18),transparent 70%);pointer-events:none"></div>
+    <div style="position:absolute;bottom:-40px;left:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.1),transparent 70%);pointer-events:none"></div>
+
+    <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;color:white">
+      <div style="flex:1;min-width:240px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <span id="dash-saudacao-emoji" style="font-size:30px;display:inline-block">☀️</span>
+          <div id="dash-saudacao" style="font-family:'Syne',sans-serif;font-size:28px;font-weight:800;letter-spacing:-.5px;line-height:1.1;background:linear-gradient(90deg,#fff,#FFD93D);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Bom dia, time Gâmi</div>
         </div>
+        <div id="dash-data-hoje" style="font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:600;opacity:.85;margin-bottom:10px"></div>
+        <div id="dash-frase-motivacional" style="font-size:14px;font-style:italic;line-height:1.5;opacity:.95;max-width:560px"></div>
       </div>
-      <button onclick="toggleModoFoco()" id="btn-foco" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Modo foco
-      </button>
-      <button onclick="openAI('Gere uma sugestão completa de rotina de marketing para hoje na Gâmi Delivery considerando as 10 cidades ativas.')" class="btn btn-primary">IA: O que fazer hoje →</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button onclick="toggleModoFoco()" id="btn-foco" style="padding:9px 14px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.12);color:white;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;backdrop-filter:blur(10px)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Modo foco
+        </button>
+        <button onclick="openAI('Gere uma sugestão completa de rotina de marketing para hoje na Gâmi Delivery considerando as 10 cidades ativas.')" style="padding:9px 16px;border:none;border-radius:9px;background:#FFD93D;color:#0D2B5C;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">IA: O que fazer hoje →</button>
+      </div>
     </div>
   </div>
 
   <!-- MODO FOCO (oculto por padrão) -->
-  <div id="modo-foco-panel" style="display:none;margin-bottom:16px">
+  <div id="modo-foco-panel" style="display:none;margin-bottom:14px">
     <div style="padding:20px;background:linear-gradient(135deg,#1a1a2e,#0f3460);border-radius:14px;text-align:center">
       <div style="font-size:11px;font-weight:700;letter-spacing:1px;color:#64B5F6;text-transform:uppercase;margin-bottom:8px">🎯 Modo Foco Ativado</div>
       <div style="font-size:14px;color:white;margin-bottom:16px">Concentre-se nestas 3 prioridades agora:</div>
@@ -540,37 +568,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
   </div>
 
-  <!-- ============================================ -->
-  <!-- DASHBOARD GÂMI v2 — focado em pessoas + dia  -->
-  <!-- ============================================ -->
-
-  <!-- 1. MINHA AGENDA HOJE (com IA) -->
-  <div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">
-    <div style="background:linear-gradient(135deg,#0B2542,#1A3D6B);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:#64B5F6;text-transform:uppercase;margin-bottom:2px">Hoje</div>
-        <div style="font-size:16px;font-weight:700;color:white" id="mam-data">Minha agenda</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button onclick="projetarDiaIA()" style="padding:7px 13px;border:none;border-radius:7px;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">
-          <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg>
-          Projetar meu dia com IA
-        </button>
-        <button onclick="adicionarItemAgenda()" style="padding:7px 11px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(255,255,255,.1);color:white;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">+ Adicionar</button>
-      </div>
-    </div>
-    <div id="mam-resumo" style="padding:8px 16px;background:rgba(26,184,240,.04);border-bottom:1px solid var(--border);font-size:11px;color:var(--text2)"></div>
-    <div id="mam-lista" style="padding:8px"></div>
-    <div id="mam-vazio" style="display:none;padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhum compromisso hoje. <span style="color:var(--gami-blue);font-weight:600;cursor:pointer" onclick="adicionarItemAgenda()">Adicionar primeiro item →</span></div>
-    <!-- Resultado inline da IA "Projetar meu dia" -->
-    <div id="dia-ia-resultado" style="display:none;border-top:1px solid var(--border);padding:14px 16px;background:linear-gradient(180deg,rgba(26,184,240,.04) 0%,rgba(26,184,240,0) 100%)"></div>
-  </div>
-
-  <!-- 2. RECONHECIMENTO DA SEMANA -->
-  <div id="dash-reconhecimento" style="margin-bottom:14px"></div>
-
-  <!-- 3. VERSÍCULO + FRASE DO DIA (lado a lado, compacto) -->
-  <div class="g2" style="margin-bottom:14px">
+  <!-- ====== 2. VERSÍCULO DO DIA + FRASE DO DIA ====== -->
+  <div class="g2 dash-section" style="margin-bottom:14px">
     <div style="padding:14px 16px;background:linear-gradient(135deg,#1a1a2e,#0f3460);border-radius:12px;position:relative;overflow:hidden">
       <div style="position:absolute;top:-8px;right:-8px;font-size:50px;opacity:.07">✝️</div>
       <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:#64B5F6;text-transform:uppercase;margin-bottom:5px">Versículo do dia</div>
@@ -591,29 +590,75 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
   </div>
 
-  <!-- 4. PULSE DO DIA + MURAL DE RECADOS (lado a lado) -->
-  <div class="g2" style="margin-bottom:14px">
+  <!-- ====== 3. CLIMA DAS 10 CIDADES (afeta entrega) ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <div>
+        <div class="card-title" style="margin:0">🌤️ Clima nas 10 cidades</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">Previsão de chuva impacta entregas — planeje suas campanhas</div>
+      </div>
+      <button onclick="atualizarClimaCidades()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↻ Atualizar</button>
+    </div>
+    <div id="dash-clima-cidades" class="dash-clima-faixa" style="display:flex;gap:10px;overflow-x:auto;padding:4px 2px;scrollbar-width:thin"></div>
+  </div>
+
+  <!-- ====== 4. PULSE — COMO VOCÊ ESTÁ HOJE? + STICKIES PESSOAIS ====== -->
+  <div class="g2 dash-section" style="margin-bottom:14px">
     <div class="card" style="margin:0">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div class="card-title" style="margin:0">💙 Como você está hoje?</div>
         <span id="pulse-count" style="font-size:10px;color:var(--text3)">0 votos hoje</span>
       </div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:10px;font-style:italic">Anônimo · Mostra a média do time</div>
-      <div id="pulse-buttons" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;justify-content:space-between"></div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;font-style:italic">📊 Resposta anônima · Mostra a média do time</div>
+      <div id="pulse-buttons" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;justify-content:space-between"></div>
       <div id="pulse-resultado"></div>
       <div id="pulse-grafico-semana" style="margin-top:10px"></div>
     </div>
-    <div class="card" style="margin:0">
+    <div class="card" style="margin:0;background:linear-gradient(180deg,#FFFEF7 0%,#FFFCEC 100%)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="card-title" style="margin:0">📌 Mural de recados</div>
-        <button onclick="adicionarRecado()" style="font-size:10px;color:var(--gami-blue);background:none;border:none;cursor:pointer;font-family:inherit;font-weight:600">+ Adicionar</button>
+        <div class="card-title" style="margin:0;color:#854F0B">📋 Stickies pessoais</div>
+        <span style="font-size:10px;color:#854F0Bcc;font-style:italic">Só você vê · auto-salva</span>
       </div>
-      <div id="dash-recados" style="max-height:280px;overflow-y:auto"></div>
+      <div id="dash-stickies" class="dash-stickies-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
     </div>
   </div>
 
-  <!-- 5. ANIVERSÁRIOS DO MÊS -->
-  <div class="card" style="margin-bottom:14px">
+  <!-- ====== 5. COMPROMISSOS DE HOJE (com Streak no header) ====== -->
+  <div class="card dash-section" style="margin-bottom:14px;padding:0;overflow:hidden">
+    <div style="background:linear-gradient(135deg,#0B2542,#1A3D6B);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:#64B5F6;text-transform:uppercase;margin-bottom:2px">Hoje</div>
+        <div style="font-size:16px;font-weight:700;color:white" id="mam-data">Compromissos de hoje</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div id="dash-streak" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(255,217,61,.18);border:1px solid rgba(255,217,61,.35);border-radius:20px;color:#FFD93D;font-size:11px;font-weight:700"></div>
+        <button onclick="projetarDiaIA()" style="padding:7px 13px;border:none;border-radius:7px;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">
+          <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg>
+          Projetar meu dia com IA
+        </button>
+        <button onclick="adicionarItemAgenda()" style="padding:7px 11px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(255,255,255,.1);color:white;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">+ Adicionar</button>
+      </div>
+    </div>
+    <div id="mam-resumo" style="padding:8px 16px;background:rgba(26,184,240,.04);border-bottom:1px solid var(--border);font-size:11px;color:var(--text2)"></div>
+    <div id="mam-lista" style="padding:8px"></div>
+    <div id="mam-vazio" style="display:none;padding:24px;text-align:center;color:var(--text3);font-size:12px">Nenhum compromisso hoje. <span style="color:var(--gami-blue);font-weight:600;cursor:pointer" onclick="adicionarItemAgenda()">Adicionar primeiro item →</span></div>
+    <div id="dia-ia-resultado" style="display:none;border-top:1px solid var(--border);padding:14px 16px;background:linear-gradient(180deg,rgba(26,184,240,.04) 0%,rgba(26,184,240,0) 100%)"></div>
+  </div>
+
+  <!-- ====== 6. MURAL DE RECADOS ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="card-title" style="margin:0">📌 Mural de recados</div>
+      <button onclick="adicionarRecado()" style="font-size:11px;padding:5px 12px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600">+ Adicionar recado</button>
+    </div>
+    <div id="dash-recados" style="max-height:320px;overflow-y:auto"></div>
+  </div>
+
+  <!-- ====== 7. RECONHECIMENTO DA SEMANA ====== -->
+  <div id="dash-reconhecimento" class="dash-section" style="margin-bottom:14px"></div>
+
+  <!-- ====== 8. ANIVERSARIANTES DO MÊS ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="card-title" style="margin:0">🎂 Aniversariantes deste mês</div>
       <span id="dash-mes-atual" style="font-size:11px;color:var(--text3);font-weight:500"></span>
@@ -621,8 +666,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dash-aniversariantes-mes"></div>
   </div>
 
-  <!-- 6. RANKING DAS CIDADES POR CORRIDAS -->
-  <div class="card" style="margin-bottom:14px">
+  <!-- ====== 9. RANKING DAS CIDADES ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
       <div>
         <div class="card-title" style="margin:0">🏆 Ranking das cidades</div>
@@ -636,8 +681,20 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dash-ranking-cidades"></div>
   </div>
 
-  <!-- 7. VALOR GÂMI DO DIA + Culture Code -->
-  <div id="dash-valor-cultura" style="margin-bottom:14px"></div>
+  <!-- ====== 10. MURAL VIVO — 32 fotos do time ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+      <div>
+        <div class="card-title" style="margin:0">👥 Time Gâmi <span id="dash-mural-count" style="font-size:11px;color:var(--text3);font-weight:500;margin-left:4px"></span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Cada rosto, uma história. Passe o mouse pra conhecer.</div>
+      </div>
+      <button onclick="nav(document.querySelector('.nav-item[onclick*=&quot;pessoas&quot;]'),'pessoas')" class="btn btn-ghost btn-sm" style="font-size:11px">Ver todos →</button>
+    </div>
+    <div id="dash-mural-vivo" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--surface2);border-radius:10px;min-height:60px"></div>
+  </div>
+
+  <!-- ====== 11. VALOR GÂMI DO DIA + Culture Code ====== -->
+  <div id="dash-valor-cultura" class="dash-section" style="margin-bottom:14px"></div>
 
 </div>
 
@@ -6731,6 +6788,7 @@ function renderDashMiniIdeias(){
 // --- INIT DASHBOARD ---
 function initDashboard(){
   initDashboardHero();
+  renderFraseMotivacional();
   carregarVersiculo();
   carregarFrase();
   atualizarClima();
@@ -6745,7 +6803,246 @@ function initDashboard(){
   try { renderValorCultura(); } catch(e){}
   try { renderRecadosNoDash(); } catch(e){}
   try { renderPulse(); } catch(e){}
-  // Nota: renderAlertasCampanhas foi movido para Marketing > Visão Geral
+  // NOVOS BLOCOS DO REDESIGN
+  try { renderClimaCidades(); } catch(e){ console.warn('renderClimaCidades:', e); }
+  try { renderStickies(); } catch(e){ console.warn('renderStickies:', e); }
+  try { renderStreak(); } catch(e){ console.warn('renderStreak:', e); }
+  try { renderMuralVivo(); } catch(e){ console.warn('renderMuralVivo:', e); }
+}
+
+/* ============================================================== */
+/* DASHBOARD — NOVAS FUNÇÕES DO REDESIGN                          */
+/* ============================================================== */
+
+/* ===== Frase motivacional rotativa ===== */
+var FRASES_MOTIVACIONAIS = [
+  'Pequenas ações consistentes constroem grandes resultados.',
+  'O que você faz hoje constrói o que você terá amanhã.',
+  'A excelência mora nos detalhes. Cuide deles.',
+  'Não somos números. Somos pessoas que entregam.',
+  'Time forte se constrói com confiança e clareza.',
+  'O melhor jeito de prever o futuro é criá-lo. Vamos?',
+  'Cada cliente atendido, uma história possível.',
+  'Disciplina é fazer o que precisa ser feito, mesmo sem vontade.',
+  'Quando o time vence, todo mundo vence.',
+  'Foco é dizer não pra mil coisas boas pra dizer sim ao essencial.',
+  'A entrega de hoje é a confiança de amanhã.',
+  'Caráter não é o que você faz quando todos veem. É o que você faz quando ninguém vê.',
+  'Velocidade é importante, mas direção é tudo.',
+  'O cliente lembra como você fez ele se sentir.',
+  'Crescer juntos, conquistar juntos. Esse é o jeito Gâmi.',
+];
+function renderFraseMotivacional(){
+  var el = document.getElementById('dash-frase-motivacional');
+  if(!el) return;
+  // Determinística por dia (mesma frase pro dia inteiro)
+  var hoje = new Date();
+  var diaDoAno = Math.floor((hoje - new Date(hoje.getFullYear(),0,0)) / 86400000);
+  var idx = diaDoAno % FRASES_MOTIVACIONAIS.length;
+  el.textContent = '"' + FRASES_MOTIVACIONAIS[idx] + '"';
+  // Atualiza também o emoji da saudação conforme hora
+  var emEl = document.getElementById('dash-saudacao-emoji');
+  if(emEl){
+    var h = hoje.getHours();
+    emEl.textContent = h < 6 ? '🌙' : h < 12 ? '☀️' : h < 18 ? '🌤️' : '🌆';
+  }
+}
+
+/* ===== Clima das 10 cidades ===== */
+var CLIMA_CIDADES_API_KEY = '7c8f3e0d1a4b5c6d7e8f9a0b1c2d3e4f'; // OpenWeatherMap (substituir pela chave real se necessário)
+var CIDADES_CLIMA = [
+  { nome:'Fortaleza',    uf:'CE', lat:-3.7172,  lon:-38.5433 },
+  { nome:'Recife',       uf:'PE', lat:-8.0476,  lon:-34.8770 },
+  { nome:'Maceió',       uf:'AL', lat:-9.6498,  lon:-35.7089 },
+  { nome:'João Pessoa',  uf:'PB', lat:-7.1195,  lon:-34.8450 },
+  { nome:'Natal',        uf:'RN', lat:-5.7945,  lon:-35.2110 },
+  { nome:'Aracaju',      uf:'SE', lat:-10.9472, lon:-37.0731 },
+  { nome:'São Luís',     uf:'MA', lat:-2.5391,  lon:-44.2829 },
+  { nome:'Cuiabá',       uf:'MT', lat:-15.6014, lon:-56.0979 },
+  { nome:'Teresina',     uf:'PI', lat:-5.0892,  lon:-42.8019 },
+  { nome:'Vitória',      uf:'ES', lat:-20.3155, lon:-40.3128 },
+  { nome:'Campo Grande', uf:'MS', lat:-20.4486, lon:-54.6295 },
+];
+function _climaCacheKey(){ var d=new Date(); return 'gami_clima_cidades_'+d.getFullYear()+'_'+d.getMonth()+'_'+d.getDate()+'_'+d.getHours(); }
+function _icoClima(condicao, chuvaPct){
+  if(chuvaPct >= 60) return '🌧️';
+  if(chuvaPct >= 30) return '🌦️';
+  if(/storm|trovo/i.test(condicao||'')) return '⛈️';
+  if(/cloud|nuven/i.test(condicao||'')) return '☁️';
+  if(/clear|sol|limp/i.test(condicao||'')) return '☀️';
+  return '⛅';
+}
+function _renderClimaCard(item){
+  var ico = _icoClima(item.condicao, item.chuvaPct);
+  var corChuva = item.chuvaPct >= 60 ? '#1565C0' : item.chuvaPct >= 30 ? '#0E7AB8' : '#1AB8F0';
+  var alerta = item.chuvaPct >= 60 ? '<div style="font-size:9px;font-weight:700;color:#fff;background:#E24B4A;padding:2px 7px;border-radius:8px;margin-top:5px;letter-spacing:.4px">⚠️ ENTREGA AFETADA</div>' : '';
+  return '<div class="clima-card" style="flex:0 0 140px;padding:11px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;text-align:center">'+
+    '<div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.nome+' <span style="color:var(--text3);font-weight:400">'+item.uf+'</span></div>'+
+    '<div style="font-size:30px;line-height:1;margin:6px 0">'+ico+'</div>'+
+    '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--text);line-height:1">'+(item.temp != null ? item.temp+'°' : '—')+'</div>'+
+    '<div style="font-size:10px;color:var(--text3);margin-top:3px;text-transform:capitalize">'+(item.condicao||'—')+'</div>'+
+    '<div style="font-size:10px;color:'+corChuva+';font-weight:600;margin-top:4px">💧 '+(item.chuvaPct != null ? item.chuvaPct+'% chuva' : '—')+'</div>'+
+    alerta+
+  '</div>';
+}
+function renderClimaCidades(){
+  var host = document.getElementById('dash-clima-cidades');
+  if(!host) return;
+  // Tenta cache antes
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem(_climaCacheKey())||'null'); } catch(e){}
+  if(cached && cached.length){
+    host.innerHTML = cached.map(_renderClimaCard).join('');
+    return;
+  }
+  // Carrega placeholder enquanto fetch
+  host.innerHTML = CIDADES_CLIMA.map(function(c){
+    return _renderClimaCard({nome:c.nome, uf:c.uf, temp:null, chuvaPct:null, condicao:'carregando…'});
+  }).join('');
+  // Fetch em paralelo
+  atualizarClimaCidades();
+}
+async function atualizarClimaCidades(){
+  var host = document.getElementById('dash-clima-cidades');
+  if(!host) return;
+  var resultados = [];
+  // OpenWeatherMap free tier — pode estar com chave inválida; faz fetch e segue
+  await Promise.all(CIDADES_CLIMA.map(async function(c){
+    try{
+      var url = 'https://api.openweathermap.org/data/2.5/weather?lat='+c.lat+'&lon='+c.lon+'&units=metric&lang=pt_br&appid='+CLIMA_CIDADES_API_KEY;
+      var r = await fetch(url);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      var d = await r.json();
+      // chuvaPct: se tem 'rain' nos últimos minutos OU clima é "Rain"/"Drizzle"
+      var chuvaPct = 0;
+      if(d.rain && (d.rain['1h']||d.rain['3h'])) chuvaPct = 80;
+      else if(d.weather && /rain|drizzle/i.test(d.weather[0].main)) chuvaPct = 70;
+      else if(d.weather && /thunderstorm/i.test(d.weather[0].main)) chuvaPct = 90;
+      else if(d.weather && /cloud/i.test(d.weather[0].main)) chuvaPct = 25;
+      else chuvaPct = 5;
+      resultados.push({
+        nome: c.nome, uf: c.uf,
+        temp: Math.round(d.main && d.main.temp),
+        condicao: d.weather && d.weather[0] && d.weather[0].description,
+        chuvaPct: chuvaPct,
+      });
+    }catch(e){
+      resultados.push({nome:c.nome, uf:c.uf, temp:null, condicao:'sem conexão', chuvaPct:null});
+    }
+  }));
+  // Reordena pra manter a ordem de CIDADES_CLIMA
+  resultados.sort(function(a,b){
+    return CIDADES_CLIMA.findIndex(function(x){return x.nome===a.nome;}) - CIDADES_CLIMA.findIndex(function(x){return x.nome===b.nome;});
+  });
+  try { localStorage.setItem(_climaCacheKey(), JSON.stringify(resultados)); } catch(e){}
+  host.innerHTML = resultados.map(_renderClimaCard).join('');
+}
+
+/* ===== Stickies pessoais (3 post-its amarelos) ===== */
+function _stickiesKey(){ return 'gami_stickies_'+(window.location.hostname||'gami'); }
+function getStickies(){
+  try { var s = JSON.parse(localStorage.getItem(_stickiesKey())||'null'); if(Array.isArray(s) && s.length===3) return s; }catch(e){}
+  return ['','',''];
+}
+function saveStickies(arr){
+  try { localStorage.setItem(_stickiesKey(), JSON.stringify(arr.slice(0,3))); }catch(e){}
+}
+function renderStickies(){
+  var host = document.getElementById('dash-stickies');
+  if(!host) return;
+  var stickies = getStickies();
+  host.innerHTML = stickies.map(function(txt, idx){
+    return '<div class="stickie-yellow" style="padding:11px 12px;border-radius:8px;min-height:120px;display:flex;flex-direction:column">'+
+      '<div style="font-size:10px;color:#854F0Bcc;font-weight:600;margin-bottom:4px;letter-spacing:.4px">📌 NOTA '+(idx+1)+'</div>'+
+      '<textarea oninput="atualizarStickie('+idx+', this.value)" placeholder="Anote um lembrete pra você..." style="flex:1;min-height:70px">'+(txt||'').replace(/</g,'&lt;')+'</textarea>'+
+    '</div>';
+  }).join('');
+}
+function atualizarStickie(idx, valor){
+  var arr = getStickies();
+  arr[idx] = valor;
+  saveStickies(arr);
+}
+
+/* ===== Streak de produtividade ===== */
+function _streakKey(){ return 'gami_streak_data'; }
+function getStreakData(){
+  try { return JSON.parse(localStorage.getItem(_streakKey())||'{}'); }catch(e){ return {}; }
+}
+function saveStreakData(d){
+  try { localStorage.setItem(_streakKey(), JSON.stringify(d)); }catch(e){}
+}
+function _atualizaStreakSeNecessario(){
+  // Critério: se o usuário marcou pelo menos 1 tarefa como feita HOJE,
+  // o dia conta no streak. Se ontem teve atividade e hoje também, soma.
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var hojeStr = hoje.toISOString().split('T')[0];
+  var st = getStreakData();
+  // Verifica se teve atividade hoje
+  var teveHoje = false;
+  try {
+    if(typeof getTarefas === 'function'){
+      var tarefas = getTarefas('diario') || [];
+      teveHoje = tarefas.some(function(t){
+        if(!t.feito) return false;
+        var data = t.feitoEm || t.criadaEm;
+        if(!data) return false;
+        return data.split('T')[0] === hojeStr;
+      });
+    }
+  }catch(e){}
+  if(!teveHoje) return st;
+  // Já contou hoje?
+  if(st.ultimoDia === hojeStr) return st;
+  // Ontem?
+  var ontem = new Date(hoje); ontem.setDate(ontem.getDate()-1);
+  var ontemStr = ontem.toISOString().split('T')[0];
+  if(st.ultimoDia === ontemStr){
+    st.streakAtual = (st.streakAtual || 0) + 1;
+  } else {
+    st.streakAtual = 1; // reseta
+  }
+  st.maior = Math.max(st.maior || 0, st.streakAtual);
+  st.ultimoDia = hojeStr;
+  saveStreakData(st);
+  return st;
+}
+function renderStreak(){
+  var host = document.getElementById('dash-streak');
+  if(!host) return;
+  var st = _atualizaStreakSeNecessario();
+  var dias = st.streakAtual || 0;
+  if(dias === 0){
+    host.innerHTML = '<span style="opacity:.7">💤 Comece sua sequência hoje</span>';
+  } else {
+    host.innerHTML = '<span class="streak-flame">🔥</span><span>'+dias+' dia'+(dias>1?'s':'')+' em sequência</span>';
+  }
+}
+
+/* ===== Mural Vivo (32 fotos do time) ===== */
+function renderMuralVivo(){
+  var host = document.getElementById('dash-mural-vivo');
+  var ct = document.getElementById('dash-mural-count');
+  if(!host) return;
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  if(ct) ct.textContent = '· '+pessoas.length+' pessoas';
+  if(!pessoas.length){
+    host.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:8px">Nenhum colaborador cadastrado.</div>';
+    return;
+  }
+  var ordCat = {'Diretoria':1,'Gerência':2,'Gestor':3,'Marketing':4,'Suporte':5,'Prospecção':6};
+  var sorted = pessoas.slice().sort(function(a,b){
+    return (ordCat[a.categoria]||9) - (ordCat[b.categoria]||9);
+  });
+  host.innerHTML = sorted.map(function(p, i){
+    var foto = p.foto && p.foto.length > 4
+      ? 'background-image:url(\''+p.foto+'\');background-size:cover;background-position:center'
+      : 'background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px';
+    var inicial = (p.nome||'?').trim().charAt(0).toUpperCase();
+    var cidade = (typeof pessoaCidades === 'function') ? (pessoaCidades(p)[0]||'') : (p.cidade||'');
+    var titulo = (p.nome||'')+' · '+(p.cargo||'')+(cidade?' · 📍'+cidade:'');
+    return '<div class="mural-foto" title="'+titulo.replace(/"/g,'&quot;')+'" style="width:38px;height:38px;border-radius:50%;'+foto+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.18);position:relative">'+(p.foto?'':inicial)+'</div>';
+  }).join('');
 }
 
 /* ============================================================== */
