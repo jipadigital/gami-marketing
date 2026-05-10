@@ -742,15 +742,55 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
 <!-- ==================== CALENDÁRIO ==================== -->
 <div class="page" id="pg-calendario">
+  <style>
+    @keyframes cal-fadeup { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
+    .cal-section { animation: cal-fadeup .45s ease both; }
+    .cal-day { transition: transform .15s ease, box-shadow .15s ease, background .15s; }
+    .cal-day:hover { transform: scale(1.06); z-index:2; box-shadow:0 4px 10px rgba(13,43,92,.15); }
+    .cal-day.selected { box-shadow:0 0 0 2px var(--orange); transform: scale(1.04); }
+
+    /* Responsividade do calendário */
+    @media(max-width:900px){
+      #cal-layout-grid { grid-template-columns:1fr!important; }
+      #cal-sidebar-wrap { order:2 }
+    }
+    @media(max-width:560px){
+      .cal-day { font-size:13px!important; min-height:42px!important; }
+      .cal-head { font-size:10px!important; padding:6px 2px!important; }
+      #cal-month-label { font-size:15px!important; }
+    }
+  </style>
+
   <div class="page-header">
     <div>
       <div class="page-title">📅 Calendário de Marketing</div>
-      <div class="page-sub">Aniversários, datas sazonais e planejamento de conteúdo</div>
+      <div class="page-sub">Suas tarefas, aniversários, datas sazonais e lembretes</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="calHoje()" style="font-size:12px">📍 Hoje</button>
       <button class="btn btn-ghost" onclick="calMostrarAniversarios()" style="font-size:12px">🎂 Aniversários</button>
       <button class="btn btn-primary" onclick="openAI('Crie um plano de conteúdo para a semana '+calGetSemanaAtual()+' da Gâmi Delivery com posts para cada cidade')" style="font-size:12px">🤖 Planejar semana</button>
+    </div>
+  </div>
+
+  <!-- HERO + Frase do dia -->
+  <div class="cal-section" style="margin-bottom:14px;padding:18px 22px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border-radius:14px;color:white;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-30px;right:-20px;font-size:90px;opacity:.07">📅</div>
+    <div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;opacity:.85;margin-bottom:6px">Hoje · <span id="cal-hero-data"></span></div>
+        <div id="cal-hero-frase" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:600;letter-spacing:-.3px;line-height:1.35;max-width:640px"></div>
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px">
+        <div style="text-align:center;background:rgba(255,255,255,.13);padding:8px 14px;border-radius:10px;min-width:80px">
+          <div id="cal-hero-tarefas" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#FFD93D">—</div>
+          <div style="opacity:.85;letter-spacing:.5px;text-transform:uppercase;font-size:9px">Tarefas hoje</div>
+        </div>
+        <div style="text-align:center;background:rgba(255,255,255,.13);padding:8px 14px;border-radius:10px;min-width:80px">
+          <div id="cal-hero-eventos" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#FFD93D">—</div>
+          <div style="opacity:.85;letter-spacing:.5px;text-transform:uppercase;font-size:9px">Eventos do mês</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -774,7 +814,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#E6F6FE;color:var(--orange)">⭐ Destaque</span>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 320px;gap:14px">
+  <div id="cal-layout-grid" style="display:grid;grid-template-columns:1fr 320px;gap:14px">
 
     <!-- CALENDÁRIO PRINCIPAL -->
     <div>
@@ -803,7 +843,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
 
     <!-- SIDEBAR -->
-    <div style="display:flex;flex-direction:column;gap:10px">
+    <div id="cal-sidebar-wrap" style="display:flex;flex-direction:column;gap:10px">
 
       <!-- DIA SELECIONADO -->
       <div class="card" id="cal-day-panel" style="display:none">
@@ -3241,9 +3281,73 @@ var OPCOES_CONTEUDO = [
   { label:'Destaque da semana', icon:'⭐', prompt:'Crie um post de destaque da semana para a Gâmi Delivery para o dia {DATA}. Personalize com [NOME] e [CIDADE].' },
 ];
 
+/* Hero do Calendário: data atual + frase do dia + stats vivos */
+var FRASES_CALENDARIO = [
+  'O dia bem planejado começa pelo papel — ou pelo calendário.',
+  'Quem planeja, entrega. Quem improvisa, corre.',
+  'O melhor lembrete é o que você não esquece de criar.',
+  'Cada data marcada é uma oportunidade reservada.',
+  'Hoje é o dia perfeito pra dar atenção ao que importa.',
+  'A consistência mora na rotina; a rotina mora no calendário.',
+  'Bons planos são feitos com tempo. Grandes planos, com calendário.',
+  'Não confunda urgência com importância. Marque as duas.',
+  'O segundo melhor dia pra fazer algo é hoje.',
+  'Você não precisa ir mais rápido. Precisa começar mais cedo.',
+];
+function renderCalHero(){
+  try{
+    var hoje = new Date();
+    var diasFmt = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    var meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    var dataStr = diasFmt[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()] + ' de ' + hoje.getFullYear();
+    var elData = document.getElementById('cal-hero-data');
+    if(elData) elData.textContent = dataStr;
+
+    var diaAno = Math.floor((hoje - new Date(hoje.getFullYear(),0,0)) / 86400000);
+    var idx = diaAno % FRASES_CALENDARIO.length;
+    var elFrase = document.getElementById('cal-hero-frase');
+    if(elFrase) elFrase.textContent = '"' + FRASES_CALENDARIO[idx] + '"';
+
+    // Tarefas hoje
+    var hojeKey = hoje.toISOString().split('T')[0];
+    var tarefasHoje = 0;
+    try {
+      if(typeof getTarefas === 'function'){
+        tarefasHoje = (getTarefas('diario')||[]).filter(function(t){
+          if(t.feito) return false;
+          if(t.prazo) return t.prazo === hojeKey;
+          return true; // sem prazo → conta como hoje
+        }).length;
+      }
+    } catch(e){}
+    var elT = document.getElementById('cal-hero-tarefas');
+    if(elT) elT.textContent = tarefasHoje;
+
+    // Eventos no mês visível
+    var mm = String(calMonth+1).padStart(2,'0');
+    var eventosNoMes = 0;
+    try {
+      if(typeof DATAS_ESPECIAIS === 'object' && DATAS_ESPECIAIS){
+        eventosNoMes = Object.keys(DATAS_ESPECIAIS).filter(function(k){
+          return k.split('-')[0] === mm;
+        }).length;
+      }
+      var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+      eventosNoMes += pessoas.filter(function(p){
+        if(!p.nascimento) return false;
+        return p.nascimento.split('-')[1] === mm;
+      }).length;
+    } catch(e){}
+    var elE = document.getElementById('cal-hero-eventos');
+    if(elE) elE.textContent = eventosNoMes;
+  }catch(e){ console.warn('renderCalHero:', e); }
+}
+
 function renderCalendar(){
   var label = document.getElementById('cal-month-label');
   if(label) label.textContent = MESES_PT[calMonth] + ' ' + calYear;
+  // Atualiza hero (frase do dia, stats)
+  if(typeof renderCalHero === 'function') renderCalHero();
 
   var grid = document.getElementById('cal-grid-render');
   if(!grid) return;
