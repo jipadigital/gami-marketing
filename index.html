@@ -5256,6 +5256,14 @@ function _slugify(s){
 function getIgMap(){ try{return JSON.parse(localStorage.getItem('gami_ig_map')||'{}');}catch(e){return {};} }
 function saveIgMap(m){ try{localStorage.setItem('gami_ig_map',JSON.stringify(m));}catch(e){} }
 
+// Override explícito: cidades cujo @username não casa pelo nome.
+// Usado quando uma cidade compartilha o perfil principal/institucional ou
+// quando o @username segue uma convenção diferente do slug da cidade.
+//   chave = id da cidade (c1..c10) | valor = ig_username exato sem "@"
+var IG_OVERRIDE = {
+  'c2': 'gamidelivery'  // Maceió → perfil principal Gami Delivery BR
+};
+
 async function sincronizarStatusInstagram(){
   var status = document.getElementById('ig-sync-status');
   function setMsg(html, color){
@@ -5290,9 +5298,14 @@ async function sincronizarStatusInstagram(){
 
     cidades.forEach(function(c){
       var slugCidade = _slugify(c.nome);
-      // 1) tenta mapping salvo
-      var saved = igMap[c.id];
-      var hit = saved && contas.find(function(x){ return x.ig_username === saved; });
+      var hit = null;
+      // 0) override explícito tem prioridade máxima (ex: Maceió → @gamidelivery)
+      if(IG_OVERRIDE[c.id]) hit = contas.find(function(x){ return x.ig_username === IG_OVERRIDE[c.id]; });
+      // 1) tenta mapping salvo no localStorage
+      if(!hit){
+        var saved = igMap[c.id];
+        hit = saved && contas.find(function(x){ return x.ig_username === saved; });
+      }
       // 2) tenta substring no username
       if(!hit) hit = contas.find(function(x){ return _slugify(x.ig_username).indexOf(slugCidade) >= 0; });
       // 3) tenta substring no nome do perfil
