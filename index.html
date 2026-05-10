@@ -364,7 +364,14 @@ window.nav = function(el, page){
         'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
         'cidades':         function(){ if(typeof voltarCidades==='function'){voltarCidades(); renderCidadesGrid();} },
         'pessoas':         function(){ if(typeof renderPessoas==='function') renderPessoas(); },
-        'inbox':           function(){ if(typeof renderInboxLista==='function') renderInboxLista(); },
+        'inbox':           function(){
+                              if(typeof renderInboxLista==='function') renderInboxLista();
+                              // Auto-sincroniza com o Meta na primeira abertura desta sessão
+                              if(typeof sincronizarInbox==='function' && !window._inboxSyncedOnce){
+                                window._inboxSyncedOnce = true;
+                                sincronizarInbox();
+                              }
+                            },
         'blog':            function(){ if(typeof initBlogPage==='function') initBlogPage(); },
         'ranking':         function(){ if(typeof renderRanking==='function') renderRanking(); },
         'ideias':          function(){ if(typeof renderIdeias==='function') renderIdeias(); },
@@ -422,6 +429,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div class="sb-section">
     <div class="sb-label">Gestão</div>
     <div class="nav-item" onclick="nav(this,'marketing')"><span class="nav-dot" style="background:#1D9E75"></span>Marketing</div>
+    <div class="nav-item" onclick="nav(this,'inbox')"><span class="nav-dot" style="background:#E1306C"></span>Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
     <div class="nav-item" onclick="nav(this,'cidades')"><span class="nav-dot" style="background:#BA7517"></span>Cidades</div>
     <div class="nav-item" onclick="nav(this,'pessoas')"><span class="nav-dot" style="background:#D4537E"></span>Pessoas<span class="nav-badge" id="badge-pess">2</span></div>
     <div class="nav-item" onclick="nav(this,'ranking')"><span class="nav-dot" style="background:#1AB8F0"></span>Ranking Gâmi</div>
@@ -7465,17 +7473,115 @@ function enviarResposta(){
   addHistorico(`Respondeu mensagem de ${conv.usuario} (${conv.cidade})`);
 }
 
-function sincronizarInbox(){
-  const bar = document.getElementById('inbox-status-bar');
-  if(bar){
-    bar.innerHTML = `<div style="width:8px;height:8px;border-radius:50%;background:#EF9F27;flex-shrink:0;animation:pulse 1s infinite"></div>
-      <span style="font-size:12px;color:var(--text2)">Sincronizando... Conecte os perfis no Meta Business Suite para mensagens reais.</span>`;
-    setTimeout(()=>{
-      bar.innerHTML = `<div style="width:8px;height:8px;border-radius:50%;background:#EF9F27;flex-shrink:0"></div>
-        <span style="font-size:12px;color:var(--text2)">Instagram não conectado. Mensagens demonstrativas exibidas.</span>
-        <a href="https://business.facebook.com/settings/instagram-accounts" target="_blank" style="margin-left:auto;font-size:11px;padding:4px 10px;border:1px solid var(--orange);border-radius:6px;color:var(--orange);text-decoration:none;white-space:nowrap">Conectar →</a>`;
-    },2000);
+function _setInboxStatus(html, dot){
+  var bar = document.getElementById('inbox-status-bar');
+  if(!bar) return;
+  bar.innerHTML = '<div style="width:8px;height:8px;border-radius:50%;background:'+dot+';flex-shrink:0"></div><span style="font-size:12px;color:var(--text2)">'+html+'</span>';
+}
+function _hhmm(iso){
+  if(!iso) return '';
+  try{
+    var d = new Date(iso), now = new Date();
+    var sameDay = d.toDateString()===now.toDateString();
+    if(sameDay) return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+    var diff = (now - d) / 86400000;
+    if(diff < 2) return 'Ontem';
+    if(diff < 7) return d.toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','');
+    return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+  }catch(e){ return ''; }
+}
+
+async function sincronizarInbox(){
+  _setInboxStatus('🔄 Conectando ao Meta Business…','#EF9F27');
+
+  // 1) Lista todas as contas IG conectadas (já cachado pela aba Cidades, mas re-fetch é barato)
+  var contas = [];
+  try{
+    var r = await fetch('/.netlify/functions/instagram?action=list_accounts');
+    var data = await r.json();
+    if(data.error){
+      _setInboxStatus('❌ '+(data.error)+' — '+(data.tip||'verifique META_USER_TOKEN'),'#E24B4A');
+      return;
+    }
+    contas = data.contas || [];
+  }catch(e){
+    _setInboxStatus('❌ Erro de rede: '+e.message,'#E24B4A');
+    return;
   }
+  if(!contas.length){
+    _setInboxStatus('⚠️ Nenhuma conta IG retornada. Conecte os perfis no Meta Business.','#EF9F27');
+    return;
+  }
+
+  // 2) Cruza contas com cidades (mesmo matching da aba Cidades)
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  var igMap = (typeof getIgMap==='function') ? getIgMap() : {};
+  var override = (typeof IG_OVERRIDE==='object' && IG_OVERRIDE) ? IG_OVERRIDE : {};
+  var cidadeByIg = {}; // ig_id -> nome da cidade
+  cidades.forEach(function(c){
+    var slugCidade = (typeof _slugify==='function') ? _slugify(c.nome) : (c.nome||'').toLowerCase();
+    var hit = null;
+    if(override[c.id]) hit = contas.find(function(x){ return x.ig_username === override[c.id]; });
+    if(!hit && igMap[c.id]) hit = contas.find(function(x){ return x.ig_username === igMap[c.id]; });
+    if(!hit) hit = contas.find(function(x){ return (x.ig_username||'').toLowerCase().indexOf(slugCidade) >= 0; });
+    if(hit) cidadeByIg[hit.ig_id] = c.nome;
+  });
+
+  _setInboxStatus('🔄 Buscando conversas de '+contas.length+' contas…','#EF9F27');
+
+  // 3) Busca conversas por conta em paralelo
+  var convs = [];
+  var promises = contas.map(function(c){
+    return fetch('/.netlify/functions/instagram?action=conversations&ig_id='+encodeURIComponent(c.ig_id))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var cidade = cidadeByIg[c.ig_id] || ('@'+c.ig_username);
+        var lista = (d && d.data) ? d.data : [];
+        lista.forEach(function(conv){
+          var msgs = (conv.messages && conv.messages.data) ? conv.messages.data.slice().reverse() : [];
+          var ultima = msgs.length ? msgs[msgs.length-1] : null;
+          var deUsuario = ultima && ultima.from && ultima.from.id !== c.ig_id;
+          var fromName = (msgs[0] && msgs[0].from && msgs[0].from.username) || 'usuário';
+          convs.push({
+            id:        conv.id,
+            cidade:    cidade,
+            usuario:   '@'+fromName,
+            avatar:    '💬',
+            ultima:    ultima ? (ultima.message||'') : '(sem mensagens)',
+            hora:      _hhmm(conv.updated_time),
+            updated:   conv.updated_time,
+            lida:      !deUsuario,
+            status:    deUsuario ? 'pendente' : 'respondida',
+            ig_id:     c.ig_id,
+            ig_username: c.ig_username,
+            msgs: msgs.map(function(m){
+              return { de: (m.from && m.from.id === c.ig_id) ? 'gami' : 'usuario', texto: m.message||'', hora: _hhmm(m.created_time) };
+            })
+          });
+        });
+      })
+      .catch(function(e){ console.warn('inbox '+c.ig_username+':', e.message); });
+  });
+
+  await Promise.all(promises);
+
+  // 4) Ordena por última atualização desc
+  convs.sort(function(a,b){ return new Date(b.updated||0) - new Date(a.updated||0); });
+
+  if(!convs.length){
+    _setInboxStatus('✅ Conectado · Nenhuma conversa nas últimas mensagens.','#1D9E75');
+    return;
+  }
+
+  _inboxDados = convs;
+  _inboxAtual = null;
+  if(typeof renderInboxLista==='function') renderInboxLista();
+
+  // Esconde aviso de demo
+  var notice = document.getElementById('inbox-demo-notice');
+  if(notice) notice.style.display = 'none';
+
+  _setInboxStatus('✅ '+convs.length+' conversas reais carregadas · '+contas.length+' contas IG.','#1D9E75');
 }
 
 
