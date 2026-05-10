@@ -1141,8 +1141,12 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div id="cidades-lista">
     <div class="page-header">
       <div><div class="page-title">Cidades</div><div class="page-sub">Gestão completa por cidade</div></div>
-      <button onclick="resetCidadesParaPadrao()" class="btn btn-ghost" style="font-size:11px" title="Atualiza gestores, chaves API e Instagram para os valores oficiais">🔄 Atualizar dados oficiais</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button onclick="sincronizarStatusInstagram()" class="btn btn-ghost" style="font-size:11px" title="Consulta o Meta Business e marca quais Instagrams estão realmente conectados">📸 Sincronizar IG ao vivo</button>
+        <button onclick="resetCidadesParaPadrao()" class="btn btn-ghost" style="font-size:11px" title="Atualiza gestores, chaves API e Instagram para os valores oficiais">🔄 Atualizar dados oficiais</button>
+      </div>
     </div>
+    <div id="ig-sync-status" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
 
     <!-- STATUS DAS INTEGRAÇÕES -->
     <div id="cidades-integracoes" style="margin-bottom:14px"></div>
@@ -5028,6 +5032,105 @@ function resetCidadesParaPadrao(){
   if(typeof renderCidadesGrid === 'function') renderCidadesGrid();
 }
 
+/* ----------------- INSTAGRAM SYNC AO VIVO -----------------
+   Consulta /.netlify/functions/instagram?action=list_accounts
+   e cruza com as 10 cidades para marcar quais IGs estão realmente
+   conectados ao Meta Business. Persiste o mapeamento cidade -> ig_username
+   em localStorage (chave gami_ig_map) pra próximas sincronizações.
+*/
+function _slugify(s){
+  return (s||'').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]+/g,'');
+}
+function getIgMap(){ try{return JSON.parse(localStorage.getItem('gami_ig_map')||'{}');}catch(e){return {};} }
+function saveIgMap(m){ try{localStorage.setItem('gami_ig_map',JSON.stringify(m));}catch(e){} }
+
+async function sincronizarStatusInstagram(){
+  var status = document.getElementById('ig-sync-status');
+  function setMsg(html, color){
+    if(!status) return;
+    status.style.display='block';
+    status.style.background = color === 'red' ? '#FCEBEB' : color === 'green' ? '#EAF3DE' : '#E3F2FD';
+    status.style.color      = color === 'red' ? '#A32D2D' : color === 'green' ? '#3B6D11' : '#1565C0';
+    status.style.border     = '1px solid ' + (color === 'red' ? '#E24B4A55' : color === 'green' ? '#1D9E7555' : '#1565C055');
+    status.innerHTML = html;
+  }
+  setMsg('🔄 Consultando Meta Business…', 'blue');
+
+  try{
+    var r = await fetch('/.netlify/functions/instagram?action=list_accounts');
+    var data = await r.json();
+
+    if(!r.ok || data.error){
+      var hint = data.tip ? '<br><span style="font-size:11px;opacity:.85">'+data.tip+'</span>' : '';
+      setMsg('❌ <strong>Erro do Meta:</strong> ' + (data.error || ('HTTP '+r.status)) + hint, 'red');
+      return;
+    }
+    var contas = data.contas || [];
+    if(!contas.length){
+      setMsg('⚠️ <strong>Nenhuma conta IG retornada.</strong><br><span style="font-size:11px">Verifique no Meta Business Suite se as Páginas estão linkadas a contas Instagram Business e se o token tem permissão <code>instagram_basic</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>.</span>', 'red');
+      return;
+    }
+
+    // Cruza por slug do username/nome com slug da cidade
+    var cidades = getCidadesData();
+    var igMap = getIgMap();
+    var matched = [], unmatchedIg = [];
+
+    cidades.forEach(function(c){
+      var slugCidade = _slugify(c.nome);
+      // 1) tenta mapping salvo
+      var saved = igMap[c.id];
+      var hit = saved && contas.find(function(x){ return x.ig_username === saved; });
+      // 2) tenta substring no username
+      if(!hit) hit = contas.find(function(x){ return _slugify(x.ig_username).indexOf(slugCidade) >= 0; });
+      // 3) tenta substring no nome do perfil
+      if(!hit) hit = contas.find(function(x){ return _slugify(x.ig_nome || '').indexOf(slugCidade) >= 0; });
+      if(hit){
+        c.instagram_conectado = true;
+        c.ig_id        = hit.ig_id;
+        c.ig_username  = hit.ig_username;
+        c.ig_seguidores= hit.seguidores;
+        c.ig_foto      = hit.foto;
+        igMap[c.id] = hit.ig_username;
+        matched.push({cidade:c.nome, ig:hit.ig_username, seg:hit.seguidores});
+      }else{
+        c.instagram_conectado = false;
+      }
+    });
+
+    // IGs que existem no Meta mas não foram associados a nenhuma cidade
+    var usedIgs = matched.map(function(m){return m.ig;});
+    unmatchedIg = contas.filter(function(x){ return usedIgs.indexOf(x.ig_username) < 0; });
+
+    saveCidadesData(cidades);
+    saveIgMap(igMap);
+    if(typeof renderCidadesGrid === 'function') renderCidadesGrid();
+    if(typeof renderIntegracoesStatus === 'function') renderIntegracoesStatus();
+
+    var html = '<strong>✅ Sincronizado:</strong> '+matched.length+'/'+cidades.length+' cidades com IG conectado';
+    if(matched.length){
+      html += '<div style="margin-top:6px;font-size:11px">'+
+        matched.map(function(m){return '✓ '+m.cidade+' → @'+m.ig+' ('+m.seg+' seg.)';}).join(' &nbsp;·&nbsp; ')+
+        '</div>';
+    }
+    var faltantes = cidades.filter(function(c){return !c.instagram_conectado;});
+    if(faltantes.length){
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #1D9E7533;font-size:11px"><strong>⚠️ Sem IG:</strong> '+
+        faltantes.map(function(c){return c.nome;}).join(', ')+'</div>';
+    }
+    if(unmatchedIg.length){
+      html += '<div style="margin-top:6px;font-size:11px"><strong>📎 IGs no Meta sem cidade associada:</strong> '+
+        unmatchedIg.map(function(x){return '@'+x.ig_username;}).join(', ')+
+        ' <span style="opacity:.75">(use o Meta Business Suite para confirmar a qual cidade pertencem)</span></div>';
+    }
+    setMsg(html, 'green');
+  }catch(e){
+    setMsg('❌ Erro de rede: '+e.message+'<br><span style="font-size:11px">Confirme que <code>/.netlify/functions/instagram</code> está deployado e que <code>META_USER_TOKEN</code> está configurado no Netlify.</span>', 'red');
+  }
+}
+
 function calcScore(c){
   let score = 0;
   // Posts frequência (0-30)
@@ -7283,25 +7386,48 @@ async function blogTestarWP(){
   var btn=document.getElementById('bwp-btn-testar'),st=document.getElementById('bwp-status');
   if(btn)btn.textContent='Testando...';
   try{
-    var creds=btoa(cfg.user+':'+cfg.pass);
-    var r=await fetch(cfg.url+'/wp-json/wp/v2/posts?per_page=5',{headers:{'Authorization':'Basic '+creds}});
-    if(r.ok){
-      var posts=await r.json();
-      if(st){st.textContent='✅ Conectado! '+posts.length+' posts encontrados.';st.style.color='#1D9E75';}
+    // Usa proxy /.netlify/functions/wordpress para evitar CORS e proteger as credenciais
+    var r=await fetch('/.netlify/functions/wordpress',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'test',url:cfg.url,user:cfg.user,pass:cfg.pass})
+    });
+    var d=await r.json();
+    if(r.ok && d.success){
+      var u=d.user||{};
+      var posts=d.recent_posts||[];
+      if(st){st.textContent='✅ Conectado como '+(u.name||u.slug||'usuário')+' · '+posts.length+' posts recentes';st.style.color='#1D9E75';}
       var recEl=document.getElementById('bwp-recentes');
       if(recEl)recEl.innerHTML=posts.map(function(p){return'<div style="padding:5px 0;border-bottom:1px solid var(--border);font-size:11px"><div style="font-weight:500">'+(p.title&&p.title.rendered||'—')+'</div><div style="color:var(--text3)">'+p.status+' · '+new Date(p.date).toLocaleDateString('pt-BR')+'</div></div>';}).join('');
-    }else{if(st){st.textContent='❌ Erro '+r.status+' — verifique credenciais';st.style.color='var(--orange)';}}
+    }else{
+      var msg='❌ '+(d.error||('HTTP '+r.status));
+      if(d.hint) msg+=' — '+d.hint;
+      if(st){st.textContent=msg;st.style.color='var(--orange)';}
+    }
   }catch(e){if(st){st.textContent='❌ '+e.message;st.style.color='var(--orange)';}}
   if(btn)btn.textContent='🔗 Testar conexão';
 }
 async function blogPublicarPostWP(post){
   var cfg=getBlogWP();if(!cfg.url||!cfg.user||!cfg.pass)return false;
   try{
-    var creds=btoa(cfg.user+':'+cfg.pass);
     var html=(post.conteudo||post.titulo).replace(/^---[\s\S]*?---\n?/m,'').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
-    var r=await fetch(cfg.url+'/wp-json/wp/v2/posts',{method:'POST',headers:{'Authorization':'Basic '+creds,'Content-Type':'application/json'},body:JSON.stringify({title:post.titulo,content:'<p>'+html+'</p>',status:cfg.status||'draft',slug:post.slug||''})});
-    if(r.ok){var d=await r.json();var posts=getBlogPosts();var i=posts.findIndex(function(p){return p.id===post.id;});if(i>=0){posts[i].status='publicado';posts[i].wp_id=d.id;posts[i].wp_link=d.link;}saveBlogPosts(posts);return true;}
-  }catch(e){}
+    var r=await fetch('/.netlify/functions/wordpress',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action:'create',
+        url:cfg.url,user:cfg.user,pass:cfg.pass,
+        post:{title:post.titulo, content:'<p>'+html+'</p>', status:cfg.status||'draft', slug:post.slug||''}
+      })
+    });
+    var d=await r.json();
+    if(r.ok && d.success){
+      var posts=getBlogPosts();var i=posts.findIndex(function(p){return p.id===post.id;});
+      if(i>=0){posts[i].status='publicado';posts[i].wp_id=d.id;posts[i].wp_link=d.link;}
+      saveBlogPosts(posts);return true;
+    }
+    console.warn('WP publish falhou:', d);
+  }catch(e){console.warn('WP publish erro:', e);}
   return false;
 }
 async function blogPublicarPost(id){

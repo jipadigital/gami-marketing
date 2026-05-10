@@ -92,19 +92,36 @@ exports.handler = async function(event) {
     
     const resp = await fetch(url, fetchOpts);
     const text = await resp.text();
-    
+
     let data;
     try { data = JSON.parse(text); }
-    catch(e) { 
-      data = { 
-        success: false, 
-        error: 'resposta não-JSON', 
-        raw: text.slice(0, 500), 
+    catch(e) {
+      data = {
+        success: false,
+        error: 'resposta não-JSON',
+        raw: text.slice(0, 500),
         status: resp.status,
-        url_chamada: url 
-      }; 
+        url_chamada: url
+      };
     }
-    
+
+    // 🔐 401 em produção quase sempre = chave de homologação (mch_api_*) sendo
+    //     usada contra api.taximachine.com.br. Adiciona dica explícita pro front
+    //     em vez de só repassar "Access credentials are invalid".
+    if (resp.status === 401) {
+      const isProd = baseUrl.includes('api.taximachine.com.br') && !baseUrl.includes('api-trial');
+      data = {
+        success: false,
+        status: 401,
+        error: data?.error || data?.message || 'Access credentials are invalid',
+        gami_hint: isProd
+          ? 'A chave configurada parece ser de homologação. Em produção, abra um chamado no suporte Machine (taximachine.com.br) pedindo a chave de PRODUÇÃO da central 4012 para a cidade ' + cidade + '.'
+          : 'Verifique se ' + envKeyName + ' está atualizada no Netlify.',
+        env_key: envKeyName,
+        base_url: baseUrl,
+      };
+    }
+
     return {
       statusCode: resp.status,
       headers,

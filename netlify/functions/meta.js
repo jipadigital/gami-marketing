@@ -1,7 +1,11 @@
 const https = require('https');
 
-const TOKEN   = 'EAAYlZCLBk17EBREN22qH5CpZAhsje6xIp3CwWahcSckdYihzWftVIZCWZC3xlwdI0QeqLPXuzi22IIdZABrkOeVlTBEjXgGL9mNZBmSsYpTxE7wItZAJrqCyRa2diy03ec91x9eINeixezRUgrye6ajkOYKR155SAydgZCjjqsuA97lqhZA7Df4cad4f23kldZB5sRRJO7poTdcNAM';
-const ACCOUNT = 'act_1130346225232397';
+// 🔐 Tokens vêm SEMPRE de env vars no Netlify — nunca commitar.
+// Configure em Netlify → Site settings → Environment variables:
+//   META_USER_TOKEN  = token de longa duração do Meta
+//   META_ACCOUNT     = ex: act_1130346225232397
+const TOKEN   = process.env.META_USER_TOKEN || '';
+const ACCOUNT = process.env.META_ACCOUNT    || 'act_1130346225232397';
 const API     = 'graph.facebook.com';
 
 function fetchURL(url) {
@@ -26,6 +30,14 @@ exports.handler = async (event) => {
 
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
+  }
+
+  if (!TOKEN) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'META_USER_TOKEN não configurado nas env vars do Netlify' }),
+    };
   }
 
   const endpoint = event.queryStringParameters?.endpoint || 'campaigns';
