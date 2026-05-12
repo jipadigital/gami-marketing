@@ -1,4 +1,4 @@
-<!-- v18.2 - rollback final 1621 - 12/05/2026 -->
+<!-- v20 - iOS smart banner + retry + clima 11 cidades - 12/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -452,6 +452,23 @@ body {
 </head>
 <body>
 
+<!-- ============================================================
+     DETECÇÃO INTELIGENTE iOS + AVISO AMIGÁVEL
+     Não bloqueia nada, só orienta o usuário
+     ============================================================ -->
+<script>
+(function(){
+  var _ua = navigator.userAgent;
+  window._isIOSDevice = /iPad|iPhone|iPod/.test(_ua) && !window.MSStream;
+  window._isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  window._isIOSPWA = _isIOSDevice && _isStandalone;
+  
+  if(_isIOSPWA){
+    console.log('🍎 iOS PWA detectado');
+  }
+})();
+</script>
+
 
 
 <script>
@@ -851,6 +868,18 @@ window.recusarInstalar = function(){
       <span id="dash-mes-atual" style="font-size:11px;color:var(--text3);font-weight:500"></span>
     </div>
     <div id="dash-aniversariantes-mes"></div>
+  </div>
+
+  <!-- 5.5 CLIMA DAS 11 CIDADES -->
+  <div class="card" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <div>
+        <div class="card-title" style="margin:0">🌤️ Clima nas cidades Gâmi</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">Atualizado em tempo real</div>
+      </div>
+      <button onclick="atualizarClimaCidades()" style="font-size:11px;padding:4px 10px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600">↻ Atualizar</button>
+    </div>
+    <div id="dash-clima-cidades" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px"></div>
   </div>
 
   <!-- 6. RANKING DAS CIDADES POR CORRIDAS -->
@@ -1543,6 +1572,13 @@ window.recusarInstalar = function(){
     </div>
 
     <div id="ctab-overview">
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div class="card-title" style="margin:0">🌤️ Previsão do tempo (3 dias)</div>
+          <button onclick="renderClimaCidade3Dias(window.__cidadeAtual?.nome,'cp-clima-3dias')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↻</button>
+        </div>
+        <div id="cp-clima-3dias"></div>
+      </div>
       <div class="g2" style="margin-bottom:12px">
         <div class="card"><div class="card-title">Performance</div><div id="cp-perf"></div></div>
         <div class="card"><div class="card-title">Aniversários próximos</div><div id="cp-bdays"></div></div>
@@ -4397,6 +4433,84 @@ async function forcarReloadDados(){
   
   if(btn){ btn.disabled = false; btn.textContent = '🔄 Recarregar'; }
 }
+
+/* ============================================================== */
+/* iOS PWA — Banner amigável se dados não carregarem              */
+/* ============================================================== */
+function mostrarAvisoConectividade(){
+  // Não mostra se já tem
+  if(document.getElementById('aviso-conectividade')) return;
+  
+  // Verifica se pessoas carregaram
+  var pessoas = [];
+  try { pessoas = JSON.parse(localStorage.getItem('gami_pessoas_v2') || '[]'); } catch(e){}
+  if(pessoas && pessoas.length > 0) return; // OK, não precisa avisar
+  
+  var ehIOSPWA = window._isIOSPWA;
+  
+  var div = document.createElement('div');
+  div.id = 'aviso-conectividade';
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top));font-family:inherit;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.2);line-height:1.5';
+  
+  var textoHTML;
+  if(ehIOSPWA){
+    textoHTML = '<div style="font-weight:700;margin-bottom:6px">📱 Detectamos problema de conexão (iPhone)</div>'
+      + '<div style="font-size:11px;opacity:.95;margin-bottom:10px">Para melhor desempenho no iPhone, use direto pelo Safari:</div>'
+      + '<div style="font-size:11px;background:rgba(255,255,255,.15);padding:8px 10px;border-radius:6px;margin-bottom:10px;line-height:1.6">'
+      + '<strong>1.</strong> Sai deste app<br>'
+      + '<strong>2.</strong> Abre <strong>Safari</strong><br>'
+      + '<strong>3.</strong> Acessa <strong>gami-marketing.netlify.app</strong><br>'
+      + '<strong>4.</strong> Toca em <span style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px">⬆️ Compartilhar</span> → <strong>Adicionar aos Favoritos</strong>'
+      + '</div>';
+  } else {
+    textoHTML = '<div style="font-weight:700;margin-bottom:6px">⚠️ Problema ao carregar dados</div>'
+      + '<div style="font-size:11px;opacity:.95;margin-bottom:10px">Os dados não chegaram do servidor. Pode ser conexão instável.</div>';
+  }
+  
+  div.innerHTML = textoHTML
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button onclick="tentarRecarregarConectividade()" style="flex:1;min-width:120px;padding:10px 14px;background:white;color:#0E7AB8;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
+    + '<button onclick="document.getElementById(\'aviso-conectividade\').remove()" style="padding:10px 14px;background:rgba(255,255,255,.2);color:white;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit">Fechar</button>'
+    + '</div>';
+  
+  document.body.appendChild(div);
+}
+
+async function tentarRecarregarConectividade(){
+  var btn = event && event.target;
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Tentando...'; }
+  
+  if(typeof loadPessoasFromSupa === 'function'){
+    try {
+      var d = await loadPessoasFromSupa();
+      if(d && d.length > 0){
+        // Re-renderiza tudo
+        if(typeof renderPessoas === 'function') try { renderPessoas(); } catch(e){}
+        if(typeof renderCarreira === 'function') try { renderCarreira(); } catch(e){}
+        if(typeof renderAniversariantesMes === 'function') try { renderAniversariantesMes(); } catch(e){}
+        if(typeof renderMinhaAgenda === 'function') try { renderMinhaAgenda(); } catch(e){}
+        if(typeof initDashboardHero === 'function') try { initDashboardHero(); } catch(e){}
+        // Remove banner
+        var aviso = document.getElementById('aviso-conectividade');
+        if(aviso) aviso.remove();
+        return;
+      }
+    } catch(e){}
+  }
+  
+  if(btn){ btn.disabled = false; btn.textContent = '🔄 Tentar de novo'; }
+  alert('⚠️ Ainda não consegui. Verifique sua conexão de internet ou tente abrir no Safari.');
+}
+
+// Monitora carregamento — mostra aviso depois de 12s se vazio
+setTimeout(function(){
+  try {
+    var pessoas = JSON.parse(localStorage.getItem('gami_pessoas_v2') || '[]');
+    if(!pessoas || pessoas.length === 0){
+      mostrarAvisoConectividade();
+    }
+  } catch(e){}
+}, 12000);
 function savePessoas(list){ 
   // 1. Salva no localStorage IMEDIATAMENTE (cache local)
   try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(list)); }catch(e){}
@@ -6175,6 +6289,13 @@ function abrirCidade(id){
   document.getElementById('cidades-lista').style.display='none';
   document.getElementById('cidade-painel').style.display='block';
   setTimeout(function(){ if(typeof initMachineTab === 'function') initMachineTab(); }, 200);
+  
+  // Carrega clima 3 dias da cidade (background)
+  setTimeout(function(){
+    if(typeof renderClimaCidade3Dias === 'function'){
+      try { renderClimaCidade3Dias(c.nome, 'cp-clima-3dias'); } catch(e){}
+    }
+  }, 300);
 
   // Header
   document.getElementById('cp-nome').textContent = c.nome + ' — ' + c.uf;
@@ -6751,6 +6872,179 @@ async function atualizarClima(){
   }
 }
 
+/* ============================================================== */
+/* CLIMA DAS 11 CIDADES GÂMI + PREVISÃO 3 DIAS                    */
+/* ============================================================== */
+
+/* Coordenadas das 11 cidades Gâmi */
+var CIDADES_COORDS = {
+  'Fortaleza':    { lat: -3.7327,  lon: -38.5267 },
+  'Recife':       { lat: -8.0476,  lon: -34.8770 },
+  'Maceió':       { lat: -9.6498,  lon: -35.7089 },
+  'João Pessoa':  { lat: -7.1195,  lon: -34.8450 },
+  'Natal':        { lat: -5.7945,  lon: -35.2110 },
+  'Aracaju':      { lat: -10.9472, lon: -37.0731 },
+  'São Luís':     { lat: -2.5297,  lon: -44.3028 },
+  'Cuiabá':       { lat: -15.6014, lon: -56.0979 },
+  'Teresina':     { lat: -5.0892,  lon: -42.8019 },
+  'Vitória':      { lat: -20.3155, lon: -40.3128 },
+  'Campo Grande': { lat: -20.4697, lon: -54.6201 }
+};
+
+/* Cache: salva resultados por 30 min pra não fritar a API */
+var _climaCache = {};
+var _CLIMA_TTL = 30 * 60 * 1000; // 30 minutos
+
+function climaIconePorCodigo(code){
+  if(code === 0) return '☀️';
+  if(code <= 2) return '🌤️';
+  if(code === 3) return '⛅';
+  if(code <= 48) return '🌫️';
+  if(code <= 57) return '🌦️';
+  if(code <= 67) return '🌧️';
+  if(code <= 77) return '❄️';
+  if(code <= 82) return '🌧️';
+  if(code <= 86) return '🌨️';
+  return '⛈️';
+}
+
+function climaDescPorCodigo(code){
+  if(code === 0) return 'Céu limpo';
+  if(code <= 2) return 'Parcialm. nublado';
+  if(code === 3) return 'Nublado';
+  if(code <= 48) return 'Névoa';
+  if(code <= 57) return 'Garoa';
+  if(code <= 67) return 'Chuva';
+  if(code <= 77) return 'Neve';
+  if(code <= 82) return 'Pancadas';
+  if(code <= 86) return 'Pancadas de neve';
+  return 'Tempestade';
+}
+
+async function buscarClimaCidade(nomeCidade){
+  var coords = CIDADES_COORDS[nomeCidade];
+  if(!coords) return null;
+  
+  // Cache
+  var cacheKey = 'clima_'+nomeCidade;
+  var cached = _climaCache[cacheKey];
+  if(cached && (Date.now() - cached.ts < _CLIMA_TTL)){
+    return cached.data;
+  }
+  
+  try {
+    var url = 'https://api.open-meteo.com/v1/forecast'
+      + '?latitude='+coords.lat+'&longitude='+coords.lon
+      + '&current=temperature_2m,weathercode,relative_humidity_2m'
+      + '&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max'
+      + '&timezone=America%2FSao_Paulo&forecast_days=3';
+    
+    var r = await fetch(url);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var d = await r.json();
+    
+    var resultado = {
+      cidade: nomeCidade,
+      temp_atual: Math.round(d.current.temperature_2m),
+      codigo_atual: d.current.weathercode,
+      umidade: d.current.relative_humidity_2m,
+      dias: [0,1,2].map(function(i){
+        return {
+          max: Math.round(d.daily.temperature_2m_max[i]),
+          min: Math.round(d.daily.temperature_2m_min[i]),
+          codigo: d.daily.weathercode[i],
+          chuva_prob: d.daily.precipitation_probability_max[i] || 0
+        };
+      })
+    };
+    
+    _climaCache[cacheKey] = { ts: Date.now(), data: resultado };
+    return resultado;
+  } catch(e){
+    console.warn('Erro clima '+nomeCidade+':', e.message);
+    return null;
+  }
+}
+
+async function atualizarClimaCidades(){
+  var host = document.getElementById('dash-clima-cidades');
+  if(!host) return;
+  
+  // Estado loading
+  host.innerHTML = Object.keys(CIDADES_COORDS).map(function(c){
+    return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);text-align:center"><div style="font-size:20px;opacity:.4">⏳</div><div style="font-size:10px;color:var(--text3);margin-top:4px">'+c+'</div></div>';
+  }).join('');
+  
+  // Busca em paralelo
+  var resultados = await Promise.all(
+    Object.keys(CIDADES_COORDS).map(function(c){ return buscarClimaCidade(c); })
+  );
+  
+  // Renderiza
+  host.innerHTML = resultados.map(function(r, idx){
+    var cidade = Object.keys(CIDADES_COORDS)[idx];
+    if(!r){
+      return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);text-align:center">'
+        + '<div style="font-size:18px">❓</div>'
+        + '<div style="font-size:10px;color:var(--text3);margin-top:4px">'+cidade+'</div>'
+        + '<div style="font-size:9px;color:#E24B4A;margin-top:2px">Sem dados</div>'
+        + '</div>';
+    }
+    
+    var icone = climaIconePorCodigo(r.codigo_atual);
+    var desc = climaDescPorCodigo(r.codigo_atual);
+    var chuvaHoje = r.dias[0].chuva_prob;
+    var chuvaCor = chuvaHoje >= 70 ? '#E24B4A' : chuvaHoje >= 40 ? '#EF9F27' : '#1D9E75';
+    
+    return '<div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:linear-gradient(135deg,#FAFCFE,#F0F7FB);text-align:center;transition:transform .15s ease;cursor:default" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 10px rgba(26,184,240,.15)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'
+      + '<div style="font-size:24px;line-height:1">'+icone+'</div>'
+      + '<div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:700;color:#0B2542;margin-top:3px">'+r.temp_atual+'°</div>'
+      + '<div style="font-size:10px;font-weight:600;color:var(--text);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+cidade+'</div>'
+      + '<div style="font-size:9px;color:var(--text3);margin-top:1px">'+desc+'</div>'
+      + '<div style="font-size:9px;font-weight:700;color:'+chuvaCor+';margin-top:3px">💧 '+chuvaHoje+'%</div>'
+      + '</div>';
+  }).join('');
+}
+
+/* Pra cards individuais de cidade (aba Cidades) — 3 dias */
+async function renderClimaCidade3Dias(nomeCidade, hostElementId){
+  var host = document.getElementById(hostElementId);
+  if(!host) return;
+  
+  host.innerHTML = '<div style="text-align:center;padding:14px;color:var(--text3);font-size:11px"><div style="font-size:22px">⏳</div>Buscando previsão...</div>';
+  
+  var r = await buscarClimaCidade(nomeCidade);
+  if(!r){
+    host.innerHTML = '<div style="text-align:center;padding:14px;color:#E24B4A;font-size:11px">Sem dados de clima disponíveis.</div>';
+    return;
+  }
+  
+  var diasNomes = ['Hoje', 'Amanhã', 'Depois'];
+  var dataAtual = new Date();
+  
+  host.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">'
+    + r.dias.map(function(d, i){
+      var dataDia = new Date(dataAtual);
+      dataDia.setDate(dataDia.getDate() + i);
+      var diaSemana = dataDia.toLocaleDateString('pt-BR', { weekday: 'short' });
+      var icone = climaIconePorCodigo(d.codigo);
+      var desc = climaDescPorCodigo(d.codigo);
+      var chuvaCor = d.chuva_prob >= 70 ? '#E24B4A' : d.chuva_prob >= 40 ? '#EF9F27' : '#1D9E75';
+      var bgCor = i === 0 ? 'linear-gradient(135deg,#E6F6FE,#FFF8E1)' : '#FAFCFE';
+      var borda = i === 0 ? '1.5px solid var(--gami-blue)' : '1px solid var(--border)';
+      
+      return '<div style="padding:10px 6px;background:'+bgCor+';border:'+borda+';border-radius:10px;text-align:center">'
+        + '<div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">'+diasNomes[i]+'</div>'
+        + '<div style="font-size:9px;color:var(--text3);margin-top:1px">'+diaSemana+'</div>'
+        + '<div style="font-size:26px;margin-top:6px;line-height:1">'+icone+'</div>'
+        + '<div style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:700;color:#0B2542;margin-top:6px">'+d.max+'° <span style="color:var(--text3);font-size:11px;font-weight:500">/ '+d.min+'°</span></div>'
+        + '<div style="font-size:9px;color:var(--text3);margin-top:3px">'+desc+'</div>'
+        + '<div style="margin-top:5px;padding:2px 5px;background:'+chuvaCor+'15;color:'+chuvaCor+';border-radius:6px;font-size:9px;font-weight:700;display:inline-block">💧 '+d.chuva_prob+'%</div>'
+        + '</div>';
+    }).join('')
+    + '</div>';
+}
+
 // --- NOTÍCIAS (via Netlify Function) ---
 var _NOTICIA_CACHE_KEY = 'gami_noticias_cache';
 
@@ -6995,6 +7289,8 @@ function initDashboard(){
   carregarVersiculo();
   carregarFrase();
   atualizarClima();
+  // Clima das 11 cidades Gâmi (executado em background)
+  try { if(typeof atualizarClimaCidades === 'function') atualizarClimaCidades(); } catch(e){}
   // Gera tarefas recorrentes do dia (1x por dia, lazy)
   try { if(typeof gerarTarefasRecorrentesDoDia === 'function') gerarTarefasRecorrentesDoDia(); } catch(e){}
   // Novos blocos do dashboard v2
@@ -8549,14 +8845,25 @@ function normalizarCidadeAposLeitura(pessoas){
   });
 }
 async function loadPessoasFromSupa(){
-  var d=await supaSelect('pessoas','order=nome.asc');
-  if(d&&d.length){
-    // Converte cidade JSON string de volta para array (multi-cidades)
-    if(typeof normalizarCidadeAposLeitura === 'function') d = normalizarCidadeAposLeitura(d);
-    // CRITICAL: NÃO chamar savePessoas() aqui (dispararia sync de volta).
-    // Salva direto no localStorage como cache silencioso.
-    try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(d)); }catch(e){}
-    return d;
+  // iOS PWA fix: tenta 3 vezes com pausa entre tentativas
+  var tentativas = window._isIOSPWA ? 4 : 2;
+  for(var i = 0; i < tentativas; i++){
+    try {
+      var d = await supaSelect('pessoas','order=nome.asc');
+      if(d && d.length){
+        // Converte cidade JSON string de volta para array (multi-cidades)
+        if(typeof normalizarCidadeAposLeitura === 'function') d = normalizarCidadeAposLeitura(d);
+        try{ localStorage.setItem('gami_pessoas_v2', JSON.stringify(d)); }catch(e){}
+        if(i > 0) console.log('✅ Pessoas carregadas no retry ' + i);
+        return d;
+      }
+    } catch(e){
+      console.warn('loadPessoasFromSupa tentativa ' + (i+1) + ':', e.message);
+    }
+    // Pausa entre tentativas (1s, 2s, 3s, 4s)
+    if(i < tentativas - 1){
+      await new Promise(function(resolve){ setTimeout(resolve, 1000 * (i+1)); });
+    }
   }
   return null;
 }
