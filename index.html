@@ -1,4 +1,4 @@
-<!-- v16 - iOS SW desativado + cache no-store + reload manual - 11/05/2026 -->
+<!-- v17 - iOS PWA emergencia auto-reset + SOS banner - 11/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -451,6 +451,103 @@ body {
 </style>
 </head>
 <body>
+
+<!-- ============================================================
+     EMERGÊNCIA iOS PWA — Reset automático na primeira execução
+     Roda ANTES de tudo. Limpa SW e caches que possam estar quebrados.
+     ============================================================ -->
+<script>
+(function(){
+  var _userAgent = navigator.userAgent;
+  var _isIOSDevice = /iPad|iPhone|iPod/.test(_userAgent) && !window.MSStream;
+  var _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  
+  // Detecta se é iOS rodando como PWA (app instalado)
+  if(_isIOSDevice && _isStandalone){
+    console.log('🍎 iOS PWA detectado - aplicando fixes');
+    
+    // Marca que precisa de cleanup na primeira execução
+    var _jaLimpou = localStorage.getItem('gami_ios_cleanup_v17');
+    if(!_jaLimpou){
+      console.log('🧹 Limpando SW antigos e caches (1x na vida do app)...');
+      try { localStorage.setItem('gami_ios_cleanup_v17', '1'); } catch(e){}
+      
+      // Desinstala TODOS service workers
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.getRegistrations().then(function(regs){
+          regs.forEach(function(reg){ reg.unregister(); });
+        }).catch(function(){});
+      }
+      
+      // Limpa TODOS os caches
+      if('caches' in window){
+        caches.keys().then(function(names){
+          names.forEach(function(name){ caches.delete(name); });
+        }).catch(function(){});
+      }
+    }
+  }
+  
+  // Botão de emergência sempre disponível (HTML puro, não depende de JS pesado)
+  window.resetGamiApp = function(){
+    if(!confirm('Resetar dados locais e recarregar?\n\nVai limpar cache e baixar tudo do servidor novamente.')) return;
+    try { 
+      // Preserva localStorage de dados importantes, limpa só cache de PWA
+      var preservar = {};
+      var chavesImportantes = ['gami_pessoas_v2', 'gami_cidades_v3', 'gami_onesignal_id', 'gami_install_dismissed'];
+      chavesImportantes.forEach(function(k){
+        var v = localStorage.getItem(k);
+        if(v) preservar[k] = v;
+      });
+      // Limpa tudo
+      localStorage.clear();
+      // Restaura essenciais
+      Object.keys(preservar).forEach(function(k){
+        localStorage.setItem(k, preservar[k]);
+      });
+    } catch(e){}
+    
+    // Desinstala SW
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        Promise.all(regs.map(function(r){ return r.unregister(); })).then(function(){
+          // Limpa caches
+          if('caches' in window){
+            caches.keys().then(function(names){
+              Promise.all(names.map(function(n){ return caches.delete(n); })).then(function(){
+                window.location.reload(true);
+              });
+            });
+          } else {
+            window.location.reload(true);
+          }
+        });
+      }).catch(function(){ window.location.reload(true); });
+    } else {
+      window.location.reload(true);
+    }
+  };
+  
+  // Detecta se JS principal travou — se depois de 10s não temos pessoas + estamos em iOS PWA, mostra botão de SOS
+  if(_isIOSDevice && _isStandalone){
+    setTimeout(function(){
+      try {
+        var pessoas = JSON.parse(localStorage.getItem('gami_pessoas_v2') || '[]');
+        if(!pessoas || pessoas.length === 0){
+          // Mostra banner de SOS
+          if(!document.getElementById('ios-sos-banner')){
+            var sos = document.createElement('div');
+            sos.id = 'ios-sos-banner';
+            sos.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#E24B4A;color:white;padding:14px 16px;text-align:center;font-family:sans-serif;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.2)';
+            sos.innerHTML = '⚠️ Dados não carregaram. <button onclick="resetGamiApp()" style="margin-left:8px;padding:6px 14px;background:white;color:#E24B4A;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">🔄 Resetar app</button> <button onclick="this.parentElement.remove()" style="margin-left:4px;background:transparent;border:none;color:white;font-size:18px;cursor:pointer">×</button>';
+            document.body.appendChild(sos);
+          }
+        }
+      } catch(e){}
+    }, 10000);
+  }
+})();
+</script>
 
 <script>
 /* BULLETPROOF NAV - DEFINED FIRST, OVERRIDES EVERYTHING */
