@@ -1,4 +1,4 @@
-<!-- v14 - OneSignal push real + notif locais + agendador - 11/05/2026 -->
+<!-- v15 - iOS PWA fix pessoas + cache invalidacao - 11/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -530,7 +530,7 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
     // Service worker inline (cache básico + base pra notificações futuras)
     var swCode = `
-      const CACHE = 'gami-v1';
+      const CACHE = 'gami-v3';
       const CACHE_URLS = ['/'];
       self.addEventListener('install', e => {
         e.waitUntil(caches.open(CACHE).then(c => c.addAll(CACHE_URLS)).then(() => self.skipWaiting()));
@@ -543,7 +543,15 @@ if('serviceWorker' in navigator){
       });
       self.addEventListener('fetch', e => {
         if(e.request.method !== 'GET') return;
-        if(e.request.url.includes('/api/') || e.request.url.includes('supabase.co')) return;
+        // CRITICAL: nunca cachear chamadas a APIs/dados externos
+        const url = e.request.url;
+        if(url.includes('/api/') 
+           || url.includes('supabase.co') 
+           || url.includes('.netlify/functions')
+           || url.includes('onesignal.com')
+           || url.includes('googleapis.com')
+           || url.includes('fonts.googleapis')
+           || url.includes('cdn.onesignal')) return;
         e.respondWith(
           fetch(e.request).then(r => {
             const copy = r.clone();
@@ -4281,6 +4289,32 @@ function getPessoas(){
     return Array.isArray(parsed)&&parsed.length>0?parsed:JSON.parse(JSON.stringify(PESSOAS_DEFAULT));
   }catch(e){ return JSON.parse(JSON.stringify(PESSOAS_DEFAULT)); }
 }
+
+/* iOS PWA Fix: força refresh do Supabase se localStorage estiver vazio */
+async function garantirPessoasCarregadas(){
+  var atual = getPessoas();
+  if(atual && atual.length > 0) return atual; // já tem
+  
+  // Localstorage vazio → tenta carregar do Supabase com retry
+  for(var i = 0; i < 3; i++){
+    try {
+      if(typeof loadPessoasFromSupa === 'function'){
+        var d = await loadPessoasFromSupa();
+        if(d && d.length > 0){
+          console.log('✅ Pessoas recuperadas do Supabase no retry ' + (i+1));
+          // Força re-render
+          if(typeof renderPessoas === 'function') try { renderPessoas(); } catch(e){}
+          if(typeof renderCarreira === 'function') try { renderCarreira(); } catch(e){}
+          if(typeof renderAniversariantesMes === 'function') try { renderAniversariantesMes(); } catch(e){}
+          if(typeof initDashboardHero === 'function') try { initDashboardHero(); } catch(e){}
+          return d;
+        }
+      }
+    } catch(e){ console.warn('Retry ' + i + ':', e); }
+    await new Promise(function(resolve){ setTimeout(resolve, 1000 * (i+1)); });
+  }
+  return atual;
+}
 function savePessoas(list){ 
   // 1. Salva no localStorage IMEDIATAMENTE (cache local)
   try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(list)); }catch(e){}
@@ -4654,7 +4688,21 @@ function renderPessoas(){
   if(!list) return;
 
   if(filtradas.length===0){
-    list.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Nenhuma pessoa encontrada.</div>';
+    // Se TODAS as pessoas estão vazias (não é só filtro), mostra estado de carregando
+    if(pessoas.length === 0){
+      list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">'
+        + '<div style="font-size:30px;margin-bottom:12px">⏳</div>'
+        + '<div style="font-weight:600;color:var(--text);margin-bottom:6px">Carregando pessoas do servidor...</div>'
+        + '<div style="font-size:11px">Se demorar muito, clique abaixo</div>'
+        + '<button onclick="if(typeof garantirPessoasCarregadas===\'function\') garantirPessoasCarregadas()" style="margin-top:14px;padding:8px 16px;border:none;border-radius:8px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻ Recarregar agora</button>'
+        + '</div>';
+      // Auto-recovery: tenta carregar do supabase
+      if(typeof garantirPessoasCarregadas === 'function'){
+        setTimeout(function(){ garantirPessoasCarregadas(); }, 500);
+      }
+    } else {
+      list.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Nenhuma pessoa encontrada com esse filtro.</div>';
+    }
     return;
   }
 
@@ -8464,6 +8512,15 @@ async function initSupabase(){
       try { await loadReconhecimentoFromSupa(); } catch(e){ console.warn('reconhecimento:', e); }
     }
     
+    // CRITICAL: iOS PWA fix - se ainda está vazio, força retry
+    var pessoasAtual = getPessoas();
+    if(!pessoasAtual || pessoasAtual.length === 0){
+      console.warn('⚠️ Pessoas vazias após initSupabase. Tentando recovery...');
+      if(typeof garantirPessoasCarregadas === 'function'){
+        try { await garantirPessoasCarregadas(); } catch(e){ console.warn('recovery:', e); }
+      }
+    }
+    
     // CRÍTICO: depois de carregar do servidor, força re-render das telas
     // pra mostrar os dados atualizados (não o cache antigo)
     if(typeof renderPessoas === 'function'){
@@ -8478,6 +8535,12 @@ async function initSupabase(){
     if(typeof renderReconhecimento === 'function'){
       try { renderReconhecimento(); } catch(e){}
     }
+    if(typeof renderAniversariantesMes === 'function'){
+      try { renderAniversariantesMes(); } catch(e){}
+    }
+    if(typeof renderMinhaAgenda === 'function'){
+      try { renderMinhaAgenda(); } catch(e){}
+    }
     
     // Mostra badge discreta confirmando carga
     if(typeof getStatusBadge === 'function'){
@@ -8491,6 +8554,12 @@ async function initSupabase(){
     }
   } catch(err){
     console.error('initSupabase erro:', err);
+    // Mesmo com erro, tenta recovery
+    if(typeof garantirPessoasCarregadas === 'function'){
+      setTimeout(function(){
+        garantirPessoasCarregadas().catch(function(e){});
+      }, 2000);
+    }
   }
 }
 /* IMPORTANTE: removido setInterval automático (causava sobrescrita de dados).
@@ -9858,6 +9927,17 @@ function _appStart(){
   setTimeout(function(){
     try{ initSupabase(); }catch(e){ console.warn('supabase:', e); }
   }, 200);
+  
+  // iOS PWA Fix: roda novamente após 3s pra garantir
+  setTimeout(function(){
+    var p = typeof getPessoas === 'function' ? getPessoas() : [];
+    if(!p || p.length === 0){
+      console.warn('⚠️ Sem pessoas após 3s - rodando recovery');
+      if(typeof garantirPessoasCarregadas === 'function'){
+        try{ garantirPessoasCarregadas(); }catch(e){}
+      }
+    }
+  }, 3000);
   
   // IMPORTANTE: sync automático REMOVIDO.
   // Cada edição já salva direto no Supabase via savePessoas / saveCidadesData.
