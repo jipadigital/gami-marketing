@@ -1,24 +1,23 @@
+# netlify.toml - Configuração do site Gâmi Marketing
+# Arquivo na raiz do repositório
+
 [build]
   publish = "."
   functions = "netlify/functions"
-  # SUPABASE_URL e SUPABASE_KEY (publishable) são PÚBLICAS por design — vivem no
-  # index.html pro Cloud Mirror funcionar e estão protegidas por RLS no Supabase.
-  # Marcar elas como "secret" no Netlify foi conservador demais; aqui dizemos
-  # ao secrets scanner pra ignorá-las.
-  [build.environment]
-    SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,SUPABASE_KEY"
 
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Methods = "GET, POST, DELETE, OPTIONS"
-    Access-Control-Allow-Headers = "Content-Type"
+# Função agendada — posta Stories Instagram automaticamente
+# Horário do Netlify Scheduled Functions é UTC.
+# Brasília (BRT) = UTC -3h
+#   08:00 BRT = 11:00 UTC
+#   12:00 BRT = 15:00 UTC
+#   16:30 BRT = 19:30 UTC
+#   19:00 BRT = 22:00 UTC
+[functions."scheduled-stories"]
+  schedule = "0,30 11,15,19,22 * * *"
+  # Roda às :00 e :30 de cada hora alvo
+  # A função interna verifica se é horário correto (tolerância 10min)
 
-# Aumenta limite de payload pra uploads de mídia (até 6MB no plano free)
-[functions]
-  node_bundler = "esbuild"
-
-# Scheduled Function: roda a cada 15 minutos pra publicar posts pendentes
-[functions."posts-cron"]
-  schedule = "*/15 * * * *"
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
