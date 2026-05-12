@@ -1,4 +1,4 @@
-<!-- v20 - iOS smart banner + retry + clima 11 cidades - 12/05/2026 -->
+<!-- v21 - PWA removido - site puro Safari Chrome - 12/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -7,24 +7,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Gâmi Delivery</title>
 
-<!-- ========================================== -->
-<!-- PWA META TAGS — App instalável no celular -->
-<!-- ========================================== -->
-<meta name="application-name" content="Gâmi Delivery">
-<meta name="apple-mobile-web-app-title" content="Gâmi Delivery">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0B2542">
-<meta name="msapplication-TileColor" content="#0B2542">
-<meta name="description" content="Dashboard interno Gâmi Delivery — Gestão de marketing, equipe e cidades">
-
-<!-- Manifest (inline via data URI - não precisa de arquivo externo) -->
-<link rel="manifest" href='data:application/manifest+json,{"name":"G%C3%A2mi%20Delivery","short_name":"G%C3%A2mi","description":"Dashboard interno G%C3%A2mi","start_url":"/","scope":"/","display":"standalone","orientation":"portrait-primary","background_color":"%230B2542","theme_color":"%230B2542","icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"maskable"},{"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}'>
-
-<!-- Apple Touch Icons (iOS) - SVG inline -->
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%230B2542'/%3E%3Ccircle cx='90' cy='90' r='52' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%231AB8F0'/%3E%3Cstop offset='1' stop-color='%230E7AB8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ctext x='90' y='110' text-anchor='middle' font-family='Arial,sans-serif' font-size='62' font-weight='900' fill='white' letter-spacing='-3'%3EG%3C/text%3E%3C/svg%3E">
+<!-- Favicon Gâmi (aparece na aba do navegador) -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B2542'/%3E%3Ccircle cx='32' cy='32' r='18' fill='%231AB8F0'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='Arial' font-size='22' font-weight='900' fill='white'%3EG%3C/text%3E%3C/svg%3E">
+<meta name="description" content="Dashboard interno Gâmi Delivery — Gestão de marketing, equipe e cidades">
 
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 
@@ -452,23 +437,6 @@ body {
 </head>
 <body>
 
-<!-- ============================================================
-     DETECÇÃO INTELIGENTE iOS + AVISO AMIGÁVEL
-     Não bloqueia nada, só orienta o usuário
-     ============================================================ -->
-<script>
-(function(){
-  var _ua = navigator.userAgent;
-  window._isIOSDevice = /iPad|iPhone|iPod/.test(_ua) && !window.MSStream;
-  window._isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  window._isIOSPWA = _isIOSDevice && _isStandalone;
-  
-  if(_isIOSPWA){
-    console.log('🍎 iOS PWA detectado');
-  }
-})();
-</script>
-
 
 
 <script>
@@ -544,137 +512,7 @@ document.addEventListener('click', function(e){
   }
 }, true);
 
-/* ============== PWA: REGISTRA SERVICE WORKER (inline via Blob) ============== */
-/* iOS PWA Fix: Safari tem problemas conhecidos com SW. Detecta iOS e desativa. */
-var _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-var _isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-var _swDisabled = _isIOS || _isSafari;
-
-// iOS PWA fix: desinstala QUALQUER service worker antigo que possa estar bloqueando
-if(_swDisabled && 'serviceWorker' in navigator){
-  navigator.serviceWorker.getRegistrations().then(function(regs){
-    regs.forEach(function(reg){
-      reg.unregister().then(function(){
-        console.log('🗑️ Service worker antigo removido (iOS fix)');
-      });
-    });
-  }).catch(function(){});
-  
-  // Limpa também caches do navegador relacionados ao site
-  if('caches' in window){
-    caches.keys().then(function(names){
-      names.forEach(function(name){
-        if(name.startsWith('gami-')){
-          caches.delete(name).then(function(){
-            console.log('🗑️ Cache antigo removido:', name);
-          });
-        }
-      });
-    }).catch(function(){});
-  }
-}
-
-if('serviceWorker' in navigator && !_swDisabled){
-  window.addEventListener('load', function(){
-    // Service worker inline (cache básico + base pra notificações futuras)
-    var swCode = `
-      const CACHE = 'gami-v3';
-      const CACHE_URLS = ['/'];
-      self.addEventListener('install', e => {
-        e.waitUntil(caches.open(CACHE).then(c => c.addAll(CACHE_URLS)).then(() => self.skipWaiting()));
-      });
-      self.addEventListener('activate', e => {
-        e.waitUntil(
-          caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-            .then(() => self.clients.claim())
-        );
-      });
-      self.addEventListener('fetch', e => {
-        if(e.request.method !== 'GET') return;
-        // CRITICAL: nunca cachear chamadas a APIs/dados externos
-        const url = e.request.url;
-        if(url.includes('/api/') 
-           || url.includes('supabase.co') 
-           || url.includes('.netlify/functions')
-           || url.includes('onesignal.com')
-           || url.includes('googleapis.com')
-           || url.includes('fonts.googleapis')
-           || url.includes('cdn.onesignal')) return;
-        e.respondWith(
-          fetch(e.request).then(r => {
-            const copy = r.clone();
-            if(r.status === 200) caches.open(CACHE).then(c => c.put(e.request, copy));
-            return r;
-          }).catch(() => caches.match(e.request))
-        );
-      });
-      // Push handler (base pra OneSignal/notifications futuras)
-      self.addEventListener('push', e => {
-        if(!e.data) return;
-        const data = e.data.json();
-        e.waitUntil(self.registration.showNotification(data.title || 'Gâmi', {
-          body: data.body || '',
-          icon: data.icon || '/icon-192.png',
-          badge: '/icon-192.png',
-          vibrate: [200, 100, 200],
-          data: data.url || '/'
-        }));
-      });
-      self.addEventListener('notificationclick', e => {
-        e.notification.close();
-        e.waitUntil(clients.openWindow(e.notification.data || '/'));
-      });
-    `;
-    var blob = new Blob([swCode], { type: 'application/javascript' });
-    var swUrl = URL.createObjectURL(blob);
-    navigator.serviceWorker.register(swUrl).catch(function(err){
-      console.warn('SW registration failed:', err);
-    });
-  });
-}
-
-/* ============== PWA: BANNER "INSTALAR APP" ============== */
-var _deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', function(e){
-  e.preventDefault();
-  _deferredPrompt = e;
-  // Mostra banner discreto após 5 segundos
-  setTimeout(function(){
-    if(!_deferredPrompt) return;
-    if(localStorage.getItem('gami_install_dismissed') === '1') return;
-    mostrarBannerInstalar();
-  }, 5000);
-});
-
-function mostrarBannerInstalar(){
-  if(document.getElementById('install-banner')) return;
-  var banner = document.createElement('div');
-  banner.id = 'install-banner';
-  banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:380px;margin:0 auto;background:var(--gami-navy);color:white;padding:14px 16px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.2);z-index:9999;display:flex;align-items:center;gap:12px;font-family:inherit;animation:slideUp .3s ease';
-  banner.innerHTML = '<div style="width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;flex-shrink:0">G</div>'
-    +'<div style="flex:1;min-width:0">'
-    +'<div style="font-size:13px;font-weight:600;color:white">Instalar Gâmi Delivery</div>'
-    +'<div style="font-size:11px;color:#9DB4D6">Adicione à tela inicial</div>'
-    +'</div>'
-    +'<button onclick="aceitarInstalar()" style="padding:8px 14px;border:none;border-radius:8px;background:#1AB8F0;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Instalar</button>'
-    +'<button onclick="recusarInstalar()" style="padding:8px;border:none;background:transparent;color:#9DB4D6;cursor:pointer;font-size:18px;line-height:1">×</button>';
-  document.body.appendChild(banner);
-}
-
-window.aceitarInstalar = async function(){
-  if(!_deferredPrompt) return;
-  _deferredPrompt.prompt();
-  var choice = await _deferredPrompt.userChoice;
-  _deferredPrompt = null;
-  var b = document.getElementById('install-banner');
-  if(b) b.remove();
-};
-
-window.recusarInstalar = function(){
-  localStorage.setItem('gami_install_dismissed', '1');
-  var b = document.getElementById('install-banner');
-  if(b) b.remove();
-};
+/* ============== PWA removido — usar como site Safari/Chrome direto ============== */
 </script>
 
 <!-- HEADER MOBILE (só aparece em telas <769px) -->
@@ -4434,83 +4272,6 @@ async function forcarReloadDados(){
   if(btn){ btn.disabled = false; btn.textContent = '🔄 Recarregar'; }
 }
 
-/* ============================================================== */
-/* iOS PWA — Banner amigável se dados não carregarem              */
-/* ============================================================== */
-function mostrarAvisoConectividade(){
-  // Não mostra se já tem
-  if(document.getElementById('aviso-conectividade')) return;
-  
-  // Verifica se pessoas carregaram
-  var pessoas = [];
-  try { pessoas = JSON.parse(localStorage.getItem('gami_pessoas_v2') || '[]'); } catch(e){}
-  if(pessoas && pessoas.length > 0) return; // OK, não precisa avisar
-  
-  var ehIOSPWA = window._isIOSPWA;
-  
-  var div = document.createElement('div');
-  div.id = 'aviso-conectividade';
-  div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;padding:14px 16px;padding-top:calc(14px + env(safe-area-inset-top));font-family:inherit;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.2);line-height:1.5';
-  
-  var textoHTML;
-  if(ehIOSPWA){
-    textoHTML = '<div style="font-weight:700;margin-bottom:6px">📱 Detectamos problema de conexão (iPhone)</div>'
-      + '<div style="font-size:11px;opacity:.95;margin-bottom:10px">Para melhor desempenho no iPhone, use direto pelo Safari:</div>'
-      + '<div style="font-size:11px;background:rgba(255,255,255,.15);padding:8px 10px;border-radius:6px;margin-bottom:10px;line-height:1.6">'
-      + '<strong>1.</strong> Sai deste app<br>'
-      + '<strong>2.</strong> Abre <strong>Safari</strong><br>'
-      + '<strong>3.</strong> Acessa <strong>gami-marketing.netlify.app</strong><br>'
-      + '<strong>4.</strong> Toca em <span style="background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px">⬆️ Compartilhar</span> → <strong>Adicionar aos Favoritos</strong>'
-      + '</div>';
-  } else {
-    textoHTML = '<div style="font-weight:700;margin-bottom:6px">⚠️ Problema ao carregar dados</div>'
-      + '<div style="font-size:11px;opacity:.95;margin-bottom:10px">Os dados não chegaram do servidor. Pode ser conexão instável.</div>';
-  }
-  
-  div.innerHTML = textoHTML
-    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    + '<button onclick="tentarRecarregarConectividade()" style="flex:1;min-width:120px;padding:10px 14px;background:white;color:#0E7AB8;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
-    + '<button onclick="document.getElementById(\'aviso-conectividade\').remove()" style="padding:10px 14px;background:rgba(255,255,255,.2);color:white;border:none;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit">Fechar</button>'
-    + '</div>';
-  
-  document.body.appendChild(div);
-}
-
-async function tentarRecarregarConectividade(){
-  var btn = event && event.target;
-  if(btn){ btn.disabled = true; btn.textContent = '⏳ Tentando...'; }
-  
-  if(typeof loadPessoasFromSupa === 'function'){
-    try {
-      var d = await loadPessoasFromSupa();
-      if(d && d.length > 0){
-        // Re-renderiza tudo
-        if(typeof renderPessoas === 'function') try { renderPessoas(); } catch(e){}
-        if(typeof renderCarreira === 'function') try { renderCarreira(); } catch(e){}
-        if(typeof renderAniversariantesMes === 'function') try { renderAniversariantesMes(); } catch(e){}
-        if(typeof renderMinhaAgenda === 'function') try { renderMinhaAgenda(); } catch(e){}
-        if(typeof initDashboardHero === 'function') try { initDashboardHero(); } catch(e){}
-        // Remove banner
-        var aviso = document.getElementById('aviso-conectividade');
-        if(aviso) aviso.remove();
-        return;
-      }
-    } catch(e){}
-  }
-  
-  if(btn){ btn.disabled = false; btn.textContent = '🔄 Tentar de novo'; }
-  alert('⚠️ Ainda não consegui. Verifique sua conexão de internet ou tente abrir no Safari.');
-}
-
-// Monitora carregamento — mostra aviso depois de 12s se vazio
-setTimeout(function(){
-  try {
-    var pessoas = JSON.parse(localStorage.getItem('gami_pessoas_v2') || '[]');
-    if(!pessoas || pessoas.length === 0){
-      mostrarAvisoConectividade();
-    }
-  } catch(e){}
-}, 12000);
 function savePessoas(list){ 
   // 1. Salva no localStorage IMEDIATAMENTE (cache local)
   try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(list)); }catch(e){}
@@ -8846,7 +8607,8 @@ function normalizarCidadeAposLeitura(pessoas){
 }
 async function loadPessoasFromSupa(){
   // iOS PWA fix: tenta 3 vezes com pausa entre tentativas
-  var tentativas = window._isIOSPWA ? 4 : 2;
+  // Retry: 3 tentativas com pausa entre elas (lida com rede instável)
+  var tentativas = 3;
   for(var i = 0; i < tentativas; i++){
     try {
       var d = await supaSelect('pessoas','order=nome.asc');
