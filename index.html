@@ -1,4 +1,4 @@
-<!-- v15 - iOS PWA fix pessoas + cache invalidacao - 11/05/2026 -->
+<!-- v16 - iOS SW desativado + cache no-store + reload manual - 11/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -526,7 +526,36 @@ document.addEventListener('click', function(e){
 }, true);
 
 /* ============== PWA: REGISTRA SERVICE WORKER (inline via Blob) ============== */
-if('serviceWorker' in navigator){
+/* iOS PWA Fix: Safari tem problemas conhecidos com SW. Detecta iOS e desativa. */
+var _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+var _isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+var _swDisabled = _isIOS || _isSafari;
+
+// iOS PWA fix: desinstala QUALQUER service worker antigo que possa estar bloqueando
+if(_swDisabled && 'serviceWorker' in navigator){
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    regs.forEach(function(reg){
+      reg.unregister().then(function(){
+        console.log('🗑️ Service worker antigo removido (iOS fix)');
+      });
+    });
+  }).catch(function(){});
+  
+  // Limpa também caches do navegador relacionados ao site
+  if('caches' in window){
+    caches.keys().then(function(names){
+      names.forEach(function(name){
+        if(name.startsWith('gami-')){
+          caches.delete(name).then(function(){
+            console.log('🗑️ Cache antigo removido:', name);
+          });
+        }
+      });
+    }).catch(function(){});
+  }
+}
+
+if('serviceWorker' in navigator && !_swDisabled){
   window.addEventListener('load', function(){
     // Service worker inline (cache básico + base pra notificações futuras)
     var swCode = `
@@ -1715,6 +1744,7 @@ window.recusarInstalar = function(){
   <div class="page-header">
     <div><div class="page-title">Pessoas</div><div class="page-sub">Diretoria, gestores e colaboradores</div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="forcarReloadDados()" style="font-size:11px" title="Força recarregar do servidor (use se aparecer vazio)">🔄 Recarregar</button>
       <button class="btn btn-primary" onclick="openPessoaModal(null)">+ Adicionar pessoa</button>
     </div>
   </div>
@@ -4314,6 +4344,56 @@ async function garantirPessoasCarregadas(){
     await new Promise(function(resolve){ setTimeout(resolve, 1000 * (i+1)); });
   }
   return atual;
+}
+
+/* Botão "🔄 Recarregar" — força fetch limpo do Supabase */
+async function forcarReloadDados(){
+  var btn = event && event.target;
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Carregando...'; }
+  
+  // Limpa localStorage
+  try {
+    localStorage.removeItem('gami_pessoas_v2');
+  } catch(e){}
+  
+  // Limpa caches do navegador
+  if('caches' in window){
+    try {
+      var names = await caches.keys();
+      await Promise.all(names.map(function(n){ return caches.delete(n); }));
+    } catch(e){}
+  }
+  
+  // Desinstala service workers
+  if('serviceWorker' in navigator){
+    try {
+      var regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(function(r){ return r.unregister(); }));
+    } catch(e){}
+  }
+  
+  // Recarrega do Supabase
+  try {
+    if(typeof loadPessoasFromSupa === 'function'){
+      var d = await loadPessoasFromSupa();
+      if(d && d.length > 0){
+        // Re-render tudo
+        if(typeof renderPessoas === 'function') try { renderPessoas(); } catch(e){}
+        if(typeof renderCarreira === 'function') try { renderCarreira(); } catch(e){}
+        if(typeof renderAniversariantesMes === 'function') try { renderAniversariantesMes(); } catch(e){}
+        if(typeof renderMinhaAgenda === 'function') try { renderMinhaAgenda(); } catch(e){}
+        if(typeof initDashboardHero === 'function') try { initDashboardHero(); } catch(e){}
+        if(typeof renderReconhecimento === 'function') try { renderReconhecimento(); } catch(e){}
+        alert('✅ ' + d.length + ' pessoas recarregadas do servidor!');
+      } else {
+        alert('⚠️ Servidor não retornou dados. Tente fechar e abrir o app de novo.');
+      }
+    }
+  } catch(e){
+    alert('❌ Erro: ' + e.message + '\n\nTente fechar e abrir o app.');
+  }
+  
+  if(btn){ btn.disabled = false; btn.textContent = '🔄 Recarregar'; }
 }
 function savePessoas(list){ 
   // 1. Salva no localStorage IMEDIATAMENTE (cache local)
@@ -8386,9 +8466,16 @@ async function supaSelect(tabela, filtro){
   try{
     var url=SUPA_URL+'/rest/v1/'+tabela+'?select=*';
     if(filtro)url+='&'+filtro;
-    var r=await fetch(url,{headers:supaHeaders()});
+    var r=await fetch(url,{
+      headers:supaHeaders(),
+      cache: 'no-store',  // iOS PWA fix: nunca usa cache
+      credentials: 'omit'
+    });
     if(r.ok)return await r.json();
-  }catch(e){}
+    console.warn('supaSelect HTTP error:', r.status, tabela);
+  }catch(e){
+    console.warn('supaSelect error:', e.message);
+  }
   return null;
 }
 async function supaDelete(tabela, id){
