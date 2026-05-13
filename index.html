@@ -1,4 +1,4 @@
-<!-- v12.9 - Ranking + Aba Pontos & Regras (5 sub-abas) - 13/05/2026 -->
+<!-- v12.10 - Sistema de Login (email/username + PIN) + Hooks ativos - 13/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -495,12 +495,13 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div class="sb-footer">
     </div><!-- /nav-gami -->
   <button id="btn-sync-supa" onclick="syncTudo(true)" style="margin:8px 12px 4px;width:calc(100% - 24px);padding:9px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">☁️ Salvar tudo no servidor</button>
-<div class="sb-user" style="border-top:1px solid rgba(26,184,240,.15);padding-top:10px;margin-top:6px">
-      <div class="sb-avatar" style="background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));color:white;font-weight:700">G</div>
-      <div>
-        <div style="font-size:12px;font-weight:500;color:#fff">Gâmi Delivery</div>
-        <div style="font-size:10px;color:#9DB4D6;letter-spacing:.3px">Marketing · 10 cidades</div>
+<div class="sb-user" id="sb-user-logado" style="border-top:1px solid rgba(26,184,240,.15);padding-top:10px;margin-top:6px;cursor:pointer" onclick="abrirMenuUsuario()">
+      <div class="sb-avatar" id="sb-avatar" style="background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));color:white;font-weight:700">G</div>
+      <div style="flex:1;min-width:0">
+        <div id="sb-user-nome" style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Não logado</div>
+        <div id="sb-user-info" style="font-size:10px;color:#9DB4D6;letter-spacing:.3px">Clica pra entrar</div>
       </div>
+      <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
   </div>
 </div>
@@ -4917,30 +4918,48 @@ async function obterExtratoPessoa(pessoaId){
 }
 
 /* ============================================================== */
-/* USUÁRIO LOGADO — placeholder (até implementar login multi)    */
-/* Por enquanto, retorna o usuário "padrão" pra testes           */
-/* Quando login estiver pronto, lê de localStorage ou Supabase   */
+/* SISTEMA DE LOGIN GÂMI                                          */
+/* Email + PIN | Username + PIN | Sessão 20min | Multi-usuário    */
 /* ============================================================== */
+
+/* SESSION HELPERS */
 function getUsuarioLogado(){
-  // TODO: integrar com sistema de login multi-usuário (futuro)
   var saved = localStorage.getItem('gami_usuario_logado');
-  if(saved){
-    try { return JSON.parse(saved); } catch(e){}
-  }
-  return null; // sem usuário identificado
+  if(!saved) return null;
+  try {
+    var u = JSON.parse(saved);
+    // Verifica timeout (20min de inatividade)
+    var ultimaAtividade = parseInt(localStorage.getItem('gami_ultima_atividade') || '0', 10);
+    var agora = Date.now();
+    if(ultimaAtividade && (agora - ultimaAtividade) > 20 * 60 * 1000){
+      // Expirou
+      setUsuarioLogado(null);
+      return null;
+    }
+    return u;
+  } catch(e){ return null; }
 }
 
 function setUsuarioLogado(pessoa){
-  if(pessoa) localStorage.setItem('gami_usuario_logado', JSON.stringify(pessoa));
-  else localStorage.removeItem('gami_usuario_logado');
+  if(pessoa){
+    localStorage.setItem('gami_usuario_logado', JSON.stringify(pessoa));
+    localStorage.setItem('gami_ultima_atividade', Date.now().toString());
+  } else {
+    localStorage.removeItem('gami_usuario_logado');
+    localStorage.removeItem('gami_ultima_atividade');
+  }
 }
 
-/* Verifica se quem está vendo é o admin (Cleyton) */
-/* Por enquanto, libera se localStorage tiver 'gami_admin' === '1' */
+function tocarAtividade(){
+  if(getUsuarioLogado()){
+    localStorage.setItem('gami_ultima_atividade', Date.now().toString());
+  }
+}
+
+/* ADMIN MODE (cleyton) */
 function isAdminPontos(){
   return localStorage.getItem('gami_admin') === '1';
 }
-
 function ativarModoAdmin(){
   var senha = prompt('Senha admin:');
   if(senha === 'gami2026') {
@@ -4952,10 +4971,643 @@ function ativarModoAdmin(){
   }
   return false;
 }
-
 function desativarModoAdmin(){
   localStorage.removeItem('gami_admin');
   alert('Modo admin desativado');
+}
+
+/* HASH SHA-256 do PIN */
+async function hashPIN(pin){
+  try {
+    if(crypto && crypto.subtle){
+      var enc = new TextEncoder().encode(String(pin));
+      var buf = await crypto.subtle.digest('SHA-256', enc);
+      return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+    }
+  } catch(e){}
+  // Fallback simples (não criptográfico mas funcional)
+  var h = 0, s = String(pin);
+  for(var i=0; i<s.length; i++){ h = ((h<<5)-h + s.charCodeAt(i))|0; }
+  return 'fallback_' + h.toString(16);
+}
+
+/* LOGIN — busca por email OU username */
+async function tentarLogin(identificador, pin){
+  if(!identificador || !pin){
+    return { sucesso: false, erro: 'Preencha usuário e PIN' };
+  }
+  
+  var idLower = String(identificador).toLowerCase().trim();
+  
+  try {
+    // Busca por email OU username (case insensitive)
+    var query = SUPA_URL + '/rest/v1/usuarios_login?or=(email.ilike.' 
+      + encodeURIComponent(idLower) + ',username.ilike.' + encodeURIComponent(idLower) 
+      + ')&select=*&limit=1';
+    var r = await fetch(query, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(!r.ok){
+      return { sucesso: false, erro: 'Erro de conexão. Tente novamente.' };
+    }
+    var lista = await r.json();
+    if(!lista.length){
+      return { sucesso: false, erro: 'Email ou username não encontrado' };
+    }
+    
+    var usuario = lista[0];
+    
+    if(!usuario.ativo){
+      return { sucesso: false, erro: 'Usuário desativado' };
+    }
+    
+    // Verifica bloqueio
+    if(usuario.bloqueado_ate){
+      var ate = new Date(usuario.bloqueado_ate);
+      if(ate > new Date()){
+        return { sucesso: false, erro: 'Conta bloqueada temporariamente. Tente em alguns minutos.' };
+      }
+    }
+    
+    // Verifica PIN
+    var pinValido = false;
+    if(usuario.pin_hash === 'gami2026_init'){
+      // PIN padrão (primeiro acesso)
+      pinValido = (String(pin) === 'gami2026');
+    } else {
+      // Hash SHA-256
+      var hashTentativa = await hashPIN(pin);
+      pinValido = (hashTentativa === usuario.pin_hash);
+    }
+    
+    if(!pinValido){
+      // Incrementa tentativas falhas
+      var tentativas = (usuario.tentativas_falhas || 0) + 1;
+      var bloquearAte = null;
+      if(tentativas >= 5){
+        // Bloqueia por 15 minutos
+        bloquearAte = new Date(Date.now() + 15*60*1000).toISOString();
+      }
+      try {
+        await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + usuario.pessoa_id, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
+            'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({ tentativas_falhas: tentativas, bloqueado_ate: bloquearAte })
+        });
+      } catch(e){}
+      
+      if(tentativas >= 5){
+        return { sucesso: false, erro: 'Muitas tentativas. Conta bloqueada por 15 minutos.' };
+      }
+      return { sucesso: false, erro: 'PIN incorreto (' + (5-tentativas) + ' tentativas restantes)' };
+    }
+    
+    // Sucesso! Atualiza último login
+    try {
+      await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + usuario.pessoa_id, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
+          'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          ultimo_login: new Date().toISOString(),
+          tentativas_falhas: 0,
+          bloqueado_ate: null
+        })
+      });
+    } catch(e){}
+    
+    // Busca dados completos da pessoa
+    var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+    var pessoa = pessoas.find(function(p){ return p.id === usuario.pessoa_id; });
+    
+    var usuarioFinal = {
+      id: usuario.pessoa_id,
+      nome: usuario.nome,
+      email: usuario.email,
+      username: usuario.username,
+      foto_url: pessoa ? pessoa.foto_url : null,
+      cargo: pessoa ? pessoa.cargo : null,
+      cidade: pessoa ? pessoa.cidade : null,
+      pin_trocado: usuario.pin_trocado,
+      username_escolhido: usuario.username_escolhido
+    };
+    
+    setUsuarioLogado(usuarioFinal);
+    
+    // Ponto de login automático!
+    if(typeof hookLoginDiario === 'function'){
+      hookLoginDiario(usuario.pessoa_id);
+    }
+    
+    return { sucesso: true, usuario: usuarioFinal };
+  } catch(err){
+    console.error('Erro login:', err);
+    return { sucesso: false, erro: 'Erro: ' + err.message };
+  }
+}
+
+/* TROCAR PIN */
+async function trocarPIN(pessoaId, pinAtual, pinNovo){
+  // Valida PIN novo
+  if(!pinNovo || pinNovo.length < 4 || pinNovo.length > 8){
+    return { sucesso: false, erro: 'PIN deve ter 4 a 8 caracteres' };
+  }
+  if(pinNovo === 'gami2026'){
+    return { sucesso: false, erro: 'Escolha um PIN diferente do padrão' };
+  }
+  
+  try {
+    // Busca usuário
+    var r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + pessoaId + '&select=*&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    var lista = await r.json();
+    if(!lista.length) return { sucesso: false, erro: 'Usuário não encontrado' };
+    
+    var usuario = lista[0];
+    
+    // Valida PIN atual
+    var pinAtualValido = false;
+    if(usuario.pin_hash === 'gami2026_init'){
+      pinAtualValido = (String(pinAtual) === 'gami2026');
+    } else {
+      var hashAtual = await hashPIN(pinAtual);
+      pinAtualValido = (hashAtual === usuario.pin_hash);
+    }
+    if(!pinAtualValido) return { sucesso: false, erro: 'PIN atual incorreto' };
+    
+    // Hash do PIN novo
+    var hashNovo = await hashPIN(pinNovo);
+    
+    var upd = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + pessoaId, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ pin_hash: hashNovo, pin_trocado: true, updated_at: new Date().toISOString() })
+    });
+    if(!upd.ok) return { sucesso: false, erro: 'Falha ao salvar' };
+    
+    // Atualiza usuário logado
+    var atual = getUsuarioLogado();
+    if(atual && atual.id === pessoaId){
+      atual.pin_trocado = true;
+      setUsuarioLogado(atual);
+    }
+    return { sucesso: true };
+  } catch(e){
+    return { sucesso: false, erro: e.message };
+  }
+}
+
+/* ESCOLHER USERNAME (primeiro login) */
+async function definirUsername(pessoaId, username){
+  // Valida
+  username = String(username || '').toLowerCase().trim();
+  if(!username || username.length < 3){
+    return { sucesso: false, erro: 'Username deve ter pelo menos 3 caracteres' };
+  }
+  if(username.length > 20){
+    return { sucesso: false, erro: 'Username deve ter no máximo 20 caracteres' };
+  }
+  // Apenas letras/números/_/.
+  if(!/^[a-z0-9_.]+$/.test(username)){
+    return { sucesso: false, erro: 'Use só letras minúsculas, números, _ e .' };
+  }
+  
+  try {
+    // Verifica se já existe
+    var rExists = await fetch(SUPA_URL + '/rest/v1/usuarios_login?username=eq.' 
+      + encodeURIComponent(username) + '&pessoa_id=neq.' + pessoaId + '&select=pessoa_id&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    var existe = await rExists.json();
+    if(existe.length){
+      return { sucesso: false, erro: 'Username já está em uso. Escolha outro.' };
+    }
+    
+    // Salva
+    var upd = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + pessoaId, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ username: username, username_escolhido: true, updated_at: new Date().toISOString() })
+    });
+    if(!upd.ok) return { sucesso: false, erro: 'Falha ao salvar' };
+    
+    // Atualiza local
+    var atual = getUsuarioLogado();
+    if(atual && atual.id === pessoaId){
+      atual.username = username;
+      atual.username_escolhido = true;
+      setUsuarioLogado(atual);
+    }
+    return { sucesso: true };
+  } catch(e){
+    return { sucesso: false, erro: e.message };
+  }
+}
+
+/* LOGOUT */
+function fazerLogout(){
+  setUsuarioLogado(null);
+  // Limpa caches relacionados
+  try { localStorage.removeItem('gami_pontos_cache'); } catch(e){}
+  // Volta pra tela de login
+  mostrarTelaLogin();
+}
+
+/* ============================================================== */
+/* TELA DE LOGIN — Modal fullscreen obrigatório                   */
+/* ============================================================== */
+function mostrarTelaLogin(){
+  // Esconde tudo
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
+  
+  var antigo = document.getElementById('login-overlay');
+  if(antigo) antigo.remove();
+  
+  var html = '<div id="login-overlay" style="position:fixed;inset:0;background:linear-gradient(135deg,#0B2542 0%,#0E7AB8 50%,#1AB8F0 100%);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;animation:loginFadeIn .3s ease">'
+    + '<div style="background:#fff;border-radius:16px;max-width:400px;width:100%;padding:32px 26px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">'
+    + '<div style="text-align:center;margin-bottom:24px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#0B2542;letter-spacing:-0.5px">Gâmi</div>'
+    + '<div style="font-size:12px;color:#0E7AB8;font-weight:600;margin-top:2px">Dashboard Marketing 💛</div>'
+    + '</div>'
+    + '<form id="login-form" onsubmit="return handleLoginSubmit(event)">'
+    + '<div style="margin-bottom:14px">'
+    + '<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Email ou Username</label>'
+    + '<input type="text" id="login-user" autocomplete="username" required '
+    + 'style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" '
+    + 'placeholder="seu@email.com ou seuapelido" autofocus>'
+    + '</div>'
+    + '<div style="margin-bottom:18px">'
+    + '<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">PIN</label>'
+    + '<input type="password" id="login-pin" autocomplete="current-password" required '
+    + 'style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" '
+    + 'placeholder="••••••••" maxlength="20">'
+    + '<div style="font-size:10px;color:#9DB4D6;margin-top:4px">PIN inicial: <code style="background:#F5F7FA;padding:1px 4px;border-radius:3px">gami2026</code> (troque no 1º acesso)</div>'
+    + '</div>'
+    + '<div id="login-erro" style="display:none;background:#FEE;color:#C02020;padding:10px;border-radius:8px;font-size:12px;margin-bottom:12px;text-align:center"></div>'
+    + '<button type="submit" id="login-btn" style="width:100%;padding:13px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Entrar →</button>'
+    + '</form>'
+    + '<div style="text-align:center;margin-top:18px;padding-top:14px;border-top:1px solid #EEF2F7">'
+    + '<div style="font-size:10px;color:#9DB4D6">🙏 <em>"Fé com Respeito" — Gâmi Delivery</em></div>'
+    + '</div>'
+    + '</div>'
+    + '</div>'
+    + '<style>@keyframes loginFadeIn{from{opacity:0}to{opacity:1}}</style>';
+  
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function handleLoginSubmit(ev){
+  ev.preventDefault();
+  var btn = document.getElementById('login-btn');
+  var erro = document.getElementById('login-erro');
+  var user = document.getElementById('login-user').value;
+  var pin = document.getElementById('login-pin').value;
+  
+  if(erro){ erro.style.display = 'none'; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Entrando...'; }
+  
+  var resultado = await tentarLogin(user, pin);
+  
+  if(btn){ btn.disabled = false; btn.textContent = 'Entrar →'; }
+  
+  if(!resultado.sucesso){
+    if(erro){
+      erro.textContent = resultado.erro;
+      erro.style.display = 'block';
+    }
+    return false;
+  }
+  
+  // Login OK! Remove tela de login
+  var overlay = document.getElementById('login-overlay');
+  if(overlay){
+    overlay.style.opacity = '0';
+    setTimeout(function(){ overlay.remove(); }, 300);
+  }
+  
+  // Se é primeiro login (PIN não trocado OU username não escolhido), abre setup
+  if(!resultado.usuario.pin_trocado || !resultado.usuario.username_escolhido){
+    setTimeout(function(){ abrirPrimeiroAcesso(resultado.usuario); }, 400);
+  } else {
+    // Acesso normal — volta pro dashboard
+    setTimeout(function(){
+      var navDash = document.querySelector('[onclick*="dashboard"]');
+      if(navDash) window.nav(navDash, 'dashboard');
+      else location.reload();
+    }, 400);
+  }
+  
+  return false;
+}
+
+/* ============================================================== */
+/* PRIMEIRO ACESSO — Trocar PIN + Escolher Username               */
+/* ============================================================== */
+function abrirPrimeiroAcesso(usuario){
+  var antigo = document.getElementById('modal-primeiro-acesso');
+  if(antigo) antigo.remove();
+  
+  var html = '<div id="modal-primeiro-acesso" style="position:fixed;inset:0;background:rgba(11,37,66,0.95);z-index:99998;display:flex;align-items:center;justify-content:center;padding:14px">'
+    + '<div style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:28px 24px;max-height:92vh;overflow:auto">'
+    + '<div style="text-align:center;margin-bottom:20px">'
+    + '<div style="font-size:36px;margin-bottom:6px">👋</div>'
+    + '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#0B2542">Bem-vindo(a), ' + (usuario.nome.split(' ')[0]) + '!</div>'
+    + '<div style="font-size:12px;color:#56627a;margin-top:4px">Personalize seu acesso ao Gâmi 💛</div>'
+    + '</div>'
+    + '<div id="pa-erro" style="display:none;background:#FEE;color:#C02020;padding:10px;border-radius:8px;font-size:12px;margin-bottom:14px;text-align:center"></div>'
+    + (!usuario.username_escolhido ? '<div style="margin-bottom:18px">'
+        + '<label style="font-size:11px;color:#56627a;font-weight:700;display:block;margin-bottom:6px;text-transform:uppercase">1. Escolha seu username</label>'
+        + '<input type="text" id="pa-username" maxlength="20" pattern="[a-z0-9_.]+" '
+        + 'style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" '
+        + 'placeholder="ex: joaobergue ou maria_2026">'
+        + '<div style="font-size:10px;color:#9DB4D6;margin-top:4px">3-20 caracteres, só letras minúsculas, números, _ e .</div>'
+        + '<button type="button" onclick="paVerificarUsername()" style="background:none;border:none;color:#0E7AB8;font-size:11px;cursor:pointer;margin-top:4px;font-weight:600">✓ Verificar disponibilidade</button>'
+        + '<span id="pa-username-status" style="font-size:11px;margin-left:8px"></span>'
+        + '</div>' : '')
+    + (!usuario.pin_trocado ? '<div style="margin-bottom:18px">'
+        + '<label style="font-size:11px;color:#56627a;font-weight:700;display:block;margin-bottom:6px;text-transform:uppercase">' + (!usuario.username_escolhido ? '2. ' : '') + 'Crie um PIN novo</label>'
+        + '<input type="password" id="pa-pin1" maxlength="8" '
+        + 'style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit;margin-bottom:6px" '
+        + 'placeholder="Novo PIN (4-8 caracteres)">'
+        + '<input type="password" id="pa-pin2" maxlength="8" '
+        + 'style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" '
+        + 'placeholder="Confirme o PIN">'
+        + '<div style="font-size:10px;color:#9DB4D6;margin-top:4px">Escolha algo seguro e fácil de lembrar 🔐</div>'
+        + '</div>' : '')
+    + '<button type="button" onclick="paSalvar(\'' + usuario.id + '\')" style="width:100%;padding:13px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Salvar e entrar →</button>'
+    + '<div style="text-align:center;font-size:10px;color:#9DB4D6;margin-top:14px;font-style:italic">🙏 "Tudo o que fizerem, façam de todo o coração" (Cl 3:23)</div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function paVerificarUsername(){
+  var el = document.getElementById('pa-username');
+  var status = document.getElementById('pa-username-status');
+  if(!el || !status) return;
+  var u = el.value.toLowerCase().trim();
+  if(!u || u.length < 3){
+    status.textContent = '⚠️ mínimo 3 chars';
+    status.style.color = '#EF9F27';
+    return;
+  }
+  if(!/^[a-z0-9_.]+$/.test(u)){
+    status.textContent = '❌ caracteres inválidos';
+    status.style.color = '#E24B4A';
+    return;
+  }
+  status.textContent = '⏳ verificando...';
+  status.style.color = '#9DB4D6';
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?username=eq.' + encodeURIComponent(u) + '&select=pessoa_id&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    var existe = await r.json();
+    var atual = getUsuarioLogado();
+    if(existe.length && (!atual || existe[0].pessoa_id !== atual.id)){
+      status.textContent = '❌ já em uso';
+      status.style.color = '#E24B4A';
+    } else {
+      status.textContent = '✅ disponível!';
+      status.style.color = '#1D9E75';
+    }
+  } catch(e){
+    status.textContent = '⚠️ erro';
+    status.style.color = '#EF9F27';
+  }
+}
+
+async function paSalvar(pessoaId){
+  var erro = document.getElementById('pa-erro');
+  if(erro){ erro.style.display = 'none'; }
+  
+  var usuarioAtual = getUsuarioLogado();
+  if(!usuarioAtual){ alert('Sessão expirou'); mostrarTelaLogin(); return; }
+  
+  // Username (se aparecer)
+  var elUser = document.getElementById('pa-username');
+  if(elUser && !usuarioAtual.username_escolhido){
+    var username = elUser.value.toLowerCase().trim();
+    if(!username){
+      if(erro){ erro.textContent = 'Escolha um username'; erro.style.display = 'block'; }
+      return;
+    }
+    var resU = await definirUsername(pessoaId, username);
+    if(!resU.sucesso){
+      if(erro){ erro.textContent = resU.erro; erro.style.display = 'block'; }
+      return;
+    }
+  }
+  
+  // PIN (se aparecer)
+  var elPin1 = document.getElementById('pa-pin1');
+  var elPin2 = document.getElementById('pa-pin2');
+  if(elPin1 && !usuarioAtual.pin_trocado){
+    var pin1 = elPin1.value;
+    var pin2 = elPin2.value;
+    if(!pin1 || pin1.length < 4){
+      if(erro){ erro.textContent = 'PIN deve ter no mínimo 4 caracteres'; erro.style.display = 'block'; }
+      return;
+    }
+    if(pin1 !== pin2){
+      if(erro){ erro.textContent = 'PINs não conferem'; erro.style.display = 'block'; }
+      return;
+    }
+    if(pin1 === 'gami2026'){
+      if(erro){ erro.textContent = 'Escolha um PIN diferente do padrão'; erro.style.display = 'block'; }
+      return;
+    }
+    var resP = await trocarPIN(pessoaId, 'gami2026', pin1);
+    if(!resP.sucesso){
+      if(erro){ erro.textContent = resP.erro; erro.style.display = 'block'; }
+      return;
+    }
+  }
+  
+  // Fechou! Manda pro dashboard
+  var modal = document.getElementById('modal-primeiro-acesso');
+  if(modal) modal.remove();
+  
+  alert('✅ Configuração salva! Bem-vindo(a) ao Gâmi! 💛');
+  
+  var navDash = document.querySelector('[onclick*="dashboard"]');
+  if(navDash) window.nav(navDash, 'dashboard');
+  else location.reload();
+}
+
+/* ============================================================== */
+/* MODAL TROCAR PIN (depois)                                      */
+/* ============================================================== */
+function abrirTrocarPIN(){
+  var u = getUsuarioLogado();
+  if(!u){ alert('Faça login primeiro'); return; }
+  
+  var antigo = document.getElementById('modal-trocar-pin');
+  if(antigo) antigo.remove();
+  
+  var html = '<div id="modal-trocar-pin" style="position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px">'
+    + '<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;padding:24px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:17px;font-weight:700;color:#0B2542">🔐 Trocar PIN</div>'
+    + '<button onclick="document.getElementById(\'modal-trocar-pin\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9DB4D6">×</button>'
+    + '</div>'
+    + '<div id="tp-erro" style="display:none;background:#FEE;color:#C02020;padding:10px;border-radius:8px;font-size:12px;margin-bottom:12px;text-align:center"></div>'
+    + '<div style="display:grid;gap:10px">'
+    + '<input type="password" id="tp-atual" placeholder="PIN atual" class="inp" style="width:100%;padding:10px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px">'
+    + '<input type="password" id="tp-novo1" placeholder="Novo PIN" maxlength="8" class="inp" style="width:100%;padding:10px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px">'
+    + '<input type="password" id="tp-novo2" placeholder="Confirme o novo PIN" maxlength="8" class="inp" style="width:100%;padding:10px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px">'
+    + '<button onclick="tpSalvar()" style="margin-top:6px;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">✓ Trocar PIN</button>'
+    + '</div></div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function tpSalvar(){
+  var u = getUsuarioLogado();
+  if(!u) return;
+  var atual = document.getElementById('tp-atual').value;
+  var n1 = document.getElementById('tp-novo1').value;
+  var n2 = document.getElementById('tp-novo2').value;
+  var erro = document.getElementById('tp-erro');
+  
+  if(erro){ erro.style.display = 'none'; }
+  if(!atual || !n1){ if(erro){ erro.textContent = 'Preencha todos os campos'; erro.style.display = 'block'; } return; }
+  if(n1 !== n2){ if(erro){ erro.textContent = 'PINs novos não conferem'; erro.style.display = 'block'; } return; }
+  
+  var r = await trocarPIN(u.id, atual, n1);
+  if(!r.sucesso){
+    if(erro){ erro.textContent = r.erro; erro.style.display = 'block'; }
+    return;
+  }
+  alert('✅ PIN trocado com sucesso!');
+  document.getElementById('modal-trocar-pin').remove();
+}
+
+/* ============================================================== */
+/* MENU DO USUÁRIO LOGADO (sidebar)                              */
+/* ============================================================== */
+function atualizarSidebarUsuario(){
+  var u = getUsuarioLogado();
+  var elNome = document.getElementById('sb-user-nome');
+  var elInfo = document.getElementById('sb-user-info');
+  var elAv = document.getElementById('sb-avatar');
+  if(!elNome) return;
+  
+  if(!u){
+    elNome.textContent = 'Não logado';
+    if(elInfo) elInfo.textContent = 'Clica pra entrar';
+    if(elAv){ elAv.textContent = 'G'; elAv.style.background = 'linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d))'; elAv.innerHTML = 'G'; elAv.style.padding = ''; }
+    return;
+  }
+  
+  var primeiroNome = (u.nome || '').split(' ')[0];
+  elNome.textContent = primeiroNome;
+  if(elInfo) elInfo.textContent = u.cargo || (u.username ? '@' + u.username : '');
+  if(elAv){
+    if(u.foto_url){
+      elAv.innerHTML = '<img src="' + u.foto_url + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover">';
+      elAv.style.padding = '0';
+    } else {
+      elAv.textContent = primeiroNome.charAt(0).toUpperCase();
+      elAv.style.padding = '';
+    }
+  }
+}
+
+function abrirMenuUsuario(){
+  var u = getUsuarioLogado();
+  if(!u){ mostrarTelaLogin(); return; }
+  
+  var antigo = document.getElementById('modal-menu-user');
+  if(antigo){ antigo.remove(); return; }
+  
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  var pessoa = pessoas.find(function(p){ return p.id === u.id; }) || {};
+  
+  var html = '<div id="modal-menu-user" style="position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    + '<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;padding:24px" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #EEF2F7">'
+    + (pessoa.foto_url 
+        ? '<img src="' + pessoa.foto_url + '" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:3px solid var(--gami-blue-l)">'
+        : '<div style="width:54px;height:54px;border-radius:50%;background:var(--gami-blue-l);color:var(--gami-blue-d);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700">' + (u.nome.charAt(0)) + '</div>')
+    + '<div style="flex:1">'
+    + '<div style="font-size:15px;font-weight:700;color:#0B2542">' + u.nome + '</div>'
+    + '<div style="font-size:11px;color:#56627a">' + (u.cargo || '—') + (u.cidade ? ' · ' + u.cidade : '') + '</div>'
+    + (u.username ? '<div style="font-size:10px;color:#9DB4D6;margin-top:2px">@' + u.username + '</div>' : '')
+    + '</div>'
+    + '</div>'
+    + '<div style="display:grid;gap:6px">'
+    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();abrirPerfilGami(\'' + u.id + '\')" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🪪 Meu Perfil Gâmi</button>'
+    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();abrirTrocarPIN()" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🔐 Trocar PIN</button>'
+    + '<button onclick="if(confirm(\'Deseja sair?\')){document.getElementById(\'modal-menu-user\').remove();fazerLogout();}" style="text-align:left;padding:10px 12px;background:#FEE;color:#C02020;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;margin-top:6px">🚪 Sair</button>'
+    + '</div>'
+    + '<div style="text-align:center;font-size:10px;color:#9DB4D6;margin-top:14px;padding-top:10px;border-top:1px dashed #EEF2F7">🙏 Fé com Respeito · Gâmi 💛</div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+setInterval(atualizarSidebarUsuario, 2000);
+if(document.readyState !== 'loading'){
+  setTimeout(atualizarSidebarUsuario, 500);
+} else {
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(atualizarSidebarUsuario, 500); });
+}
+
+/* ============================================================== */
+/* INICIALIZAÇÃO — Verifica login ao carregar página              */
+/* ============================================================== */
+function checarLoginInicial(){
+  var u = getUsuarioLogado();
+  if(!u){
+    // Não logado → mostra tela de login
+    setTimeout(function(){ mostrarTelaLogin(); }, 100);
+    return false;
+  }
+  return true;
+}
+
+/* Timer de inatividade (20min) */
+var _timerInatividade = null;
+function iniciarTimerInatividade(){
+  if(_timerInatividade) clearInterval(_timerInatividade);
+  _timerInatividade = setInterval(function(){
+    var u = getUsuarioLogado();
+    if(!u && document.getElementById('login-overlay') === null){
+      // Sessão expirou — mostra login
+      if(_timerInatividade) clearInterval(_timerInatividade);
+      mostrarTelaLogin();
+    }
+  }, 30000); // verifica a cada 30s
+}
+
+/* Captura atividade do usuário pra resetar timer */
+['click','keydown','scroll','mousemove'].forEach(function(ev){
+  document.addEventListener(ev, function(){ tocarAtividade(); }, { passive: true });
+});
+
+/* Dispara verificação inicial */
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){
+      checarLoginInicial();
+      iniciarTimerInatividade();
+    }, 800);
+  });
+} else {
+  setTimeout(function(){
+    checarLoginInicial();
+    iniciarTimerInatividade();
+  }, 800);
 }
 
 
