@@ -1,4 +1,4 @@
-<!-- v12.12 - DASHBOARD GÂMI - Gestão Operacional - 13/05/2026 -->
+<!-- v12.13 - Dados do usuário logado sincronizam com Supabase + Menu completo - 13/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4587,18 +4587,36 @@ async function tentarLogin(identificador, pin){
       });
     } catch(e){}
     
-    // Busca dados completos da pessoa
-    var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
-    var pessoa = pessoas.find(function(p){ return p.id === usuario.pessoa_id; });
+    // Busca dados completos da pessoa - PRIORIDADE: Supabase em tempo real
+    var pessoa = null;
+    try {
+      var rPessoa = await fetch(SUPA_URL + '/rest/v1/pessoas?id=eq.' + usuario.pessoa_id + '&select=*&limit=1', {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+      });
+      if(rPessoa.ok){
+        var listaP = await rPessoa.json();
+        if(listaP.length) pessoa = listaP[0];
+      }
+    } catch(e){}
+    // Fallback: tenta cache local
+    if(!pessoa){
+      var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+      pessoa = pessoas.find(function(p){ return p.id === usuario.pessoa_id; });
+    }
     
     var usuarioFinal = {
       id: usuario.pessoa_id,
       nome: usuario.nome,
       email: usuario.email,
       username: usuario.username,
-      foto_url: pessoa ? pessoa.foto_url : null,
+      foto_url: pessoa ? (pessoa.foto_url || pessoa.foto) : null,
       cargo: pessoa ? pessoa.cargo : null,
       cidade: pessoa ? pessoa.cidade : null,
+      categoria: pessoa ? pessoa.categoria : null,
+      tipo: pessoa ? pessoa.tipo : null,
+      data_admissao: pessoa ? (pessoa.data_admissao || pessoa.admissao) : null,
+      aniversario: pessoa ? (pessoa.aniversario || pessoa.aniversario_dia) : null,
+      telefone: pessoa ? pessoa.telefone : null,
       pin_trocado: usuario.pin_trocado,
       username_escolhido: usuario.username_escolhido
     };
@@ -4802,6 +4820,9 @@ async function handleLoginSubmit(ev){
     overlay.style.opacity = '0';
     setTimeout(function(){ overlay.remove(); }, 300);
   }
+  
+  // Re-sincroniza dados frescos do Supabase (cargo, foto, etc.)
+  setTimeout(function(){ resincronizarUsuarioLogado(); }, 200);
   
   // Se é primeiro login (PIN não trocado OU username não escolhido), abre setup
   if(!resultado.usuario.pin_trocado || !resultado.usuario.username_escolhido){
@@ -5037,29 +5058,91 @@ function abrirMenuUsuario(){
   var antigo = document.getElementById('modal-menu-user');
   if(antigo){ antigo.remove(); return; }
   
+  // Tenta buscar dados frescos do Supabase ao abrir o menu
+  resincronizarUsuarioLogado(); // assíncrono, atualiza UI depois
+  
   var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
   var pessoa = pessoas.find(function(p){ return p.id === u.id; }) || {};
   
+  // Mescla dados de u e pessoa (u tem prioridade pq é mais recente)
+  var fotoFinal = u.foto_url || pessoa.foto_url || pessoa.foto || '';
+  var cargoFinal = u.cargo || pessoa.cargo || '—';
+  var cidadeFinal = u.cidade || pessoa.cidade || '';
+  var categoriaFinal = u.categoria || pessoa.categoria || '';
+  var tipoFinal = u.tipo || pessoa.tipo || '';
+  var aniversarioFinal = u.aniversario || pessoa.aniversario || pessoa.aniversario_dia || '';
+  var admissaoFinal = u.data_admissao || pessoa.data_admissao || pessoa.admissao || '';
+  var telefoneFinal = u.telefone || pessoa.telefone || '';
+  
+  // Linhas de detalhes extras
+  var detalhesExtras = [];
+  if(categoriaFinal) detalhesExtras.push('<div style="font-size:11px;color:var(--text3);margin-top:2px"><strong>Categoria:</strong> ' + categoriaFinal + '</div>');
+  if(tipoFinal) detalhesExtras.push('<div style="font-size:11px;color:var(--text3);margin-top:2px"><strong>Tipo:</strong> ' + tipoFinal + '</div>');
+  if(admissaoFinal) detalhesExtras.push('<div style="font-size:11px;color:var(--text3);margin-top:2px"><strong>Admissão:</strong> ' + admissaoFinal + '</div>');
+  if(aniversarioFinal) detalhesExtras.push('<div style="font-size:11px;color:var(--text3);margin-top:2px"><strong>Aniversário:</strong> ' + aniversarioFinal + '</div>');
+  if(telefoneFinal) detalhesExtras.push('<div style="font-size:11px;color:var(--text3);margin-top:2px"><strong>Tel:</strong> ' + telefoneFinal + '</div>');
+  
   var html = '<div id="modal-menu-user" style="position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
-    + '<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;padding:24px" onclick="event.stopPropagation()">'
-    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #EEF2F7">'
-    + (pessoa.foto_url 
-        ? '<img src="' + pessoa.foto_url + '" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:3px solid var(--gami-blue-l)">'
-        : '<div style="width:54px;height:54px;border-radius:50%;background:var(--gami-blue-l);color:var(--gami-blue-d);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700">' + (u.nome.charAt(0)) + '</div>')
-    + '<div style="flex:1">'
-    + '<div style="font-size:15px;font-weight:700;color:#0B2542">' + u.nome + '</div>'
-    + '<div style="font-size:11px;color:#56627a">' + (u.cargo || '—') + (u.cidade ? ' · ' + u.cidade : '') + '</div>'
-    + (u.username ? '<div style="font-size:10px;color:#9DB4D6;margin-top:2px">@' + u.username + '</div>' : '')
+    + '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:24px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #EEF2F7">'
+    + (fotoFinal 
+        ? '<img src="' + fotoFinal + '" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid var(--gami-blue-l);flex-shrink:0">'
+        : '<div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;flex-shrink:0">' + (u.nome.charAt(0)) + '</div>')
+    + '<div style="flex:1;min-width:0">'
+    + '<div style="font-size:16px;font-weight:700;color:#0B2542;line-height:1.2">' + u.nome + '</div>'
+    + '<div style="font-size:12px;color:#0E7AB8;font-weight:600;margin-top:3px">' + cargoFinal + (cidadeFinal ? ' · ' + cidadeFinal : '') + '</div>'
+    + (u.username ? '<div style="font-size:10px;color:#9DB4D6;margin-top:3px">@' + u.username + '</div>' : '')
+    + (u.email ? '<div style="font-size:10px;color:#9DB4D6;margin-top:2px">📧 ' + u.email + '</div>' : '')
     + '</div>'
     + '</div>'
+    + (detalhesExtras.length ? '<div style="margin-bottom:14px;padding:10px;background:var(--surface2);border-radius:8px">' + detalhesExtras.join('') + '</div>' : '')
     + '<div style="display:grid;gap:6px">'
-    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();abrirPerfilGami(\'' + u.id + '\')" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🪪 Meu Perfil Gâmi</button>'
-    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();abrirTrocarPIN()" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🔐 Trocar PIN</button>'
-    + '<button onclick="if(confirm(\'Deseja sair?\')){document.getElementById(\'modal-menu-user\').remove();fazerLogout();}" style="text-align:left;padding:10px 12px;background:#FEE;color:#C02020;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;margin-top:6px">🚪 Sair</button>'
+    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();abrirPerfilGami(\'' + u.id + '\')" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🪪 <strong>Meu Perfil Gâmi</strong> <span style="margin-left:auto;color:var(--text3);font-size:11px">pontos &amp; conquistas</span></button>'
+    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();abrirTrocarPIN()" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🔐 <strong>Trocar PIN</strong></button>'
+    + '<button onclick="document.getElementById(\'modal-menu-user\').remove();resincronizarUsuarioLogado(true)" style="text-align:left;padding:10px 12px;background:#F5F7FA;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px">🔄 <strong>Atualizar meus dados</strong> <span style="margin-left:auto;color:var(--text3);font-size:11px">sincroniza c/ cadastro</span></button>'
+    + '<button onclick="if(confirm(\'Deseja sair?\')){document.getElementById(\'modal-menu-user\').remove();fazerLogout();}" style="text-align:left;padding:10px 12px;background:#FEE;color:#C02020;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:8px;margin-top:6px">🚪 <strong>Sair</strong></button>'
     + '</div>'
     + '<div style="text-align:center;font-size:10px;color:#9DB4D6;margin-top:14px;padding-top:10px;border-top:1px dashed #EEF2F7">🙏 Fé com Respeito · Gâmi 💛</div>'
     + '</div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
+}
+
+/* Re-sincroniza dados do usuário logado com Supabase (cargo, cidade, foto, etc.) */
+async function resincronizarUsuarioLogado(mostrarAlerta){
+  var u = getUsuarioLogado();
+  if(!u || !u.id) return;
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/pessoas?id=eq.' + u.id + '&select=*&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(!r.ok){
+      if(mostrarAlerta) alert('Não consegui sincronizar agora. Tente daqui a pouco.');
+      return;
+    }
+    var lista = await r.json();
+    if(!lista.length){
+      if(mostrarAlerta) alert('Cadastro não encontrado no Supabase. Avise o admin.');
+      return;
+    }
+    var pessoa = lista[0];
+    
+    // Atualiza campos no usuário logado
+    u.foto_url = pessoa.foto_url || pessoa.foto || u.foto_url;
+    u.cargo = pessoa.cargo || u.cargo;
+    u.cidade = pessoa.cidade || u.cidade;
+    u.categoria = pessoa.categoria || u.categoria;
+    u.tipo = pessoa.tipo || u.tipo;
+    u.data_admissao = pessoa.data_admissao || pessoa.admissao || u.data_admissao;
+    u.aniversario = pessoa.aniversario || pessoa.aniversario_dia || u.aniversario;
+    u.telefone = pessoa.telefone || u.telefone;
+    
+    setUsuarioLogado(u);
+    atualizarSidebarUsuario();
+    
+    if(mostrarAlerta) alert('✅ Dados atualizados!');
+  } catch(e){
+    if(mostrarAlerta) alert('Erro: ' + e.message);
+  }
 }
 
 setInterval(atualizarSidebarUsuario, 2000);
