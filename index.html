@@ -1,4 +1,4 @@
-<!-- v12.14 - IDs alinhados + Foto e dados completos do colaborador no login - 13/05/2026 -->
+<!-- v12.15 - Suporte a cidade como array (multi-cidades) - 13/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -5068,7 +5068,22 @@ function abrirMenuUsuario(){
   // Mescla dados de u e pessoa (u tem prioridade pq é mais recente)
   var fotoFinal = u.foto_url || pessoa.foto_url || pessoa.foto || '';
   var cargoFinal = u.cargo || pessoa.cargo || '—';
-  var cidadeFinal = u.cidade || pessoa.cidade || '';
+  var cidadeRaw = u.cidade || pessoa.cidade || '';
+  // Trata cidade como array OU string
+  var cidadeFinal = '';
+  if(Array.isArray(cidadeRaw)){
+    cidadeFinal = cidadeRaw.length > 3 ? cidadeRaw.length + ' cidades' : cidadeRaw.join(', ');
+  } else if(typeof cidadeRaw === 'string'){
+    // Pode ser JSON string
+    if(cidadeRaw.startsWith('[')){
+      try { 
+        var arr = JSON.parse(cidadeRaw); 
+        cidadeFinal = arr.length > 3 ? arr.length + ' cidades' : arr.join(', '); 
+      } catch(e){ cidadeFinal = cidadeRaw; }
+    } else {
+      cidadeFinal = cidadeRaw;
+    }
+  }
   var categoriaFinal = u.categoria || pessoa.categoria || '';
   var nivelFinal = u.nivel || pessoa.nivel || '';
   var tipoFinal = u.tipo || pessoa.tipo || '';
