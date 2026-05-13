@@ -1,4 +1,4 @@
-<!-- v12.18 - Senha admin separada do PIN inicial (@Jipa123) - 13/05/2026 -->
+<!-- v12.20 - FASE 2 completa (calendário privado + migração legado + Minha Cidade) - 13/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -499,6 +499,85 @@ function temPermissao(recurso){
 }
 
 /* Aplica permissões visualmente (esconde itens do sidebar) */
+/* ============================================================== */
+/* FILTROS POR PERMISSÃO (FASE 2)                                 */
+/* ============================================================== */
+
+/* Filtra TAREFAS pelo usuário logado.
+   - Super Admin: vê todas
+   - Demais: vê só as próprias (pessoa_id === seu id)
+   - Tarefas sem pessoa_id (legado): só Super Admin vê */
+function filtrarTarefasPorPermissao(tarefas){
+  if(!Array.isArray(tarefas)) return tarefas;
+  var u = getUsuarioLogado();
+  if(!u) return [];
+  
+  // Super Admin (Cleyton) vê todas
+  if(u.email && u.email.toLowerCase() === 'jipadigital@gmail.com') return tarefas;
+  
+  // Demais: filtra
+  return tarefas.filter(function(t){
+    if(!t) return false;
+    // Sem pessoa_id = legado, só super admin vê (já tratado acima)
+    if(!t.pessoa_id) return false;
+    return t.pessoa_id === u.id;
+  });
+}
+
+/* Filtra CIDADES pelo usuário logado.
+   - Super Admin / Diretoria / Gerência / Colaborador: vê todas
+   - Gestor: vê só a cidade dele */
+function filtrarCidadesPorPermissao(cidades){
+  if(!Array.isArray(cidades)) return cidades;
+  var u = getUsuarioLogado();
+  if(!u) return cidades;
+  
+  var nivel = detectarNivelPermissao(u);
+  
+  // Gestor — vê só sua cidade
+  if(nivel === 'gestor'){
+    var minhaCidade = (u.cidade || '').toLowerCase().trim();
+    if(!minhaCidade) return cidades; // sem cidade cadastrada → vê tudo (fallback)
+    return cidades.filter(function(c){
+      var nomeCidade = (c.nome || '').toLowerCase().trim();
+      return nomeCidade === minhaCidade;
+    });
+  }
+  
+  return cidades;
+}
+
+/* Filtra CONTAS INSTAGRAM (Inbox) pelo usuário logado.
+   - Super Admin / Diretoria: vê todas
+   - Gestor: vê só a conta IG da cidade dele */
+function filtrarContasIGPorPermissao(contas){
+  if(!Array.isArray(contas)) return contas;
+  var u = getUsuarioLogado();
+  if(!u) return contas;
+  
+  var nivel = detectarNivelPermissao(u);
+  if(nivel === 'gestor'){
+    var minhaCidade = (u.cidade || '').toLowerCase().trim();
+    if(!minhaCidade) return contas;
+    return contas.filter(function(c){
+      var cidadeC = (c.cidade || c.nome || '').toLowerCase().trim();
+      return cidadeC === minhaCidade;
+    });
+  }
+  
+  return contas;
+}
+
+/* Verifica se usuário pode VER uma tarefa específica */
+function podeVerTarefa(tarefa){
+  if(!tarefa) return false;
+  var u = getUsuarioLogado();
+  if(!u) return false;
+  if(u.email && u.email.toLowerCase() === 'jipadigital@gmail.com') return true;
+  if(!tarefa.pessoa_id) return false;
+  return tarefa.pessoa_id === u.id;
+}
+
 function aplicarPermissoesVisuais(){
   var u = getUsuarioLogado();
   if(!u) return;
@@ -518,7 +597,37 @@ function aplicarPermissoesVisuais(){
     } else {
       item.style.display = '';
     }
+    
+    // Renomeia "Cidades" → "Minha Cidade" pra Gestor (que vê só 1 cidade)
+    if(aba === 'cidades' && nivel === 'gestor'){
+      // Procura o texto da nav-item e troca preservando o nav-dot
+      var dot = item.querySelector('.nav-dot');
+      var nomeCidade = u.cidade ? ' (' + u.cidade + ')' : '';
+      if(dot){
+        item.innerHTML = dot.outerHTML + 'Minha Cidade' + nomeCidade;
+      }
+    } else if(aba === 'cidades'){
+      var dot2 = item.querySelector('.nav-dot');
+      if(dot2 && item.textContent.indexOf('Minha Cidade') !== -1){
+        // Volta pro original se mudou de cargo
+        item.innerHTML = dot2.outerHTML + 'Cidades';
+      }
+    }
   });
+  
+  // Renomeia título da página de Cidades pra Gestor
+  var pgCidades = document.getElementById('pg-cidades');
+  if(pgCidades){
+    var tituloCid = pgCidades.querySelector('.page-title');
+    var subCid = pgCidades.querySelector('.page-sub');
+    if(tituloCid && nivel === 'gestor' && u.cidade){
+      tituloCid.textContent = 'Minha Cidade — ' + u.cidade;
+      if(subCid) subCid.textContent = 'Gestão da sua operação local';
+    } else if(tituloCid && tituloCid.textContent.indexOf('Minha Cidade') !== -1){
+      tituloCid.textContent = 'Cidades';
+      if(subCid) subCid.textContent = 'Gestão completa por cidade';
+    }
+  }
   
   // Esconde botão Admin de Pontos (só super_admin)
   var btnAdmin = document.getElementById('btn-admin-pontos');
@@ -3446,16 +3555,67 @@ var DATAS_ESPECIAIS = {
 };
 
 // Armazena planejamentos por dia: { 'YYYY-MM-DD': [{tipo, texto, feito}] }
+// PRIVADO POR USUÁRIO — cada login tem o seu calendário
 var calData = {};
-try{ var r=localStorage.getItem('gami_cal'); calData=(r&&r!='undefined')?JSON.parse(r):{} }catch(e){calData={}}
-function saveCalData(){ try{ localStorage.setItem('gami_cal', JSON.stringify(calData)); }catch(e){} }
+function _calKey(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var pid = u && u.id ? u.id : 'guest';
+  return 'gami_cal_' + pid;
+}
+function _calNotasKey(dataKey){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var pid = u && u.id ? u.id : 'guest';
+  return 'gami_cal_notas_' + pid + '_' + dataKey;
+}
+function _carregarCalData(){
+  try{ 
+    var r = localStorage.getItem(_calKey()); 
+    calData = (r && r != 'undefined') ? JSON.parse(r) : {};
+    // Migração: se existir calendário legado e usuário é Cleyton, importa
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(u && u.id === 'pe016' && Object.keys(calData).length === 0){
+      var legado = localStorage.getItem('gami_cal');
+      if(legado){
+        try { 
+          calData = JSON.parse(legado) || {}; 
+          if(Object.keys(calData).length > 0){
+            localStorage.setItem(_calKey(), JSON.stringify(calData));
+          }
+        } catch(e){}
+      }
+    }
+  } catch(e){ calData = {}; }
+}
+_carregarCalData();
+function saveCalData(){ try{ localStorage.setItem(_calKey(), JSON.stringify(calData)); }catch(e){} }
 
-/* Anotações pessoais do calendário (texto livre por dia) */
+/* Recarrega calData quando usuário muda */
+window.addEventListener('storage', function(ev){
+  if(ev.key === 'gami_usuario_logado'){
+    _carregarCalData();
+    if(typeof renderCalendar === 'function') try { renderCalendar(); } catch(e){}
+  }
+});
+
+/* Anotações pessoais do calendário (texto livre por dia) — também privado */
 function salvarNotaCalendario(dataKey, texto){
-  try { localStorage.setItem('gami_cal_notas_'+dataKey, texto||''); } catch(e){}
+  try { localStorage.setItem(_calNotasKey(dataKey), texto||''); } catch(e){}
 }
 function getNotaCalendario(dataKey){
-  try { return localStorage.getItem('gami_cal_notas_'+dataKey)||''; } catch(e){ return ''; }
+  try { 
+    var nova = localStorage.getItem(_calNotasKey(dataKey));
+    if(nova) return nova;
+    // Migração: se for Cleyton e ainda existe nota legada, importa
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(u && u.id === 'pe016'){
+      var legada = localStorage.getItem('gami_cal_notas_'+dataKey);
+      if(legada){
+        localStorage.setItem(_calNotasKey(dataKey), legada);
+        return legada;
+      }
+    }
+    return '';
+  } catch(e){ return ''; }
 }
 
 var calYear = new Date().getFullYear(), calMonth = new Date().getMonth(); // Dynamic current month
@@ -5030,6 +5190,8 @@ async function handleLoginSubmit(ev){
   setTimeout(function(){ 
     resincronizarUsuarioLogado(); 
     if(typeof aplicarPermissoesVisuais === 'function') aplicarPermissoesVisuais();
+    // Recarrega dados privados (calendário por usuário)
+    if(typeof _carregarCalData === 'function') _carregarCalData();
   }, 200);
   
   // Se é primeiro login (PIN não trocado OU username não escolhido), abre setup
@@ -5407,7 +5569,72 @@ function checarLoginInicial(){
     setTimeout(function(){ mostrarTelaLogin(); }, 100);
     return false;
   }
+  // Migração de tarefas antigas (roda uma única vez)
+  migracaoTarefasLegado();
   return true;
+}
+
+/* MIGRAÇÃO: Tarefas/eventos antigos sem pessoa_id → atribui ao Cleyton (pe016).
+   Roda uma única vez por dispositivo (controlado por localStorage). */
+function migracaoTarefasLegado(){
+  try {
+    if(localStorage.getItem('gami_migracao_v12_19_done') === '1') return;
+    
+    var CLEYTON_ID = 'pe016';
+    var changed = 0;
+    
+    // Migra tarefas (diario, semana_*, mes_*, projetos, etc)
+    var keys = Object.keys(localStorage);
+    keys.forEach(function(k){
+      if(k.indexOf('gami_tf_') !== 0 && k.indexOf('TF_KEY') !== 0) return;
+      // Pula keys que não são listas
+      if(k.indexOf('gami_tf_recorrentes_geradas_') === 0) return;
+      if(k.indexOf('gami_tf_foco_') === 0) return;
+      try {
+        var raw = localStorage.getItem(k);
+        if(!raw) return;
+        var arr = JSON.parse(raw);
+        if(!Array.isArray(arr)) return;
+        var modificado = false;
+        arr.forEach(function(t){
+          if(t && typeof t === 'object' && !t.pessoa_id){
+            t.pessoa_id = CLEYTON_ID;
+            modificado = true;
+            changed++;
+          }
+        });
+        if(modificado){
+          localStorage.setItem(k, JSON.stringify(arr));
+        }
+      } catch(e){}
+    });
+    
+    // Migra eventos do calendário (anotações pessoais)
+    try {
+      var ev = localStorage.getItem('gami_calendar_events');
+      if(ev){
+        var arrE = JSON.parse(ev);
+        if(Array.isArray(arrE)){
+          var modE = false;
+          arrE.forEach(function(e){
+            if(e && typeof e === 'object' && !e.pessoa_id){
+              e.pessoa_id = CLEYTON_ID;
+              modE = true;
+              changed++;
+            }
+          });
+          if(modE) localStorage.setItem('gami_calendar_events', JSON.stringify(arrE));
+        }
+      }
+    } catch(e){}
+    
+    localStorage.setItem('gami_migracao_v12_19_done', '1');
+    if(changed > 0){
+      console.log('[Migração v12.19] ' + changed + ' itens legados atribuídos ao Cleyton (pe016)');
+    }
+  } catch(e){
+    console.error('Erro migração:', e);
+  }
 }
 
 /* Timer de inatividade (20min) */
@@ -7450,11 +7677,16 @@ function renderCidadesGrid(){
   if(typeof renderIntegracoesStatus === 'function') renderIntegracoesStatus();
   
   const busca = (document.getElementById('cidade-busca')||{}).value||'';
-  const cidades = getCidadesData().filter(c=>{
+  let cidades = getCidadesData().filter(c=>{
     if(_cidadeFiltroStatus !== 'todos' && c.status !== _cidadeFiltroStatus) return false;
     if(busca && !c.nome.toLowerCase().includes(busca.toLowerCase())) return false;
     return true;
   });
+  
+  // FASE 2 — Filtra por permissão (Gestor vê só sua cidade)
+  if(typeof filtrarCidadesPorPermissao === 'function'){
+    cidades = filtrarCidadesPorPermissao(cidades);
+  }
 
   grid.innerHTML = cidades.map(c=>{
     const s = STATUS_CIDADE[c.status] || STATUS_CIDADE.ativa;
@@ -9601,6 +9833,18 @@ function renderInboxChips(){
   var ordem = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória'];
   var extras = Object.keys(byCidade).filter(function(c){ return ordem.indexOf(c) < 0; });
   var listaCid = ordem.concat(extras);
+  
+  // FASE 2 — Gestor vê só a cidade dele
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  var soMinhaCidade = false;
+  if(nivel === 'gestor' && u && u.cidade){
+    var minhaCidade = String(u.cidade).trim();
+    listaCid = listaCid.filter(function(c){ return c === minhaCidade; });
+    soMinhaCidade = true;
+    // Força filtro
+    if(!soMinhaCidade) active = minhaCidade;
+  }
 
   function chip(label, key, total, naoLidas, isActive, isEmpty){
     var bg = isActive ? '#1AB8F0' : (isEmpty ? 'var(--surface2)' : 'var(--surface)');
@@ -9616,7 +9860,10 @@ function renderInboxChips(){
     return '<button onclick="setInboxCidade(\''+key.replace(/'/g,"\\'")+'\')" style="display:inline-flex;align-items:center;gap:0;padding:6px 11px;border:1px solid '+border+';border-radius:18px;background:'+bg+';color:'+color+';font-size:12px;font-weight:'+(isActive?'600':'500')+';cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .15s;opacity:'+opacity+'">'+label+badge+'</button>';
   }
 
-  var html = chip('Todas', 'todas', totalGeral, totalNaoLidas, active === 'todas', totalGeral === 0);
+  var html = '';
+  if(!soMinhaCidade){
+    html += chip('Todas', 'todas', totalGeral, totalNaoLidas, active === 'todas', totalGeral === 0);
+  }
   listaCid.forEach(function(c){
     var d = byCidade[c] || { total:0, naoLidas:0 };
     html += chip(c, c, d.total, d.naoLidas, active === c, d.total === 0);
@@ -9656,6 +9903,14 @@ function renderInboxLista(){
     if(busca && !m.usuario.toLowerCase().includes(busca.toLowerCase()) && !m.ultima.toLowerCase().includes(busca.toLowerCase())) return false;
     return true;
   });
+  
+  // FASE 2 — Gestor vê só conversas da cidade dele
+  var uInbox = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivelInbox = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(uInbox) : null;
+  if(nivelInbox === 'gestor' && uInbox && uInbox.cidade){
+    var minhaCidade = String(uInbox.cidade).trim();
+    filtradas = filtradas.filter(function(m){ return m.cidade === minhaCidade; });
+  }
 
   const count = document.getElementById('inbox-count');
   const naoLidas = filtradas.filter(m=>!m.lida).length;
@@ -10881,10 +11136,47 @@ function tfKey(tipo, sufixo){
 }
 
 function getTarefas(tipo, sufixo){
+  try{ 
+    var lista = JSON.parse(localStorage.getItem(tfKey(tipo,sufixo))||'[]');
+    // Filtra por permissão (Super admin vê tudo, demais só as suas)
+    if(typeof filtrarTarefasPorPermissao === 'function'){
+      return filtrarTarefasPorPermissao(lista);
+    }
+    return lista;
+  }catch(e){ return []; }
+}
+
+/* Versão SEM filtro — pra uso interno (salvar/manipular) */
+function getTarefasRaw(tipo, sufixo){
   try{ return JSON.parse(localStorage.getItem(tfKey(tipo,sufixo))||'[]'); }catch(e){ return []; }
 }
 function saveTarefas(tipo, sufixo, lista){
-  try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(lista)); }catch(e){}
+  // Quando filtrado, precisa mesclar com tarefas de outros usuários
+  // Pega lista atual SEM filtro
+  var listaCompleta = (typeof getTarefasRaw === 'function') ? getTarefasRaw(tipo, sufixo) : (function(){
+    try{ return JSON.parse(localStorage.getItem(tfKey(tipo,sufixo))||'[]'); }catch(e){ return []; }
+  })();
+  
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var ehSuperAdmin = u && u.email && u.email.toLowerCase() === 'jipadigital@gmail.com';
+  
+  if(ehSuperAdmin || !u){
+    // Salva tudo direto
+    try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(lista)); }catch(e){}
+    return;
+  }
+  
+  // Pra usuário normal: mantém tarefas de outros + atualiza as próprias
+  var ids = {}; lista.forEach(function(t){ if(t && t.id) ids[t.id] = true; });
+  var outros = listaCompleta.filter(function(t){
+    if(!t) return false;
+    if(ids[t.id]) return false; // já está em lista (vai sobrescrever)
+    return t.pessoa_id !== u.id; // mantém só de outros
+  });
+  // Garante que toda tarefa salva tem pessoa_id
+  lista.forEach(function(t){ if(t && !t.pessoa_id) t.pessoa_id = u.id; });
+  var merged = outros.concat(lista);
+  try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(merged)); }catch(e){}
 }
 
 function tfDataHoje(){
@@ -11563,12 +11855,15 @@ function tfSalvarModal(){
     });
     // Também adiciona uma cópia pra hoje (se a recorrência cair hoje)
     if(deveAparecerHoje(recorrencia)){
+      var uR = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
       var nova = {
         id:'tf'+Date.now(), texto:texto.trim(), prio:prio, cat:cat, prazo:prazo, 
         feito:false, criadoEm:new Date().toISOString(), 
-        recorrenteId: recorrencia ? 'auto' : undefined
+        recorrenteId: recorrencia ? 'auto' : undefined,
+        pessoa_id: uR ? uR.id : null
       };
-      var l = getTarefas('diario'); l.push(nova); saveTarefas('diario',null,l);
+      var l = getTarefasRaw('diario'); l.push(nova); 
+      try{ localStorage.setItem(tfKey('diario',null), JSON.stringify(l)); }catch(e){}
     }
     closeModal('modal-campanha');
     if(typeof tfRenderDiario === 'function') tfRenderDiario();
@@ -11578,8 +11873,19 @@ function tfSalvarModal(){
     return;
   }
   
-  // Não recorrente — comportamento original
-  var nova={id:'tf'+Date.now(),texto:texto.trim(),prio:prio,cat:cat,prazo:prazo,obs:obs,feito:false,criadoEm:new Date().toISOString()};
+  // Não recorrente — comportamento original (com pessoa_id)
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nova={
+    id:'tf'+Date.now(),
+    texto:texto.trim(),
+    prio:prio,
+    cat:cat,
+    prazo:prazo,
+    obs:obs,
+    feito:false,
+    criadoEm:new Date().toISOString(),
+    pessoa_id: u ? u.id : null
+  };
   
   if(ctx==='diario'){ var l=getTarefas('diario');l.push(nova);saveTarefas('diario',null,l); }
   else if(ctx==='semana'){ var sw=tfGetSemana(_tfSemanaOffset);var key=sw[0].key;var l=getTarefas('semana',key);nova.semana='Sem. '+sw[0].dia+'/'+sw[6].dia;l.push(nova);saveTarefas('semana',key,l); }
