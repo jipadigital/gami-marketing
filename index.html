@@ -1,4 +1,4 @@
-<!-- v12.7 - cor automatica trilha brocheS - 06/05/2026 -->
+<!-- v12.9 - Ranking + Aba Pontos & Regras (5 sub-abas) - 13/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -163,6 +163,9 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
 /* CARDS */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px}
+.rank-tab{background:transparent;border:none;padding:8px 14px;font-size:12px;font-weight:600;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;font-family:inherit}
+.rank-tab:hover{color:var(--text1)}
+.rank-tab-active{color:var(--gami-blue-d);border-bottom-color:var(--gami-blue)}
 .card-title{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
@@ -397,7 +400,7 @@ window.nav = function(el, page){
       });
       // run init function if exists
       var initMap = {
-        'dashboard':       function(){ if(typeof initDashboard==='function') initDashboard(); },
+        'dashboard':       function(){ if(typeof initDashboard==='function') initDashboard(); if(typeof renderBlocoPontuacao==='function') renderBlocoPontuacao(); if(typeof hookNavAba==='function') hookNavAba('dashboard'); },
         'calendario':      function(){ if(typeof renderCalendar==='function') renderCalendar(); },
         'tarefas':         function(){ if(typeof initTarefas==='function') initTarefas(); },
         'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('agenda'); },
@@ -413,8 +416,8 @@ window.nav = function(el, page){
                               }
                             },
         'blog':            function(){ if(typeof initBlogPage==='function') initBlogPage(); },
-        'ranking':         function(){ if(typeof renderRanking==='function') renderRanking(); },
-        'ideias':          function(){ if(typeof renderIdeias==='function') renderIdeias(); },
+        'ranking':         function(){ if(typeof renderRanking==='function') renderRanking(); if(typeof hookNavAba==='function') hookNavAba('ranking'); },
+        'ideias':          function(){ if(typeof renderIdeias==='function') renderIdeias(); if(typeof hookNavAba==='function') hookNavAba('ideias'); },
         'scripts':         function(){ if(typeof renderScripts==='function') renderScripts(); },
         'comandos':        function(){ if(typeof renderCmdTab==='function') try{renderCmdTab('Conteúdo e Posts');}catch(e){} },
         'culture':         function(){ if(typeof renderCulture==='function') renderCulture(); },
@@ -608,6 +611,9 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
     </div>
   </div>
+
+  <!-- ====== BLOCO PONTUAÇÃO GÂMI (pessoal) ====== -->
+  <div class="dash-section" id="dash-bloco-pontuacao" style="margin-bottom:14px"></div>
 
   <!-- MODO FOCO (oculto por padrão) -->
   <div id="modo-foco-panel" style="display:none;margin-bottom:14px">
@@ -1966,35 +1972,323 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 <!-- ==================== RANKING ==================== -->
 <div class="page" id="pg-ranking">
   <div class="page-header">
-    <div><div class="page-title">Ranking Gâmi</div><div class="page-sub">Gamificação e reconhecimento</div></div>
-    <button class="btn btn-primary" onclick="openAI('Crie um post de ranking mensal para o Instagram da Gâmi Delivery, celebrando as top 3 cidades do mês com números e mensagem motivacional.')">Gerar post de ranking →</button>
-  </div>
-  <div class="g3">
-    <div class="card">
-      <div class="card-title">Ranking por cidade</div>
-      <div id="ranking-list"></div>
+    <div><div class="page-title">Ranking Gâmi</div><div class="page-sub">Gamificação, conquistas e cultura</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button id="btn-admin-pontos" class="btn btn-ghost" onclick="toggleAdminPontos()" style="font-size:11px" title="Modo admin (Cleyton)">🎛️ Admin</button>
+      <button class="btn btn-primary" onclick="openAI('Crie um post de ranking mensal para o Instagram da Gâmi Delivery, celebrando os top 3 do mês com números e mensagem motivacional.')">📤 Gerar post ↗</button>
     </div>
-    <div class="card">
-      <div class="card-title">Destaque da semana</div>
-      <div class="rank-row"><div class="medal m-gold">1</div><span style="flex:1;font-size:12px">Carlos Lima</span><span style="font-size:10px;color:var(--text3)">Gestor · Fortaleza</span></div>
-      <div class="rank-row"><div class="medal m-silver">2</div><span style="flex:1;font-size:12px">Fábio Ramos</span><span style="font-size:10px;color:var(--text3)">Gestor · Cuiabá</span></div>
-      <div class="rank-row"><div class="medal m-bronze">3</div><span style="flex:1;font-size:12px">Marcos Rocha</span><span style="font-size:10px;color:var(--text3)">Motoboy · Fortaleza</span></div>
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-        <div class="card-title">Medalhas Gâmi</div>
-        <div class="row"><span class="chip chip-a">Ouro</span><span style="flex:1;font-size:12px">Fortaleza – 3 meses</span></div>
-        <div class="row"><span class="chip chip-gray">Prata</span><span style="flex:1;font-size:12px">Cuiabá – meta batida</span></div>
-        <div class="row"><span class="chip chip-o">Bronze</span><span style="flex:1;font-size:12px">Maceió – engajamento</span></div>
+  </div>
+  
+  <!-- Sub-abas -->
+  <div style="display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:14px;overflow-x:auto;padding-bottom:0">
+    <button class="rank-tab rank-tab-active" data-rtab="visao" onclick="setRankTab('visao')">📊 Visão Geral</button>
+    <button class="rank-tab" data-rtab="conquistas" onclick="setRankTab('conquistas')">🏆 Conquistas</button>
+    <button class="rank-tab" data-rtab="historico" onclick="setRankTab('historico')">📈 Histórico</button>
+    <button class="rank-tab" data-rtab="desafios" onclick="setRankTab('desafios')">🎯 Desafios</button>
+    <button class="rank-tab" data-rtab="regras" onclick="setRankTab('regras')">💎 Pontos & Regras</button>
+  </div>
+  
+  <!-- =========== VISÃO GERAL =========== -->
+  <div id="rank-tab-visao" class="rank-tab-content">
+    
+    <!-- TOP 3 CIDADES (cards premium) -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title" style="margin:0">🏙️ Top 3 Cidades — Ranking de Corridas</div>
+        <span style="font-size:10px;color:var(--text3);font-style:italic" id="rank-cidades-mes">—</span>
+      </div>
+      <div id="rank-top-cidades" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
+    </div>
+    
+    <!-- TOP 10 INDIVIDUAL -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+        <div>
+          <div class="card-title" style="margin:0">🏆 Top 10 Individual</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Pontos acumulados — sistema interno</div>
+        </div>
+        <select id="rank-individual-filtro" class="sel" style="font-size:11px;padding:4px 8px" onchange="renderRankingIndividual()">
+          <option value="mensal">Mês atual</option>
+          <option value="trimestral">Trimestre</option>
+          <option value="historico">Histórico</option>
+        </select>
+      </div>
+      <div id="rank-top-individual"></div>
+    </div>
+    
+    <!-- RANKING POR CARGO -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">📋 Ranking por Cargo (mês atual)</div>
+      <div id="rank-por-cargo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
+    </div>
+    
+    <!-- DESTAQUES DA SEMANA -->
+    <div class="g2" style="margin-bottom:14px">
+      <div class="card">
+        <div class="card-title">⭐ Destaques desta semana</div>
+        <div id="rank-destaques-semana">
+          <div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">
+            Reconhecimentos publicados aparecem aqui.<br>
+            <button class="btn btn-ghost" style="font-size:11px;margin-top:8px" onclick="abrirPainelReconhecimento()">+ Publicar reconhecimento</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🌟 Pessoa Gâmi de hoje</div>
+        <div id="rank-spotlight">
+          <div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">
+            Toda terça-feira, uma pessoa é sorteada!
+          </div>
+        </div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-title">Campanhas de reconhecimento</div>
-      <div class="row"><div class="pd pd-h"></div>Aniversariante do dia</div>
-      <div class="row"><div class="pd pd-h"></div>Motoboy destaque da semana</div>
-      <div class="row"><div class="pd pd-m"></div>Gestor destaque do mês</div>
-      <div class="row"><div class="pd pd-m"></div>Cidade que mais cresceu</div>
-      <div class="row"><div class="pd pd-l"></div>Meta batida – comemoração</div>
-      <div class="row"><div class="pd pd-l"></div>Funcionário do mês</div>
-      <button class="btn btn-ia" style="width:100%;margin-top:10px;font-size:12px" onclick="openAI('Crie um post de reconhecimento para o Instagram da Gâmi Delivery celebrando Carlos Lima, gestor destaque de Fortaleza neste mês. Mensagem motivacional e visual impactante.')">Gerar post de reconhecimento ↗</button>
+  </div>
+  
+  <!-- =========== CONQUISTAS =========== -->
+  <div id="rank-tab-conquistas" class="rank-tab-content" style="display:none">
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:14px">🎖️ Galeria de Badges Gâmi</div>
+      <div id="rank-galeria-badges" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px"></div>
+    </div>
+    
+    <div class="g2" style="margin-bottom:14px">
+      <div class="card">
+        <div class="card-title">🌱 Patentes Gâmi (vitalícias)</div>
+        <div id="rank-patentes" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">💛 Mais reconhecidos do mês</div>
+        <div id="rank-mais-reconhecidos"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- =========== HISTÓRICO =========== -->
+  <div id="rank-tab-historico" class="rank-tab-content" style="display:none">
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">🏛️ Hall da Fama — Vencedores Mensais</div>
+      <div id="rank-hall-fama"></div>
+    </div>
+    
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">📋 Reconhecimentos Mensais por Categoria</div>
+      <div id="rank-vencedores-categorias" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px"></div>
+    </div>
+  </div>
+  
+  <!-- =========== DESAFIOS =========== -->
+  <div id="rank-tab-desafios" class="rank-tab-content" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;color:#0B2542">🎯 Desafios Ativos</div>
+      <button class="btn btn-primary" onclick="abrirModalNovoDesafio()" style="font-size:11px" id="btn-novo-desafio">+ Novo desafio</button>
+    </div>
+    <div id="rank-desafios-ativos">
+      <div class="card" style="text-align:center;padding:30px;color:var(--text3)">
+        <div style="font-size:30px;margin-bottom:8px">🎯</div>
+        Nenhum desafio ativo no momento.<br>
+        <span style="font-size:11px">A diretoria pode criar desafios pra equipe!</span>
+      </div>
+    </div>
+    
+    <div class="card" style="margin-top:14px">
+      <div class="card-title" style="margin-bottom:10px">🏛️ Desafios encerrados</div>
+      <div id="rank-desafios-encerrados">
+        <div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Nenhum desafio encerrado ainda.</div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- =========== 💎 PONTOS & REGRAS =========== -->
+  <div id="rank-tab-regras" class="rank-tab-content" style="display:none">
+    
+    <!-- FILOSOFIA -->
+    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#E6F6FE 0%,#fff 100%);border-left:4px solid var(--gami-blue)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <span style="font-size:28px">💛</span>
+        <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#0B2542">A filosofia do Ranking Gâmi</div>
+      </div>
+      <div style="font-size:13px;line-height:1.6;color:var(--text1)">
+        Aqui ninguém perde ponto, ninguém é punido. <strong>O Ranking celebra quem usa o dashboard, fortalece a cultura, entrega resultado e cresce na carreira</strong> — cada um no seu ritmo, com seu jeito.<br><br>
+        🙏 <em>"Tudo o que fizerem, façam de todo o coração, como para o Senhor." (Cl 3:23)</em><br><br>
+        <strong>Fé com Respeito.</strong> É assim que a gente joga.
+      </div>
+    </div>
+    
+    <!-- BLOCO SUA PRÓXIMA CONQUISTA (personalizado) -->
+    <div id="regras-proxima-conquista" style="margin-bottom:14px"></div>
+    
+    <!-- OS 4 PILARES (cards visuais) -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:12px">🏛️ Os 4 Pilares da Pontuação</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+        <div style="text-align:center;padding:14px;background:#FFF8E1;border-radius:10px;border:1px solid #FFE082">
+          <div style="font-size:36px;margin-bottom:6px">🌅</div>
+          <div style="font-size:13px;font-weight:800;color:#0B2542;margin-bottom:4px">Engajamento</div>
+          <div style="font-size:10px;color:var(--text3);line-height:1.4">Usa o dashboard, responde Pulse, completa tarefas</div>
+          <div style="font-size:11px;color:#F57F17;font-weight:700;margin-top:8px;padding-top:6px;border-top:1px dashed rgba(0,0,0,.1)">~150 pts/mês</div>
+        </div>
+        <div style="text-align:center;padding:14px;background:#FCE4EC;border-radius:10px;border:1px solid #F8BBD0">
+          <div style="font-size:36px;margin-bottom:6px">🤝</div>
+          <div style="font-size:13px;font-weight:800;color:#0B2542;margin-bottom:4px">Cultura & Time</div>
+          <div style="font-size:10px;color:var(--text3);line-height:1.4">Reconhece colegas, mural, devocional, aniversários</div>
+          <div style="font-size:11px;color:#C2185B;font-weight:700;margin-top:8px;padding-top:6px;border-top:1px dashed rgba(0,0,0,.1)">~100 pts/mês</div>
+        </div>
+        <div style="text-align:center;padding:14px;background:#E3F2FD;border-radius:10px;border:1px solid #90CAF9">
+          <div style="font-size:36px;margin-bottom:6px">💼</div>
+          <div style="font-size:13px;font-weight:800;color:#0B2542;margin-bottom:4px">Trabalho</div>
+          <div style="font-size:10px;color:var(--text3);line-height:1.4">Metas batidas, decisões, entregas (varia por cargo)</div>
+          <div style="font-size:11px;color:#1565C0;font-weight:700;margin-top:8px;padding-top:6px;border-top:1px dashed rgba(0,0,0,.1)">~150 pts/mês</div>
+        </div>
+        <div style="text-align:center;padding:14px;background:#F3E5F5;border-radius:10px;border:1px solid #CE93D8">
+          <div style="font-size:36px;margin-bottom:6px">🏆</div>
+          <div style="font-size:13px;font-weight:800;color:#0B2542;margin-bottom:4px">Conquistas</div>
+          <div style="font-size:10px;color:var(--text3);line-height:1.4">Marcos especiais: tempo de casa, promoção, badges</div>
+          <div style="font-size:11px;color:#6A1B9A;font-weight:700;margin-top:8px;padding-top:6px;border-top:1px dashed rgba(0,0,0,.1)">Eventuais</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- TABELA RESUMIDA + EXPANDIR -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">📋 Como ganhar pontos (top ações)</div>
+      
+      <!-- TOP AÇÕES (sempre visível) -->
+      <div style="display:grid;gap:6px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">☀️</span>
+          <span style="flex:1;font-size:12px">Logar no dashboard (1×/dia)</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+1</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">💭</span>
+          <span style="flex:1;font-size:12px">Responder Pulse diário</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+2</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">✅</span>
+          <span style="flex:1;font-size:12px">Marcar tarefa como concluída</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+1</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">💛</span>
+          <span style="flex:1;font-size:12px">Reconhecer um colega no mural</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+5 / +15</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">🙏</span>
+          <span style="flex:1;font-size:12px">Participar do devocional (segunda 9h15)</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+10</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">🎂</span>
+          <span style="flex:1;font-size:12px">Aniversário (no dia)</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+20</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#E6F6FE;border-radius:6px;border:1px solid var(--gami-blue)">
+          <span style="font-size:16px;width:24px;text-align:center">🌟</span>
+          <span style="flex:1;font-size:12px;font-weight:600">Reconhecimento da Diretoria</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+40</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:#FFF8E1;border-radius:6px;border:1px solid #FFB300">
+          <span style="font-size:16px;width:24px;text-align:center">🏆</span>
+          <span style="flex:1;font-size:12px;font-weight:600">Funcionário do Mês</span>
+          <span style="font-weight:800;color:#F57F17;font-size:13px">+100</span>
+        </div>
+      </div>
+      
+      <!-- BOTÃO EXPANDIR -->
+      <button onclick="toggleRegrasCompleto()" id="btn-regras-completo" class="btn btn-ghost" style="width:100%;font-size:12px">▼ Ver TODAS as ações (mais de 70 maneiras de pontuar)</button>
+      
+      <!-- TABELA COMPLETA (escondida por padrão) -->
+      <div id="regras-completo" style="display:none;margin-top:14px"></div>
+    </div>
+    
+    <!-- PATENTES -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">🌱 Patentes Gâmi (vitalícias — não zeram!)</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">À medida que acumula pontos na sua carreira Gâmi, você sobe de patente. Uma vez Estrela, sempre Estrela.</div>
+      <div id="regras-patentes-visual"></div>
+    </div>
+    
+    <!-- BADGES -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">🎖️ Galeria de Badges (16 conquistas)</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Badges são conquistas únicas que aparecem no seu perfil. Algumas dão pontos extras!</div>
+      <div id="regras-badges-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px"></div>
+    </div>
+    
+    <!-- LOJA GÂMI -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:10px">🎁 Loja Gâmi — troque seus pontos!</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Acumulou pontos? Use pra trocar por reconhecimento, folga ou prêmios reais.</div>
+      
+      <div style="font-size:12px;font-weight:700;color:var(--gami-blue-d);margin:10px 0 6px">🆓 Grátis (alto valor simbólico)</div>
+      <div style="display:grid;gap:5px">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;font-size:12px">
+          <span style="flex:1">📌 Sua frase fixada no mural por 1 semana</span>
+          <span style="font-weight:700;color:var(--gami-blue-d)">200 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;font-size:12px">
+          <span style="flex:1">📱 Story Gâmi em sua homenagem (todas as cidades)</span>
+          <span style="font-weight:700;color:var(--gami-blue-d)">300 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;font-size:12px">
+          <span style="flex:1">🏛️ Foto no Hall da Fama do mês</span>
+          <span style="font-weight:700;color:var(--gami-blue-d)">400 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;font-size:12px">
+          <span style="flex:1">☕ Café/conversa de 30min com Diretor</span>
+          <span style="font-weight:700;color:var(--gami-blue-d)">500 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;font-size:12px">
+          <span style="flex:1">⏰ Hora de almoço estendida (1 dia)</span>
+          <span style="font-weight:700;color:var(--gami-blue-d)">300 pts</span>
+        </div>
+      </div>
+      
+      <div style="font-size:12px;font-weight:700;color:#F57F17;margin:14px 0 6px">💰 Com prêmio real (custeado pela Gâmi)</div>
+      <div style="display:grid;gap:5px">
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
+          <span style="flex:1">☕ Vale-café R$ 30</span>
+          <span style="font-weight:700;color:#F57F17">800 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
+          <span style="flex:1">👕 Camiseta Gâmi personalizada</span>
+          <span style="font-weight:700;color:#F57F17">1.500 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
+          <span style="flex:1">🌅 Folga 4h (sexta cedo)</span>
+          <span style="font-weight:700;color:#F57F17">1.000 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
+          <span style="flex:1">🏖️ Folga sexta inteira</span>
+          <span style="font-weight:700;color:#F57F17">2.500 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
+          <span style="flex:1">🎁 Vale-presente R$ 100</span>
+          <span style="font-weight:700;color:#F57F17">3.000 pts</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
+          <span style="flex:1">🎂 Folga no seu aniversário</span>
+          <span style="font-weight:700;color:#F57F17">1.000 pts</span>
+        </div>
+      </div>
+      
+      <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:14px;padding-top:10px;border-top:1px dashed var(--border);font-style:italic">
+        💡 Pra resgatar, fala com Cleyton ou a Diretoria. Você não perde a patente quando troca pontos!
+      </div>
+    </div>
+    
+    <!-- FAQ -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:14px">❓ Perguntas Frequentes</div>
+      <div id="regras-faq"></div>
+    </div>
+    
+    <!-- RODAPÉ -->
+    <div style="text-align:center;padding:14px;font-size:11px;color:var(--text3);font-style:italic;border-top:1px dashed var(--border);margin-top:14px">
+      🙏 <em>"O que pesa não é o quanto você corre, mas o quanto você anda firme."</em><br>
+      <strong style="color:var(--gami-blue-d)">Fé com Respeito · Gâmi Delivery 💛</strong>
     </div>
   </div>
 </div>
@@ -4262,6 +4556,408 @@ var PESSOAS_DEFAULT = [
   // Lista vazia - você cadastra suas pessoas reais via "+ Adicionar pessoa"
   // Use o botão "Exportar backup" para salvar e "Importar backup" para restaurar
 ];
+
+/* ============================================================== */
+/* SISTEMA DE PONTOS GÂMI — Ranking + Gamificação                */
+/* Tabelas Supabase: pontos_log, badges_desbloqueadas,           */
+/* reconhecimentos_pares, desafios_admin, vencedores_mensais,    */
+/* streak_pessoas, spotlight_terca                                */
+/* ============================================================== */
+
+/* CATÁLOGO DE AÇÕES E PONTOS */
+var PONTOS_CATALOGO = {
+  // ENGAJAMENTO DIÁRIO
+  'login_diario':         { pontos: 1,  categoria: 'engajamento', label: 'Login no dashboard', limite_dia: 1 },
+  'pulse_respondido':     { pontos: 2,  categoria: 'engajamento', label: 'Respondeu Pulse', limite_dia: 1 },
+  'tarefa_concluida':     { pontos: 1,  categoria: 'engajamento', label: 'Tarefa concluída' },
+  'anotacao_calendario':  { pontos: 1,  categoria: 'engajamento', label: 'Anotação no calendário', limite_dia: 1 },
+  'visitou_3_abas':       { pontos: 1,  categoria: 'engajamento', label: 'Visitou 3+ abas no dia', limite_dia: 1 },
+  'versiculo_lido':       { pontos: 2,  categoria: 'engajamento', label: 'Leu versículo da semana', limite_semana: 1 },
+  
+  // STREAKS (sequências)
+  'streak_login_7':       { pontos: 5,   categoria: 'engajamento', label: '7 dias de login seguidos' },
+  'streak_login_15':      { pontos: 15,  categoria: 'engajamento', label: '15 dias de login seguidos' },
+  'streak_login_30':      { pontos: 30,  categoria: 'engajamento', label: '30 dias de login seguidos' },
+  'streak_pulse_7':       { pontos: 10,  categoria: 'engajamento', label: '7 pulses seguidos' },
+  'streak_tarefa_5':      { pontos: 10,  categoria: 'engajamento', label: '5 dias de tarefas seguidos' },
+  
+  // CULTURA E TIME
+  'reconheceu_colega':    { pontos: 5,   categoria: 'cultura', label: 'Reconheceu um colega' },
+  'foi_reconhecido':      { pontos: 15,  categoria: 'cultura', label: 'Foi reconhecido por colega' },
+  'reconhec_inspirador_de':   { pontos: 3,   categoria: 'cultura', label: 'Marcou reconhecimento Inspirador' },
+  'reconhec_inspirador_para': { pontos: 8,   categoria: 'cultura', label: 'Reconhecimento marcado Inspirador' },
+  'comentou_mural_de':    { pontos: 2,   categoria: 'cultura', label: 'Comentou no mural' },
+  'comentou_mural_para':  { pontos: 3,   categoria: 'cultura', label: 'Recebeu comentário no mural' },
+  'recado_positivo':      { pontos: 5,   categoria: 'cultura', label: 'Postou recado positivo' },
+  'recebeu_curtida':      { pontos: 1,   categoria: 'cultura', label: 'Recebeu curtida (até 5)' },
+  'dica_util':            { pontos: 5,   categoria: 'cultura', label: 'Postou dica útil pra equipe' },
+  'aniversario_dia':      { pontos: 20,  categoria: 'cultura', label: 'Aniversário do dia' },
+  'parabens_aniversariante': { pontos: 3, categoria: 'cultura', label: 'Mandou parabéns' },
+  'aniversario_empresa_1ano': { pontos: 50, categoria: 'cultura', label: '1 ano de Gâmi (aniversário empresa)' },
+  'aniversario_empresa_ano':  { pontos: 50, categoria: 'cultura', label: 'Aniversário de empresa anual' },
+  'devocional':           { pontos: 10,  categoria: 'cultura', label: 'Participou do devocional' },
+  'versiculo_compartilhado': { pontos: 5, categoria: 'cultura', label: 'Compartilhou versículo no mural' },
+  
+  // TRABALHO - DIRETORIA
+  'reuniao_gestores':     { pontos: 20,  categoria: 'trabalho', label: 'Reunião mensal com gestores', funcao: 'diretoria' },
+  'decisao_estrategica':  { pontos: 20,  categoria: 'trabalho', label: 'Decisão estratégica documentada', funcao: 'diretoria' },
+  'visita_cidade':        { pontos: 50,  categoria: 'trabalho', label: 'Visitou cidade presencialmente', funcao: 'diretoria' },
+  'conduziu_devocional':  { pontos: 25,  categoria: 'trabalho', label: 'Conduziu devocional', funcao: 'diretoria' },
+  'aprovou_campanha':     { pontos: 15,  categoria: 'trabalho', label: 'Aprovou campanha de marketing', funcao: 'diretoria' },
+  
+  // TRABALHO - GERÊNCIA
+  'relatorio_mensal':     { pontos: 30,  categoria: 'trabalho', label: 'Relatório mensal entregue', funcao: 'gerencia' },
+  'reuniao_diretoria':    { pontos: 15,  categoria: 'trabalho', label: 'Reunião com Diretoria', funcao: 'gerencia' },
+  'apoio_crise':          { pontos: 25,  categoria: 'trabalho', label: 'Apoio em crise de cidade', funcao: 'gerencia' },
+  'indicadores_dash':     { pontos: 20,  categoria: 'trabalho', label: 'Indicadores no dashboard', funcao: 'gerencia' },
+  
+  // TRABALHO - GESTOR
+  'cidade_top3':          { pontos: 50,  categoria: 'trabalho', label: 'Cidade no Top 3', funcao: 'gestor' },
+  'cidade_cresceu':       { pontos: 40,  categoria: 'trabalho', label: 'Cidade cresceu vs mês anterior', funcao: 'gestor' },
+  'equipe_engajada':      { pontos: 30,  categoria: 'trabalho', label: 'Todos da equipe logaram >15 dias', funcao: 'gestor' },
+  'recrutou_colaborador': { pontos: 30,  categoria: 'trabalho', label: 'Recrutou novo colaborador', funcao: 'gestor' },
+  'reuniao_equipe':       { pontos: 25,  categoria: 'trabalho', label: 'Reunião mensal com equipe', funcao: 'gestor' },
+  'meta_cidade':          { pontos: 30,  categoria: 'trabalho', label: 'Atingiu meta operacional', funcao: 'gestor' },
+  
+  // TRABALHO - MARKETING
+  'posts_agendados':      { pontos: 10,  categoria: 'trabalho', label: 'Posts agendados (semana)', funcao: 'marketing' },
+  'stories_postados':     { pontos: 5,   categoria: 'trabalho', label: 'Stories postados (semana)', funcao: 'marketing' },
+  'campanha_lancada':     { pontos: 25,  categoria: 'trabalho', label: 'Campanha lançada', funcao: 'marketing' },
+  'conteudo_destacado':   { pontos: 20,  categoria: 'trabalho', label: 'Conteúdo destacado pela Diretoria', funcao: 'marketing' },
+  'reuniao_campanhas':    { pontos: 15,  categoria: 'trabalho', label: 'Reunião sobre campanhas', funcao: 'marketing' },
+  
+  // TRABALHO - SUPORTE
+  'tarefa_no_prazo':      { pontos: 3,   categoria: 'trabalho', label: 'Tarefa concluída no prazo', funcao: 'suporte' },
+  'questao_critica':      { pontos: 25,  categoria: 'trabalho', label: 'Resolveu questão crítica', funcao: 'suporte' },
+  'ajudou_gestor':        { pontos: 10,  categoria: 'trabalho', label: 'Ajudou gestor de cidade', funcao: 'suporte' },
+  'documentou_processo':  { pontos: 15,  categoria: 'trabalho', label: 'Documentou processo', funcao: 'suporte' },
+  'demanda_urgente':      { pontos: 10,  categoria: 'trabalho', label: 'Atendeu demanda urgente', funcao: 'suporte' },
+  'reporte_semanal':      { pontos: 10,  categoria: 'trabalho', label: 'Reporte semanal entregue', funcao: 'suporte_home' },
+  
+  // TRABALHO - PROSPECÇÃO
+  'meta_leads':           { pontos: 60,  categoria: 'trabalho', label: 'Bateu meta de leads', funcao: 'prospeccao' },
+  'conversao':            { pontos: 25,  categoria: 'trabalho', label: 'Conversão (parceiro novo)', funcao: 'prospeccao' },
+  'visita_tecnica':       { pontos: 15,  categoria: 'trabalho', label: 'Visita técnica', funcao: 'prospeccao' },
+  
+  // BÔNUS UNIVERSAIS
+  'ideia_aceita':         { pontos: 50,  categoria: 'trabalho', label: 'Ideia aceita no Banco de Ideias' },
+  'problema_critico':     { pontos: 40,  categoria: 'trabalho', label: 'Resolveu problema crítico de cidade' },
+  'mentorou_colega':      { pontos: 50,  categoria: 'trabalho', label: 'Mentorou colega novo' },
+  'ajudou_outra_cidade':  { pontos: 15,  categoria: 'trabalho', label: 'Ajudou colega de outra cidade/área' },
+  
+  // RECONHECIMENTO DA DIRETORIA
+  'reconhecimento_semana':{ pontos: 40,  categoria: 'trabalho', label: 'Reconhecimento da Semana' },
+  'funcionario_mes':      { pontos: 100, categoria: 'trabalho', label: 'Funcionário do Mês' },
+  'funcionario_trimestre':{ pontos: 200, categoria: 'trabalho', label: 'Funcionário do Trimestre' },
+  'funcionario_ano':      { pontos: 400, categoria: 'trabalho', label: 'Funcionário do Ano' },
+  'citacao_reuniao':      { pontos: 15,  categoria: 'trabalho', label: 'Citação positiva em reunião' },
+  
+  // CONQUISTAS - PROMOÇÕES
+  'subiu_nivel':          { pontos: 100, categoria: 'conquista', label: 'Subiu de nível na trilha' },
+  'transicao_jr2':        { pontos: 150, categoria: 'conquista', label: 'Junior I → Junior II' },
+  'transicao_pleno':      { pontos: 250, categoria: 'conquista', label: 'Junior III → Pleno I' },
+  'transicao_senior':     { pontos: 350, categoria: 'conquista', label: 'Pleno III → Sênior I' },
+  'transicao_gerente':    { pontos: 500, categoria: 'conquista', label: 'Sênior III → Gerente' },
+  'mudou_funcao':         { pontos: 80,  categoria: 'conquista', label: 'Mudou de função' },
+  
+  // CONQUISTAS - TEMPO DE CASA
+  'tempo_1mes':           { pontos: 30,  categoria: 'conquista', label: '1 mês na Gâmi' },
+  'tempo_6meses':         { pontos: 50,  categoria: 'conquista', label: '6 meses na Gâmi' },
+  'tempo_1ano':           { pontos: 100, categoria: 'conquista', label: '1 ano na Gâmi' },
+  'tempo_2anos':          { pontos: 200, categoria: 'conquista', label: '2 anos na Gâmi' },
+  'tempo_3anos':          { pontos: 300, categoria: 'conquista', label: '3+ anos na Gâmi' },
+  
+  // CONQUISTAS - TREINAMENTOS
+  'treinamento_gami':     { pontos: 50,  categoria: 'conquista', label: 'Treinamento Gâmi concluído' },
+  'evento_empresa':       { pontos: 30,  categoria: 'conquista', label: 'Participou de evento da empresa' },
+  'palestra_interna':     { pontos: 100, categoria: 'conquista', label: 'Apresentou palestra interna' },
+  'curso_externo':        { pontos: 100, categoria: 'conquista', label: 'Curso externo relevante concluído' },
+  
+  // ESPECIAIS
+  'loteria_semanal':      { pontos: 20,  categoria: 'engajamento', label: '🎁 Loteria semanal (sorteado)' },
+  'spotlight':            { pontos: 0,   categoria: 'cultura',     label: '🌟 Pessoa Gâmi de hoje' },
+  'manual_extra':         { pontos: 0,   categoria: 'trabalho',    label: 'Pontos manuais (admin)' }
+};
+
+/* CATÁLOGO DE BADGES */
+var BADGES_CATALOGO = {
+  'imparavel_30dias':    { nome: 'Imparável', emoji: '🔥', desc: '30 dias logando seguidos', pontos_extra: 30 },
+  'foguete_1mes':        { nome: 'Foguete', emoji: '🚀', desc: '1 mês na Gâmi' },
+  'estrela_6meses':      { nome: 'Estrela', emoji: '🌟', desc: '6 meses na Gâmi' },
+  'diamante_1ano':       { nome: 'Diamante', emoji: '💎', desc: '1 ano completo' },
+  'veterano_2anos':      { nome: 'Veterano', emoji: '🏆', desc: '2+ anos de Gâmi' },
+  'lendario_3anos':      { nome: 'Lendário', emoji: '👑', desc: '3+ anos de Gâmi' },
+  'top10_primeira_vez':  { nome: 'Top 10', emoji: '🌟', desc: 'Primeira vez no Top 10', pontos_extra: 30 },
+  'coracao_gami':        { nome: 'Coração Gâmi', emoji: '💛', desc: '5 reconhecimentos em 1 mês', pontos_extra: 25 },
+  'lider_inspirador':    { nome: 'Líder Inspirador', emoji: '🤝', desc: 'Gestor de cidade Top 3' },
+  'em_ascensao':         { nome: 'Em Ascensão', emoji: '📈', desc: 'Subiu de nível recente' },
+  'em_chamas':           { nome: 'Em Chamas', emoji: '🔥', desc: '5 reconhecimentos consecutivos' },
+  'aguia_gami':          { nome: 'Águia Gâmi', emoji: '🦅', desc: 'Bateu meta da cidade' },
+  'comemorando':         { nome: 'Comemorando!', emoji: '🎂', desc: 'Aniversariante recente' },
+  'funcionario_mes_badge':     { nome: 'Funcionário do Mês', emoji: '🏆', desc: 'Eleito Funcionário do Mês', pontos_extra: 100 },
+  'funcionario_trim_badge':    { nome: 'Funcionário do Trimestre', emoji: '💎', desc: 'Eleito Funcionário do Trimestre', pontos_extra: 200 },
+  'funcionario_ano_badge':     { nome: 'Funcionário do Ano', emoji: '👑', desc: 'Eleito Funcionário do Ano', pontos_extra: 500 }
+};
+
+/* PATENTES (acumulado vitalício) */
+var PATENTES = [
+  { id: 'sementinha', nome: 'Sementinha Gâmi', emoji: '🌱', min: 0,     max: 499,    cor: '#9DB4D6' },
+  { id: 'broto',      nome: 'Broto Gâmi',      emoji: '🌿', min: 500,   max: 1499,   cor: '#7FE5B0' },
+  { id: 'arvore',     nome: 'Árvore Gâmi',     emoji: '🌳', min: 1500,  max: 3999,   cor: '#1D9E75' },
+  { id: 'estrela',    nome: 'Estrela Gâmi',    emoji: '🌟', min: 4000,  max: 9999,   cor: '#1AB8F0' },
+  { id: 'lenda',      nome: 'Lenda Gâmi',      emoji: '🏆', min: 10000, max: 999999, cor: '#FFB300' }
+];
+
+/* Obtém a patente de uma pessoa baseado em pontos acumulados */
+function obterPatente(pontosTotais){
+  for(var i = PATENTES.length - 1; i >= 0; i--){
+    if(pontosTotais >= PATENTES[i].min) return PATENTES[i];
+  }
+  return PATENTES[0];
+}
+
+/* ============================================================== */
+/* ATRIBUIR PONTOS — função principal                            */
+/* ============================================================== */
+async function atribuirPontos(pessoaId, tipoAcao, opcoes){
+  opcoes = opcoes || {};
+  
+  var catalogo = PONTOS_CATALOGO[tipoAcao];
+  if(!catalogo){
+    console.warn('Tipo de ação desconhecido:', tipoAcao);
+    return false;
+  }
+  
+  // Busca dados da pessoa
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  var pessoa = pessoas.find(function(p){ return p.id === pessoaId; });
+  if(!pessoa){
+    console.warn('Pessoa não encontrada:', pessoaId);
+    return false;
+  }
+  
+  // Pontos (pode ser sobrescrito por opcoes.pontos)
+  var pontos = opcoes.pontos != null ? opcoes.pontos : catalogo.pontos;
+  
+  // Verifica limite diário (se existir)
+  if(catalogo.limite_dia){
+    var jaFezHoje = await pontosFezHoje(pessoaId, tipoAcao);
+    if(jaFezHoje) return false; // já bateu limite diário
+  }
+  
+  // Verifica limite semanal (se existir)
+  if(catalogo.limite_semana){
+    var jaFezSemana = await pontosFezSemana(pessoaId, tipoAcao);
+    if(jaFezSemana) return false;
+  }
+  
+  // Cria registro
+  var registro = {
+    pessoa_id: pessoaId,
+    pessoa_nome: pessoa.nome,
+    tipo_acao: tipoAcao,
+    categoria: catalogo.categoria,
+    pontos: pontos,
+    descricao: opcoes.descricao || catalogo.label,
+    origem: opcoes.origem || 'auto',
+    atribuido_por: opcoes.atribuido_por || null,
+    referencia_id: opcoes.referencia_id || null,
+    data_acao: new Date().toISOString().split('T')[0]
+  };
+  
+  // Salva no Supabase
+  if(typeof supaInsert === 'function' && typeof SUPA_URL !== 'undefined'){
+    try {
+      var url = SUPA_URL + '/rest/v1/pontos_log';
+      var r = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': 'Bearer ' + SUPA_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(registro)
+      });
+      if(!r.ok) console.warn('Erro salvando ponto:', r.status);
+    } catch(e){ console.warn('Erro pontos:', e.message); }
+  }
+  
+  // Também salva no localStorage como cache
+  try {
+    var cache = JSON.parse(localStorage.getItem('gami_pontos_cache') || '[]');
+    cache.push(Object.assign({}, registro, { id: Date.now() }));
+    if(cache.length > 500) cache = cache.slice(-500);
+    localStorage.setItem('gami_pontos_cache', JSON.stringify(cache));
+  } catch(e){}
+  
+  console.log('✅ ' + pessoa.nome + ' +' + pontos + ' pts (' + catalogo.label + ')');
+  return true;
+}
+
+/* Verifica se pessoa já fez essa ação hoje */
+async function pontosFezHoje(pessoaId, tipoAcao){
+  var hoje = new Date().toISOString().split('T')[0];
+  try {
+    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
+      + '&tipo_acao=eq.' + tipoAcao 
+      + '&data_acao=eq.' + hoje
+      + '&select=id&limit=1';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok){
+      var d = await r.json();
+      return d.length > 0;
+    }
+  } catch(e){}
+  return false;
+}
+
+async function pontosFezSemana(pessoaId, tipoAcao){
+  var hoje = new Date();
+  var inicioSemana = new Date(hoje);
+  inicioSemana.setDate(hoje.getDate() - 7);
+  try {
+    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
+      + '&tipo_acao=eq.' + tipoAcao 
+      + '&data_acao=gte.' + inicioSemana.toISOString().split('T')[0]
+      + '&select=id&limit=1';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok){
+      var d = await r.json();
+      return d.length > 0;
+    }
+  } catch(e){}
+  return false;
+}
+
+/* Soma pontos do mês atual de uma pessoa */
+async function obterPontosMesPessoa(pessoaId){
+  try {
+    var inicio = new Date();
+    inicio.setDate(1);
+    var inicioStr = inicio.toISOString().split('T')[0];
+    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
+      + '&data_acao=gte.' + inicioStr
+      + '&select=pontos';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok){
+      var d = await r.json();
+      return d.reduce(function(acc, p){ return acc + (p.pontos || 0); }, 0);
+    }
+  } catch(e){}
+  return 0;
+}
+
+/* Soma pontos totais (carreira) de uma pessoa */
+async function obterPontosTotaisPessoa(pessoaId){
+  try {
+    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId + '&select=pontos';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok){
+      var d = await r.json();
+      return d.reduce(function(acc, p){ return acc + (p.pontos || 0); }, 0);
+    }
+  } catch(e){}
+  return 0;
+}
+
+/* Busca ranking mensal — usa VIEW do Supabase */
+async function obterRankingMensal(){
+  try {
+    var url = SUPA_URL + '/rest/v1/ranking_mensal?select=*&order=total_pontos.desc&limit=50';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok) return await r.json();
+  } catch(e){}
+  return [];
+}
+
+async function obterRankingTrimestral(){
+  try {
+    var url = SUPA_URL + '/rest/v1/ranking_trimestral?select=*&order=total_pontos.desc&limit=50';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok) return await r.json();
+  } catch(e){}
+  return [];
+}
+
+async function obterRankingHistorico(){
+  try {
+    var url = SUPA_URL + '/rest/v1/ranking_historico?select=*&order=total_pontos.desc&limit=50';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok) return await r.json();
+  } catch(e){}
+  return [];
+}
+
+/* Extrato completo de uma pessoa (últimos 50 pontos) */
+async function obterExtratoPessoa(pessoaId){
+  try {
+    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
+      + '&select=*&order=created_at.desc&limit=100';
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+    });
+    if(r.ok) return await r.json();
+  } catch(e){}
+  return [];
+}
+
+/* ============================================================== */
+/* USUÁRIO LOGADO — placeholder (até implementar login multi)    */
+/* Por enquanto, retorna o usuário "padrão" pra testes           */
+/* Quando login estiver pronto, lê de localStorage ou Supabase   */
+/* ============================================================== */
+function getUsuarioLogado(){
+  // TODO: integrar com sistema de login multi-usuário (futuro)
+  var saved = localStorage.getItem('gami_usuario_logado');
+  if(saved){
+    try { return JSON.parse(saved); } catch(e){}
+  }
+  return null; // sem usuário identificado
+}
+
+function setUsuarioLogado(pessoa){
+  if(pessoa) localStorage.setItem('gami_usuario_logado', JSON.stringify(pessoa));
+  else localStorage.removeItem('gami_usuario_logado');
+}
+
+/* Verifica se quem está vendo é o admin (Cleyton) */
+/* Por enquanto, libera se localStorage tiver 'gami_admin' === '1' */
+function isAdminPontos(){
+  return localStorage.getItem('gami_admin') === '1';
+}
+
+function ativarModoAdmin(){
+  var senha = prompt('Senha admin:');
+  if(senha === 'gami2026') {
+    localStorage.setItem('gami_admin', '1');
+    alert('✅ Modo admin ativado!');
+    return true;
+  } else if(senha){
+    alert('❌ Senha incorreta');
+  }
+  return false;
+}
+
+function desativarModoAdmin(){
+  localStorage.removeItem('gami_admin');
+  alert('Modo admin desativado');
+}
+
 
 function getPessoas(){
   try{
@@ -10577,32 +11273,869 @@ function renderProximosBdays(){
 }
 
 // ===================== RANKING =====================
+/* ============================================================== */
+/* RANKING — Sistema completo com 4 sub-abas                     */
+/* ============================================================== */
+
+/* Troca aba ativa */
+function setRankTab(tab){
+  var tabs = document.querySelectorAll('.rank-tab');
+  tabs.forEach(function(t){
+    t.classList.toggle('rank-tab-active', t.getAttribute('data-rtab')===tab);
+  });
+  var contents = document.querySelectorAll('.rank-tab-content');
+  contents.forEach(function(c){
+    c.style.display = (c.id === 'rank-tab-' + tab) ? 'block' : 'none';
+  });
+  if(tab === 'visao')      renderRankingVisaoGeral();
+  if(tab === 'conquistas') { renderGaleriaBadges(); renderPatentes(); renderMaisReconhecidos(); }
+  if(tab === 'historico')  { renderHallFama(); renderVencedoresCategorias(); }
+  if(tab === 'desafios')   renderDesafios();
+  if(tab === 'regras')     renderRegras();
+}
+
 function renderRanking(){
-  var el=document.getElementById('ranking-list')||document.querySelector('#pg-ranking .g3');
+  renderRankingVisaoGeral();
+  var btnAdmin = document.getElementById('btn-admin-pontos');
+  if(btnAdmin){
+    btnAdmin.textContent = isAdminPontos() ? '🎛️ Painel Admin' : '🎛️ Admin';
+    btnAdmin.style.background = isAdminPontos() ? 'var(--gami-blue-l)' : '';
+  }
+}
+
+function renderRankingVisaoGeral(){
+  renderTop3Cidades();
+  renderRankingIndividual();
+  renderRankingPorCargo();
+}
+
+function renderTop3Cidades(){
+  var el = document.getElementById('rank-top-cidades');
   if(!el) return;
-  var pessoas=typeof getPessoas==='function'?getPessoas():[];
-  var cidades=typeof getCidadesData==='function'?getCidadesData():[];
-  var scores=cidades.map(function(c){
-    return {nome:c.nome,uf:c.uf||'',score:typeof calcScore==='function'?calcScore(c):70,
-      gestor:pessoas.find(function(p){return p.cidade===c.nome&&p.cargo&&p.cargo.includes('Gestor');})||{}};
-  }).sort(function(a,b){return b.score-a.score;});
-  var medals=['🥇','🥈','🥉'];
-  var colors=['#FFD700','#C0C0C0','#CD7F32'];
-  el.innerHTML=scores.map(function(c,i){
-    var medal=medals[i]||'#'+(i+1);
-    var cor=i<3?colors[i]:'var(--border)';
-    var pct=c.score;
-    var barCor=pct>=75?'#1D9E75':pct>=50?'#EF9F27':'#E24B4A';
-    return '<div style="border:2px solid '+cor+';border-radius:12px;padding:14px;background:var(--surface);text-align:center">'
-      +'<div style="font-size:28px;margin-bottom:4px">'+medal+'</div>'
-      +'<div style="font-size:15px;font-weight:800;margin-bottom:2px">'+c.nome+'</div>'
-      +'<div style="font-size:11px;color:var(--text3);margin-bottom:8px">'+(c.gestor.nome||'—')+'</div>'
-      +'<div style="font-size:24px;font-weight:800;color:'+barCor+'">'+c.score+'</div>'
-      +'<div style="font-size:10px;color:var(--text3);margin-bottom:6px">pontos</div>'
-      +'<div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">'
-      +'<div style="height:100%;width:'+pct+'%;background:'+barCor+';border-radius:3px"></div></div>'
-      +'</div>';
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  var cidades = typeof getCidadesData === 'function' ? getCidadesData() : [];
+  var scores = cidades.map(function(c){
+    return {
+      nome: c.nome, uf: c.uf || '',
+      score: typeof calcScore === 'function' ? calcScore(c) : 70,
+      gestor: pessoas.find(function(p){ return p.cidade === c.nome && p.cargo && p.cargo.indexOf('Gestor') >= 0; }) || {}
+    };
+  }).sort(function(a,b){ return b.score - a.score; });
+  var top3 = scores.slice(0, 3);
+  var medals = ['🥇','🥈','🥉'];
+  var colors = ['#FFD700','#C0C0C0','#CD7F32'];
+  var elMes = document.getElementById('rank-cidades-mes');
+  if(elMes) elMes.textContent = new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  el.innerHTML = top3.map(function(c,i){
+    var pct = c.score;
+    var barCor = pct >= 75 ? '#1D9E75' : pct >= 50 ? '#EF9F27' : '#E24B4A';
+    return '<div style="border:2px solid '+colors[i]+';border-radius:12px;padding:14px;background:var(--surface);text-align:center">'
+      + '<div style="font-size:28px;margin-bottom:4px">'+medals[i]+'</div>'
+      + '<div style="font-size:15px;font-weight:800;margin-bottom:2px">'+c.nome+'</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Gestor: '+(c.gestor.nome||'—')+'</div>'
+      + '<div style="font-size:24px;font-weight:800;color:'+barCor+'">'+c.score+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-bottom:6px">score corridas</div>'
+      + '<div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">'
+      + '<div style="height:100%;width:'+pct+'%;background:'+barCor+';border-radius:3px"></div></div>'
+      + '</div>';
   }).join('');
+}
+
+async function renderRankingIndividual(){
+  var el = document.getElementById('rank-top-individual');
+  if(!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Carregando ranking...</div>';
+  var filtroEl = document.getElementById('rank-individual-filtro');
+  var filtro = filtroEl ? filtroEl.value : 'mensal';
+  var ranking = [];
+  if(filtro === 'mensal') ranking = await obterRankingMensal();
+  else if(filtro === 'trimestral') ranking = await obterRankingTrimestral();
+  else ranking = await obterRankingHistorico();
+  if(!ranking.length){
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px">'
+      + '<div style="font-size:30px;margin-bottom:6px">📊</div>'
+      + 'Nenhuma pontuação registrada ainda.<br>'
+      + '<span style="font-size:10px">Quando a equipe começar a usar o dashboard, o ranking aparece aqui.</span>'
+      + '</div>';
+    return;
+  }
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  var medals = ['🥇','🥈','🥉'];
+  el.innerHTML = ranking.slice(0,10).map(function(r,i){
+    var medal = i < 3 ? medals[i] : '<span style="display:inline-block;width:22px;text-align:center;font-weight:700;color:var(--text3)">'+(i+1)+'º</span>';
+    var pessoa = pessoas.find(function(p){ return p.id === r.pessoa_id; }) || {};
+    var avatar = pessoa.foto_url 
+      ? '<img src="'+pessoa.foto_url+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">'
+      : '<div style="width:32px;height:32px;border-radius:50%;background:var(--gami-blue-l);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--gami-blue-d)">'+(r.pessoa_nome||'?').charAt(0)+'</div>';
+    return '<div onclick="abrirPerfilGami(\''+r.pessoa_id+'\')" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border);cursor:pointer">'
+      + '<div style="font-size:18px;width:28px;text-align:center">'+medal+'</div>'
+      + avatar
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--text1)">'+(r.pessoa_nome||'—')+'</div>'
+      + '<div style="font-size:10px;color:var(--text3)">'+(pessoa.cargo||'')+(pessoa.cidade?' · '+pessoa.cidade:'')+'</div>'
+      + '</div>'
+      + '<div style="text-align:right">'
+      + '<div style="font-size:15px;font-weight:800;color:var(--gami-blue-d)">'+r.total_pontos+'</div>'
+      + '<div style="font-size:9px;color:var(--text3)">pts</div>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function renderRankingPorCargo(){
+  var el = document.getElementById('rank-por-cargo');
+  if(!el) return;
+  var ranking = await obterRankingMensal();
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  var grupos = {
+    'Liderança': { cargos: ['Diretor','Diretora','Gerente'], lista: [] },
+    'Gestores': { cargos: ['Gestor'], lista: [] },
+    'Operação': { cargos: ['Suporte','Marketing','Prospec'], lista: [] }
+  };
+  ranking.forEach(function(r){
+    var p = pessoas.find(function(x){ return x.id === r.pessoa_id; });
+    if(!p || !p.cargo) return;
+    Object.keys(grupos).forEach(function(k){
+      if(grupos[k].cargos.some(function(c){ return p.cargo.indexOf(c) >= 0; })){
+        grupos[k].lista.push({ nome: r.pessoa_nome, pontos: r.total_pontos });
+      }
+    });
+  });
+  el.innerHTML = Object.keys(grupos).map(function(k){
+    var g = grupos[k];
+    var top5 = g.lista.slice(0,5);
+    if(!top5.length){
+      return '<div class="card" style="background:var(--surface2)"><div class="card-title" style="margin-bottom:8px">'+k+'</div><div style="font-size:11px;color:var(--text3);text-align:center;padding:14px">Sem dados ainda</div></div>';
+    }
+    return '<div class="card" style="background:var(--surface2)">'
+      + '<div class="card-title" style="margin-bottom:8px">'+k+'</div>'
+      + top5.map(function(p,i){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">'
+          + '<span style="font-weight:700;color:var(--text3);width:18px">'+(i+1)+'º</span>'
+          + '<span style="flex:1">'+p.nome+'</span>'
+          + '<span style="font-weight:700;color:var(--gami-blue-d)">'+p.pontos+'</span>'
+          + '</div>';
+      }).join('')
+      + '</div>';
+  }).join('');
+}
+
+async function renderGaleriaBadges(){
+  var el = document.getElementById('rank-galeria-badges');
+  if(!el) return;
+  var desbloqueadas = {};
+  try {
+    var url = SUPA_URL + '/rest/v1/badges_desbloqueadas?select=badge_id,pessoa_nome&order=created_at.desc';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
+    if(r.ok){
+      var dados = await r.json();
+      dados.forEach(function(b){
+        if(!desbloqueadas[b.badge_id]) desbloqueadas[b.badge_id] = [];
+        desbloqueadas[b.badge_id].push(b.pessoa_nome);
+      });
+    }
+  } catch(e){}
+  el.innerHTML = Object.keys(BADGES_CATALOGO).map(function(id){
+    var b = BADGES_CATALOGO[id];
+    var conquistadores = desbloqueadas[id] || [];
+    var conquistou = conquistadores.length > 0;
+    return '<div style="border:1.5px solid '+(conquistou?'var(--gami-blue)':'var(--border)')+';border-radius:10px;padding:10px;text-align:center;background:'+(conquistou?'var(--gami-blue-l)':'var(--surface2)')+';opacity:'+(conquistou?'1':'0.55')+'">'
+      + '<div style="font-size:30px;margin-bottom:4px;filter:'+(conquistou?'none':'grayscale(0.8)')+'">'+b.emoji+'</div>'
+      + '<div style="font-size:12px;font-weight:700">'+b.nome+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:2px;min-height:24px">'+b.desc+'</div>'
+      + '<div style="font-size:10px;color:var(--gami-blue-d);margin-top:4px;font-weight:600">'+(conquistou?conquistadores.length+' conquistou':'🔒 ainda fechada')+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function renderPatentes(){
+  var el = document.getElementById('rank-patentes');
+  if(!el) return;
+  var historico = await obterRankingHistorico();
+  var contagem = {};
+  PATENTES.forEach(function(p){ contagem[p.id] = 0; });
+  historico.forEach(function(r){
+    var pat = obterPatente(r.total_pontos);
+    contagem[pat.id]++;
+  });
+  el.innerHTML = PATENTES.map(function(p){
+    var n = contagem[p.id] || 0;
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--surface2);margin-bottom:6px;border-left:3px solid '+p.cor+'">'
+      + '<div style="font-size:22px">'+p.emoji+'</div>'
+      + '<div style="flex:1">'
+      + '<div style="font-size:12px;font-weight:700">'+p.nome+'</div>'
+      + '<div style="font-size:10px;color:var(--text3)">'+p.min+' - '+(p.max===999999?'∞':p.max)+' pts</div>'
+      + '</div>'
+      + '<div style="font-size:14px;font-weight:800;color:'+p.cor+'">'+n+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function renderMaisReconhecidos(){
+  var el = document.getElementById('rank-mais-reconhecidos');
+  if(!el) return;
+  try {
+    var mesRef = new Date().toISOString().slice(0,7);
+    var url = SUPA_URL + '/rest/v1/reconhecimentos_pares?mes_ref=eq.'+mesRef+'&select=para_pessoa_id,para_pessoa_nome';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
+    var dados = r.ok ? await r.json() : [];
+    var contagem = {};
+    dados.forEach(function(d){
+      var k = d.para_pessoa_id;
+      if(!contagem[k]) contagem[k] = { nome: d.para_pessoa_nome, count: 0 };
+      contagem[k].count++;
+    });
+    var arr = Object.keys(contagem).map(function(k){ return contagem[k]; })
+      .sort(function(a,b){ return b.count - a.count; }).slice(0,5);
+    if(!arr.length){
+      el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Sem reconhecimentos este mês.</div>';
+      return;
+    }
+    el.innerHTML = arr.map(function(p,i){
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'
+        + '<span style="font-weight:700;color:var(--text3);width:20px">'+(i+1)+'º</span>'
+        + '<span style="flex:1">'+p.nome+'</span>'
+        + '<span style="font-weight:700;color:#E24B4A">💛 '+p.count+'</span>'
+        + '</div>';
+    }).join('');
+  } catch(e){
+    el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">—</div>';
+  }
+}
+
+async function renderHallFama(){
+  var el = document.getElementById('rank-hall-fama');
+  if(!el) return;
+  try {
+    var url = SUPA_URL + '/rest/v1/vencedores_mensais?tipo_periodo=eq.mes&select=*&order=periodo.desc&limit=12';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
+    var dados = r.ok ? await r.json() : [];
+    if(!dados.length){
+      el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px"><div style="font-size:30px;margin-bottom:6px">🏛️</div>Hall da Fama ainda vazio.</div>';
+      return;
+    }
+    el.innerHTML = dados.map(function(v){
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+        + '<div style="width:60px;font-size:11px;font-weight:700;color:var(--text3)">'+v.periodo+'</div>'
+        + '<div style="flex:1"><div style="font-size:12px;font-weight:600">'+(v.pessoa_nome||v.cidade||'—')+'</div><div style="font-size:10px;color:var(--text3)">'+v.categoria+'</div></div>'
+        + '<div style="font-size:13px;font-weight:700;color:var(--gami-blue-d)">'+(v.pontos||'—')+'</div>'
+        + '</div>';
+    }).join('');
+  } catch(e){
+    el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">—</div>';
+  }
+}
+
+function renderVencedoresCategorias(){
+  var el = document.getElementById('rank-vencedores-categorias');
+  if(!el) return;
+  var categorias = [
+    { id: 'gestor', nome: '🎯 Gestor do Mês', desc: 'Entre os 10 gestores de cidade' },
+    { id: 'colaborador', nome: '💻 Colaborador do Mês', desc: 'Suporte / Marketing / Prospecção' },
+    { id: 'lideranca', nome: '🏛️ Liderança do Mês', desc: 'Diretoria / Gerência' },
+    { id: 'reconhecido', nome: '🤝 Mais Reconhecido', desc: 'Quem mais foi reconhecido pelos colegas' }
+  ];
+  el.innerHTML = categorias.map(function(c){
+    return '<div class="card" style="background:var(--surface2);text-align:center">'
+      + '<div style="font-size:13px;font-weight:700">'+c.nome+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin:6px 0">'+c.desc+'</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">Definido ao fim do mês</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function renderDesafios(){
+  var elAtivos = document.getElementById('rank-desafios-ativos');
+  var elEnc = document.getElementById('rank-desafios-encerrados');
+  if(!elAtivos) return;
+  var btnNovo = document.getElementById('btn-novo-desafio');
+  if(btnNovo) btnNovo.style.display = isAdminPontos() ? '' : 'none';
+  try {
+    var url = SUPA_URL + '/rest/v1/desafios_admin?select=*&order=data_inicio.desc';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
+    var dados = r.ok ? await r.json() : [];
+    var ativos = dados.filter(function(d){ return d.status === 'ativo'; });
+    var encerrados = dados.filter(function(d){ return d.status !== 'ativo'; });
+    if(!ativos.length){
+      elAtivos.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:30px;margin-bottom:8px">🎯</div>Nenhum desafio ativo no momento.<br><span style="font-size:11px">'+(isAdminPontos()?'Clique em "+ Novo desafio" pra criar!':'Aguarde — Diretoria/Marketing cria desafios.')+'</span></div>';
+    } else {
+      elAtivos.innerHTML = ativos.map(function(d){
+        return '<div class="card" style="margin-bottom:8px;border-left:3px solid var(--gami-blue)">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+          + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700">'+d.titulo+'</div>'
+          + '<span class="chip chip-a">+'+d.pontos_recompensa+' pts</span>'
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--text3);margin-bottom:4px">'+(d.descricao||'')+'</div>'
+          + '<div style="font-size:10px;color:var(--text3)">Até '+d.data_fim+' · Alvo: '+d.tipo_alvo+'</div>'
+          + '</div>';
+      }).join('');
+    }
+    if(elEnc){
+      elEnc.innerHTML = encerrados.length 
+        ? encerrados.slice(0,5).map(function(d){ return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><strong>'+d.titulo+'</strong> · <span style="color:var(--text3)">'+d.data_inicio+' → '+d.data_fim+'</span></div>'; }).join('')
+        : '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Nenhum desafio encerrado ainda.</div>';
+    }
+  } catch(e){
+    elAtivos.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Erro carregando desafios.</div>';
+  }
+}
+
+/* ============================================================== */
+/* 💎 PONTOS & REGRAS — Aba de orientação pra equipe              */
+/* ============================================================== */
+
+async function renderRegras(){
+  renderProximaConquista();
+  renderRegrasPatentes();
+  renderRegrasBadges();
+  renderRegrasFAQ();
+  // Tabela completa começa escondida
+  var elComp = document.getElementById('regras-completo');
+  if(elComp && !elComp.innerHTML.trim()) elComp.innerHTML = renderRegrasCompleto();
+}
+
+/* Bloco "Sua próxima conquista" — personalizado pro usuário */
+async function renderProximaConquista(){
+  var el = document.getElementById('regras-proxima-conquista');
+  if(!el) return;
+  
+  var user = getUsuarioLogado();
+  if(!user || !user.id){
+    el.innerHTML = '<div class="card" style="background:linear-gradient(135deg,#FFF8E1 0%,#fff 100%);border-left:4px solid #FFB300">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<span style="font-size:28px">🎯</span>'
+      + '<div style="flex:1">'
+      +   '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:#0B2542">Sua próxima conquista aparece aqui!</div>'
+      +   '<div style="font-size:11px;color:var(--text3);margin-top:4px">Quando o sistema de login estiver pronto (em breve), você vai ver exatamente o que falta pra subir de patente e desbloquear novas badges.</div>'
+      + '</div>'
+      + '</div></div>';
+    return;
+  }
+  
+  // Quando login estiver pronto, mostra próximas conquistas
+  var totalCarreira = await obterPontosTotaisPessoa(user.id);
+  var patenteAtual = obterPatente(totalCarreira);
+  var patenteProxima = PATENTES.find(function(p){ return p.min > totalCarreira; });
+  
+  var html = '<div class="card" style="background:linear-gradient(135deg,#E6F6FE 0%,#fff 100%);border-left:4px solid '+patenteAtual.cor+'">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+    + '<span style="font-size:28px">🎯</span>'
+    + '<div style="flex:1">'
+    +   '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:700;color:#0B2542">Sua próxima conquista</div>'
+    +   '<div style="font-size:11px;color:var(--text3)">Patente atual: '+patenteAtual.emoji+' '+patenteAtual.nome+' · '+totalCarreira+' pts</div>'
+    + '</div>'
+    + '</div>';
+  
+  if(patenteProxima){
+    var faltam = patenteProxima.min - totalCarreira;
+    var pct = Math.min(100, Math.round((totalCarreira - patenteAtual.min) / (patenteProxima.min - patenteAtual.min) * 100));
+    html += '<div style="margin-top:8px">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;margin-bottom:4px">'
+      +   '<span><strong>'+patenteAtual.emoji+' '+patenteAtual.nome+'</strong></span>'
+      +   '<span style="color:var(--text3)">Faltam <strong style="color:'+patenteProxima.cor+'">'+faltam+' pts</strong> pra '+patenteProxima.emoji+' '+patenteProxima.nome+'</span>'
+      + '</div>'
+      + '<div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">'
+      +   '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,'+patenteAtual.cor+','+patenteProxima.cor+');border-radius:4px;transition:width .5s"></div>'
+      + '</div>'
+      + '</div>';
+  } else {
+    html += '<div style="margin-top:8px;text-align:center;padding:14px;background:rgba(255,179,0,.1);border-radius:8px">'
+      + '<div style="font-size:24px">🏆</div>'
+      + '<div style="font-size:13px;font-weight:700;color:#F57F17">Você é uma LENDA GÂMI!</div>'
+      + '<div style="font-size:10px;color:var(--text3)">Você atingiu o nível máximo. Você é referência pra toda equipe.</div>'
+      + '</div>';
+  }
+  
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+/* Patentes (visual lindo) */
+function renderRegrasPatentes(){
+  var el = document.getElementById('regras-patentes-visual');
+  if(!el) return;
+  
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">'
+    + PATENTES.map(function(p, i){
+      return '<div style="text-align:center;padding:14px 10px;background:var(--surface2);border-radius:10px;border-top:3px solid '+p.cor+';position:relative">'
+        + (i < PATENTES.length - 1 ? '<div style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);font-size:18px;color:var(--text3);z-index:2">→</div>' : '')
+        + '<div style="font-size:34px;margin-bottom:6px">'+p.emoji+'</div>'
+        + '<div style="font-size:12px;font-weight:800;color:#0B2542">'+p.nome+'</div>'
+        + '<div style="font-size:10px;color:var(--text3);margin-top:4px">'+p.min.toLocaleString('pt-BR')+(p.max===999999?'+ pts':' - '+p.max.toLocaleString('pt-BR')+' pts')+'</div>'
+        + '</div>';
+    }).join('')
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--text3);margin-top:10px;text-align:center;font-style:italic">'
+    + '🌱 <strong>Sementinha</strong> é o início da jornada. <strong>Lenda</strong> é quem inspira toda a Gâmi. Onde você quer chegar?'
+    + '</div>';
+}
+
+/* Galeria de badges com explicações */
+function renderRegrasBadges(){
+  var el = document.getElementById('regras-badges-grid');
+  if(!el) return;
+  
+  el.innerHTML = Object.keys(BADGES_CATALOGO).map(function(id){
+    var b = BADGES_CATALOGO[id];
+    var pontosTxt = b.pontos_extra ? '<div style="font-size:10px;color:var(--gami-blue-d);font-weight:700;margin-top:4px">+'+b.pontos_extra+' pts bônus</div>' : '';
+    return '<div style="text-align:center;padding:12px 10px;background:var(--surface2);border-radius:10px;border:1px solid var(--border)">'
+      + '<div style="font-size:30px;margin-bottom:4px">'+b.emoji+'</div>'
+      + '<div style="font-size:12px;font-weight:700;color:#0B2542">'+b.nome+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.4">'+b.desc+'</div>'
+      + pontosTxt
+      + '</div>';
+  }).join('');
+}
+
+/* FAQ Gâmi */
+function renderRegrasFAQ(){
+  var el = document.getElementById('regras-faq');
+  if(!el) return;
+  
+  var faqs = [
+    {
+      q: '🤔 Como ganho pontos no Ranking Gâmi?',
+      a: 'Várias formas! Usando o dashboard todo dia (login, Pulse, tarefas), participando da cultura Gâmi (devocional, reconhecimento entre colegas, mural), entregando bom trabalho (metas, decisões, ideias) e conquistando marcos (tempo de casa, promoções). Cada cargo tem caminhos próprios pra brilhar — todos podem chegar no Top.'
+    },
+    {
+      q: '⏰ Os pontos zeram?',
+      a: 'Depende do ranking! O <strong>Ranking Mensal</strong> reseta todo dia 1°. O <strong>Trimestral</strong> a cada 3 meses. Mas o <strong>Histórico</strong> (que define sua Patente) NUNCA zera. Uma vez Estrela Gâmi, sempre Estrela. 🌟'
+    },
+    {
+      q: '😢 Posso perder pontos?',
+      a: 'NÃO. Aqui não tem penalidade negativa. Se você não engajar, simplesmente não ganha pontos novos — mas o que já ganhou está garantido. <strong>Sistema só positivo.</strong>'
+    },
+    {
+      q: '👤 Quem dá os pontos manuais?',
+      a: 'Por enquanto, só o Cleyton (Marketing) tem acesso ao Painel Admin. Em breve, a Diretoria também poderá atribuir pontos especiais (Reconhecimento da Semana, Funcionário do Mês, etc.). Todos os pontos têm motivo registrado pra você ver no seu extrato.'
+    },
+    {
+      q: '📅 Quando sai o vencedor do mês?',
+      a: 'No dia 1° do mês seguinte. A Diretoria escolhe Funcionário do Mês considerando pontuação E contribuição qualitativa. Vencedores aparecem no Hall da Fama, recebem badge especial + 100 pts bônus + visibilidade no dashboard. 🏆'
+    },
+    {
+      q: '📋 Como vejo meu extrato de pontos?',
+      a: 'Vai na aba Ranking → Visão Geral → clica no seu nome no Top 10. Abre seu Perfil Gâmi completo com todos os pontos, datas, motivos e badges. Total transparência!'
+    },
+    {
+      q: '🌱 Como subir de Patente?',
+      a: 'Patentes são vitalícias e baseadas em pontos ACUMULADOS na carreira. Comece em Sementinha (0-499) e suba: Broto → Árvore → Estrela → Lenda. Em média, uma pessoa engajada leva 4-6 meses pra virar Broto, 1-2 anos pra Árvore. Lenda é pra veteranos! 🏆'
+    },
+    {
+      q: '🤝 Como reconhecer um colega?',
+      a: 'No mural de recados, clica em "Reconhecer". Escolhe o colega, escreve por que ele merece, publica. Quem reconhece ganha +5 pts, quem é reconhecido ganha +15 pts. Limite de 4 reconhecimentos por mês (pra valer mesmo, não inflar).'
+    },
+    {
+      q: '🎁 Como resgato meus pontos?',
+      a: 'Olha a "Loja Gâmi" mais acima. Acumulou pontos suficientes? Manda mensagem pro Cleyton ou pra Diretoria pedindo o resgate. Você NÃO perde sua Patente quando troca — Patente é fixa, recompensa é extra!'
+    },
+    {
+      q: '🎂 Ganho ponto no aniversário?',
+      a: 'SIM! +20 pts automático no dia do seu aniversário. E a Gâmi celebra você. 🥳 Aniversário de empresa também rende: +50 pts a cada ano que você completa na Gâmi.'
+    },
+    {
+      q: '🙏 O devocional vale pontos mesmo?',
+      a: 'Sim! Cultura Gâmi é central. Participar do devocional de segunda (9h15 BSB / 8h15 RO) vale +10 pts. Compartilhar versículo no mural durante a semana vale +5 pts. <strong>Fé com Respeito também é trabalho.</strong>'
+    },
+    {
+      q: '🔥 O que é "Streak" (sequência)?',
+      a: 'Streak é quando você faz uma ação muitos dias seguidos. Exemplo: logar 7 dias seguidos = +5 pts bônus. 15 dias = +15 pts. 30 dias = +30 pts + Badge "Imparável" 🔥. Se quebrar o streak, ZERA a contagem (mas seus pontos ganhos ficam!).'
+    }
+  ];
+  
+  el.innerHTML = faqs.map(function(f, i){
+    return '<details style="border-bottom:1px solid var(--border);padding:10px 0;cursor:pointer">'
+      + '<summary style="font-size:13px;font-weight:600;color:#0B2542;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
+      +   '<span>'+f.q+'</span>'
+      +   '<span style="font-size:14px;color:var(--text3);margin-left:8px">+</span>'
+      + '</summary>'
+      + '<div style="font-size:12px;line-height:1.6;color:var(--text2);margin-top:8px;padding-left:6px;border-left:2px solid var(--gami-blue-l)">'+f.a+'</div>'
+      + '</details>';
+  }).join('');
+}
+
+/* Toggle tabela completa de regras */
+function toggleRegrasCompleto(){
+  var el = document.getElementById('regras-completo');
+  var btn = document.getElementById('btn-regras-completo');
+  if(!el) return;
+  
+  if(el.style.display === 'none' || !el.style.display){
+    el.style.display = 'block';
+    if(btn) btn.innerHTML = '▲ Ocultar tabela completa';
+    if(!el.innerHTML.trim()) el.innerHTML = renderRegrasCompleto();
+  } else {
+    el.style.display = 'none';
+    if(btn) btn.innerHTML = '▼ Ver TODAS as ações (mais de 70 maneiras de pontuar)';
+  }
+}
+
+/* Tabela completa - todas as ações do PONTOS_CATALOGO agrupadas */
+function renderRegrasCompleto(){
+  // Agrupa por categoria + função
+  var grupos = {
+    engajamento: { titulo: '🌅 Engajamento Diário', desc: 'Pra todos os colaboradores, automático no dashboard', cor: '#F57F17', bg: '#FFF8E1', acoes: [] },
+    cultura:     { titulo: '🤝 Cultura & Time', desc: 'Reconhecimentos, mural, devocional, aniversários', cor: '#C2185B', bg: '#FCE4EC', acoes: [] },
+    trabalho:    { titulo: '💼 Trabalho por Função', desc: 'Específico por cargo (manual ou automático)', cor: '#1565C0', bg: '#E3F2FD', acoes: [] },
+    conquista:   { titulo: '🏆 Conquistas & Marcos', desc: 'Eventuais — tempo de casa, promoções, treinamentos', cor: '#6A1B9A', bg: '#F3E5F5', acoes: [] }
+  };
+  
+  Object.keys(PONTOS_CATALOGO).forEach(function(k){
+    var c = PONTOS_CATALOGO[k];
+    if(!grupos[c.categoria]) return;
+    grupos[c.categoria].acoes.push({ id: k, label: c.label, pontos: c.pontos, funcao: c.funcao });
+  });
+  
+  // Pra trabalho, sub-agrupa por função
+  var funcoesOrdem = ['diretoria','gerencia','gestor','marketing','suporte','suporte_home','prospeccao'];
+  var funcoesLabels = {
+    diretoria: '🏛️ Diretoria',
+    gerencia: '👥 Gerência',
+    gestor: '🎯 Gestores de Cidade',
+    marketing: '🎨 Marketing',
+    suporte: '💻 Suporte Escritório',
+    suporte_home: '🏠 Suporte Home',
+    prospeccao: '📞 Prospecção'
+  };
+  
+  var html = '';
+  
+  // 3 grupos simples (engajamento, cultura, conquista)
+  ['engajamento','cultura','conquista'].forEach(function(catKey){
+    var g = grupos[catKey];
+    html += '<div style="margin-bottom:14px;padding:12px;background:'+g.bg+';border-radius:10px;border-left:3px solid '+g.cor+'">'
+      + '<div style="font-size:13px;font-weight:700;color:#0B2542;margin-bottom:2px">'+g.titulo+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">'+g.desc+'</div>'
+      + '<div style="display:grid;gap:4px">'
+      + g.acoes.map(function(a){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border-radius:5px;font-size:11px">'
+          + '<span style="flex:1">'+a.label+'</span>'
+          + '<span style="font-weight:800;color:'+g.cor+';font-size:12px">'+(a.pontos>0?'+':'')+a.pontos+'</span>'
+          + '</div>';
+      }).join('')
+      + '</div></div>';
+  });
+  
+  // Trabalho — sub-agrupado por função
+  var g = grupos.trabalho;
+  html += '<div style="padding:12px;background:'+g.bg+';border-radius:10px;border-left:3px solid '+g.cor+'">'
+    + '<div style="font-size:13px;font-weight:700;color:#0B2542;margin-bottom:2px">'+g.titulo+'</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">'+g.desc+'</div>';
+  
+  // Bônus universais primeiro
+  var universais = g.acoes.filter(function(a){ return !a.funcao; });
+  if(universais.length){
+    html += '<div style="margin-bottom:10px">'
+      + '<div style="font-size:11px;font-weight:700;color:'+g.cor+';margin-bottom:5px">🎁 Bônus universais (todas as funções)</div>'
+      + '<div style="display:grid;gap:4px">'
+      + universais.map(function(a){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border-radius:5px;font-size:11px">'
+          + '<span style="flex:1">'+a.label+'</span>'
+          + '<span style="font-weight:800;color:'+g.cor+';font-size:12px">+'+a.pontos+'</span>'
+          + '</div>';
+      }).join('')
+      + '</div></div>';
+  }
+  
+  // Por função
+  funcoesOrdem.forEach(function(funcKey){
+    var acoesFunc = g.acoes.filter(function(a){ return a.funcao === funcKey; });
+    if(!acoesFunc.length) return;
+    html += '<div style="margin-bottom:10px">'
+      + '<div style="font-size:11px;font-weight:700;color:'+g.cor+';margin-bottom:5px">'+funcoesLabels[funcKey]+'</div>'
+      + '<div style="display:grid;gap:4px">'
+      + acoesFunc.map(function(a){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface);border-radius:5px;font-size:11px">'
+          + '<span style="flex:1">'+a.label+'</span>'
+          + '<span style="font-weight:800;color:'+g.cor+';font-size:12px">+'+a.pontos+'</span>'
+          + '</div>';
+      }).join('')
+      + '</div></div>';
+  });
+  
+  html += '</div>';
+  
+  return html;
+}
+
+/* ============================================================== */
+/* ADMIN — Painel de pontos manuais                              */
+/* ============================================================== */
+function toggleAdminPontos(){
+  if(!isAdminPontos()){
+    if(ativarModoAdmin()){
+      renderRanking();
+      setTimeout(function(){ abrirPainelAdminPontos(); }, 200);
+    }
+  } else {
+    abrirPainelAdminPontos();
+  }
+}
+
+function abrirPainelAdminPontos(){
+  var html = '<div id="modal-admin-pontos" class="modal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;padding:14px">'
+    + '<div style="background:var(--surface);border-radius:14px;max-width:680px;width:100%;max-height:90vh;overflow:auto;padding:20px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    + '<div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:700;color:#0B2542">🎛️ Painel Admin — Pontos Gâmi</div><div style="font-size:11px;color:var(--text3)">Atribua pontos · Ver extrato · Reconhecimentos</div></div>'
+    + '<button onclick="document.getElementById(\'modal-admin-pontos\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:14px;flex-wrap:wrap">'
+    + '<button class="rank-tab rank-tab-active" data-atab="atribuir" onclick="setAdminTab(\'atribuir\')">➕ Atribuir</button>'
+    + '<button class="rank-tab" data-atab="extrato" onclick="setAdminTab(\'extrato\')">📋 Extrato</button>'
+    + '<button class="rank-tab" data-atab="config" onclick="setAdminTab(\'config\')">⚙️</button>'
+    + '</div>'
+    + '<div id="admin-content-atribuir" class="admin-tab-content">' + renderAdminAtribuir() + '</div>'
+    + '<div id="admin-content-extrato" class="admin-tab-content" style="display:none">' + renderAdminExtratoSelector() + '</div>'
+    + '<div id="admin-content-config" class="admin-tab-content" style="display:none">' + renderAdminConfig() + '</div>'
+    + '</div></div>';
+  var antigo = document.getElementById('modal-admin-pontos');
+  if(antigo) antigo.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function setAdminTab(tab){
+  document.querySelectorAll('[data-atab]').forEach(function(b){ b.classList.toggle('rank-tab-active', b.getAttribute('data-atab')===tab); });
+  document.querySelectorAll('.admin-tab-content').forEach(function(c){ c.style.display = (c.id==='admin-content-'+tab)?'block':'none'; });
+}
+
+function renderAdminAtribuir(){
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  pessoas = pessoas.slice().sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||''); });
+  var pessoasOpt = pessoas.map(function(p){ return '<option value="'+p.id+'">'+p.nome+' ('+(p.cargo||'?')+(p.cidade?' · '+p.cidade:'')+')</option>'; }).join('');
+  var porCat = { engajamento: [], cultura: [], trabalho: [], conquista: [] };
+  Object.keys(PONTOS_CATALOGO).forEach(function(k){
+    var c = PONTOS_CATALOGO[k];
+    if(porCat[c.categoria]) porCat[c.categoria].push({ id: k, label: c.label, pontos: c.pontos });
+  });
+  var labels = { engajamento: '🌅 Engajamento', cultura: '🤝 Cultura', trabalho: '💼 Trabalho', conquista: '🏆 Conquista' };
+  var acoesOpt = '';
+  Object.keys(porCat).forEach(function(cat){
+    if(!porCat[cat].length) return;
+    acoesOpt += '<optgroup label="'+labels[cat]+'">';
+    porCat[cat].forEach(function(a){
+      acoesOpt += '<option value="'+a.id+'" data-pts="'+a.pontos+'">'+a.label+' (+'+a.pontos+')</option>';
+    });
+    acoesOpt += '</optgroup>';
+  });
+  return '<div style="display:grid;gap:10px">'
+    + '<div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;font-weight:600">Pessoa</label><select id="adm-pessoa" class="sel" style="width:100%">'+pessoasOpt+'</select></div>'
+    + '<div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;font-weight:600">Tipo de ação</label><select id="adm-acao" class="sel" style="width:100%" onchange="admPreencheCustom()">'+acoesOpt+'<option value="manual_extra" data-pts="0">✏️ Personalizado</option></select></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 2fr;gap:10px">'
+    + '<div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;font-weight:600">Pontos</label><input id="adm-pts" type="number" class="inp" style="width:100%"></div>'
+    + '<div><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;font-weight:600">Motivo</label><input id="adm-motivo" type="text" class="inp" style="width:100%" placeholder="Ex: Liderou crise"></div>'
+    + '</div>'
+    + '<button class="btn btn-primary" style="margin-top:6px" onclick="admSalvarPontos()">✓ Atribuir Pontos</button>'
+    + '</div><div id="adm-feedback" style="margin-top:10px;font-size:12px;text-align:center"></div>';
+}
+
+function admPreencheCustom(){
+  var sel = document.getElementById('adm-acao');
+  var pts = document.getElementById('adm-pts');
+  if(sel && pts){
+    var opt = sel.options[sel.selectedIndex];
+    pts.value = (opt ? opt.getAttribute('data-pts') : '') || '';
+  }
+}
+
+async function admSalvarPontos(){
+  var pessoaId = (document.getElementById('adm-pessoa')||{}).value;
+  var acao = (document.getElementById('adm-acao')||{}).value;
+  var pts = parseInt((document.getElementById('adm-pts')||{}).value, 10);
+  var motivo = (document.getElementById('adm-motivo')||{}).value || '';
+  var fb = document.getElementById('adm-feedback');
+  if(!pessoaId || !acao || isNaN(pts)){
+    if(fb) fb.innerHTML = '<span style="color:#E24B4A">⚠️ Preencha pessoa, ação e pontos</span>';
+    return;
+  }
+  var ok = await atribuirPontos(pessoaId, acao, { pontos: pts, descricao: motivo, origem: 'manual', atribuido_por: 'cleyton_admin' });
+  if(ok){
+    if(fb) fb.innerHTML = '<span style="color:#1D9E75">✅ Pontos atribuídos!</span>';
+    document.getElementById('adm-motivo').value = '';
+    setTimeout(function(){ if(fb) fb.innerHTML=''; }, 3000);
+    if(typeof renderRanking === 'function') renderRanking();
+  } else {
+    if(fb) fb.innerHTML = '<span style="color:#E24B4A">❌ Erro (limite diário/semanal?)</span>';
+  }
+}
+
+function renderAdminExtratoSelector(){
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  pessoas = pessoas.slice().sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||''); });
+  return '<label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;font-weight:600">Pessoa:</label>'
+    + '<select class="sel" style="width:100%;margin-bottom:10px" onchange="admCarregarExtrato(this.value)"><option value="">— Selecione —</option>'
+    + pessoas.map(function(p){ return '<option value="'+p.id+'">'+p.nome+'</option>'; }).join('')
+    + '</select><div id="adm-extrato-lista"></div>';
+}
+
+async function admCarregarExtrato(pessoaId){
+  var el = document.getElementById('adm-extrato-lista');
+  if(!el) return;
+  if(!pessoaId){ el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Carregando...</div>';
+  var extrato = await obterExtratoPessoa(pessoaId);
+  var totalMes = await obterPontosMesPessoa(pessoaId);
+  var totalCarreira = await obterPontosTotaisPessoa(pessoaId);
+  var patente = obterPatente(totalCarreira);
+  if(!extrato.length){
+    el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Sem pontos ainda.</div>';
+    return;
+  }
+  el.innerHTML = '<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">'
+    + '<div class="card" style="flex:1;min-width:120px;background:var(--gami-blue-l);text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Mês</div><div style="font-size:20px;font-weight:800;color:var(--gami-blue-d)">'+totalMes+'</div></div>'
+    + '<div class="card" style="flex:1;min-width:120px;text-align:center"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Carreira</div><div style="font-size:20px;font-weight:800">'+totalCarreira+'</div></div>'
+    + '<div class="card" style="flex:1;min-width:120px;text-align:center;border-left:3px solid '+patente.cor+'"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Patente</div><div style="font-size:14px;font-weight:700">'+patente.emoji+' '+patente.nome+'</div></div>'
+    + '</div>'
+    + '<div style="max-height:280px;overflow:auto">'
+    + extrato.map(function(p){
+        var cor = p.origem === 'manual' ? '#1AB8F0' : '#1D9E75';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">'
+          + '<div style="width:55px;color:var(--text3);font-size:10px">'+(p.data_acao||'').slice(5)+'</div>'
+          + '<div style="flex:1"><div style="font-weight:600">'+(p.descricao||p.tipo_acao||'—')+'</div><div style="color:var(--text3);font-size:9px">'+p.tipo_acao+(p.origem==='manual'?' · manual':'')+'</div></div>'
+          + '<div style="font-weight:800;color:'+cor+'">+'+p.pontos+'</div>'
+          + '</div>';
+      }).join('')
+    + '</div>';
+}
+
+function renderAdminConfig(){
+  return '<div style="font-size:12px"><p style="margin-bottom:10px"><strong>Modo Admin ativado.</strong> Senha: <code>gami2026</code></p>'
+    + '<p style="margin-bottom:10px;color:var(--text3)">Em breve: configurar horários, criar desafios, recompensas.</p>'
+    + '<button class="btn btn-ghost" onclick="if(confirm(\'Sair do modo admin?\')){desativarModoAdmin();document.getElementById(\'modal-admin-pontos\').remove();renderRanking();}" style="margin-top:8px">🚪 Sair do modo admin</button></div>';
+}
+
+/* Perfil pessoal Gâmi (clica em pessoa) */
+async function abrirPerfilGami(pessoaId){
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  var pessoa = pessoas.find(function(p){ return p.id === pessoaId; });
+  if(!pessoa) return;
+  var totalMes = await obterPontosMesPessoa(pessoaId);
+  var totalCarreira = await obterPontosTotaisPessoa(pessoaId);
+  var patente = obterPatente(totalCarreira);
+  var extrato = await obterExtratoPessoa(pessoaId);
+  var badges = [];
+  try {
+    var url = SUPA_URL + '/rest/v1/badges_desbloqueadas?pessoa_id=eq.'+pessoaId+'&select=*';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
+    if(r.ok) badges = await r.json();
+  } catch(e){}
+  var html = '<div id="modal-perfil-gami" class="modal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;padding:14px">'
+    + '<div style="background:var(--surface);border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:20px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:700;color:#0B2542">🪪 Perfil Gâmi</div>'
+    + '<button onclick="document.getElementById(\'modal-perfil-gami\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button>'
+    + '</div>'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">'
+    + (pessoa.foto_url ? '<img src="'+pessoa.foto_url+'" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid '+patente.cor+'">' : '<div style="width:64px;height:64px;border-radius:50%;background:var(--gami-blue-l);display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:var(--gami-blue-d);border:3px solid '+patente.cor+'">'+(pessoa.nome||'?').charAt(0)+'</div>')
+    + '<div style="flex:1"><div style="font-size:16px;font-weight:700">'+pessoa.nome+'</div><div style="font-size:11px;color:var(--text3)">'+(pessoa.cargo||'')+(pessoa.cidade?' · '+pessoa.cidade:'')+'</div><div style="font-size:12px;margin-top:4px;color:'+patente.cor+';font-weight:700">'+patente.emoji+' '+patente.nome+'</div></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:14px">'
+    + '<div style="flex:1;text-align:center;padding:10px;background:var(--gami-blue-l);border-radius:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Mês</div><div style="font-size:22px;font-weight:800;color:var(--gami-blue-d)">'+totalMes+'</div></div>'
+    + '<div style="flex:1;text-align:center;padding:10px;background:var(--surface2);border-radius:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Carreira</div><div style="font-size:22px;font-weight:800">'+totalCarreira+'</div></div>'
+    + '</div>'
+    + '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;margin-bottom:6px">🎖️ Badges ('+badges.length+')</div>'
+    + (badges.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap">'+badges.map(function(b){ var info = BADGES_CATALOGO[b.badge_id]||{emoji:'🎖️',nome:b.badge_id}; return '<div style="padding:6px 10px;background:var(--gami-blue-l);border-radius:8px;font-size:11px">'+info.emoji+' '+info.nome+'</div>'; }).join('')+'</div>' : '<div style="font-size:11px;color:var(--text3)">Nenhuma badge ainda.</div>')
+    + '</div>'
+    + '<div><div style="font-size:12px;font-weight:700;margin-bottom:6px">📋 Últimas pontuações</div><div style="max-height:240px;overflow:auto">'
+    + (extrato.length ? extrato.slice(0,20).map(function(p){ return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px"><div style="width:50px;color:var(--text3);font-size:10px">'+(p.data_acao||'').slice(5)+'</div><div style="flex:1">'+(p.descricao||p.tipo_acao)+'</div><div style="font-weight:700;color:#1D9E75">+'+p.pontos+'</div></div>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:10px;text-align:center">Sem pontuações ainda.</div>')
+    + '</div></div>'
+    + '</div></div>';
+  var antigo = document.getElementById('modal-perfil-gami');
+  if(antigo) antigo.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+/* Modal novo desafio (admin) */
+function abrirModalNovoDesafio(){
+  if(!isAdminPontos()){ alert('⚠️ Apenas admin pode criar desafios.'); return; }
+  var html = '<div id="modal-novo-desafio" class="modal" style="display:flex;align-items:center;justify-content:center;position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;padding:14px">'
+    + '<div style="background:var(--surface);border-radius:14px;max-width:480px;width:100%;padding:20px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700">🎯 Novo Desafio</div><button onclick="document.getElementById(\'modal-novo-desafio\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button></div>'
+    + '<div style="display:grid;gap:8px">'
+    + '<input id="des-titulo" class="inp" placeholder="Título (ex: Cidade que mais crescer)" style="width:100%">'
+    + '<textarea id="des-descricao" class="inp" placeholder="Descrição/regras" rows="3" style="width:100%;font-family:inherit"></textarea>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:11px;color:var(--text3)">Pontos</label><input id="des-pontos" type="number" class="inp" value="100" style="width:100%"></div><div><label style="font-size:11px;color:var(--text3)">Alvo</label><select id="des-alvo" class="sel" style="width:100%"><option value="cidade">Cidade</option><option value="pessoa">Pessoa</option><option value="todos">Todos</option></select></div></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:11px;color:var(--text3)">Início</label><input id="des-inicio" type="date" class="inp" value="'+new Date().toISOString().slice(0,10)+'" style="width:100%"></div><div><label style="font-size:11px;color:var(--text3)">Fim</label><input id="des-fim" type="date" class="inp" style="width:100%"></div></div>'
+    + '<button class="btn btn-primary" onclick="desafioCriar()" style="margin-top:6px">✓ Criar desafio</button>'
+    + '</div></div></div>';
+  var antigo = document.getElementById('modal-novo-desafio');
+  if(antigo) antigo.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function desafioCriar(){
+  var titulo = (document.getElementById('des-titulo')||{}).value;
+  var descricao = (document.getElementById('des-descricao')||{}).value;
+  var pontos = parseInt((document.getElementById('des-pontos')||{}).value, 10);
+  var alvo = (document.getElementById('des-alvo')||{}).value;
+  var inicio = (document.getElementById('des-inicio')||{}).value;
+  var fim = (document.getElementById('des-fim')||{}).value;
+  if(!titulo || !pontos || !inicio || !fim){ alert('⚠️ Preencha título, pontos, datas'); return; }
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/desafios_admin', {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ titulo: titulo, descricao: descricao, pontos_recompensa: pontos, tipo_alvo: alvo, data_inicio: inicio, data_fim: fim, status: 'ativo', criado_por: 'cleyton' })
+    });
+    if(r.ok){ alert('✅ Desafio criado!'); document.getElementById('modal-novo-desafio').remove(); renderDesafios(); }
+    else { alert('❌ Erro ao criar'); }
+  } catch(e){ alert('❌ '+e.message); }
+}
+
+/* HOOKS automáticos — pontos por ações */
+async function hookLoginDiario(pessoaId){
+  if(!pessoaId) return;
+  await atribuirPontos(pessoaId, 'login_diario');
+}
+var _abasVisitadas = {};
+function hookNavAba(nomeAba){
+  var hoje = new Date().toISOString().split('T')[0];
+  if(!_abasVisitadas[hoje]) _abasVisitadas[hoje] = {};
+  _abasVisitadas[hoje][nomeAba] = true;
+  if(Object.keys(_abasVisitadas[hoje]).length >= 3){
+    var user = getUsuarioLogado();
+    if(user && user.id) atribuirPontos(user.id, 'visitou_3_abas');
+  }
+}
+async function hookTarefaConcluida(tarefa){
+  var user = getUsuarioLogado();
+  if(!user || !user.id) return;
+  await atribuirPontos(user.id, 'tarefa_concluida', { descricao: 'Tarefa: '+(tarefa.titulo||tarefa.text||'').slice(0,50) });
+}
+async function hookAnotacao(){
+  var user = getUsuarioLogado();
+  if(!user || !user.id) return;
+  await atribuirPontos(user.id, 'anotacao_calendario');
+}
+async function hookPulse(){
+  var user = getUsuarioLogado();
+  if(!user || !user.id) return;
+  await atribuirPontos(user.id, 'pulse_respondido');
+}
+
+/* DASHBOARD — Bloco "Sua pontuação Gâmi" pequeno */
+async function renderBlocoPontuacao(){
+  var el = document.getElementById('dash-bloco-pontuacao');
+  if(!el) return;
+  var user = getUsuarioLogado();
+  if(!user || !user.id){
+    el.innerHTML = '<div class="card" style="text-align:center;padding:14px">'
+      + '<div style="font-size:11px;color:var(--text3);font-weight:600">🪪 SUA PONTUAÇÃO GÂMI</div>'
+      + '<div style="font-size:11px;margin-top:6px;color:var(--text3)">Login multi-usuário em breve</div>'
+      + '</div>';
+    return;
+  }
+  var pessoa = (typeof getPessoas === 'function' ? getPessoas() : []).find(function(p){ return p.id === user.id; });
+  if(!pessoa) return;
+  var totalMes = await obterPontosMesPessoa(user.id);
+  var totalCarreira = await obterPontosTotaisPessoa(user.id);
+  var patente = obterPatente(totalCarreira);
+  var ranking = await obterRankingMensal();
+  var pos = ranking.findIndex(function(r){ return r.pessoa_id === user.id; }) + 1;
+  el.innerHTML = '<div class="card" style="border-left:3px solid '+patente.cor+';cursor:pointer" onclick="abrirPerfilGami(\''+user.id+'\')">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><div style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase">🪪 Sua pontuação Gâmi</div><div style="font-size:18px">'+patente.emoji+'</div></div>'
+    + '<div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:22px;font-weight:800;color:var(--gami-blue-d);line-height:1">'+totalMes+'</div><div style="font-size:10px;color:var(--text3)">pts no mês</div></div><div style="flex:1;text-align:right"><div style="font-size:14px;font-weight:700">'+totalCarreira+' total</div><div style="font-size:10px;color:var(--text3)">'+(pos?pos+'º no ranking':'—')+'</div></div></div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center;border-top:1px dashed var(--border);padding-top:6px">'+patente.nome+'</div>'
+    + '</div>';
 }
 
 // ===================== BANCO DE IDEIAS =====================
