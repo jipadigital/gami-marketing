@@ -1,4 +1,4 @@
-<!-- v12.16 - Fix sidebar (cor texto + Nome Sobrenome) - 13/05/2026 -->
+<!-- v12.17 - Sistema de Permissões por Cargo (FASE 1) - 13/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -381,8 +381,209 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
 <script>
 /* BULLETPROOF NAV - DEFINED FIRST, OVERRIDES EVERYTHING */
+/* ============================================================== */
+/* SISTEMA DE PERMISSÕES POR CARGO                               */
+/* ============================================================== */
+
+/* Detecta nível de permissão baseado no cargo da pessoa */
+function detectarNivelPermissao(usuario){
+  if(!usuario) return 'visitante';
+  
+  // SUPER ADMIN — Cleyton (via email único)
+  if(usuario.email && usuario.email.toLowerCase() === 'jipadigital@gmail.com') return 'super_admin';
+  
+  var cargo = (usuario.cargo || '').toLowerCase();
+  var categoria = (usuario.categoria || '').toLowerCase();
+  
+  // Diretoria
+  if(cargo.includes('diretoria') || cargo.includes('diretor') || categoria === 'diretoria') return 'diretoria';
+  
+  // Gerência
+  if(cargo.includes('gerente') || categoria === 'gerência' || categoria === 'gerencia') return 'gerencia';
+  
+  // Gestor de Cidade
+  if(cargo.includes('gestor')) return 'gestor';
+  
+  // Marketing (caso outros marketers entrem futuramente — hoje só Cleyton)
+  if(cargo.includes('marketing')) return 'super_admin';
+  
+  // Colaborador (padrão pra suporte, prospecção, etc.)
+  return 'colaborador';
+}
+
+/* Matriz de permissões — define quem vê o quê */
+var MATRIZ_PERMISSOES = {
+  super_admin: {
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario'],
+    pode_editar_pessoas: true,
+    pode_admin_pontos: true,
+    pode_criar_desafios: true,
+    pode_deletar: true,
+    pode_postar_stories: true,
+    pode_editar_marketing: true,
+    pode_ver_financeiro: true
+  },
+  diretoria: {
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: true
+  },
+  gerencia: {
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false
+  },
+  gestor: {
+    abas: ['dashboard','calendario','tarefas','inbox','cidades','pessoas','ranking','culture','carreira','portal'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false,
+    filtra_cidade: true,    // Vê só a sua cidade
+    filtra_inbox: true       // Inbox só da conta IG da cidade dele
+  },
+  colaborador: {
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false
+  },
+  visitante: {
+    abas: [],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false
+  }
+};
+
+/* Função central — verifica permissão */
+function temPermissao(recurso){
+  var u = getUsuarioLogado();
+  if(!u) return false;
+  
+  // Super admin sempre tem acesso
+  if(u.email && u.email.toLowerCase() === 'jipadigital@gmail.com') return true;
+  
+  var nivel = detectarNivelPermissao(u);
+  var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
+  
+  // Se recurso começa com "aba:", verifica acesso à aba
+  if(recurso.indexOf('aba:') === 0){
+    var aba = recurso.substring(4);
+    return perms.abas.indexOf(aba) !== -1;
+  }
+  
+  // Senão, verifica permissão específica
+  return perms[recurso] === true;
+}
+
+/* Aplica permissões visualmente (esconde itens do sidebar) */
+function aplicarPermissoesVisuais(){
+  var u = getUsuarioLogado();
+  if(!u) return;
+  
+  var nivel = detectarNivelPermissao(u);
+  var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
+  
+  // Mapeamento aba → texto no sidebar pra esconder itens
+  var navItems = document.querySelectorAll('.nav-item[onclick*="nav("]');
+  navItems.forEach(function(item){
+    var onclick = item.getAttribute('onclick') || '';
+    var match = onclick.match(/nav\(this,['"]([^'"]+)['"]\)/);
+    if(!match) return;
+    var aba = match[1];
+    if(perms.abas.indexOf(aba) === -1){
+      item.style.display = 'none';
+    } else {
+      item.style.display = '';
+    }
+  });
+  
+  // Esconde botão Admin de Pontos (só super_admin)
+  var btnAdmin = document.getElementById('btn-admin-pontos');
+  if(btnAdmin) btnAdmin.style.display = perms.pode_admin_pontos ? '' : 'none';
+  
+  // Esconde botão "+ Novo desafio" (só super_admin)
+  var btnDesafio = document.getElementById('btn-novo-desafio');
+  if(btnDesafio) btnDesafio.style.display = perms.pode_criar_desafios ? '' : 'none';
+  
+  // Botões de editar pessoas (escondidos pra todos exceto super_admin)
+  if(!perms.pode_editar_pessoas){
+    document.querySelectorAll('[data-perm="editar-pessoa"], .btn-editar-pessoa').forEach(function(b){
+      b.style.display = 'none';
+    });
+  }
+  
+  // Botões de deletar (só super_admin)
+  if(!perms.pode_deletar){
+    document.querySelectorAll('[data-perm="deletar"]').forEach(function(b){
+      b.style.display = 'none';
+    });
+  }
+  
+  // Console log pra debug (você pode ver se quiser)
+  if(window._debugPerms){
+    console.log('[Permissões]', { usuario: u.nome, nivel: nivel, abas_permitidas: perms.abas });
+  }
+}
+
+/* Bloqueia navegação se cargo não tem acesso */
+function bloquearAcessoAba(aba){
+  var u = getUsuarioLogado();
+  if(!u){ mostrarTelaLogin(); return true; }
+  
+  if(!temPermissao('aba:' + aba)){
+    var nivel = detectarNivelPermissao(u);
+    // Mostra modal amigável
+    var html = '<div id="modal-sem-acesso" style="position:fixed;inset:0;background:rgba(11,37,66,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="this.remove()">'
+      + '<div style="background:#fff;border-radius:14px;max-width:380px;padding:26px;text-align:center" onclick="event.stopPropagation()">'
+      + '<div style="font-size:42px;margin-bottom:8px">🔒</div>'
+      + '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:700;color:#0B2542;margin-bottom:6px">Acesso restrito</div>'
+      + '<div style="font-size:13px;color:#56627a;margin-bottom:14px;line-height:1.5">Você ainda não tem acesso a essa área.<br>Fala com Cleyton ou Diretoria se precisar.</div>'
+      + '<button onclick="document.getElementById(\'modal-sem-acesso\').remove()" style="padding:10px 24px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Entendi</button>'
+      + '</div></div>';
+    document.body.insertAdjacentHTML('beforeend', html);
+    return true;
+  }
+  return false;
+}
+
+/* Re-aplica permissões periodicamente (caso DOM mude) */
+setInterval(aplicarPermissoesVisuais, 3000);
+if(document.readyState !== 'loading'){
+  setTimeout(aplicarPermissoesVisuais, 1000);
+} else {
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(aplicarPermissoesVisuais, 1000); });
+}
+
 window.nav = function(el, page){
   try {
+    // VERIFICA PERMISSÃO PRIMEIRO
+    if(typeof bloquearAcessoAba === 'function' && bloquearAcessoAba(page)){
+      return; // Bloqueia se cargo não tem acesso
+    }
+    
     // remove active from all nav items
     document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
     if(el) el.classList.add('active');
@@ -4826,7 +5027,10 @@ async function handleLoginSubmit(ev){
   }
   
   // Re-sincroniza dados frescos do Supabase (cargo, foto, etc.)
-  setTimeout(function(){ resincronizarUsuarioLogado(); }, 200);
+  setTimeout(function(){ 
+    resincronizarUsuarioLogado(); 
+    if(typeof aplicarPermissoesVisuais === 'function') aplicarPermissoesVisuais();
+  }, 200);
   
   // Se é primeiro login (PIN não trocado OU username não escolhido), abre setup
   if(!resultado.usuario.pin_trocado || !resultado.usuario.username_escolhido){
