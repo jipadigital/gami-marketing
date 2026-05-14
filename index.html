@@ -1,4 +1,4 @@
-<!-- v12.35 - Fix CRÍTICO: </div> extra fechava o .main antes das 10 páginas restantes - 14/05/2026 -->
+<!-- v12.36 - Fix UX: Login aparece ANTES do dashboard (overlay imediato) - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -386,6 +386,77 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 </style>
 </head>
 <body>
+
+<!-- ===== EARLY LOGIN CHECK — esconde dashboard antes de tudo carregar ===== -->
+<style id="early-login-block">
+  /* Esconde TUDO até o login ser verificado */
+  body{opacity:0;transition:opacity .15s ease}
+  body.login-checked{opacity:1}
+</style>
+<script>
+/* INLINE EARLY — Roda IMEDIATAMENTE, antes de qualquer outra coisa */
+(function(){
+  try {
+    // Tenta ler usuário logado direto do localStorage
+    var raw = localStorage.getItem('gami_usuario_logado');
+    var ultimaAt = localStorage.getItem('gami_ultima_atividade');
+    var temSessaoValida = false;
+    
+    if(raw){
+      try {
+        var u = JSON.parse(raw);
+        if(u && u.id){
+          // Verifica timeout de inatividade (20 min)
+          if(ultimaAt){
+            var diff = Date.now() - parseInt(ultimaAt);
+            if(diff < 20 * 60 * 1000){
+              temSessaoValida = true;
+            }
+          }
+        }
+      } catch(e){}
+    }
+    
+    if(!temSessaoValida){
+      // Não tem sessão válida → exibe overlay de bloqueio imediato
+      // (Cor de fundo escura pra não ficar piscando branco)
+      var loadingOverlay = document.createElement('div');
+      loadingOverlay.id = 'pre-login-loader';
+      loadingOverlay.style.cssText = 'position:fixed;inset:0;background:linear-gradient(135deg,#0B2542 0%,#0E7AB8 50%,#1AB8F0 100%);z-index:999999;display:flex;align-items:center;justify-content:center;color:#fff;font-family:sans-serif';
+      loadingOverlay.innerHTML = '<div style="text-align:center"><div style="width:48px;height:48px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px"></div><div style="font-size:13px;opacity:.85;letter-spacing:.5px">Gâmi Delivery</div></div>';
+      
+      // Adiciona keyframes pro spinner
+      var styleSpin = document.createElement('style');
+      styleSpin.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+      document.head.appendChild(styleSpin);
+      
+      // Tenta inserir no body assim que ele existir
+      if(document.body){
+        document.body.appendChild(loadingOverlay);
+        document.body.classList.add('login-checked');
+      } else {
+        document.addEventListener('DOMContentLoaded', function(){
+          document.body.appendChild(loadingOverlay);
+          document.body.classList.add('login-checked');
+        });
+      }
+    } else {
+      // Sessão válida → libera dashboard
+      if(document.body){
+        document.body.classList.add('login-checked');
+      } else {
+        document.addEventListener('DOMContentLoaded', function(){
+          document.body.classList.add('login-checked');
+        });
+      }
+    }
+  } catch(e){
+    // Fallback: garante que dashboard sempre apareça
+    if(document.body) document.body.classList.add('login-checked');
+    else document.addEventListener('DOMContentLoaded', function(){ document.body.classList.add('login-checked'); });
+  }
+})();
+</script>
 
 <script>
 /* BULLETPROOF NAV - DEFINED FIRST, OVERRIDES EVERYTHING */
@@ -913,7 +984,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.35</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.36</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -5460,6 +5531,10 @@ function mostrarTelaLogin(){
   // Esconde tudo
   document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
   
+  // Remove o loader inicial (se existir)
+  var loader = document.getElementById('pre-login-loader');
+  if(loader) loader.remove();
+  
   var antigo = document.getElementById('login-overlay');
   if(antigo) antigo.remove();
   
@@ -5904,8 +5979,8 @@ if(document.readyState !== 'loading'){
 function checarLoginInicial(){
   var u = getUsuarioLogado();
   if(!u){
-    // Não logado → mostra tela de login
-    setTimeout(function(){ mostrarTelaLogin(); }, 100);
+    // Não logado → mostra tela de login imediatamente
+    mostrarTelaLogin();
     return false;
   }
   // Migração de tarefas antigas (roda uma única vez)
@@ -5995,19 +6070,19 @@ function iniciarTimerInatividade(){
   document.addEventListener(ev, function(){ tocarAtividade(); }, { passive: true });
 });
 
-/* Dispara verificação inicial */
+/* Dispara verificação inicial — rápido pra não deixar dashboard piscar */
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', function(){
     setTimeout(function(){
       checarLoginInicial();
       iniciarTimerInatividade();
-    }, 800);
+    }, 50);
   });
 } else {
   setTimeout(function(){
     checarLoginInicial();
     iniciarTimerInatividade();
-  }, 800);
+  }, 50);
 }
 
 
