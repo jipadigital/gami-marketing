@@ -1,4 +1,4 @@
-<!-- v12.28 - Gestor: ao clicar Minha Cidade abre direto a cidade dele - 14/05/2026 -->
+<!-- v12.29 - Aba Cidade: ferramentas pro Gestor (Motoboys, Restaurantes, Visão) - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -843,7 +843,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.28</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.29</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -2015,12 +2015,12 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
 
     <div class="tabs" style="margin-bottom:14px">
-      <button class="tab active" onclick="setCidadeTab(this,'overview')">Visão geral</button>
-      <button class="tab" onclick="setCidadeTab(this,'conteudo')">Conteúdo</button>
-      <button class="tab" onclick="setCidadeTab(this,'prioridades')">Prioridades</button>
-      <button class="tab" onclick="setCidadeTab(this,'equipe')">Equipe</button>
-      <button class="tab" onclick="setCidadeTab(this,'insights')">Insights</button>
-      <button class="tab" onclick="setCidadeTab(this,'calendario')">Datas</button>
+      <button class="tab active" onclick="setCidadeTab(this,'overview')">📊 Visão geral</button>
+      <button class="tab" onclick="setCidadeTab(this,'motoboys')">🏍️ Motoboys</button>
+      <button class="tab" onclick="setCidadeTab(this,'restaurantes')">🍴 Restaurantes</button>
+      <button class="tab" onclick="setCidadeTab(this,'equipe')">👥 Equipe</button>
+      <button class="tab" onclick="setCidadeTab(this,'insights')">💡 Anotações</button>
+      <button class="tab" onclick="setCidadeTab(this,'calendario')">📅 Datas</button>
     </div>
 
     <div id="ctab-overview">
@@ -2033,11 +2033,21 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div class="card-title">📅 Datas comemorativas</div>
         <div id="cp-datas-comemorativas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:6px"></div>
       </div>
-      <div class="card" style="margin-bottom:12px">
-        <div class="card-title">Restaurantes parceiros e pontos estratégicos</div>
-        <textarea id="cp-locais-txt" class="inp" style="min-height:70px;resize:vertical;font-size:12px" placeholder="Restaurantes parceiros, pontos estratégicos, leads..."></textarea>
-        <button onclick="salvarCampoLocal('locais')" class="btn btn-ghost btn-sm" style="margin-top:6px">Salvar</button>
+      <!-- Comparativos & Meta vs Realizado -->
+      <div class="g2" style="margin-bottom:12px">
+        <div class="card">
+          <div class="card-title">📈 Comparativo</div>
+          <div id="cp-comparativo" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">🎯 Meta do dia</div>
+          <div id="cp-meta-dia" style="margin-top:8px"></div>
+        </div>
       </div>
+
+      <!-- Alertas inteligentes -->
+      <div id="cp-alertas-box" style="margin-bottom:12px"></div>
+
       <div class="ai-bar">
         <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
         <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Quer um plano de ação completo para esta cidade?</div>
@@ -2110,43 +2120,102 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
     </div>
 
-    <div id="ctab-conteudo" style="display:none">
-      <div class="g2" style="margin-bottom:12px">
-        <div class="card">
-          <div class="card-title">Conteúdos programados</div>
-          <div id="cp-posts-list" style="margin-bottom:10px"></div>
+    <!-- ===== ABA MOTOBOYS ===== -->
+    <div id="ctab-motoboys" style="display:none">
+      <!-- Métricas resumo -->
+      <div class="metrics" style="margin-bottom:14px">
+        <div class="metric"><div class="metric-label">Total ativos</div><div class="metric-val" id="mb-total-ativos" style="color:#1D9E75">—</div><div class="metric-sub">trabalhando</div></div>
+        <div class="metric"><div class="metric-label">Online agora</div><div class="metric-val" id="mb-online" style="color:var(--gami-blue)">—</div><div class="metric-sub">disponíveis</div></div>
+        <div class="metric"><div class="metric-label">Em captação</div><div class="metric-val" id="mb-prospec" style="color:#EF9F27">—</div><div class="metric-sub">no pipeline</div></div>
+        <div class="metric"><div class="metric-label">Sumiram</div><div class="metric-val" id="mb-churn" style="color:#E24B4A">—</div><div class="metric-sub">7+ dias sem corrida</div></div>
+      </div>
+
+      <!-- Pipeline de Captação -->
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div class="card-title" style="margin:0">🎯 Pipeline de Captação</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Acompanhe novos candidatos até virarem motoboys ativos</div>
+          </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <input id="cp-novo-post" class="inp" style="flex:1;min-width:120px" placeholder="Título do post..."/>
-            <select id="cp-post-status" class="sel" style="width:auto"><option value="pendente">Pendente</option><option value="producao">Em produção</option><option value="postado">Postado</option></select>
-            <button onclick="addPost()" class="btn btn-primary btn-sm">+</button>
+            <button onclick="abrirDMCidadeIG()" style="padding:6px 10px;border:none;border-radius:7px;background:linear-gradient(135deg,#E1306C,#C13584);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📷 Captar via Instagram</button>
+            <button onclick="cidAddMotoboyModal()" style="padding:6px 10px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+ Novo candidato</button>
           </div>
         </div>
+        <div id="mb-pipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto"></div>
+      </div>
+
+      <!-- Ranking + Churn -->
+      <div class="g2" style="margin-bottom:14px">
         <div class="card">
-          <div class="card-title">Checklist diário</div>
-          <div id="cp-checklist"></div>
+          <div class="card-title">🏆 Top motoboys da semana</div>
+          <div id="mb-ranking-semana" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="border-left:3px solid #E24B4A">
+          <div class="card-title">⚠️ Motoboys sumidos</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Sem corridas há 7+ dias — risco de churn</div>
+          <div id="mb-churn-list"></div>
         </div>
       </div>
-      <div class="ai-bar">
-        <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
-        <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Gerar ideias de conteúdo para esta cidade.</div>
-        <button class="btn btn-ia btn-sm" onclick="gerarConteudoCidade()">Gerar ideias ↗</button>
+
+      <!-- Comunicação rápida -->
+      <div class="card" style="background:linear-gradient(135deg,#E6F6FE,#EAF3DE);border-color:#1AB8F033">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:#0E7AB8">📢 Comunicação rápida</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">Envie aviso pra todos os motoboys ativos via WhatsApp</div>
+          </div>
+          <button onclick="cidEnviarMsgMotoboys()" style="padding:8px 14px;border:none;border-radius:8px;background:#25D366;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
+            Enviar WhatsApp em massa
+          </button>
+        </div>
       </div>
     </div>
 
-    <div id="ctab-prioridades" style="display:none">
-      <div class="card" style="margin-bottom:12px">
-        <div class="card-title">Prioridades da cidade</div>
-        <div id="cp-prio-list" style="margin-bottom:10px"></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <input id="cp-nova-prio" class="inp" style="flex:1;min-width:160px" placeholder="Nova prioridade..."/>
-          <select id="cp-prio-nivel" class="sel" style="width:auto"><option value="alta">🔴 Alta</option><option value="media">🟡 Média</option><option value="baixa">🟢 Baixa</option></select>
-          <button onclick="addPrioridade()" class="btn btn-primary btn-sm">Adicionar</button>
+    <!-- ===== ABA RESTAURANTES ===== -->
+    <div id="ctab-restaurantes" style="display:none">
+      <!-- Métricas resumo -->
+      <div class="metrics" style="margin-bottom:14px">
+        <div class="metric"><div class="metric-label">Parceiros ativos</div><div class="metric-val" id="rest-ativos" style="color:#1D9E75">—</div><div class="metric-sub">pedindo</div></div>
+        <div class="metric"><div class="metric-label">Em prospecção</div><div class="metric-val" id="rest-prospec" style="color:#EF9F27">—</div><div class="metric-sub">no pipeline</div></div>
+        <div class="metric"><div class="metric-label">Inativos</div><div class="metric-val" id="rest-inativos" style="color:#E24B4A">—</div><div class="metric-sub">14+ dias sem pedido</div></div>
+        <div class="metric"><div class="metric-label">Top do mês</div><div class="metric-val" id="rest-top-num" style="color:var(--gami-blue);font-size:14px!important">—</div><div class="metric-sub" id="rest-top-nome">—</div></div>
+      </div>
+
+      <!-- Pipeline de Prospecção -->
+      <div class="card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div class="card-title" style="margin:0">🎯 Pipeline de Prospecção</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Lead → Contato → Reunião → Fechado</div>
+          </div>
+          <button onclick="cidAddRestauranteModal()" style="padding:6px 10px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+ Novo restaurante</button>
+        </div>
+        <div id="rest-pipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto"></div>
+      </div>
+
+      <!-- Top performers + Inativos -->
+      <div class="g2" style="margin-bottom:14px">
+        <div class="card">
+          <div class="card-title">🏆 Top performers do mês</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Mais pedidos = mais corridas pros motoboys</div>
+          <div id="rest-top-list" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="border-left:3px solid #E24B4A">
+          <div class="card-title">⚠️ Parceiros inativos</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px">14+ dias sem pedido — vale uma ligação</div>
+          <div id="rest-inativos-list"></div>
         </div>
       </div>
-      <div class="ai-bar">
-        <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
-        <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Sugerir prioridades com base no status desta cidade.</div>
-        <button class="btn btn-ia btn-sm" onclick="sugerirPrioridades()">Sugerir ↗</button>
+
+      <!-- Lista completa -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="card-title" style="margin:0">📋 Todos os restaurantes</div>
+          <input id="rest-busca" class="inp" placeholder="🔍 Buscar..." style="width:200px;font-size:12px" oninput="renderRestaurantesLista()"/>
+        </div>
+        <div id="rest-lista-completa"></div>
       </div>
     </div>
 
@@ -7899,36 +7968,43 @@ function abrirCidade(id){
   // Conteúdos programados
   renderPostsList();
 
-  // Checklist
+  // Checklist (legado, agora opcional)
   const checkItems = ['Post no feed feito','Stories publicados','Campanha verificada','Contato com gestor','Ideias registradas'];
   const checkState = getCidadeExtra(id,'checklist') || {};
-  document.getElementById('cp-checklist').innerHTML = checkItems.map((item,i)=>{
-    const done = !!checkState[i];
-    return `<div class="row" onclick="toggleCidadeCheck(${i})" style="cursor:pointer">
-      <div style="width:15px;height:15px;border-radius:4px;border:1.5px solid ${done?'var(--green)':'var(--border2)'};background:${done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        ${done?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}
-      </div>
-      <span style="font-size:12px;color:var(--text);text-decoration:${done?'line-through':'none'};opacity:${done?'.5':'1'}">${item}</span>
-    </div>`;
-  }).join('');
+  var elCheck = document.getElementById('cp-checklist');
+  if(elCheck){
+    elCheck.innerHTML = checkItems.map((item,i)=>{
+      const done = !!checkState[i];
+      return `<div class="row" onclick="toggleCidadeCheck(${i})" style="cursor:pointer">
+        <div style="width:15px;height:15px;border-radius:4px;border:1.5px solid ${done?'var(--green)':'var(--border2)'};background:${done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          ${done?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}
+        </div>
+        <span style="font-size:12px;color:var(--text);text-decoration:${done?'line-through':'none'};opacity:${done?'.5':'1'}">${item}</span>
+      </div>`;
+    }).join('');
+  }
 
-  // Prioridades
-  renderPrioridadesList();
+  // Prioridades (legado, agora opcional)
+  if(typeof renderPrioridadesList === 'function') try { renderPrioridadesList(); } catch(e){}
 
   // Insights
   const insights = getCidadeExtra(id,'insights') || '';
-  document.getElementById('cp-insights-txt').value = insights;
-  renderInsightsHistorico();
+  var elInsights = document.getElementById('cp-insights-txt');
+  if(elInsights) elInsights.value = insights;
+  if(typeof renderInsightsHistorico === 'function') try { renderInsightsHistorico(); } catch(e){}
 
   // Locais
   const locais = getCidadeExtra(id,'locais') || '';
-  document.getElementById('cp-locais-txt').value = locais;
+  var elLocais = document.getElementById('cp-locais-txt');
+  if(elLocais) elLocais.value = locais;
 
   // Datas
   renderDatasList();
 
   // Reset tabs
   setCidadeTab(document.querySelector('#pg-cidades .tab'), 'overview');
+  // Renderiza Visão Geral (comparativos, meta, alertas)
+  if(typeof renderVisaoGeralCidade === 'function') try { renderVisaoGeralCidade(); } catch(e){ console.warn('renderVisaoGeralCidade:', e); }
 }
 
 function voltarCidades(){
@@ -7937,13 +8013,575 @@ function voltarCidades(){
   document.getElementById('cidades-lista').style.display='block';
 }
 
+/* ============================================================== */
+/* DADOS FICTÍCIOS — MOTOBOYS E RESTAURANTES POR CIDADE          */
+/* (até integrar com Machine API)                                 */
+/* ============================================================== */
+
+var MOCK_NOMES_MOTOBOYS = [
+  'João Silva','Pedro Souza','Carlos Lima','Marcos Oliveira','Lucas Pereira',
+  'Tiago Santos','Rafael Costa','Bruno Almeida','Diego Ferreira','André Martins',
+  'Felipe Rocha','Daniel Vieira','Gustavo Mendes','Rodrigo Cardoso','Vinícius Barros',
+  'Eduardo Nunes','Maurício Dias','Renato Castro','Anderson Ribeiro','Jefferson Rocha',
+  'Wesley Gomes','Matheus Ramos','Thiago Moura','Leonardo Pinto','Ronaldo Andrade',
+  'Wagner Teixeira','Cristiano Souza','Alex Carvalho','Murilo Silva','Joel Santos'
+];
+
+var MOCK_RESTAURANTES_BASE = [
+  {n:'Pizzaria do Tião', tp:'Pizza'},
+  {n:'Açaí do Centro', tp:'Açaí'},
+  {n:'Hamburgueria Beirut', tp:'Hamburger'},
+  {n:'Sushi Maru', tp:'Japonês'},
+  {n:'Padaria Cantinho', tp:'Padaria'},
+  {n:'Burger Brothers', tp:'Hamburger'},
+  {n:'Sabor da Roça', tp:'Comida caseira'},
+  {n:'Marmitex Real', tp:'Marmita'},
+  {n:'Esfiharia Líbano', tp:'Esfiha'},
+  {n:'Espetinho do Zé', tp:'Churrasco'},
+  {n:'Pão Quente Doce', tp:'Padaria'},
+  {n:'Sorveteria Polar', tp:'Sorvete'},
+  {n:'Tapioca da Tia', tp:'Tapioca'},
+  {n:'Frango Crocante', tp:'Frango'},
+  {n:'Restaurante Vapt', tp:'Self-service'}
+];
+
+/* Função pseudo-aleatória com seed (cidade) — pra dados serem CONSISTENTES */
+function _seedHash(str){
+  var hash = 0;
+  for(var i = 0; i < str.length; i++){
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+function _seedRandom(seed){
+  var s = seed;
+  return function(){
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
+/* Gera lista de motoboys fictícia (consistente por cidade) */
+function gerarMotoboysMock(cidadeNome){
+  // Cache em memória
+  if(!window._cacheMotoboys) window._cacheMotoboys = {};
+  if(window._cacheMotoboys[cidadeNome]) return window._cacheMotoboys[cidadeNome];
+  
+  var rand = _seedRandom(_seedHash('mb_'+cidadeNome));
+  var qtd = 15 + Math.floor(rand() * 20); // 15-35 motoboys por cidade
+  var motoboys = [];
+  for(var i = 0; i < qtd; i++){
+    var nomeIdx = (Math.floor(rand() * MOCK_NOMES_MOTOBOYS.length));
+    var nome = MOCK_NOMES_MOTOBOYS[nomeIdx];
+    // Define status com distribuição realista
+    var r = rand();
+    var status, diasInativo = 0, corridasSemana = 0, corridasMes = 0;
+    if(r < 0.55) {
+      status = 'ativo';
+      corridasSemana = 5 + Math.floor(rand() * 40);
+      corridasMes = corridasSemana * 4 + Math.floor(rand() * 20);
+    } else if(r < 0.70) {
+      status = 'online';
+      corridasSemana = 5 + Math.floor(rand() * 50);
+      corridasMes = corridasSemana * 4 + Math.floor(rand() * 20);
+    } else if(r < 0.80) {
+      status = 'novo';
+    } else if(r < 0.85) {
+      status = 'entrevista';
+    } else if(r < 0.90) {
+      status = 'treinamento';
+    } else {
+      status = 'inativo';
+      diasInativo = 7 + Math.floor(rand() * 30);
+      corridasSemana = 0;
+      corridasMes = Math.floor(rand() * 10);
+    }
+    motoboys.push({
+      id: 'mb_'+cidadeNome.toLowerCase().replace(/\W/g,'')+'_'+i,
+      nome: nome,
+      tel: '(' + (80 + Math.floor(rand()*9)) + ') ' + (90000 + Math.floor(rand()*9999)) + '-' + (1000 + Math.floor(rand()*9000)),
+      status: status,
+      diasInativo: diasInativo,
+      corridasSemana: corridasSemana,
+      corridasMes: corridasMes,
+      avaliacao: status === 'ativo' || status === 'online' ? (3.5 + rand() * 1.5).toFixed(1) : null,
+      desde: new Date(2024 + Math.floor(rand()*2), Math.floor(rand()*12), Math.floor(rand()*28)+1).toISOString().split('T')[0]
+    });
+  }
+  window._cacheMotoboys[cidadeNome] = motoboys;
+  return motoboys;
+}
+
+/* Gera lista de restaurantes fictícia (consistente por cidade) */
+function gerarRestaurantesMock(cidadeNome){
+  if(!window._cacheRestaurantes) window._cacheRestaurantes = {};
+  if(window._cacheRestaurantes[cidadeNome]) return window._cacheRestaurantes[cidadeNome];
+  
+  var rand = _seedRandom(_seedHash('rest_'+cidadeNome));
+  var qtd = 10 + Math.floor(rand() * 18);
+  var restaurantes = [];
+  for(var i = 0; i < qtd; i++){
+    var baseIdx = Math.floor(rand() * MOCK_RESTAURANTES_BASE.length);
+    var base = MOCK_RESTAURANTES_BASE[baseIdx];
+    var sufixo = i > MOCK_RESTAURANTES_BASE.length-1 ? ' ' + (i - MOCK_RESTAURANTES_BASE.length + 2) : '';
+    
+    var r = rand();
+    var status, pedidosMes = 0, diasSemPedido = 0;
+    if(r < 0.45) {
+      status = 'fechado';
+      pedidosMes = 30 + Math.floor(rand() * 200);
+    } else if(r < 0.60) {
+      status = 'inativo';
+      pedidosMes = Math.floor(rand() * 5);
+      diasSemPedido = 14 + Math.floor(rand() * 60);
+    } else if(r < 0.75) {
+      status = 'reuniao';
+    } else if(r < 0.88) {
+      status = 'contato';
+    } else {
+      status = 'lead';
+    }
+    
+    restaurantes.push({
+      id: 'rest_'+cidadeNome.toLowerCase().replace(/\W/g,'')+'_'+i,
+      nome: base.n + sufixo,
+      tipo: base.tp,
+      tel: '(' + (80 + Math.floor(rand()*9)) + ') ' + (90000 + Math.floor(rand()*9999)) + '-' + (1000 + Math.floor(rand()*9000)),
+      contato: ['Sr. José','Dna. Maria','Sr. Carlos','Sra. Ana','Sr. Pedro','Sra. Lúcia'][Math.floor(rand()*6)],
+      status: status,
+      pedidosMes: pedidosMes,
+      diasSemPedido: diasSemPedido,
+      ticketMedio: status === 'fechado' ? (25 + Math.floor(rand() * 40)) : null
+    });
+  }
+  window._cacheRestaurantes[cidadeNome] = restaurantes;
+  return restaurantes;
+}
+
+/* ============================================================== */
+/* RENDERS — Aba MOTOBOYS                                         */
+/* ============================================================== */
+
+function renderMotoboysAba(){
+  if(!window.__cidadeAtual) return;
+  var cidade = window.__cidadeAtual;
+  var motoboys = gerarMotoboysMock(cidade.nome);
+  
+  // Métricas
+  var ativos = motoboys.filter(function(m){ return m.status === 'ativo' || m.status === 'online'; });
+  var online = motoboys.filter(function(m){ return m.status === 'online'; });
+  var prospec = motoboys.filter(function(m){ return ['novo','entrevista','treinamento'].indexOf(m.status) >= 0; });
+  var churn = motoboys.filter(function(m){ return m.status === 'inativo'; });
+  
+  var setMet = function(id, val){ var el = document.getElementById(id); if(el) el.textContent = val; };
+  setMet('mb-total-ativos', ativos.length);
+  setMet('mb-online', online.length);
+  setMet('mb-prospec', prospec.length);
+  setMet('mb-churn', churn.length);
+  
+  // Pipeline
+  var pipeline = document.getElementById('mb-pipeline');
+  if(pipeline){
+    var stages = [
+      {key:'novo', label:'📥 Novos', cor:'#1AB8F0'},
+      {key:'entrevista', label:'🤝 Entrevista', cor:'#EF9F27'},
+      {key:'treinamento', label:'🎓 Treinamento', cor:'#8B5CF6'},
+      {key:'ativo', label:'✅ Ativos', cor:'#1D9E75'}
+    ];
+    pipeline.innerHTML = stages.map(function(stage){
+      var items = motoboys.filter(function(m){ 
+        if(stage.key === 'ativo') return m.status === 'ativo' || m.status === 'online';
+        return m.status === stage.key; 
+      });
+      return '<div style="background:var(--surface2);border-radius:10px;padding:10px;min-height:100px;border-top:3px solid '+stage.cor+'">'
+        + '<div style="font-size:11px;font-weight:700;color:'+stage.cor+';margin-bottom:8px;display:flex;justify-content:space-between">'
+        + '<span>'+stage.label+'</span><span style="background:'+stage.cor+';color:white;padding:1px 7px;border-radius:8px;font-size:10px">'+items.length+'</span>'
+        + '</div>'
+        + '<div style="display:flex;flex-direction:column;gap:5px;max-height:300px;overflow:auto">'
+        + items.slice(0, stage.key === 'ativo' ? 8 : 20).map(function(m){
+            return '<div style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:11px;cursor:pointer;transition:all .1s" '
+              + 'onclick="cidVerMotoboy(\''+m.id+'\')" '
+              + 'onmouseover="this.style.borderColor=\''+stage.cor+'\'" '
+              + 'onmouseout="this.style.borderColor=\'var(--border)\'">'
+              + '<div style="font-weight:600;color:var(--text);font-size:11px">'+m.nome+'</div>'
+              + (stage.key === 'ativo' ? '<div style="font-size:9px;color:var(--text3);margin-top:2px">⭐ '+m.avaliacao+' · '+m.corridasSemana+' corridas/sem</div>' : '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+m.tel+'</div>')
+              + '</div>';
+          }).join('')
+        + (items.length > (stage.key === 'ativo' ? 8 : 20) ? '<div style="font-size:9px;color:var(--text3);text-align:center;padding:5px">+ '+(items.length - (stage.key === 'ativo' ? 8 : 20))+' outros</div>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+  
+  // Ranking semana (top 5)
+  var topSemana = ativos.slice().sort(function(a,b){ return b.corridasSemana - a.corridasSemana; }).slice(0,5);
+  var rank = document.getElementById('mb-ranking-semana');
+  if(rank){
+    if(topSemana.length === 0){
+      rank.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Sem dados ainda</div>';
+    } else {
+      var medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+      rank.innerHTML = topSemana.map(function(m, i){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+          + '<div style="font-size:18px">'+medals[i]+'</div>'
+          + '<div style="flex:1">'
+          + '<div style="font-size:12px;font-weight:600">'+m.nome+'</div>'
+          + '<div style="font-size:10px;color:var(--text3)">⭐ '+m.avaliacao+'</div>'
+          + '</div>'
+          + '<div style="text-align:right">'
+          + '<div style="font-size:14px;font-weight:700;color:var(--orange)">'+m.corridasSemana+'</div>'
+          + '<div style="font-size:9px;color:var(--text3)">corridas</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+  }
+  
+  // Churn
+  var churnList = document.getElementById('mb-churn-list');
+  if(churnList){
+    if(churn.length === 0){
+      churnList.innerHTML = '<div style="text-align:center;padding:20px;color:#1D9E75;font-size:11px">🎉 Nenhum motoboy sumido!</div>';
+    } else {
+      churnList.innerHTML = churn.slice(0,5).map(function(m){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+          + '<div style="font-size:18px">⚠️</div>'
+          + '<div style="flex:1">'
+          + '<div style="font-size:12px;font-weight:600">'+m.nome+'</div>'
+          + '<div style="font-size:10px;color:#E24B4A">'+m.diasInativo+' dias sem corrida</div>'
+          + '</div>'
+          + '<a href="https://wa.me/55'+(m.tel||'').replace(/\D/g,'')+'" target="_blank" style="padding:4px 10px;border-radius:6px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600">WhatsApp</a>'
+          + '</div>';
+      }).join('') + (churn.length > 5 ? '<div style="font-size:10px;color:var(--text3);text-align:center;padding:6px">+ '+(churn.length-5)+' outros</div>' : '');
+    }
+  }
+}
+
+function cidVerMotoboy(id){
+  var c = window.__cidadeAtual;
+  if(!c) return;
+  var motoboys = gerarMotoboysMock(c.nome);
+  var m = motoboys.find(function(x){ return x.id === id; });
+  if(!m) return;
+  var statusLbl = {ativo:'✅ Ativo',online:'🟢 Online agora',novo:'📥 Novo candidato',entrevista:'🤝 Em entrevista',treinamento:'🎓 Treinamento',inativo:'⚠️ Inativo'};
+  var html = '<div id="modal-motoboy" style="position:fixed;inset:0;background:rgba(11,37,66,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    + '<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(11,37,66,.25)" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:17px;font-weight:700;color:#0B2542">'+m.nome+'</div>'
+    + '<button onclick="document.getElementById(\'modal-motoboy\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9DB4D6">×</button>'
+    + '</div>'
+    + '<div style="font-size:12px;color:#56627a;margin-bottom:12px">'+statusLbl[m.status]+'</div>'
+    + '<div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:#0B2542">'
+    + '<div><strong>📞 Telefone:</strong> '+m.tel+'</div>'
+    + (m.avaliacao ? '<div><strong>⭐ Avaliação:</strong> '+m.avaliacao+'</div>' : '')
+    + (m.corridasSemana > 0 ? '<div><strong>🏍️ Corridas semana:</strong> '+m.corridasSemana+'</div>' : '')
+    + (m.corridasMes > 0 ? '<div><strong>📊 Corridas mês:</strong> '+m.corridasMes+'</div>' : '')
+    + (m.diasInativo > 0 ? '<div style="color:#E24B4A"><strong>⚠️ Inativo há:</strong> '+m.diasInativo+' dias</div>' : '')
+    + '<div><strong>📅 Desde:</strong> '+(m.desde||'—').split('-').reverse().join('/')+'</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+    + '<a href="https://wa.me/55'+m.tel.replace(/\D/g,'')+'" target="_blank" style="flex:1;text-decoration:none;padding:9px;border-radius:8px;background:#25D366;color:white;font-size:12px;font-weight:600;text-align:center">💬 WhatsApp</a>'
+    + '<a href="tel:'+m.tel.replace(/\D/g,'')+'" style="flex:1;text-decoration:none;padding:9px;border-radius:8px;background:var(--gami-blue);color:white;font-size:12px;font-weight:600;text-align:center">📞 Ligar</a>'
+    + '</div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function abrirDMCidadeIG(){
+  var c = window.__cidadeAtual;
+  if(!c) return;
+  // Mapeamento de cidade -> username Instagram (mesmo do stories-scheduler)
+  var igMap = {
+    'fortaleza': 'gamideliveryfortaleza','recife':'gamideliveryrecifeejaboatao','maceió':'gamidelivery','maceio':'gamidelivery',
+    'joão pessoa':'gamideliveryjoaopessoa','joao pessoa':'gamideliveryjoaopessoa','aracaju':'gamideliveryaracaju',
+    'são luís':'gamideliverysaoluis','sao luis':'gamideliverysaoluis','cuiabá':'gamideliverycuiaba','cuiaba':'gamideliverycuiaba',
+    'teresina':'gamideliveryteresina','vitória':'gamideliveryvitoria','vitoria':'gamideliveryvitoria'
+  };
+  var username = igMap[(c.nome||'').toLowerCase()] || 'gamidelivery';
+  window.open('https://www.instagram.com/'+username+'/', '_blank');
+}
+
+function cidAddMotoboyModal(){
+  alert('Em breve: cadastro manual de candidatos a motoboy.\n\nPor enquanto, o sistema gera dados fictícios automaticamente. Quando integrarmos com a Machine API, esses dados virão direto da operação real.');
+}
+
+function cidEnviarMsgMotoboys(){
+  var c = window.__cidadeAtual;
+  if(!c) return;
+  var motoboys = gerarMotoboysMock(c.nome);
+  var ativos = motoboys.filter(function(m){ return m.status === 'ativo' || m.status === 'online'; });
+  var msg = prompt('Mensagem pra enviar a '+ativos.length+' motoboys ativos de '+c.nome+':\n\n(Exemplo: "Reunião amanhã 8h no escritório. Confirma presença!")');
+  if(!msg) return;
+  // Como mock, abre WhatsApp do primeiro motoboy com a mensagem
+  if(ativos.length > 0){
+    var encoded = encodeURIComponent(msg);
+    alert('✅ Modo demo: simulando envio pra '+ativos.length+' motoboys.\n\nNa versão real (integrada com Machine API + WhatsApp Business), todos receberão a mensagem automaticamente.\n\nVou abrir o WhatsApp do primeiro motoboy com a mensagem pré-preenchida.');
+    window.open('https://wa.me/55'+ativos[0].tel.replace(/\D/g,'')+'?text='+encoded, '_blank');
+  }
+}
+
+/* ============================================================== */
+/* RENDERS — Aba RESTAURANTES                                     */
+/* ============================================================== */
+
+function renderRestaurantesAba(){
+  if(!window.__cidadeAtual) return;
+  var cidade = window.__cidadeAtual;
+  var restaurantes = gerarRestaurantesMock(cidade.nome);
+  
+  // Métricas
+  var ativos = restaurantes.filter(function(r){ return r.status === 'fechado' && r.diasSemPedido < 14; });
+  var prospec = restaurantes.filter(function(r){ return ['lead','contato','reuniao'].indexOf(r.status) >= 0; });
+  var inativos = restaurantes.filter(function(r){ return r.status === 'inativo' || (r.status === 'fechado' && r.diasSemPedido >= 14); });
+  var topRest = restaurantes.slice().filter(function(r){ return r.status === 'fechado'; }).sort(function(a,b){ return b.pedidosMes - a.pedidosMes; })[0];
+  
+  var setMet = function(id, val){ var el = document.getElementById(id); if(el) el.textContent = val; };
+  setMet('rest-ativos', ativos.length);
+  setMet('rest-prospec', prospec.length);
+  setMet('rest-inativos', inativos.length);
+  if(topRest){
+    setMet('rest-top-num', topRest.pedidosMes);
+    setMet('rest-top-nome', topRest.nome.substring(0,16));
+  }
+  
+  // Pipeline
+  var pipeline = document.getElementById('rest-pipeline');
+  if(pipeline){
+    var stages = [
+      {key:'lead', label:'📥 Leads', cor:'#1AB8F0'},
+      {key:'contato', label:'📞 Em contato', cor:'#EF9F27'},
+      {key:'reuniao', label:'🤝 Reunião', cor:'#8B5CF6'},
+      {key:'fechado', label:'✅ Parceiros', cor:'#1D9E75'}
+    ];
+    pipeline.innerHTML = stages.map(function(stage){
+      var items = restaurantes.filter(function(r){ return r.status === stage.key; });
+      if(stage.key === 'fechado') items = items.filter(function(r){ return r.diasSemPedido < 14; });
+      return '<div style="background:var(--surface2);border-radius:10px;padding:10px;min-height:100px;border-top:3px solid '+stage.cor+'">'
+        + '<div style="font-size:11px;font-weight:700;color:'+stage.cor+';margin-bottom:8px;display:flex;justify-content:space-between">'
+        + '<span>'+stage.label+'</span><span style="background:'+stage.cor+';color:white;padding:1px 7px;border-radius:8px;font-size:10px">'+items.length+'</span>'
+        + '</div>'
+        + '<div style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow:auto">'
+        + items.slice(0, stage.key === 'fechado' ? 8 : 20).map(function(r){
+            return '<div style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:11px;cursor:pointer" '
+              + 'onclick="cidVerRestaurante(\''+r.id+'\')" '
+              + 'onmouseover="this.style.borderColor=\''+stage.cor+'\'" '
+              + 'onmouseout="this.style.borderColor=\'var(--border)\'">'
+              + '<div style="font-weight:600;color:var(--text);font-size:11px">'+r.nome+'</div>'
+              + '<div style="font-size:9px;color:var(--text3);margin-top:2px">🍽️ '+r.tipo + (stage.key === 'fechado' ? ' · '+r.pedidosMes+' ped/mês' : '')+'</div>'
+              + '</div>';
+          }).join('')
+        + (items.length > (stage.key === 'fechado' ? 8 : 20) ? '<div style="font-size:9px;color:var(--text3);text-align:center;padding:5px">+ '+(items.length - (stage.key === 'fechado' ? 8 : 20))+' outros</div>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+  
+  // Top performers
+  var top = ativos.slice().sort(function(a,b){ return b.pedidosMes - a.pedidosMes; }).slice(0,5);
+  var topList = document.getElementById('rest-top-list');
+  if(topList){
+    if(top.length === 0){
+      topList.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Sem dados</div>';
+    } else {
+      var medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
+      topList.innerHTML = top.map(function(r, i){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+          + '<div style="font-size:18px">'+medals[i]+'</div>'
+          + '<div style="flex:1">'
+          + '<div style="font-size:12px;font-weight:600">'+r.nome+'</div>'
+          + '<div style="font-size:10px;color:var(--text3)">🍽️ '+r.tipo+'</div>'
+          + '</div>'
+          + '<div style="text-align:right">'
+          + '<div style="font-size:14px;font-weight:700;color:var(--orange)">'+r.pedidosMes+'</div>'
+          + '<div style="font-size:9px;color:var(--text3)">pedidos/mês</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+  }
+  
+  // Inativos
+  var inativosList = document.getElementById('rest-inativos-list');
+  if(inativosList){
+    if(inativos.length === 0){
+      inativosList.innerHTML = '<div style="text-align:center;padding:20px;color:#1D9E75;font-size:11px">🎉 Nenhum parceiro inativo!</div>';
+    } else {
+      inativosList.innerHTML = inativos.slice(0,5).map(function(r){
+        return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+          + '<div style="font-size:18px">⚠️</div>'
+          + '<div style="flex:1">'
+          + '<div style="font-size:12px;font-weight:600">'+r.nome+'</div>'
+          + '<div style="font-size:10px;color:#E24B4A">'+(r.diasSemPedido||14)+' dias sem pedido</div>'
+          + '</div>'
+          + '<a href="https://wa.me/55'+r.tel.replace(/\D/g,'')+'" target="_blank" style="padding:4px 10px;border-radius:6px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600">WhatsApp</a>'
+          + '</div>';
+      }).join('') + (inativos.length > 5 ? '<div style="font-size:10px;color:var(--text3);text-align:center;padding:6px">+ '+(inativos.length-5)+' outros</div>' : '');
+    }
+  }
+  
+  // Lista completa
+  renderRestaurantesLista();
+}
+
+function renderRestaurantesLista(){
+  var c = window.__cidadeAtual; if(!c) return;
+  var rests = gerarRestaurantesMock(c.nome);
+  var busca = ((document.getElementById('rest-busca')||{}).value || '').toLowerCase();
+  var filtrados = busca ? rests.filter(function(r){ return r.nome.toLowerCase().indexOf(busca) >= 0 || r.tipo.toLowerCase().indexOf(busca) >= 0; }) : rests;
+  
+  var lista = document.getElementById('rest-lista-completa');
+  if(!lista) return;
+  
+  var statusCor = {fechado:'#1D9E75',inativo:'#E24B4A',reuniao:'#8B5CF6',contato:'#EF9F27',lead:'#1AB8F0'};
+  var statusLbl = {fechado:'✅ Parceiro',inativo:'⚠️ Inativo',reuniao:'🤝 Reunião',contato:'📞 Contato',lead:'📥 Lead'};
+  
+  if(filtrados.length === 0){
+    lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px">Nenhum restaurante encontrado.</div>';
+    return;
+  }
+  
+  lista.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">'
+    + filtrados.map(function(r){
+      var cor = statusCor[r.status] || '#9DB4D6';
+      return '<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:8px;padding:10px 12px;cursor:pointer" onclick="cidVerRestaurante(\''+r.id+'\')">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">'
+        + '<div style="font-size:13px;font-weight:600;color:var(--text)">'+r.nome+'</div>'
+        + '<span style="font-size:9px;padding:2px 7px;border-radius:5px;background:'+cor+'22;color:'+cor+';font-weight:600;white-space:nowrap">'+statusLbl[r.status]+'</span>'
+        + '</div>'
+        + '<div style="font-size:10px;color:var(--text3);display:flex;gap:8px;flex-wrap:wrap">'
+        + '<span>🍽️ '+r.tipo+'</span>'
+        + (r.pedidosMes > 0 ? '<span>📦 '+r.pedidosMes+' ped/mês</span>' : '')
+        + (r.diasSemPedido > 0 ? '<span style="color:#E24B4A">⚠️ '+r.diasSemPedido+'d sem pedido</span>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('')
+    + '</div>';
+}
+
+function cidVerRestaurante(id){
+  var c = window.__cidadeAtual; if(!c) return;
+  var rests = gerarRestaurantesMock(c.nome);
+  var r = rests.find(function(x){ return x.id === id; });
+  if(!r) return;
+  var statusLbl = {fechado:'✅ Parceiro ativo',inativo:'⚠️ Parceiro inativo',reuniao:'🤝 Em reunião',contato:'📞 Em contato',lead:'📥 Lead'};
+  
+  var html = '<div id="modal-restaurante" style="position:fixed;inset:0;background:rgba(11,37,66,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    + '<div style="background:#fff;border-radius:14px;max-width:400px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(11,37,66,.25)" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:17px;font-weight:700;color:#0B2542">'+r.nome+'</div>'
+    + '<button onclick="document.getElementById(\'modal-restaurante\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9DB4D6">×</button>'
+    + '</div>'
+    + '<div style="font-size:12px;color:#56627a;margin-bottom:12px">'+statusLbl[r.status]+'</div>'
+    + '<div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:#0B2542">'
+    + '<div><strong>🍽️ Tipo:</strong> '+r.tipo+'</div>'
+    + '<div><strong>👤 Contato:</strong> '+r.contato+'</div>'
+    + '<div><strong>📞 Telefone:</strong> '+r.tel+'</div>'
+    + (r.pedidosMes > 0 ? '<div><strong>📦 Pedidos mês:</strong> '+r.pedidosMes+'</div>' : '')
+    + (r.ticketMedio ? '<div><strong>💰 Ticket médio:</strong> R$ '+r.ticketMedio+'</div>' : '')
+    + (r.diasSemPedido > 0 ? '<div style="color:#E24B4A"><strong>⚠️ Sem pedidos há:</strong> '+r.diasSemPedido+' dias</div>' : '')
+    + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+    + '<a href="https://wa.me/55'+r.tel.replace(/\D/g,'')+'" target="_blank" style="flex:1;text-decoration:none;padding:9px;border-radius:8px;background:#25D366;color:white;font-size:12px;font-weight:600;text-align:center">💬 WhatsApp</a>'
+    + '<a href="tel:'+r.tel.replace(/\D/g,'')+'" style="flex:1;text-decoration:none;padding:9px;border-radius:8px;background:var(--gami-blue);color:white;font-size:12px;font-weight:600;text-align:center">📞 Ligar</a>'
+    + '</div>'
+    + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function cidAddRestauranteModal(){
+  alert('Em breve: cadastro manual de restaurantes em prospecção.\n\nPor enquanto, dados fictícios são gerados pra demonstração.\n\nNa versão integrada com Machine API + Supabase, você poderá:\n• Cadastrar leads\n• Mover pelo pipeline\n• Registrar histórico de visitas\n• Anotar reuniões e fechamentos');
+}
+
+/* ============================================================== */
+/* RENDERS — VISÃO GERAL (comparativos, metas, alertas)           */
+/* ============================================================== */
+
+function renderVisaoGeralCidade(){
+  if(!window.__cidadeAtual) return;
+  var c = window.__cidadeAtual;
+  
+  // Comparativo (mock)
+  var rand = _seedRandom(_seedHash('comp_'+c.nome));
+  var corridasHoje = 60 + Math.floor(rand() * 80);
+  var corridasOntem = 50 + Math.floor(rand() * 100);
+  var pctDia = corridasOntem > 0 ? Math.round(((corridasHoje - corridasOntem) / corridasOntem) * 100) : 0;
+  
+  var corridasMes = corridasHoje * 22 + Math.floor(rand() * 200);
+  var corridasMesAnterior = corridasOntem * 22 + Math.floor(rand() * 200);
+  var pctMes = corridasMesAnterior > 0 ? Math.round(((corridasMes - corridasMesAnterior) / corridasMesAnterior) * 100) : 0;
+  
+  var comp = document.getElementById('cp-comparativo');
+  if(comp){
+    var seta = function(v){ return v >= 0 ? '↑' : '↓'; };
+    var cor = function(v){ return v >= 0 ? '#1D9E75' : '#E24B4A'; };
+    comp.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'
+      + '<div><div style="font-size:11px;color:var(--text3)">Hoje vs Ontem</div><div style="font-size:14px;font-weight:600">'+corridasHoje+' corridas</div></div>'
+      + '<div style="text-align:right;color:'+cor(pctDia)+';font-weight:700"><div style="font-size:16px">'+seta(pctDia)+' '+Math.abs(pctDia)+'%</div></div>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">'
+      + '<div><div style="font-size:11px;color:var(--text3)">Mês vs Mês anterior</div><div style="font-size:14px;font-weight:600">'+corridasMes+' corridas</div></div>'
+      + '<div style="text-align:right;color:'+cor(pctMes)+';font-weight:700"><div style="font-size:16px">'+seta(pctMes)+' '+Math.abs(pctMes)+'%</div></div>'
+      + '</div>';
+  }
+  
+  // Meta do dia (mock — 100 corridas)
+  var meta = 100;
+  var pctMeta = Math.min(100, Math.round((corridasHoje / meta) * 100));
+  var corMeta = pctMeta >= 100 ? '#1D9E75' : pctMeta >= 70 ? '#EF9F27' : '#E24B4A';
+  var elMeta = document.getElementById('cp-meta-dia');
+  if(elMeta){
+    elMeta.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">'
+      + '<div><span style="font-size:24px;font-weight:700;color:'+corMeta+'">'+corridasHoje+'</span><span style="font-size:14px;color:var(--text3)">/'+meta+'</span></div>'
+      + '<div style="font-size:14px;font-weight:600;color:'+corMeta+'">'+pctMeta+'%</div>'
+      + '</div>'
+      + '<div style="height:10px;background:var(--border);border-radius:10px;overflow:hidden">'
+      + '<div style="height:100%;width:'+pctMeta+'%;background:'+corMeta+';border-radius:10px;transition:all .4s"></div>'
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:6px">'+(pctMeta >= 100 ? '🎉 Meta atingida!' : pctMeta >= 70 ? '⚡ Quase lá, '+(meta-corridasHoje)+' pra meta' : '⚠️ Faltam '+(meta-corridasHoje)+' corridas')+'</div>';
+  }
+  
+  // Alertas inteligentes
+  var alertas = document.getElementById('cp-alertas-box');
+  if(alertas){
+    var alertasArr = [];
+    if(pctDia < -10) alertasArr.push({icon:'⚠️',cor:'#E24B4A',texto:'Performance '+Math.abs(pctDia)+'% abaixo de ontem. Verifique o que mudou.'});
+    if(pctMeta < 50) alertasArr.push({icon:'🚨',cor:'#E24B4A',texto:'Meta do dia muito longe. Reforce captação ou ajuste motoboys ativos.'});
+    var motoboys = gerarMotoboysMock(c.nome);
+    var churnCount = motoboys.filter(function(m){ return m.status === 'inativo'; }).length;
+    if(churnCount >= 3) alertasArr.push({icon:'🏍️',cor:'#EF9F27',texto:churnCount+' motoboys sem corridas há 7+ dias. Vale entrar em contato!'});
+    var rests = gerarRestaurantesMock(c.nome);
+    var restInativos = rests.filter(function(r){ return r.status === 'fechado' && r.diasSemPedido >= 14; }).length;
+    if(restInativos >= 2) alertasArr.push({icon:'🍴',cor:'#EF9F27',texto:restInativos+' parceiros restaurantes inativos. Ligue pra reativar!'});
+    if(pctMes > 20) alertasArr.push({icon:'🎉',cor:'#1D9E75',texto:'Mês '+pctMes+'% acima do anterior. Mantenha o ritmo!'});
+    
+    if(alertasArr.length === 0){
+      alertas.innerHTML = '';
+    } else {
+      alertas.innerHTML = '<div class="card" style="background:#FFF8E1;border-left:4px solid #EF9F27">'
+        + '<div style="font-size:11px;font-weight:700;color:#854F0B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🧠 Alertas Inteligentes</div>'
+        + alertasArr.map(function(a){
+            return '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px dashed #EF9F2733">'
+              + '<span style="font-size:14px">'+a.icon+'</span>'
+              + '<span style="font-size:12px;color:'+a.cor+';font-weight:500">'+a.texto+'</span>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+    }
+  }
+}
+
 function setCidadeTab(btn, tab){
   document.querySelectorAll('#pg-cidades .tab').forEach(t=>t.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  ['overview','conteudo','prioridades','equipe','insights','calendario'].forEach(t=>{
+  ['overview','motoboys','restaurantes','equipe','insights','calendario'].forEach(t=>{
     const el = document.getElementById('ctab-'+t);
     if(el) el.style.display = t===tab ? 'block' : 'none';
   });
+  // Renderiza conteúdo da aba selecionada
+  if(tab === 'motoboys' && typeof renderMotoboysAba === 'function') renderMotoboysAba();
+  if(tab === 'restaurantes' && typeof renderRestaurantesAba === 'function') renderRestaurantesAba();
+  if(tab === 'overview' && typeof renderVisaoGeralCidade === 'function') renderVisaoGeralCidade();
 }
 
 function toggleCidadeCheck(idx){
@@ -7953,7 +8591,9 @@ function toggleCidadeCheck(idx){
   saveCidadeExtra(_cidadeAtualId,'checklist',state);
   // Re-render
   const checkItems = ['Post no feed feito','Stories publicados','Campanha verificada','Contato com gestor','Ideias registradas'];
-  document.getElementById('cp-checklist').innerHTML = checkItems.map((item,i)=>{
+  var elCk = document.getElementById('cp-checklist');
+  if(!elCk) return;
+  elCk.innerHTML = checkItems.map((item,i)=>{
     const done = !!state[i];
     return `<div class="row" onclick="toggleCidadeCheck(${i})" style="cursor:pointer">
       <div style="width:15px;height:15px;border-radius:4px;border:1.5px solid ${done?'var(--green)':'var(--border2)'};background:${done?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
@@ -7964,11 +8604,13 @@ function toggleCidadeCheck(idx){
   }).join('');
 }
 
-// Posts
+// Posts (legado, opcional)
 function renderPostsList(){
+  var el = document.getElementById('cp-posts-list');
+  if(!el) return;
   const posts = getCidadeExtra(_cidadeAtualId,'posts') || [];
   const statusStyle = { pendente:{bg:'#FCEBEB',color:'#A32D2D'}, producao:{bg:'#FAEEDA',color:'#854F0B'}, postado:{bg:'#EAF3DE',color:'#3B6D11'} };
-  document.getElementById('cp-posts-list').innerHTML = posts.length===0
+  el.innerHTML = posts.length===0
     ? '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhum conteúdo programado.</div>'
     : posts.map((p,i)=>{
         const ss = statusStyle[p.status]||statusStyle.pendente;
@@ -7981,13 +8623,16 @@ function renderPostsList(){
 }
 
 function addPost(){
-  const titulo = document.getElementById('cp-novo-post').value.trim();
-  const status = document.getElementById('cp-post-status').value;
+  var elT = document.getElementById('cp-novo-post');
+  var elS = document.getElementById('cp-post-status');
+  if(!elT || !elS) return;
+  const titulo = elT.value.trim();
+  const status = elS.value;
   if(!titulo||!_cidadeAtualId) return;
   const posts = getCidadeExtra(_cidadeAtualId,'posts') || [];
   posts.unshift({titulo,status});
   saveCidadeExtra(_cidadeAtualId,'posts',posts);
-  document.getElementById('cp-novo-post').value='';
+  elT.value='';
   renderPostsList();
 }
 
@@ -7998,11 +8643,13 @@ function removePost(idx){
   renderPostsList();
 }
 
-// Prioridades
+// Prioridades (legado, opcional)
 function renderPrioridadesList(){
+  var el = document.getElementById('cp-prio-list');
+  if(!el) return;
   const prios = getCidadeExtra(_cidadeAtualId,'prioridades') || [];
   const icons = {alta:'🔴',media:'🟡',baixa:'🟢'};
-  document.getElementById('cp-prio-list').innerHTML = prios.length===0
+  el.innerHTML = prios.length===0
     ? '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma prioridade definida.</div>'
     : prios.map((p,i)=>`
       <div class="row">
