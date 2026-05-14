@@ -1,4 +1,4 @@
-<!-- v12.30 - Abas Cidade focadas: Equipe c/ fotos, Anotações privadas, Datas c/ calendário - 14/05/2026 -->
+<!-- v12.31 - Fix CRÍTICO: Machine API dentro de Visão Geral + auto-scroll abas - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -843,7 +843,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.30</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.31</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -2053,9 +2053,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Quer um plano de ação completo para esta cidade?</div>
         <button class="btn btn-ia btn-sm" onclick="resolverCidade()">Plano de ação ↗</button>
       </div>
-    </div>
 
-    <!-- MACHINE INLINE -->
+    <!-- MACHINE INLINE (dentro de ctab-overview - só aparece em Visão Geral) -->
     <div style="margin-top:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">
@@ -2119,6 +2118,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div id="mch-motoboys-list"></div>
       </div>
     </div>
+    </div><!-- /ctab-overview -->
 
     <!-- ===== ABA MOTOBOYS ===== -->
     <div id="ctab-motoboys" style="display:none">
@@ -8674,6 +8674,16 @@ function setCidadeTab(btn, tab){
   if(tab === 'equipe' && typeof renderEquipeCidade === 'function') renderEquipeCidade();
   if(tab === 'insights' && typeof renderAnotacoesCidade === 'function') renderAnotacoesCidade();
   if(tab === 'calendario' && typeof renderDatasCidadeAba === 'function') renderDatasCidadeAba();
+  
+  // Auto-scroll pra ver o conteúdo da aba (rola pras tabs - não pro topo absoluto)
+  try {
+    var tabsContainer = document.querySelector('#pg-cidades .tabs');
+    if(tabsContainer && btn){
+      setTimeout(function(){
+        tabsContainer.scrollIntoView({behavior:'smooth', block:'start'});
+      }, 100);
+    }
+  } catch(e){}
 }
 
 /* ============================================================== */
