@@ -1,4 +1,4 @@
-<!-- v12.31 - Fix CRÍTICO: Machine API dentro de Visão Geral + auto-scroll abas - 14/05/2026 -->
+<!-- v12.33 - Limpeza pra produção: banner Demo nos mocks - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -535,45 +535,99 @@ function filtrarTarefasPorPermissao(tarefas){
 /* Filtra CIDADES pelo usuário logado.
    - Super Admin / Diretoria / Gerência / Colaborador: vê todas
    - Gestor: vê só a cidade dele */
+/* ============================================================== */
+/* CIDADES QUE O USUÁRIO ATENDE (regra centralizada)              */
+/* Retorna:                                                       */
+/*   - null  → vê TODAS                                           */
+/*   - array → vê só as cidades listadas (nomes lowercase)        */
+/* ============================================================== */
+function cidadesQueUsuarioAtende(u){
+  if(!u) return [];
+  
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  var cargo = String(u.cargo || '').toLowerCase().trim();
+  var cidade = u.cidade;
+  
+  // 🎨 Marketing (Cleyton) → todas as cidades
+  if(nivel === 'super_admin') return null;
+  if(cargo === 'marketing') return null;
+  
+  // 🏛️ Diretoria → todas
+  if(nivel === 'diretoria') return null;
+  
+  // 👔 Gerência → todas
+  if(nivel === 'gerencia') return null;
+  
+  // 👤 Prospecção (Vanessa) → todas
+  if(cargo.indexOf('prospec') >= 0) return null;
+  
+  // Se cidade é array → vê as do array
+  if(Array.isArray(cidade)){
+    if(cidade.length === 0) return null; // sem cidade definida → fallback vê todas
+    // Se "Matriz" estiver no array → vê todas
+    var arrLower = cidade.map(function(c){ return String(c).toLowerCase().trim(); });
+    if(arrLower.indexOf('matriz') >= 0) return null;
+    return arrLower;
+  }
+  
+  // Se cidade é string com vírgulas/pipes → divide
+  if(typeof cidade === 'string' && (cidade.indexOf(',') >= 0 || cidade.indexOf('|') >= 0)){
+    var arr2 = cidade.split(/[,|]/).map(function(c){ return c.toLowerCase().trim(); }).filter(Boolean);
+    if(arr2.indexOf('matriz') >= 0) return null;
+    return arr2;
+  }
+  
+  // Cidade única
+  if(typeof cidade === 'string' && cidade.trim()){
+    var cidadeLower = cidade.toLowerCase().trim();
+    // "Matriz" = sem cidade específica → vê todas (mas se for Colaborador sem cargo especial, isso pode ser intencional)
+    // Decisão: "Matriz" significa "escritório central" → vê TODAS
+    if(cidadeLower === 'matriz') return null;
+    return [cidadeLower];
+  }
+  
+  // Sem cidade → fallback vê todas
+  return null;
+}
+
+/* Conta as cidades que o usuário atende. Útil pra UI. */
+function qtdCidadesUsuario(u){
+  var cids = cidadesQueUsuarioAtende(u);
+  if(cids === null) {
+    // Vê todas → retorna -1 (significa "muitas")
+    return -1;
+  }
+  return cids.length;
+}
+
 function filtrarCidadesPorPermissao(cidades){
   if(!Array.isArray(cidades)) return cidades;
   var u = getUsuarioLogado();
   if(!u) return cidades;
   
-  var nivel = detectarNivelPermissao(u);
+  var permitidas = cidadesQueUsuarioAtende(u);
+  if(permitidas === null) return cidades; // vê todas
   
-  // Gestor — vê só sua cidade
-  if(nivel === 'gestor'){
-    var minhaCidade = (u.cidade || '').toLowerCase().trim();
-    if(!minhaCidade) return cidades; // sem cidade cadastrada → vê tudo (fallback)
-    return cidades.filter(function(c){
-      var nomeCidade = (c.nome || '').toLowerCase().trim();
-      return nomeCidade === minhaCidade;
-    });
-  }
-  
-  return cidades;
+  return cidades.filter(function(c){
+    var nomeCidade = (c.nome || '').toLowerCase().trim();
+    return permitidas.indexOf(nomeCidade) >= 0;
+  });
 }
 
 /* Filtra CONTAS INSTAGRAM (Inbox) pelo usuário logado.
-   - Super Admin / Diretoria: vê todas
-   - Gestor: vê só a conta IG da cidade dele */
+   Usa mesma lógica de "cidadesQueUsuarioAtende" */
 function filtrarContasIGPorPermissao(contas){
   if(!Array.isArray(contas)) return contas;
   var u = getUsuarioLogado();
   if(!u) return contas;
   
-  var nivel = detectarNivelPermissao(u);
-  if(nivel === 'gestor'){
-    var minhaCidade = (u.cidade || '').toLowerCase().trim();
-    if(!minhaCidade) return contas;
-    return contas.filter(function(c){
-      var cidadeC = (c.cidade || c.nome || '').toLowerCase().trim();
-      return cidadeC === minhaCidade;
-    });
-  }
+  var permitidas = cidadesQueUsuarioAtende(u);
+  if(permitidas === null) return contas; // vê todas
   
-  return contas;
+  return contas.filter(function(c){
+    var cidadeC = (c.cidade || c.nome || '').toLowerCase().trim();
+    return permitidas.indexOf(cidadeC) >= 0;
+  });
 }
 
 /* Verifica se usuário pode VER uma tarefa específica */
@@ -606,32 +660,46 @@ function aplicarPermissoesVisuais(){
       item.style.display = '';
     }
     
-    // Renomeia "Cidades" → "Minha Cidade" pra Gestor (que vê só 1 cidade)
-    if(aba === 'cidades' && nivel === 'gestor'){
-      // Procura o texto da nav-item e troca preservando o nav-dot
+    // Renomeia "Cidades" → "Minha Cidade" pra quem atende só 1 cidade
+    if(aba === 'cidades'){
       var dot = item.querySelector('.nav-dot');
-      var nomeCidade = u.cidade ? ' (' + u.cidade + ')' : '';
-      if(dot){
-        item.innerHTML = dot.outerHTML + 'Minha Cidade' + nomeCidade;
-      }
-    } else if(aba === 'cidades'){
-      var dot2 = item.querySelector('.nav-dot');
-      if(dot2 && item.textContent.indexOf('Minha Cidade') !== -1){
-        // Volta pro original se mudou de cargo
-        item.innerHTML = dot2.outerHTML + 'Cidades';
+      var permitidas = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(u) : null;
+      
+      if(permitidas !== null && permitidas.length === 1){
+        // 1 cidade só → "Minha Cidade (X)"
+        var nomeCidade = permitidas[0].charAt(0).toUpperCase() + permitidas[0].slice(1);
+        if(dot){
+          item.innerHTML = dot.outerHTML + 'Minha Cidade (' + nomeCidade + ')';
+        }
+      } else if(permitidas !== null && permitidas.length > 1){
+        // Várias → "Minhas Cidades (N)"
+        if(dot){
+          item.innerHTML = dot.outerHTML + 'Minhas Cidades (' + permitidas.length + ')';
+        }
+      } else {
+        // Todas → "Cidades"
+        if(dot && (item.textContent.indexOf('Minha Cidade') !== -1 || item.textContent.indexOf('Minhas Cidades') !== -1)){
+          item.innerHTML = dot.outerHTML + 'Cidades';
+        }
       }
     }
   });
   
-  // Renomeia título da página de Cidades pra Gestor
+  // Renomeia título da página de Cidades dinamicamente
   var pgCidades = document.getElementById('pg-cidades');
   if(pgCidades){
     var tituloCid = pgCidades.querySelector('.page-title');
     var subCid = pgCidades.querySelector('.page-sub');
-    if(tituloCid && nivel === 'gestor' && u.cidade){
-      tituloCid.textContent = 'Minha Cidade — ' + u.cidade;
-      if(subCid) subCid.textContent = 'Gestão da sua operação local';
-    } else if(tituloCid && tituloCid.textContent.indexOf('Minha Cidade') !== -1){
+    var permitidas = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(u) : null;
+    
+    if(tituloCid && permitidas !== null && permitidas.length === 1){
+      var nomeCidade = permitidas[0].charAt(0).toUpperCase() + permitidas[0].slice(1);
+      tituloCid.textContent = 'Minha Cidade — ' + nomeCidade;
+      if(subCid) subCid.textContent = 'Sua operação local';
+    } else if(tituloCid && permitidas !== null && permitidas.length > 1){
+      tituloCid.textContent = 'Minhas Cidades (' + permitidas.length + ')';
+      if(subCid) subCid.textContent = 'Cidades que você atende';
+    } else if(tituloCid && (tituloCid.textContent.indexOf('Minha Cidade') !== -1 || tituloCid.textContent.indexOf('Minhas Cidades') !== -1)){
       tituloCid.textContent = 'Cidades';
       if(subCid) subCid.textContent = 'Gestão completa por cidade';
     }
@@ -645,9 +713,12 @@ function aplicarPermissoesVisuais(){
   var btnDesafio = document.getElementById('btn-novo-desafio');
   if(btnDesafio) btnDesafio.style.display = perms.pode_criar_desafios ? '' : 'none';
   
-  // Esconde botão Voltar dentro da Cidade (Gestor só tem 1 cidade, não há pra onde voltar)
+  // Esconde botão Voltar dentro da Cidade (quem atende só 1 cidade)
   var btnVoltarCid = document.getElementById('btn-voltar-cidades');
-  if(btnVoltarCid) btnVoltarCid.style.display = (nivel === 'gestor') ? 'none' : '';
+  if(btnVoltarCid){
+    var permV = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(u) : null;
+    btnVoltarCid.style.display = (permV !== null && permV.length === 1) ? 'none' : '';
+  }
   
   // Botões de editar pessoas (escondidos pra todos exceto super_admin)
   if(!perms.pode_editar_pessoas){
@@ -731,22 +802,21 @@ window.nav = function(el, page){
         'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('agenda'); },
         'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
         'cidades':         function(){ 
-                              // Se for Gestor → abre direto a cidade dele (Minha Cidade)
+                              // Se atende SÓ 1 cidade → abre direto (Gestor ou Colaborador de 1 cidade)
                               try {
                                 var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-                                var nivel = u && typeof detectarNivelPermissao === 'function' ? detectarNivelPermissao(u) : null;
-                                if(nivel === 'gestor' && u && u.cidade){
-                                  var minhaCidade = String(u.cidade).trim().toLowerCase();
+                                var permitidas = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(u) : null;
+                                if(permitidas !== null && permitidas.length === 1){
+                                  var minhaCidade = permitidas[0];
                                   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
                                   var match = cidades.find(function(c){ return (c.nome||'').trim().toLowerCase() === minhaCidade; });
                                   if(match && typeof abrirCidade === 'function'){
-                                    // Renderiza a lista (necessária no DOM) e depois abre direto a cidade
                                     if(typeof renderCidadesGrid === 'function') renderCidadesGrid();
                                     setTimeout(function(){ abrirCidade(match.id); }, 50);
                                     return;
                                   }
                                 }
-                              } catch(e){ console.warn('auto-abrir cidade do gestor:', e); }
+                              } catch(e){ console.warn('auto-abrir cidade único:', e); }
                               // Fluxo normal — lista de cidades
                               if(typeof voltarCidades==='function'){voltarCidades(); renderCidadesGrid();} 
                             },
@@ -843,7 +913,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.31</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.33</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -2122,6 +2192,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <!-- ===== ABA MOTOBOYS ===== -->
     <div id="ctab-motoboys" style="display:none">
+      <!-- Banner Demo -->
+      <div style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:20px;flex-shrink:0">⚠️</div>
+        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.5">
+          <strong>Dados de demonstração</strong> — os números, nomes e telefones abaixo são <strong>fictícios</strong>.<br>
+          Em breve, esta aba será alimentada automaticamente pela <strong>integração Machine API</strong> com dados reais da operação.
+        </div>
+      </div>
+      
       <!-- Métricas resumo -->
       <div class="metrics" style="margin-bottom:14px">
         <div class="metric"><div class="metric-label">Total ativos</div><div class="metric-val" id="mb-total-ativos" style="color:#1D9E75">—</div><div class="metric-sub">trabalhando</div></div>
@@ -2135,11 +2214,10 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div>
             <div class="card-title" style="margin:0">🎯 Pipeline de Captação</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px">Acompanhe novos candidatos até virarem motoboys ativos</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Acompanhe novos candidatos até virarem motoboys ativos · Dados via Machine API</div>
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <div id="mb-acoes-btns" style="display:flex;gap:6px;flex-wrap:wrap">
             <button onclick="abrirDMCidadeIG()" style="padding:6px 10px;border:none;border-radius:7px;background:linear-gradient(135deg,#E1306C,#C13584);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📷 Captar via Instagram</button>
-            <button onclick="cidAddMotoboyModal()" style="padding:6px 10px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+ Novo candidato</button>
           </div>
         </div>
         <div id="mb-pipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto"></div>
@@ -2175,6 +2253,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <!-- ===== ABA RESTAURANTES ===== -->
     <div id="ctab-restaurantes" style="display:none">
+      <!-- Banner Demo -->
+      <div style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:20px;flex-shrink:0">⚠️</div>
+        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.5">
+          <strong>Dados de demonstração</strong> — restaurantes, telefones e pedidos abaixo são <strong>fictícios</strong>.<br>
+          Em breve, esta aba será alimentada automaticamente pela <strong>integração Machine API</strong> com dados reais.
+        </div>
+      </div>
+      
       <!-- Métricas resumo -->
       <div class="metrics" style="margin-bottom:14px">
         <div class="metric"><div class="metric-label">Parceiros ativos</div><div class="metric-val" id="rest-ativos" style="color:#1D9E75">—</div><div class="metric-sub">pedindo</div></div>
@@ -2188,9 +2275,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div>
             <div class="card-title" style="margin:0">🎯 Pipeline de Prospecção</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px">Lead → Contato → Reunião → Fechado</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Lead → Contato → Reunião → Fechado · Dados via Machine API</div>
           </div>
-          <button onclick="cidAddRestauranteModal()" style="padding:6px 10px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+ Novo restaurante</button>
         </div>
         <div id="rest-pipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto"></div>
       </div>
@@ -11048,16 +11134,16 @@ function renderInboxChips(){
   var extras = Object.keys(byCidade).filter(function(c){ return ordem.indexOf(c) < 0; });
   var listaCid = ordem.concat(extras);
   
-  // FASE 2 — Gestor vê só a cidade dele
+  // Filtro por permissão (usa cidadesQueUsuarioAtende — funciona pra Gestor e Colaborador)
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  var cidadesPermitidas = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(u) : null;
   var soMinhaCidade = false;
-  if(nivel === 'gestor' && u && u.cidade){
-    var minhaCidade = String(u.cidade).trim();
-    listaCid = listaCid.filter(function(c){ return c === minhaCidade; });
-    soMinhaCidade = true;
-    // Força filtro
-    if(!soMinhaCidade) active = minhaCidade;
+  if(cidadesPermitidas !== null){
+    // Filtra a lista de chips pra mostrar só as cidades que ele atende
+    var permLower = cidadesPermitidas.map(function(c){ return c.toLowerCase(); });
+    listaCid = listaCid.filter(function(c){ return permLower.indexOf(c.toLowerCase()) >= 0; });
+    soMinhaCidade = (listaCid.length === 1);
+    if(soMinhaCidade) active = listaCid[0];
   }
 
   function chip(label, key, total, naoLidas, isActive, isEmpty){
@@ -11118,12 +11204,14 @@ function renderInboxLista(){
     return true;
   });
   
-  // FASE 2 — Gestor vê só conversas da cidade dele
+  // Filtro por permissão (usa cidadesQueUsuarioAtende — Gestor + Colaborador)
   var uInbox = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  var nivelInbox = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(uInbox) : null;
-  if(nivelInbox === 'gestor' && uInbox && uInbox.cidade){
-    var minhaCidade = String(uInbox.cidade).trim();
-    filtradas = filtradas.filter(function(m){ return m.cidade === minhaCidade; });
+  var permInbox = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(uInbox) : null;
+  if(permInbox !== null){
+    var permLowerI = permInbox.map(function(c){ return c.toLowerCase(); });
+    filtradas = filtradas.filter(function(m){ 
+      return permLowerI.indexOf((m.cidade||'').toLowerCase()) >= 0; 
+    });
   }
 
   const count = document.getElementById('inbox-count');
