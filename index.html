@@ -1,4 +1,4 @@
-<!-- v12.27 - Foco do Dia aparece no Dashboard + Modo Foco - 14/05/2026 -->
+<!-- v12.28 - Gestor: ao clicar Minha Cidade abre direto a cidade dele - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -645,6 +645,10 @@ function aplicarPermissoesVisuais(){
   var btnDesafio = document.getElementById('btn-novo-desafio');
   if(btnDesafio) btnDesafio.style.display = perms.pode_criar_desafios ? '' : 'none';
   
+  // Esconde botão Voltar dentro da Cidade (Gestor só tem 1 cidade, não há pra onde voltar)
+  var btnVoltarCid = document.getElementById('btn-voltar-cidades');
+  if(btnVoltarCid) btnVoltarCid.style.display = (nivel === 'gestor') ? 'none' : '';
+  
   // Botões de editar pessoas (escondidos pra todos exceto super_admin)
   if(!perms.pode_editar_pessoas){
     document.querySelectorAll('[data-perm="editar-pessoa"], .btn-editar-pessoa').forEach(function(b){
@@ -726,7 +730,26 @@ window.nav = function(el, page){
         'tarefas':         function(){ if(typeof initTarefas==='function') initTarefas(); },
         'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('agenda'); },
         'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
-        'cidades':         function(){ if(typeof voltarCidades==='function'){voltarCidades(); renderCidadesGrid();} },
+        'cidades':         function(){ 
+                              // Se for Gestor → abre direto a cidade dele (Minha Cidade)
+                              try {
+                                var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+                                var nivel = u && typeof detectarNivelPermissao === 'function' ? detectarNivelPermissao(u) : null;
+                                if(nivel === 'gestor' && u && u.cidade){
+                                  var minhaCidade = String(u.cidade).trim().toLowerCase();
+                                  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+                                  var match = cidades.find(function(c){ return (c.nome||'').trim().toLowerCase() === minhaCidade; });
+                                  if(match && typeof abrirCidade === 'function'){
+                                    // Renderiza a lista (necessária no DOM) e depois abre direto a cidade
+                                    if(typeof renderCidadesGrid === 'function') renderCidadesGrid();
+                                    setTimeout(function(){ abrirCidade(match.id); }, 50);
+                                    return;
+                                  }
+                                }
+                              } catch(e){ console.warn('auto-abrir cidade do gestor:', e); }
+                              // Fluxo normal — lista de cidades
+                              if(typeof voltarCidades==='function'){voltarCidades(); renderCidadesGrid();} 
+                            },
         'pessoas':         function(){ if(typeof renderPessoas==='function') renderPessoas(); },
         'inbox':           function(){
                               if(typeof renderInboxLista==='function') renderInboxLista();
@@ -820,7 +843,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.27</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.28</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -1961,7 +1984,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <!-- PAINEL INDIVIDUAL -->
   <div id="cidade-painel" style="display:none">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <button onclick="voltarCidades()" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <button id="btn-voltar-cidades" onclick="voltarCidades()" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 5l-7 7 7 7" stroke="var(--text2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div style="flex:1">
