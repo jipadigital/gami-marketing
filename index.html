@@ -1,4 +1,4 @@
-<!-- v12.29 - Aba Cidade: ferramentas pro Gestor (Motoboys, Restaurantes, Visão) - 14/05/2026 -->
+<!-- v12.30 - Abas Cidade focadas: Equipe c/ fotos, Anotações privadas, Datas c/ calendário - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -843,7 +843,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.29</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.30</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -2219,26 +2219,76 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
     </div>
 
+    <!-- ===== ABA EQUIPE ===== -->
     <div id="ctab-equipe" style="display:none">
-      <div id="cp-equipe-list"></div>
-    </div>
+      <!-- Métricas resumo da equipe -->
+      <div class="metrics" style="margin-bottom:14px">
+        <div class="metric"><div class="metric-label">Total na equipe</div><div class="metric-val" id="eq-total" style="color:var(--gami-blue)">—</div><div class="metric-sub">pessoas</div></div>
+        <div class="metric"><div class="metric-label">Aniversários do mês</div><div class="metric-val" id="eq-bdays" style="color:#EF9F27">—</div><div class="metric-sub">parabenize!</div></div>
+        <div class="metric"><div class="metric-label">Novatos</div><div class="metric-val" id="eq-novatos" style="color:#1D9E75">—</div><div class="metric-sub">menos de 90 dias</div></div>
+        <div class="metric"><div class="metric-label">Veteranos</div><div class="metric-val" id="eq-veteranos" style="color:#8B5CF6">—</div><div class="metric-sub">+ 1 ano</div></div>
+      </div>
 
-    <div id="ctab-insights" style="display:none">
+      <!-- Aniversariantes do mês (destaque) -->
+      <div class="card" id="eq-bdays-card" style="margin-bottom:14px;display:none;background:linear-gradient(135deg,#FFF8E1,#FCEBEB);border-color:#EF9F2733">
+        <div class="card-title">🎂 Aniversariantes do mês</div>
+        <div id="eq-bdays-list" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px"></div>
+      </div>
+
+      <!-- Lista geral da equipe -->
       <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="card-title" style="margin:0">Insights e observações estratégicas</div>
-          <span style="font-size:10px;color:var(--text3)">Acumula ao longo do tempo</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin:0">👥 Pessoas da equipe</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="eq-busca" class="inp" placeholder="🔍 Buscar..." style="width:160px;font-size:12px" oninput="renderEquipeCidade()"/>
+            <select id="eq-filtro" class="sel" style="font-size:12px;width:130px" onchange="renderEquipeCidade()">
+              <option value="todos">Todos</option>
+              <option value="gestor">Gestores</option>
+              <option value="suporte">Suporte</option>
+              <option value="motoboy">Motoboys</option>
+              <option value="outros">Outros</option>
+            </select>
+          </div>
         </div>
-        <textarea id="cp-insights-txt" class="inp" style="min-height:120px;resize:vertical;font-size:12px;line-height:1.6" placeholder="Anote problemas, oportunidades, ideias, aprendizados desta cidade..."></textarea>
-        <div style="display:flex;gap:6px;margin-top:6px">
-          <button onclick="salvarCampoLocal('insights')" class="btn btn-ghost btn-sm">Salvar nota</button>
-          <button onclick="gerarInsightIA()" class="btn btn-ia btn-sm">Analisar com IA ↗</button>
-        </div>
-        <div id="cp-insights-historico" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
+        <div id="cp-equipe-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>
       </div>
     </div>
 
-    <div 
+    <!-- ===== ABA ANOTAÇÕES (privadas do Gestor) ===== -->
+    <div id="ctab-insights" style="display:none">
+      <div class="card" style="background:linear-gradient(135deg,#E6F6FE,#FFF8E1);border-left:4px solid var(--gami-blue)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:28px">📝</div>
+          <div style="flex:1">
+            <div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700">Anotações da Cidade</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">🔒 Privadas — só você vê o que escreve aqui</div>
+          </div>
+          <div id="cp-insights-status" style="font-size:10px;color:var(--text3)"></div>
+        </div>
+        <textarea id="cp-insights-txt" class="inp" style="min-height:200px;resize:vertical;font-size:13px;line-height:1.7;background:#fff;border:1.5px solid #DDE3EB" placeholder="Escreva aqui suas anotações sobre a cidade...
+
+Exemplos:
+• Restaurante X parou de pedir — investigar
+• João Silva está performando muito bem, considerar como motoboy mentor
+• Próxima reunião com equipe: 25/05
+• Ideia: campanha local pra Dia das Mães
+• Problema recorrente: motoboys reclamando do app — falar com TI
+
+Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty()"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button onclick="cidSalvarAnotacoes()" id="cp-anotacoes-btn-salvar" style="padding:9px 18px;border:none;border-radius:8px;background:var(--gami-blue);color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar anotações</button>
+          <span id="cp-anotacoes-info" style="font-size:11px;color:var(--text3)"></span>
+        </div>
+      </div>
+
+      <!-- Histórico de anotações antigas (auto-save por semana) -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-title">📚 Histórico de anotações</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:10px">Snapshots automáticos — visualize anotações anteriores</div>
+        <div id="cp-insights-historico" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
     <!-- ===== ABA MACHINE API ===== -->
     <div id="ctab-machine" style="display:none;height:0;overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
@@ -2281,14 +2331,58 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
 
 <div id="ctab-calendario" style="display:none">
-      <div class="card">
-        <div class="card-title">Datas importantes da cidade</div>
-        <div id="cp-datas-list" style="margin-bottom:10px"></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <input id="cp-nova-data-nome" class="inp" style="flex:1;min-width:140px" placeholder="Nome do evento ou data importante..."/>
-          <input id="cp-nova-data-dt" class="inp" type="date" style="width:auto"/>
-          <button onclick="addData()" class="btn btn-primary btn-sm">Adicionar</button>
+      <!-- Resumo -->
+      <div class="metrics" style="margin-bottom:14px">
+        <div class="metric"><div class="metric-label">Próxima ação</div><div class="metric-val" id="dt-proxima" style="color:var(--orange);font-size:14px!important">—</div><div class="metric-sub" id="dt-proxima-dias">—</div></div>
+        <div class="metric"><div class="metric-label">Esta semana</div><div class="metric-val" id="dt-semana" style="color:var(--gami-blue)">—</div><div class="metric-sub">ações planejadas</div></div>
+        <div class="metric"><div class="metric-label">Este mês</div><div class="metric-val" id="dt-mes" style="color:#8B5CF6">—</div><div class="metric-sub">ações totais</div></div>
+      </div>
+
+      <!-- Adicionar nova ação -->
+      <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#E6F6FE,#FFF8E1);border-color:#1AB8F033">
+        <div class="card-title">➕ Planejar nova ação</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Adicione campanhas, reuniões, eventos importantes</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end">
+          <div>
+            <div class="field-label">Nome da ação *</div>
+            <input id="cp-nova-data-nome" class="inp" placeholder="Ex: Reunião com motoboys, Campanha Dia dos Pais..."/>
+          </div>
+          <div>
+            <div class="field-label">Tipo</div>
+            <select id="cp-nova-data-tipo" class="sel">
+              <option value="📞 Reunião">📞 Reunião</option>
+              <option value="🎁 Campanha">🎁 Campanha</option>
+              <option value="📅 Evento">📅 Evento</option>
+              <option value="🏢 Visita">🏢 Visita</option>
+              <option value="🎂 Aniversário">🎂 Aniversário</option>
+              <option value="⭐ Outro">⭐ Outro</option>
+            </select>
+          </div>
+          <div>
+            <div class="field-label">Data</div>
+            <input id="cp-nova-data-dt" class="inp" type="date"/>
+          </div>
+          <button onclick="addData()" class="btn btn-primary" style="white-space:nowrap;height:38px">+ Adicionar</button>
         </div>
+      </div>
+
+      <!-- Lista de ações futuras -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title">🚀 Próximas ações</div>
+        <div id="cp-datas-list" style="margin-top:10px"></div>
+      </div>
+
+      <!-- Calendário mensal visual -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="card-title" style="margin:0">📅 Visão do mês</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button onclick="cidMudarMesCal(-1)" style="padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);cursor:pointer">‹</button>
+            <span id="cp-cal-mes-label" style="font-size:12px;font-weight:600;min-width:120px;text-align:center">—</span>
+            <button onclick="cidMudarMesCal(1)" style="padding:4px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);cursor:pointer">›</button>
+          </div>
+        </div>
+        <div id="cp-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;font-size:11px"></div>
       </div>
     </div>
 
@@ -7957,13 +8051,8 @@ function abrirCidade(id){
   var hostDC = document.getElementById('cp-datas-comemorativas');
   if(hostDC && typeof renderDatasCidade === 'function') hostDC.innerHTML = renderDatasCidade(c.nome);
 
-  // Equipe
-  document.getElementById('cp-equipe-list').innerHTML = equipe.length>0 ? equipe.map(p=>`
-    <div class="person-card">
-      <div class="p-av" style="width:36px;height:36px;background:#E6F6FE;color:#0E7AB8">${p.nome.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}</div>
-      <div style="flex:1"><div style="font-size:13px;font-weight:500">${p.nome}</div><div style="font-size:11px;color:var(--text3)">${p.cargo||''} · ${p.nivel||''}</div></div>
-      ${p.tel?`<a href="https://wa.me/55${p.tel.replace(/\D/g,'')}" target="_blank" class="wa-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a5.526 5.526 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z" fill="#3B6D11"/><path d="M11.95 2C6.478 2 2 6.478 2 11.95c0 1.75.455 3.45 1.317 4.946L2 22l5.233-1.29A9.974 9.974 0 0011.954 21.9C17.426 21.9 21.9 17.425 21.9 11.95 21.9 6.478 17.425 2 11.95 2z" stroke="#3B6D11" stroke-width=".8" fill="none"/></svg></a>`:''}
-    </div>`).join('') : `<div style="padding:20px;text-align:center;color:var(--text3);font-size:13px">Nenhuma pessoa cadastrada para ${c.nome}.<br><button onclick="nav(document.querySelector('[onclick*=pessoas]'),\'pessoas\')" style="margin-top:8px;font-size:12px;padding:5px 12px;border:1px solid var(--orange);border-radius:6px;background:transparent;color:var(--orange);cursor:pointer">Ir para Pessoas →</button></div>`;
+  // Equipe (renderiza com função dedicada)
+  if(typeof renderEquipeCidade === 'function') try { renderEquipeCidade(); } catch(e){ console.warn('renderEquipeCidade:', e); }
 
   // Conteúdos programados
   renderPostsList();
@@ -8582,6 +8671,251 @@ function setCidadeTab(btn, tab){
   if(tab === 'motoboys' && typeof renderMotoboysAba === 'function') renderMotoboysAba();
   if(tab === 'restaurantes' && typeof renderRestaurantesAba === 'function') renderRestaurantesAba();
   if(tab === 'overview' && typeof renderVisaoGeralCidade === 'function') renderVisaoGeralCidade();
+  if(tab === 'equipe' && typeof renderEquipeCidade === 'function') renderEquipeCidade();
+  if(tab === 'insights' && typeof renderAnotacoesCidade === 'function') renderAnotacoesCidade();
+  if(tab === 'calendario' && typeof renderDatasCidadeAba === 'function') renderDatasCidadeAba();
+}
+
+/* ============================================================== */
+/* RENDER — Aba EQUIPE (com fotos de Pessoas)                     */
+/* ============================================================== */
+
+function renderEquipeCidade(){
+  if(!window.__cidadeAtual) return;
+  var c = window.__cidadeAtual;
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  
+  // Filtra equipe pela cidade
+  var equipe = pessoas.filter(function(p){ 
+    return (typeof pessoaAtendeCidade === 'function') ? pessoaAtendeCidade(p, c.nome) : p.cidade === c.nome; 
+  });
+  
+  // Métricas
+  var hoje = new Date();
+  var mesAtual = hoje.getMonth() + 1;
+  var bdays = equipe.filter(function(p){
+    if(!p.nascimento) return false;
+    var parts = p.nascimento.split('-');
+    return parts.length >= 2 && parseInt(parts[1]) === mesAtual;
+  });
+  
+  var novatos = equipe.filter(function(p){
+    if(!p.entrada) return false;
+    var diasDesde = (hoje - new Date(p.entrada)) / (1000*60*60*24);
+    return diasDesde < 90 && diasDesde >= 0;
+  });
+  var veteranos = equipe.filter(function(p){
+    if(!p.entrada) return false;
+    var diasDesde = (hoje - new Date(p.entrada)) / (1000*60*60*24);
+    return diasDesde >= 365;
+  });
+  
+  var setMet = function(id, val){ var el = document.getElementById(id); if(el) el.textContent = val; };
+  setMet('eq-total', equipe.length);
+  setMet('eq-bdays', bdays.length);
+  setMet('eq-novatos', novatos.length);
+  setMet('eq-veteranos', veteranos.length);
+  
+  // Card aniversariantes (só mostra se tiver)
+  var bdaysCard = document.getElementById('eq-bdays-card');
+  var bdaysList = document.getElementById('eq-bdays-list');
+  if(bdaysCard && bdaysList){
+    if(bdays.length > 0){
+      bdaysCard.style.display = 'block';
+      bdaysList.innerHTML = bdays.map(function(p){
+        var dia = parseInt(p.nascimento.split('-')[2]);
+        var foto = p.foto || '';
+        var iniciais = (p.nome||'').split(' ').map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,.6);border-radius:10px;border:1px solid #EF9F2733">'
+          + (foto ? '<img src="'+foto+'" style="width:40px;height:40px;border-radius:50%;object-fit:cover"/>' : '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#EF9F27,#E24B4A);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">'+iniciais+'</div>')
+          + '<div><div style="font-size:12px;font-weight:600;color:#A32D2D">'+p.nome+'</div><div style="font-size:10px;color:#854F0B">🎂 dia '+dia+'</div></div>'
+          + '</div>';
+      }).join('');
+    } else {
+      bdaysCard.style.display = 'none';
+    }
+  }
+  
+  // Lista geral filtrada e buscada
+  var busca = ((document.getElementById('eq-busca')||{}).value || '').toLowerCase();
+  var filtro = (document.getElementById('eq-filtro')||{}).value || 'todos';
+  
+  var filtrados = equipe.filter(function(p){
+    if(busca && (p.nome||'').toLowerCase().indexOf(busca) < 0 && (p.cargo||'').toLowerCase().indexOf(busca) < 0) return false;
+    if(filtro === 'gestor' && (p.cargo||'').toLowerCase().indexOf('gestor') < 0) return false;
+    if(filtro === 'suporte' && (p.cargo||'').toLowerCase().indexOf('suporte') < 0) return false;
+    if(filtro === 'motoboy' && (p.cargo||'').toLowerCase().indexOf('motoboy') < 0) return false;
+    if(filtro === 'outros'){
+      var cargo = (p.cargo||'').toLowerCase();
+      if(cargo.indexOf('gestor') >= 0 || cargo.indexOf('suporte') >= 0 || cargo.indexOf('motoboy') >= 0) return false;
+    }
+    return true;
+  });
+  
+  var lista = document.getElementById('cp-equipe-list');
+  if(!lista) return;
+  
+  if(filtrados.length === 0){
+    lista.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3);font-size:13px">'
+      + (equipe.length === 0 
+        ? 'Nenhuma pessoa cadastrada pra '+c.nome+'.<br><button onclick="nav(document.querySelector(\'[onclick*=pessoas]\'),\'pessoas\')" style="margin-top:10px;font-size:12px;padding:6px 14px;border:1px solid var(--orange);border-radius:6px;background:transparent;color:var(--orange);cursor:pointer">Ir pra Pessoas →</button>'
+        : 'Nenhum resultado pra esse filtro.')
+      + '</div>';
+    return;
+  }
+  
+  lista.innerHTML = filtrados.map(function(p){
+    var foto = p.foto || '';
+    var iniciais = (p.nome||'').split(' ').map(function(w){return w[0];}).join('').slice(0,2).toUpperCase();
+    var avatar = foto 
+      ? '<img src="'+foto+'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0"/>' 
+      : '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0">'+iniciais+'</div>';
+    
+    var diasDesde = p.entrada ? Math.floor((hoje - new Date(p.entrada)) / (1000*60*60*24)) : null;
+    var tempo = '';
+    if(diasDesde !== null){
+      if(diasDesde < 90) tempo = '<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#EAF3DE;color:#3B6D11;font-weight:600">🌱 Novato</span>';
+      else if(diasDesde >= 365) tempo = '<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#E6F6FE;color:#0E7AB8;font-weight:600">⭐ Veterano</span>';
+    }
+    
+    return '<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px">'
+      + avatar
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+(p.cargo||'—')+(p.nivel?' · '+p.nivel:'')+'</div>'
+        + (tempo ? '<div style="margin-top:4px">'+tempo+'</div>' : '')
+      + '</div>'
+      + (p.tel ? '<a href="https://wa.me/55'+p.tel.replace(/\D/g,'')+'" target="_blank" style="text-decoration:none;flex-shrink:0;padding:7px;border-radius:7px;background:#25D366;color:white;display:flex;align-items:center;justify-content:center" title="WhatsApp"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg></a>' : '')
+      + '</div>';
+  }).join('');
+}
+
+/* ============================================================== */
+/* RENDER — Aba ANOTAÇÕES                                          */
+/* (privadas — chave por cidade + usuário)                        */
+/* ============================================================== */
+
+function _anotacoesKey(){
+  var c = window.__cidadeAtual; if(!c) return null;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var pid = u && u.id ? u.id : 'guest';
+  return 'gami_cidade_anotacoes_' + c.id + '_' + pid;
+}
+
+function renderAnotacoesCidade(){
+  var key = _anotacoesKey();
+  if(!key) return;
+  var ta = document.getElementById('cp-insights-txt');
+  if(!ta) return;
+  var saved = '';
+  try { saved = localStorage.getItem(key) || ''; } catch(e){}
+  ta.value = saved;
+  
+  var info = document.getElementById('cp-anotacoes-info');
+  if(info){
+    var ts = '';
+    try { ts = localStorage.getItem(key + '_ts') || ''; } catch(e){}
+    if(ts){
+      info.innerHTML = '✓ Última edição: ' + new Date(parseInt(ts)).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    } else {
+      info.textContent = '';
+    }
+  }
+  
+  // Renderiza histórico
+  renderHistoricoAnotacoes();
+}
+
+function cidAnotacoesDirty(){
+  var btn = document.getElementById('cp-anotacoes-btn-salvar');
+  var info = document.getElementById('cp-anotacoes-info');
+  if(btn){
+    btn.style.background = 'linear-gradient(135deg,#EF9F27,#F57F17)';
+    btn.innerHTML = '💾 Salvar (alterações não salvas)';
+  }
+  if(info) info.innerHTML = '<span style="color:#EF9F27">● editando...</span>';
+}
+
+function cidSalvarAnotacoes(){
+  var key = _anotacoesKey();
+  if(!key) return;
+  var ta = document.getElementById('cp-insights-txt');
+  if(!ta) return;
+  var val = ta.value || '';
+  var now = Date.now();
+  try { 
+    localStorage.setItem(key, val); 
+    localStorage.setItem(key + '_ts', String(now));
+    // Salva snapshot semanal (max 8 snapshots)
+    var snapKey = key + '_snap_' + new Date().toISOString().split('T')[0];
+    localStorage.setItem(snapKey, val);
+  } catch(e){}
+  
+  var btn = document.getElementById('cp-anotacoes-btn-salvar');
+  var info = document.getElementById('cp-anotacoes-info');
+  if(btn){
+    btn.style.background = '#1D9E75';
+    btn.innerHTML = '✓ Salvo!';
+    setTimeout(function(){
+      btn.style.background = 'var(--gami-blue)';
+      btn.innerHTML = '💾 Salvar anotações';
+    }, 1800);
+  }
+  if(info){
+    info.innerHTML = '<span style="color:#1D9E75">✓ Salvo agora · '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'</span>';
+  }
+  
+  renderHistoricoAnotacoes();
+}
+
+function renderHistoricoAnotacoes(){
+  var key = _anotacoesKey();
+  if(!key) return;
+  var host = document.getElementById('cp-insights-historico');
+  if(!host) return;
+  
+  // Procura todas as chaves de snapshot
+  var snaps = [];
+  var prefix = key + '_snap_';
+  try {
+    for(var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if(k && k.indexOf(prefix) === 0){
+        var data = k.substring(prefix.length);
+        var val = localStorage.getItem(k) || '';
+        if(val.trim()){
+          snaps.push({data: data, valor: val});
+        }
+      }
+    }
+  } catch(e){}
+  
+  snaps.sort(function(a,b){ return b.data.localeCompare(a.data); });
+  
+  if(snaps.length === 0){
+    host.innerHTML = '<div style="text-align:center;padding:14px;color:var(--text3);font-size:11px;font-style:italic">Sem snapshots anteriores ainda.</div>';
+    return;
+  }
+  
+  host.innerHTML = snaps.slice(0, 8).map(function(s){
+    var preview = s.valor.substring(0, 100) + (s.valor.length > 100 ? '...' : '');
+    return '<div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+      + '<div style="font-size:11px;font-weight:600;color:var(--text2)">📅 '+s.data.split('-').reverse().join('/')+'</div>'
+      + '<span style="font-size:9px;color:var(--text3)">'+s.valor.length+' chars</span>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text3);line-height:1.5">'+preview.replace(/\n/g,'<br>')+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+/* ============================================================== */
+/* RENDER — Aba DATAS / Calendário da cidade                      */
+/* ============================================================== */
+
+function renderDatasCidadeAba(){
+  // Mantém renderDatasList legado mas adiciona contexto pro Gestor
+  if(typeof renderDatasList === 'function') try { renderDatasList(); } catch(e){}
 }
 
 function toggleCidadeCheck(idx){
@@ -8709,38 +9043,163 @@ function salvarCampoLocal(campo){
 }
 
 // Datas
+var _cidadeCalMesOffset = 0;
+
 function renderDatasList(){
+  if(!_cidadeAtualId) return;
   const datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
-  document.getElementById('cp-datas-list').innerHTML = datas.length===0
-    ? '<div style="font-size:12px;color:var(--text3);padding:6px 0">Nenhuma data importante cadastrada.</div>'
-    : datas.map((d,i)=>{
-        const dt = d.data ? d.data.split('-').reverse().join('/') : '';
-        return `<div class="row">
-          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:#E6F1FB;color:#185FA5;font-weight:500">${dt}</span>
-          <span style="flex:1;font-size:12px;color:var(--text)">${d.nome}</span>
-          <button onclick="removeData(${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px">×</button>
-        </div>`;
+  
+  // Atualiza métricas
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var futurasOrd = datas.filter(function(d){ return d.data; }).map(function(d){
+    var dt = new Date(d.data); dt.setHours(0,0,0,0);
+    return { d: d, dt: dt, dias: Math.round((dt - hoje) / (1000*60*60*24)) };
+  }).filter(function(x){ return x.dias >= 0; }).sort(function(a,b){ return a.dt - b.dt; });
+  
+  // Próxima
+  var elProx = document.getElementById('dt-proxima');
+  var elProxDias = document.getElementById('dt-proxima-dias');
+  if(elProx){
+    if(futurasOrd.length > 0){
+      var p = futurasOrd[0];
+      elProx.textContent = p.d.nome.length > 18 ? p.d.nome.substring(0,18)+'…' : p.d.nome;
+      elProxDias.textContent = p.dias === 0 ? '🔥 HOJE!' : p.dias === 1 ? 'amanhã' : 'em '+p.dias+' dias';
+    } else {
+      elProx.textContent = '—';
+      elProxDias.textContent = 'nada agendado';
+    }
+  }
+  
+  // Esta semana
+  var elSem = document.getElementById('dt-semana');
+  if(elSem) elSem.textContent = futurasOrd.filter(function(x){ return x.dias <= 7; }).length;
+  // Este mês
+  var elMes = document.getElementById('dt-mes');
+  if(elMes) elMes.textContent = futurasOrd.filter(function(x){ return x.dias <= 31; }).length;
+  
+  // Lista próximas ações (visual rico)
+  var lista = document.getElementById('cp-datas-list');
+  if(lista){
+    if(futurasOrd.length === 0){
+      lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;font-style:italic">Nenhuma ação planejada ainda.<br>Use o formulário acima pra criar a primeira!</div>';
+    } else {
+      lista.innerHTML = futurasOrd.map(function(x, i){
+        var d = x.d;
+        var dataFmt = new Date(d.data).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',weekday:'short'});
+        var cor = x.dias === 0 ? '#E24B4A' : x.dias <= 3 ? '#EF9F27' : x.dias <= 7 ? '#1AB8F0' : '#9DB4D6';
+        var bg = x.dias === 0 ? '#FCEBEB' : x.dias <= 3 ? '#FAEEDA' : x.dias <= 7 ? '#E6F6FE' : '#F5F7FA';
+        var diasLbl = x.dias === 0 ? '🔥 HOJE' : x.dias === 1 ? 'AMANHÃ' : x.dias+' dias';
+        return '<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:'+bg+';border:1px solid '+cor+'33;border-left:3px solid '+cor+';border-radius:8px;margin-bottom:6px">'
+          + '<div style="text-align:center;min-width:60px">'
+          + '<div style="font-size:11px;color:'+cor+';font-weight:700">'+diasLbl+'</div>'
+          + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase">'+dataFmt+'</div>'
+          + '</div>'
+          + '<div style="flex:1;font-size:13px;font-weight:500;color:var(--text)">'+(d.tipo?'<span style="margin-right:6px">'+d.tipo.split(' ')[0]+'</span>':'')+d.nome+'</div>'
+          + '<button onclick="removeData('+i+')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 6px" title="Remover">×</button>'
+          + '</div>';
       }).join('');
+    }
+  }
+  
+  // Renderiza calendário visual
+  renderCidadeCalGrid();
+}
+
+function renderCidadeCalGrid(){
+  if(!_cidadeAtualId) return;
+  var datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
+  
+  var hoje = new Date();
+  var ano = hoje.getFullYear();
+  var mes = hoje.getMonth() + _cidadeCalMesOffset;
+  var ref = new Date(ano, mes, 1);
+  var nomeMes = ref.toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+  
+  var elLabel = document.getElementById('cp-cal-mes-label');
+  if(elLabel) elLabel.textContent = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
+  
+  var grid = document.getElementById('cp-cal-grid');
+  if(!grid) return;
+  
+  var diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  var ultimoDia = new Date(ref.getFullYear(), ref.getMonth()+1, 0).getDate();
+  var inicio = ref.getDay();
+  
+  var html = diasSemana.map(function(d){
+    return '<div style="padding:6px;text-align:center;font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase">'+d+'</div>';
+  }).join('');
+  
+  // Espaços antes do dia 1
+  for(var i = 0; i < inicio; i++) html += '<div></div>';
+  
+  // Dias do mês
+  for(var d = 1; d <= ultimoDia; d++){
+    var dataStr = ref.getFullYear()+'-'+String(ref.getMonth()+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var ev = datas.filter(function(x){ return x.data === dataStr; });
+    var isHoje = (d === hoje.getDate() && ref.getMonth() === hoje.getMonth() && ref.getFullYear() === hoje.getFullYear());
+    var bg = isHoje ? 'linear-gradient(135deg,#1AB8F0,#0E7AB8)' : (ev.length > 0 ? '#FFF8E1' : 'var(--surface2)');
+    var corTxt = isHoje ? 'white' : 'var(--text)';
+    var border = ev.length > 0 ? '1px solid #EF9F2766' : '1px solid var(--border)';
+    
+    var title = ev.length > 0 ? ev.map(function(e){ return e.nome; }).join(' · ') : '';
+    
+    html += '<div title="'+title+'" style="aspect-ratio:1;padding:4px;background:'+bg+';border:'+border+';border-radius:6px;display:flex;flex-direction:column;justify-content:space-between;color:'+corTxt+';min-height:40px">'
+      + '<div style="font-size:11px;font-weight:'+(isHoje?'700':'500')+'">'+d+'</div>'
+      + (ev.length > 0 ? '<div style="font-size:14px;text-align:right">'+(ev[0].tipo ? ev[0].tipo.split(' ')[0] : '📌')+'</div>' : '')
+      + '</div>';
+  }
+  
+  grid.innerHTML = html;
+}
+
+function cidMudarMesCal(delta){
+  _cidadeCalMesOffset += delta;
+  renderCidadeCalGrid();
 }
 
 function addData(){
-  const nome = document.getElementById('cp-nova-data-nome').value.trim();
-  const data = document.getElementById('cp-nova-data-dt').value;
-  if(!nome||!_cidadeAtualId) return;
+  var elNome = document.getElementById('cp-nova-data-nome');
+  var elTipo = document.getElementById('cp-nova-data-tipo');
+  var elDt = document.getElementById('cp-nova-data-dt');
+  if(!elNome || !elDt) return;
+  const nome = elNome.value.trim();
+  const tipo = elTipo ? elTipo.value : '';
+  const data = elDt.value;
+  if(!nome || !data){ 
+    alert('Preencha o nome da ação e a data.');
+    return; 
+  }
+  if(!_cidadeAtualId) return;
   const datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
-  datas.push({nome,data});
-  datas.sort((a,b)=>a.data.localeCompare(b.data));
+  datas.push({nome,data,tipo});
+  datas.sort(function(a,b){ return (a.data||'').localeCompare(b.data||''); });
   saveCidadeExtra(_cidadeAtualId,'datas',datas);
-  document.getElementById('cp-nova-data-nome').value='';
-  document.getElementById('cp-nova-data-dt').value='';
+  elNome.value='';
+  elDt.value='';
   renderDatasList();
 }
 
 function removeData(idx){
-  const datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
-  datas.splice(idx,1);
-  saveCidadeExtra(_cidadeAtualId,'datas',datas);
-  renderDatasList();
+  // Como ordem mudou (sort), preciso encontrar o item pelo nome+data
+  var datas = getCidadeExtra(_cidadeAtualId,'datas') || [];
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var futurasOrd = datas.filter(function(d){ return d.data; }).map(function(d){
+    var dt = new Date(d.data); dt.setHours(0,0,0,0);
+    return { d: d, dt: dt, dias: Math.round((dt - hoje) / (1000*60*60*24)) };
+  }).filter(function(x){ return x.dias >= 0; }).sort(function(a,b){ return a.dt - b.dt; });
+  
+  if(!futurasOrd[idx]) return;
+  var alvo = futurasOrd[idx].d;
+  
+  if(!confirm('Remover ação "'+alvo.nome+'"?')) return;
+  
+  // Encontra no array original e remove
+  var pos = datas.findIndex(function(d){ return d.nome === alvo.nome && d.data === alvo.data; });
+  if(pos >= 0){
+    datas.splice(pos, 1);
+    saveCidadeExtra(_cidadeAtualId,'datas',datas);
+    renderDatasList();
+  }
 }
 
 // IA actions
