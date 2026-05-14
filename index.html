@@ -1,4 +1,4 @@
-<!-- v12.25 - Foco do Dia melhorado (botão Salvar + Sugestões internas) - 14/05/2026 -->
+<!-- v12.26 - Sugestões de Tarefas por cargo (banco interno) - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -820,7 +820,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.25</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.26</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -1289,6 +1289,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
               <option>Financeiro</option>
               <option>Outro</option>
             </select>
+            <button onclick="tfSugerirTarefaModal()" style="padding:7px 11px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap" title="Sugestões de tarefas baseadas no seu cargo">✨ Sugerir</button>
             <button onclick="tfAdicionarRapido()" class="btn btn-primary" style="font-size:12px;white-space:nowrap">+ Adicionar</button>
           </div>
         </div>
@@ -11646,6 +11647,253 @@ function tfAplicarSugestaoFoco(texto){
   if(modal) modal.remove();
 }
 
+/* ============================================================== */
+/* SUGESTÕES DE TAREFAS por cargo                                 */
+/* Cada uma tem: icon, texto, categoria, prioridade               */
+/* ============================================================== */
+
+var SUGESTOES_TAREFAS = {
+  super_admin: [
+    {icon:'📣', texto:'Criar nova campanha Meta Ads', cat:'Campanhas', prio:'alta'},
+    {icon:'📊', texto:'Analisar performance da semana no Meta Business', cat:'Marketing', prio:'media'},
+    {icon:'🎨', texto:'Produzir 3 posts pra Instagram (feed)', cat:'Conteúdo', prio:'alta'},
+    {icon:'📅', texto:'Agendar Stories das 9 cidades pra próxima semana', cat:'Conteúdo', prio:'alta'},
+    {icon:'💡', texto:'Brainstorm de campanha sazonal', cat:'Marketing', prio:'media'},
+    {icon:'📰', texto:'Escrever artigo SEO pro blog Gâmi', cat:'Conteúdo', prio:'media'},
+    {icon:'📞', texto:'Reunião 1:1 com Rafhael (Diretoria)', cat:'Reunião', prio:'alta'},
+    {icon:'🎯', texto:'Revisar pilares de captação de motoboys', cat:'Marketing', prio:'media'},
+    {icon:'🎨', texto:'Criar carrossel educativo sobre vagas', cat:'Conteúdo', prio:'alta'},
+    {icon:'📸', texto:'Gravar Reels com depoimento de motoboy', cat:'Conteúdo', prio:'alta'},
+    {icon:'📈', texto:'Acompanhar ROI das campanhas ativas', cat:'Marketing', prio:'alta'},
+    {icon:'🤝', texto:'Alinhar pauta semanal com Diretoria', cat:'Reunião', prio:'alta'},
+    {icon:'💬', texto:'Responder DMs pendentes do Instagram', cat:'Marketing', prio:'media'},
+    {icon:'📝', texto:'Atualizar Banco de Ideias com tendências', cat:'Conteúdo', prio:'baixa'},
+    {icon:'🎤', texto:'Gravar conteúdo pessoal @cleytonfrank.ia', cat:'Conteúdo', prio:'media'},
+    {icon:'🏆', texto:'Revisar ranking de Cidades top performers', cat:'Marketing', prio:'media'},
+    {icon:'📋', texto:'Estruturar Cultura Code do mês', cat:'Marketing', prio:'baixa'},
+    {icon:'🎬', texto:'Editar vídeo pra Reels Gâmi', cat:'Conteúdo', prio:'alta'},
+    {icon:'📑', texto:'Criar relatório mensal de marketing', cat:'Marketing', prio:'media'},
+    {icon:'🌐', texto:'Atualizar site/landing com novidades', cat:'Marketing', prio:'media'},
+    {icon:'🎁', texto:'Planejar promoção/sorteio com cidades', cat:'Campanhas', prio:'media'},
+    {icon:'📲', texto:'Testar nova estratégia de Stories interativos', cat:'Conteúdo', prio:'media'},
+    {icon:'👥', texto:'Validar conteúdo dos gestores das cidades', cat:'Marketing', prio:'media'},
+    {icon:'🔍', texto:'Pesquisar concorrentes e tendências do setor', cat:'Marketing', prio:'baixa'}
+  ],
+  diretoria: [
+    {icon:'📊', texto:'Revisar resultados financeiros da semana', cat:'Financeiro', prio:'alta'},
+    {icon:'👥', texto:'Reunião 1:1 com gerentes (Leomara e Thiago)', cat:'Reunião', prio:'alta'},
+    {icon:'🎯', texto:'Definir metas estratégicas do trimestre', cat:'Reunião', prio:'alta'},
+    {icon:'🤝', texto:'Reunião com gestores das cidades top', cat:'Reunião', prio:'alta'},
+    {icon:'📈', texto:'Análise de expansão pra novas cidades', cat:'Reunião', prio:'media'},
+    {icon:'💼', texto:'Acompanhar performance financeira por cidade', cat:'Financeiro', prio:'alta'},
+    {icon:'⚡', texto:'Tomar decisão sobre projeto pendente', cat:'Reunião', prio:'alta'},
+    {icon:'🏛️', texto:'Reunião de Cultura Gâmi com a equipe', cat:'Reunião', prio:'media'},
+    {icon:'📑', texto:'Revisar contratos importantes', cat:'Financeiro', prio:'media'},
+    {icon:'🎉', texto:'Aprovar campanha de captação de motoboys', cat:'Campanhas', prio:'alta'},
+    {icon:'📞', texto:'Ligação com parceiro estratégico', cat:'Reunião', prio:'alta'},
+    {icon:'📋', texto:'Validar plano de ação dos gestores', cat:'Reunião', prio:'media'},
+    {icon:'🏆', texto:'Revisar ranking de performance das cidades', cat:'Reunião', prio:'media'},
+    {icon:'🎯', texto:'Definir KPIs do próximo mês', cat:'Reunião', prio:'alta'},
+    {icon:'💡', texto:'Brainstorm de novas iniciativas estratégicas', cat:'Reunião', prio:'media'},
+    {icon:'📅', texto:'Planejar agenda da próxima semana', cat:'Outro', prio:'media'},
+    {icon:'🤔', texto:'Decidir sobre investimento em marketing', cat:'Financeiro', prio:'alta'},
+    {icon:'👀', texto:'Acompanhar feedback dos clientes', cat:'Reunião', prio:'media'},
+    {icon:'🚀', texto:'Aprovar nova feature do app/dashboard', cat:'Reunião', prio:'media'},
+    {icon:'📊', texto:'Comparar performance entre cidades', cat:'Financeiro', prio:'media'},
+    {icon:'🏢', texto:'Visita a uma das cidades da operação', cat:'Reunião', prio:'media'},
+    {icon:'📝', texto:'Documentar processo estratégico chave', cat:'Outro', prio:'baixa'},
+    {icon:'🎁', texto:'Aprovar bonificação/recompensa pra equipe', cat:'Financeiro', prio:'media'},
+    {icon:'🔍', texto:'Análise de concorrência no setor delivery', cat:'Reunião', prio:'baixa'}
+  ],
+  gerencia: [
+    {icon:'📋', texto:'Validar relatórios financeiros do dia', cat:'Financeiro', prio:'alta'},
+    {icon:'👥', texto:'Acompanhar performance dos gestores', cat:'Reunião', prio:'alta'},
+    {icon:'⚡', texto:'Resolver pendências operacionais urgentes', cat:'Outro', prio:'alta'},
+    {icon:'📊', texto:'Analisar métricas das cidades', cat:'Financeiro', prio:'alta'},
+    {icon:'🎯', texto:'Garantir meta operacional do dia', cat:'Outro', prio:'alta'},
+    {icon:'🤝', texto:'Reunião semanal com Diretoria', cat:'Reunião', prio:'alta'},
+    {icon:'📅', texto:'Planejar entregas da próxima semana', cat:'Outro', prio:'media'},
+    {icon:'✅', texto:'Aprovar fluxos e processos novos', cat:'Outro', prio:'media'},
+    {icon:'📞', texto:'Ligação com gestor de cidade que está abaixo da meta', cat:'Reunião', prio:'alta'},
+    {icon:'📑', texto:'Conferir fluxo de caixa do dia', cat:'Financeiro', prio:'alta'},
+    {icon:'🏆', texto:'Reconhecer destaque da semana', cat:'Outro', prio:'media'},
+    {icon:'⚙️', texto:'Otimizar processo operacional', cat:'Outro', prio:'media'},
+    {icon:'📈', texto:'Acompanhar evolução de KPIs', cat:'Financeiro', prio:'media'},
+    {icon:'💬', texto:'Feedback construtivo pra equipe', cat:'Reunião', prio:'media'},
+    {icon:'🚨', texto:'Investigar problema crítico reportado', cat:'Outro', prio:'alta'},
+    {icon:'📊', texto:'Fechar relatório semanal', cat:'Financeiro', prio:'media'},
+    {icon:'🎯', texto:'Definir prioridades da equipe', cat:'Reunião', prio:'alta'},
+    {icon:'🔧', texto:'Resolver ticket de suporte interno', cat:'Outro', prio:'media'},
+    {icon:'📋', texto:'Auditar processo de cobrança', cat:'Financeiro', prio:'media'},
+    {icon:'👨‍🏫', texto:'Treinar colaborador novo', cat:'Outro', prio:'media'},
+    {icon:'📅', texto:'Reunião de alinhamento mensal', cat:'Reunião', prio:'media'},
+    {icon:'🤖', texto:'Implementar automação operacional', cat:'Outro', prio:'baixa'},
+    {icon:'📝', texto:'Atualizar manual de processos', cat:'Outro', prio:'baixa'},
+    {icon:'💡', texto:'Sugerir melhoria pra Diretoria', cat:'Reunião', prio:'baixa'}
+  ],
+  gestor: [
+    {icon:'🏍️', texto:'Captar 3 motoboys novos via Instagram', cat:'Cidades', prio:'alta'},
+    {icon:'📞', texto:'Contatar 5 restaurantes parceiros', cat:'Cidades', prio:'alta'},
+    {icon:'📊', texto:'Bater meta de corridas da cidade hoje', cat:'Cidades', prio:'alta'},
+    {icon:'💬', texto:'Responder DMs do Instagram pendentes', cat:'Cidades', prio:'alta'},
+    {icon:'🎯', texto:'Acompanhar qualidade do atendimento aos clientes', cat:'Cidades', prio:'alta'},
+    {icon:'👥', texto:'Alinhamento com equipe local de motoboys', cat:'Reunião', prio:'alta'},
+    {icon:'🤝', texto:'Visitar parceiro estratégico (restaurante)', cat:'Cidades', prio:'alta'},
+    {icon:'📈', texto:'Acompanhar ranking de motoboys da cidade', cat:'Cidades', prio:'media'},
+    {icon:'☎️', texto:'Ligar pra cliente que reclamou', cat:'Cidades', prio:'alta'},
+    {icon:'🛵', texto:'Verificar fila de motoboys no app', cat:'Cidades', prio:'alta'},
+    {icon:'📋', texto:'Atualizar planilha de motoboys ativos', cat:'Cidades', prio:'media'},
+    {icon:'🏢', texto:'Prospectar 3 novos restaurantes parceiros', cat:'Cidades', prio:'alta'},
+    {icon:'📸', texto:'Postar story local da cidade hoje', cat:'Conteúdo', prio:'media'},
+    {icon:'🎁', texto:'Promoção exclusiva pra captar restaurantes', cat:'Campanhas', prio:'media'},
+    {icon:'💡', texto:'Treinar motoboy novo da semana', cat:'Cidades', prio:'media'},
+    {icon:'📞', texto:'Acompanhar restaurante que reduziu pedidos', cat:'Cidades', prio:'alta'},
+    {icon:'🚀', texto:'Plano de ação pra aumentar corridas', cat:'Cidades', prio:'alta'},
+    {icon:'🏆', texto:'Reconhecer motoboy destaque da semana', cat:'Cidades', prio:'media'},
+    {icon:'📅', texto:'Reunião semanal com motoboys', cat:'Reunião', prio:'media'},
+    {icon:'📊', texto:'Reportar status da cidade pra gerência', cat:'Reunião', prio:'alta'},
+    {icon:'🌐', texto:'Atualizar info da cidade no Machine', cat:'Cidades', prio:'baixa'},
+    {icon:'💰', texto:'Conferir comissões dos motoboys', cat:'Financeiro', prio:'media'},
+    {icon:'🎯', texto:'Definir foco da semana com equipe', cat:'Reunião', prio:'media'},
+    {icon:'📑', texto:'Validar dados operacionais do dia', cat:'Cidades', prio:'media'}
+  ],
+  colaborador: [
+    {icon:'📞', texto:'Atender chamados pendentes', cat:'Outro', prio:'alta'},
+    {icon:'💬', texto:'Responder mensagens dos clientes', cat:'Outro', prio:'alta'},
+    {icon:'📋', texto:'Organizar lista de tarefas e priorizar', cat:'Outro', prio:'media'},
+    {icon:'🎯', texto:'Concluir 3 tarefas importantes hoje', cat:'Outro', prio:'alta'},
+    {icon:'🤝', texto:'Ajudar colega que está com fluxo alto', cat:'Outro', prio:'media'},
+    {icon:'📊', texto:'Reportar status pro gestor', cat:'Reunião', prio:'media'},
+    {icon:'⚡', texto:'Resolver ticket urgente', cat:'Outro', prio:'alta'},
+    {icon:'📝', texto:'Atualizar anotações do dia', cat:'Outro', prio:'baixa'},
+    {icon:'📑', texto:'Conferir relatório de chamados', cat:'Outro', prio:'media'},
+    {icon:'☎️', texto:'Retornar ligações perdidas', cat:'Outro', prio:'alta'},
+    {icon:'🔍', texto:'Investigar problema reportado por cliente', cat:'Outro', prio:'alta'},
+    {icon:'📤', texto:'Enviar atualização semanal', cat:'Reunião', prio:'media'},
+    {icon:'🎁', texto:'Verificar promoção/sorteio em andamento', cat:'Outro', prio:'baixa'},
+    {icon:'📊', texto:'Atualizar planilha operacional', cat:'Outro', prio:'media'},
+    {icon:'💡', texto:'Sugerir melhoria de processo', cat:'Reunião', prio:'baixa'},
+    {icon:'🧹', texto:'Organizar inbox e arquivar emails', cat:'Outro', prio:'baixa'},
+    {icon:'📅', texto:'Confirmar agenda da semana', cat:'Outro', prio:'baixa'},
+    {icon:'🆘', texto:'Pedir ajuda pra desbloqueio', cat:'Reunião', prio:'media'},
+    {icon:'📚', texto:'Estudar material/treinamento novo', cat:'Outro', prio:'baixa'},
+    {icon:'✅', texto:'Marcar tarefas concluídas como feitas', cat:'Outro', prio:'baixa'},
+    {icon:'🔔', texto:'Verificar lembretes do dia', cat:'Outro', prio:'baixa'},
+    {icon:'💼', texto:'Preparar material pra reunião', cat:'Reunião', prio:'media'},
+    {icon:'📲', texto:'Atender WhatsApp dos clientes', cat:'Outro', prio:'alta'},
+    {icon:'📈', texto:'Acompanhar próprios indicadores', cat:'Outro', prio:'media'}
+  ]
+};
+
+function tfSugerirTarefaModal(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : 'colaborador';
+  var nomeCurto = u && u.nome ? u.nome.split(' ')[0] : 'você';
+  var cargoTxt = u && u.cargo ? u.cargo : 'sua função';
+  var sugestoes = SUGESTOES_TAREFAS[nivel] || SUGESTOES_TAREFAS.colaborador;
+  
+  // Embaralha (mostra 6 aleatórias)
+  var copy = sugestoes.slice();
+  for(var i = copy.length - 1; i > 0; i--){
+    var j = Math.floor(Math.random() * (i+1));
+    var temp = copy[i]; copy[i] = copy[j]; copy[j] = temp;
+  }
+  var mostra = copy.slice(0, 6);
+  
+  // Remove modal antigo
+  var antigo = document.getElementById('modal-sugerir-tarefa');
+  if(antigo) antigo.remove();
+  
+  var prioMap = {alta:{cor:'#E24B4A',lbl:'Alta'}, media:{cor:'#EF9F27',lbl:'Média'}, baixa:{cor:'#1D9E75',lbl:'Baixa'}};
+  
+  var html = '<div id="modal-sugerir-tarefa" style="position:fixed;inset:0;background:rgba(11,37,66,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    + '<div style="background:#fff;border-radius:16px;max-width:520px;width:100%;padding:24px;box-shadow:0 12px 40px rgba(11,37,66,0.25);max-height:90vh;overflow:auto" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+    + '<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">✨</div>'
+    + '<div style="flex:1">'
+    + '<div style="font-family:Syne,sans-serif;font-size:17px;font-weight:700;color:#0B2542">Sugestões de Tarefas</div>'
+    + '<div style="font-size:11px;color:#56627a">Pra ' + nomeCurto + ' · ' + cargoTxt + '</div>'
+    + '</div>'
+    + '<button onclick="document.getElementById(\'modal-sugerir-tarefa\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9DB4D6;width:30px;height:30px">×</button>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#56627a;margin-bottom:14px;padding:10px;background:#F5F7FA;border-radius:8px;line-height:1.5">💡 Clica numa sugestão pra abrir o formulário com texto/categoria/prioridade preenchidos. Você ajusta o prazo e detalhes antes de salvar.</div>'
+    + '<div style="display:grid;gap:8px">';
+  
+  mostra.forEach(function(s){
+    var pr = prioMap[s.prio] || prioMap.media;
+    var dataAttr = JSON.stringify(s).replace(/"/g, '&quot;');
+    html += '<button onclick="tfAplicarSugestaoTarefa(this)" data-sugestao="' + dataAttr + '" style="display:flex;align-items:center;gap:10px;padding:12px;background:#F5F7FA;border:1.5px solid transparent;border-radius:10px;font-family:inherit;font-size:13px;color:#0B2542;cursor:pointer;text-align:left;transition:all .15s" '
+      + 'onmouseover="this.style.background=\'#E6F6FE\';this.style.borderColor=\'#1AB8F0\'" '
+      + 'onmouseout="this.style.background=\'#F5F7FA\';this.style.borderColor=\'transparent\'">'
+      + '<span style="font-size:20px;flex-shrink:0">' + s.icon + '</span>'
+      + '<div style="flex:1;display:flex;flex-direction:column;gap:3px">'
+      + '<span style="font-weight:600">' + s.texto + '</span>'
+      + '<div style="display:flex;gap:6px;align-items:center">'
+      + '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:#E6F6FE;color:#0E7AB8;font-weight:600">' + s.cat + '</span>'
+      + '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:' + pr.cor + '22;color:' + pr.cor + ';font-weight:600">● ' + pr.lbl + '</span>'
+      + '</div>'
+      + '</div>'
+      + '<span style="font-size:10px;color:#9DB4D6;flex-shrink:0">→</span>'
+      + '</button>';
+  });
+  
+  html += '</div>'
+    + '<button onclick="tfSugerirTarefaModal()" style="margin-top:14px;width:100%;padding:9px;background:transparent;border:1.5px dashed #DDE3EB;color:#56627a;border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Mostrar outras sugestões</button>'
+    + '<div style="text-align:center;font-size:10px;color:#9DB4D6;margin-top:12px;padding-top:10px;border-top:1px dashed #EEF2F7;font-style:italic">🙏 Fé com Respeito · Gâmi 💛</div>'
+    + '</div></div>';
+  
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function tfAplicarSugestaoTarefa(btn){
+  // Pega dados da sugestão
+  var dataStr = btn.getAttribute('data-sugestao');
+  if(!dataStr) return;
+  var s;
+  try { s = JSON.parse(dataStr.replace(/&quot;/g, '"')); } catch(e) { return; }
+  
+  // Fecha modal sugerir
+  var modalS = document.getElementById('modal-sugerir-tarefa');
+  if(modalS) modalS.remove();
+  
+  // Abre modal Nova Tarefa
+  if(typeof abrirModalNovaTarefa === 'function'){
+    abrirModalNovaTarefa('diario');
+    // Espera o modal renderizar e preenche os campos
+    setTimeout(function(){
+      var texto = document.getElementById('tf-m-texto');
+      var prio = document.getElementById('tf-m-prio');
+      var cat = document.getElementById('tf-m-cat');
+      
+      if(texto) texto.value = s.texto;
+      if(prio) prio.value = s.prio;
+      
+      // Categoria: garante que o option existe
+      if(cat){
+        var encontrou = false;
+        for(var i = 0; i < cat.options.length; i++){
+          if(cat.options[i].text === s.cat || cat.options[i].value === s.cat){
+            cat.selectedIndex = i;
+            encontrou = true;
+            break;
+          }
+        }
+        // Se não tem essa categoria, adiciona
+        if(!encontrou && s.cat){
+          var opt = document.createElement('option');
+          opt.value = s.cat; opt.text = s.cat;
+          cat.add(opt);
+          cat.value = s.cat;
+        }
+      }
+      
+      // Foca no campo prazo pra usuário ajustar
+      var prazo = document.getElementById('tf-m-prazo');
+      if(prazo) prazo.focus();
+    }, 150);
+  }
+}
+
 function tfSalvarNotas(){
   var val=(document.getElementById('tf-notas-input')||{}).value||'';
   localStorage.setItem('gami_tf_notas_'+new Date().toISOString().split('T')[0], val);
@@ -11965,7 +12213,13 @@ function abrirModalNovaTarefa(contexto){
   ov.classList.add('open');
   var hoje=new Date().toISOString().split('T')[0];
   ov.innerHTML='<div class="modal-box" style="max-width:440px">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px"><div style="font-size:15px;font-weight:700">Nova tarefa</div><button onclick="closeModal(\'modal-campanha\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button></div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+      +'<div style="font-size:15px;font-weight:700">Nova tarefa</div>'
+      +'<div style="display:flex;gap:6px;align-items:center">'
+        +'<button onclick="tfSugerirTarefaModal()" style="padding:6px 11px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="Sugestões de tarefas baseadas no seu cargo">✨ Sugerir</button>'
+        +'<button onclick="closeModal(\'modal-campanha\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
+      +'</div>'
+    +'</div>'
     +'<div style="display:flex;flex-direction:column;gap:10px">'
     +'<div><div class="field-label">Tarefa *</div><input id="tf-m-texto" class="inp" placeholder="O que precisa ser feito?"/></div>'
     +'<div class="g2"><div><div class="field-label">Prioridade</div><select id="tf-m-prio" class="sel"><option value="alta">🔴 Alta</option><option value="media" selected>🟡 Média</option><option value="baixa">🟢 Baixa</option></select></div>'
