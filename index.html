@@ -1,4 +1,4 @@
-<!-- v12.23 - Force redeploy + força refresh cache + indicador de versão - 14/05/2026 -->
+<!-- v12.25 - Foco do Dia melhorado (botão Salvar + Sugestões internas) - 14/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -820,7 +820,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.23</div>
+    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.25</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -1262,11 +1262,13 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
               <div style="font-size:13px;font-weight:700;color:#A32D2D">Foco do dia</div>
               <div style="font-size:11px;color:#C0392B" id="tf-data-hoje"></div>
             </div>
-            <div style="margin-left:auto;display:flex;gap:4px">
-              <button onclick="tfSugerirIA('diario')" style="padding:4px 10px;border:none;border-radius:6px;background:var(--orange);color:white;font-size:11px;cursor:pointer;font-family:inherit">🤖 Sugerir</button>
+            <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <button onclick="tfSugerirFocoModal()" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px" title="Sugestões inteligentes baseadas no seu cargo">✨ Sugerir</button>
+              <button id="tf-foco-btn-salvar" onclick="tfSalvarFocoBtn()" style="padding:5px 12px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar</button>
             </div>
           </div>
-          <input id="tf-foco-input" class="inp" placeholder="Qual é o seu foco principal hoje?" style="font-size:13px;font-weight:600;border-color:#1AB8F044;background:white" onchange="tfSalvarFoco()"/>
+          <input id="tf-foco-input" class="inp" placeholder="Qual é o seu foco principal hoje?" style="font-size:13px;font-weight:600;border-color:#1AB8F044;background:white" oninput="tfFocoMarcarDirty()"/>
+          <div id="tf-foco-status" style="font-size:10px;color:var(--text3);margin-top:6px;min-height:14px;text-align:right"></div>
         </div>
 
         <!-- Adicionar rápido -->
@@ -1458,7 +1460,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:18px;overflow-x:auto">
     <button id="mkt-tab-visao"     onclick="marketingAba('visao')"     class="mkt-tab-btn"     style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📊 Visão Geral</button>
     <button id="mkt-tab-campanhas" onclick="marketingAba('campanhas')" class="mkt-tab-btn" style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📣 Campanhas</button>
-    <button id="mkt-tab-inbox"     onclick="marketingAba('inbox')"     class="mkt-tab-btn"     style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📬 Inbox Instagram <span id="mkt-inbox-badge" style="display:none;margin-left:5px;background:#E24B4A;color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px">0</span></button>
     <button id="mkt-tab-agenda"    onclick="marketingAba('agenda')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:600;color:var(--gami-blue);cursor:pointer;font-family:inherit;border-bottom:2.5px solid var(--gami-blue);margin-bottom:-1px;white-space:nowrap">📅 Agendamento</button>
     <button id="mkt-tab-conteudo"  onclick="marketingAba('conteudo')"  class="mkt-tab-btn"  style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">🎨 Conteúdo</button>
     <button id="mkt-tab-ideias"    onclick="marketingAba('ideias')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">💡 Banco de Ideias</button>
@@ -1508,7 +1509,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
   <!-- placeholders para os outros painéis (preenchidos via marketingAba) -->
   <div id="mkt-painel-campanhas" class="mkt-painel" style="display:none"></div>
-  <div id="mkt-painel-inbox"     class="mkt-painel" style="display:none"></div>
 
   <!-- ========== SUB-ABA: AGENDAMENTO INSTAGRAM (padrão) ========== -->
   <div id="mkt-painel-agenda" class="mkt-painel">
@@ -11259,7 +11259,7 @@ function tarefaAba(aba){
 /* ============================================================ */
 function marketingAba(aba){
   // Mostra/esconde painéis
-  ['visao','campanhas','inbox','agenda','conteudo','ideias','scripts','blog'].forEach(function(t){
+  ['visao','campanhas','agenda','conteudo','ideias','scripts','blog'].forEach(function(t){
     var painel = document.getElementById('mkt-painel-'+t);
     if(painel) painel.style.display = (t === aba) ? 'block' : 'none';
     var btn = document.getElementById('mkt-tab-'+t);
@@ -11280,17 +11280,6 @@ function marketingAba(aba){
       painelC.dataset.loaded = '1';
     }
     if(typeof renderCampanhas === 'function') try{ renderCampanhas(); }catch(e){}
-  }
-  
-  if(aba === 'inbox'){
-    var painelI = document.getElementById('mkt-painel-inbox');
-    var origI = document.getElementById('pg-inbox');
-    if(painelI && !painelI.dataset.loaded && origI){
-      while(origI.firstChild){ painelI.appendChild(origI.firstChild); }
-      painelI.dataset.loaded = '1';
-    }
-    if(typeof renderInbox === 'function') try{ renderInbox(); }catch(e){}
-    if(typeof loadInboxThreads === 'function') try{ loadInboxThreads(); }catch(e){}
   }
   
   if(aba === 'conteudo'){
@@ -11499,8 +11488,162 @@ function tfLimparConcluidas(){
 }
 
 function tfSalvarFoco(){
+  // Versão silenciosa (chamada por outras funções)
   var val=(document.getElementById('tf-foco-input')||{}).value||'';
   localStorage.setItem('gami_tf_foco_'+new Date().toISOString().split('T')[0], val);
+}
+
+function tfFocoMarcarDirty(){
+  // Marca que tem mudança não salva
+  var btn = document.getElementById('tf-foco-btn-salvar');
+  var status = document.getElementById('tf-foco-status');
+  if(btn) {
+    btn.style.background = 'linear-gradient(135deg,#EF9F27,#F57F17)';
+    btn.innerHTML = '💾 Salvar';
+  }
+  if(status) status.innerHTML = '<span style="color:#EF9F27">● mudança não salva</span>';
+}
+
+function tfSalvarFocoBtn(){
+  var val=(document.getElementById('tf-foco-input')||{}).value||'';
+  var hoje = new Date().toISOString().split('T')[0];
+  localStorage.setItem('gami_tf_foco_'+hoje, val);
+  
+  var btn = document.getElementById('tf-foco-btn-salvar');
+  var status = document.getElementById('tf-foco-status');
+  if(btn){
+    btn.style.background = '#1D9E75';
+    btn.innerHTML = '✓ Salvo!';
+    setTimeout(function(){
+      btn.style.background = 'var(--gami-blue)';
+      btn.innerHTML = '💾 Salvar';
+    }, 1800);
+  }
+  if(status){
+    status.innerHTML = '<span style="color:#1D9E75">✓ Salvo às ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + '</span>';
+  }
+}
+
+/* ============================================================== */
+/* SUGESTÕES INTERNAS — Modal dentro do dashboard                 */
+/* Sugere focos baseados no cargo da pessoa, sem sair pra IA      */
+/* ============================================================== */
+
+var SUGESTOES_FOCO = {
+  // Sugestões por cargo/nível
+  super_admin: [
+    {icon:'📣', txt:'Acompanhar performance das campanhas Meta Ads'},
+    {icon:'📊', txt:'Revisar métricas da semana e ajustar plano'},
+    {icon:'🎨', txt:'Produzir conteúdo de alta qualidade pra Instagram'},
+    {icon:'📅', txt:'Agendar stories e posts das 9 cidades'},
+    {icon:'💡', txt:'Brainstorm de nova campanha estratégica'},
+    {icon:'📰', txt:'Publicar artigo SEO no blog Gâmi'},
+    {icon:'🤝', txt:'Alinhamento estratégico com Diretoria'},
+    {icon:'🎯', txt:'Focar em captação de motoboys'}
+  ],
+  diretoria: [
+    {icon:'📊', txt:'Revisar resultados da semana — todas as cidades'},
+    {icon:'🎯', txt:'Definir metas e prioridades estratégicas'},
+    {icon:'👥', txt:'Reunião 1:1 com gerentes'},
+    {icon:'💼', txt:'Acompanhar performance financeira'},
+    {icon:'🤝', txt:'Reunião com gestores das cidades top'},
+    {icon:'📈', txt:'Análise de expansão e novas cidades'},
+    {icon:'⚡', txt:'Tomar decisão importante pendente'},
+    {icon:'🏛️', txt:'Cultura Gâmi — alinhamento com time'}
+  ],
+  gerencia: [
+    {icon:'📋', txt:'Validar relatórios financeiros do dia'},
+    {icon:'👥', txt:'Acompanhar performance dos gestores'},
+    {icon:'⚡', txt:'Resolver pendências operacionais'},
+    {icon:'📊', txt:'Analisar dados das cidades'},
+    {icon:'🎯', txt:'Atingir meta operacional do dia'},
+    {icon:'🤝', txt:'Reunião com Diretoria'},
+    {icon:'📅', txt:'Planejar próxima semana'},
+    {icon:'✅', txt:'Aprovar fluxos e processos'}
+  ],
+  gestor: [
+    {icon:'🏍️', txt:'Captar 3+ motoboys novos hoje'},
+    {icon:'📞', txt:'Contatar 5 restaurantes parceiros'},
+    {icon:'📊', txt:'Bater meta de corridas da cidade'},
+    {icon:'💬', txt:'Responder DMs no Instagram (Inbox)'},
+    {icon:'🎯', txt:'Cuidar da qualidade do atendimento'},
+    {icon:'👥', txt:'Alinhamento com equipe local'},
+    {icon:'🤝', txt:'Visitar parceiros estratégicos'},
+    {icon:'📈', txt:'Acompanhar ranking de motoboys'}
+  ],
+  colaborador: [
+    {icon:'📞', txt:'Atender chamados do dia com qualidade'},
+    {icon:'💬', txt:'Responder mensagens pendentes'},
+    {icon:'📋', txt:'Organizar lista de tarefas e priorizar'},
+    {icon:'🎯', txt:'Concluir 3 tarefas importantes'},
+    {icon:'🤝', txt:'Ajudar colega que precisar'},
+    {icon:'📊', txt:'Reportar status pro gestor'},
+    {icon:'⚡', txt:'Resolver problema urgente'},
+    {icon:'📝', txt:'Atualizar anotações do dia'}
+  ]
+};
+
+function tfSugerirFocoModal(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : 'colaborador';
+  var nomeCurto = u && u.nome ? u.nome.split(' ')[0] : 'você';
+  var cargoTxt = u && u.cargo ? u.cargo : 'sua função';
+  var sugestoes = SUGESTOES_FOCO[nivel] || SUGESTOES_FOCO.colaborador;
+  
+  // Embaralha (mostra 6 aleatórias de cada vez pra parecer fresco)
+  var copy = sugestoes.slice();
+  for(var i = copy.length - 1; i > 0; i--){
+    var j = Math.floor(Math.random() * (i+1));
+    var temp = copy[i]; copy[i] = copy[j]; copy[j] = temp;
+  }
+  var mostra = copy.slice(0, 6);
+  
+  // Remove modal antigo
+  var antigo = document.getElementById('modal-sugerir-foco');
+  if(antigo) antigo.remove();
+  
+  var html = '<div id="modal-sugerir-foco" style="position:fixed;inset:0;background:rgba(11,37,66,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    + '<div style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:24px;box-shadow:0 12px 40px rgba(11,37,66,0.25);max-height:90vh;overflow:auto" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+    + '<div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">✨</div>'
+    + '<div style="flex:1">'
+    + '<div style="font-family:Syne,sans-serif;font-size:17px;font-weight:700;color:#0B2542">Sugestões de Foco</div>'
+    + '<div style="font-size:11px;color:#56627a">Pra ' + nomeCurto + ' · ' + cargoTxt + '</div>'
+    + '</div>'
+    + '<button onclick="document.getElementById(\'modal-sugerir-foco\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#9DB4D6;width:30px;height:30px">×</button>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#56627a;margin-bottom:14px;padding:10px;background:#F5F7FA;border-radius:8px;line-height:1.5">💡 Clica numa sugestão pra usar como foco do dia. Pode editar depois.</div>'
+    + '<div style="display:grid;gap:6px">';
+  
+  mostra.forEach(function(s, idx){
+    var txtEscaped = s.txt.replace(/'/g, "\\'");
+    html += '<button onclick="tfAplicarSugestaoFoco(\'' + txtEscaped + '\')" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:#F5F7FA;border:1.5px solid transparent;border-radius:10px;font-family:inherit;font-size:13px;color:#0B2542;cursor:pointer;text-align:left;transition:all .15s" '
+      + 'onmouseover="this.style.background=\'#E6F6FE\';this.style.borderColor=\'#1AB8F0\'" '
+      + 'onmouseout="this.style.background=\'#F5F7FA\';this.style.borderColor=\'transparent\'">'
+      + '<span style="font-size:18px;flex-shrink:0">' + s.icon + '</span>'
+      + '<span style="flex:1">' + s.txt + '</span>'
+      + '<span style="font-size:10px;color:#9DB4D6">→</span>'
+      + '</button>';
+  });
+  
+  html += '</div>'
+    + '<button onclick="tfSugerirFocoModal()" style="margin-top:14px;width:100%;padding:9px;background:transparent;border:1.5px dashed #DDE3EB;color:#56627a;border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Mostrar outras sugestões</button>'
+    + '<div style="text-align:center;font-size:10px;color:#9DB4D6;margin-top:12px;padding-top:10px;border-top:1px dashed #EEF2F7;font-style:italic">🙏 Fé com Respeito · Gâmi 💛</div>'
+    + '</div></div>';
+  
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function tfAplicarSugestaoFoco(texto){
+  var inp = document.getElementById('tf-foco-input');
+  if(inp){
+    inp.value = texto;
+    tfFocoMarcarDirty();
+    // Auto-salva
+    tfSalvarFocoBtn();
+  }
+  var modal = document.getElementById('modal-sugerir-foco');
+  if(modal) modal.remove();
 }
 
 function tfSalvarNotas(){
