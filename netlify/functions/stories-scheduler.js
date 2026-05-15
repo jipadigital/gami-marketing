@@ -30,12 +30,25 @@ const CIDADES_INSTAGRAM = [
   { key: 'vitoria',     ig_id: '17841480175012502', username: 'gamideliveryvitoria',           nome: 'Vitória' }
 ];
 
-// Horário (BRT) → categoria
-const HORARIO_CATEGORIA = {
-  '08:00': 'bom-dia',
-  '12:00': 'conteudos',
-  '16:30': 'motoboy',
-  '19:00': 'empresa'
+// Horário (BRT) → função que retorna categoria conforme dia da semana
+// diaSemana: 0=Dom, 1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb
+// (v2 - 14/05/2026)
+const REGRAS_HORARIO = {
+  '07:00': function(diaSemana) {
+    return (diaSemana === 1) ? 'otima-semana' : 'bom-dia';
+  },
+  '12:00': function(diaSemana) {
+    return 'outra';
+  },
+  '16:30': function(diaSemana) {
+    return 'motoboy';
+  },
+  '18:00': function(diaSemana) {
+    return 'empresa';
+  },
+  '19:00': function(diaSemana) {
+    return (diaSemana === 5) ? 'fim-de-semana' : null;
+  }
 };
 
 // URLs do GitHub pra listar/baixar imagens das pastas
@@ -70,11 +83,12 @@ exports.handler = async function(event, context) {
     const agoraUTC = new Date();
     const agoraBR = new Date(agoraUTC.getTime() - (3 * 60 * 60 * 1000));
     const horaAtual = agoraBR.getHours() * 60 + agoraBR.getMinutes();
+    const diaSemana = agoraBR.getDay();
     
     // Encontra horário mais próximo (tolerância 15min)
     let menorDiff = Infinity;
     let melhorHorario = null;
-    for (const h of Object.keys(HORARIO_CATEGORIA)) {
+    for (const h of Object.keys(REGRAS_HORARIO)) {
       const [hh, mm] = h.split(':').map(Number);
       const minH = hh * 60 + mm;
       const diff = Math.abs(minH - horaAtual);
@@ -96,8 +110,23 @@ exports.handler = async function(event, context) {
       };
     }
     
-    categoria = HORARIO_CATEGORIA[melhorHorario];
+    // Aplica regra do dia da semana
+    categoria = REGRAS_HORARIO[melhorHorario](diaSemana);
     horario_label = melhorHorario;
+    
+    if (!categoria) {
+      const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+      return {
+        statusCode: 200,
+        headers: HEADERS_CORS,
+        body: JSON.stringify({
+          ok: false,
+          message: `Horário ${melhorHorario} não aplica em ${DIAS[diaSemana]}`,
+          horario_detectado: melhorHorario,
+          dia_semana: DIAS[diaSemana]
+        })
+      };
+    }
   }
   
   // Lista de cidades alvo

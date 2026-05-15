@@ -5,6 +5,17 @@
   publish = "."
   functions = "netlify/functions"
 
+# Variáveis de ambiente disponíveis (configuradas no painel Netlify):
+# - META_USER_TOKEN / META_SYSTEM_USER_TOKEN
+# - META_APP_SECRET / META_APP_ID  
+# - SUPABASE_KEY
+# - ANTHROPIC_API_KEY
+# - MACHINE_API_KEY (e variações por cidade)
+
+# Não escanear secrets nos arquivos build
+[build.environment]
+  SECRETS_SCAN_ENABLED = "false"
+
 # ============================================================
 # CRON 1 — Posts Instagram agendados (sistema Cowork)
 # Roda a cada 15 minutos
@@ -15,17 +26,19 @@
   schedule = "*/15 * * * *"
 
 # ============================================================
-# CRON 2 — Stories automáticos (sistema novo)
-# Roda 4× por dia em horários de Brasília:
-#   08:00 BRT = 11:00 UTC
-#   12:00 BRT = 15:00 UTC
-#   16:30 BRT = 19:30 UTC
-#   19:00 BRT = 22:00 UTC
-# Função interna verifica horário e cria agendamento em posts_agendados
-# Não publica direto — usa o pipeline existente do Cowork
+# CRON 2 — Stories automáticos (v2 — lógica por dia da semana)
+# Roda nos horários (UTC = BRT + 3h):
+#   07:00 BRT = 10:00 UTC  → Bom Dia / Ótima Semana
+#   12:00 BRT = 15:00 UTC  → Outra
+#   16:30 BRT = 19:30 UTC  → Motoboy
+#   18:00 BRT = 21:00 UTC  → Empresa
+#   19:00 BRT = 22:00 UTC  → Fim de Semana (só sex)
+#
+# Cron roda em todos esses horários + algumas margens (0 e 30 da hora)
+# A própria função filtra qual horário usar (tolerância 10 min)
 # ============================================================
-[functions."stories-scheduler"]
-  schedule = "0,30 11,15,19,22 * * *"
+[functions."scheduled-stories"]
+  schedule = "0,30 10,15,19,21,22 * * *"
 
 # ============================================================
 # Redirect catch-all (SPA)
