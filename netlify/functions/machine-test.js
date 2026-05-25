@@ -65,6 +65,8 @@ function getCidadeKey(cidade) {
 async function tentarComAuth(url, chave, metodo) {
   let headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   let finalUrl = url;
+  let method = 'GET';
+  let body = null;
   
   switch (metodo) {
     case 'bearer':
@@ -76,29 +78,74 @@ async function tentarComAuth(url, chave, metodo) {
     case 'api-key':
       headers['api-key'] = chave;
       break;
-    case 'query':
+    case 'apikey-junto':
+      headers['ApiKey'] = chave;
+      break;
+    case 'query-apikey':
+      finalUrl = url + (url.includes('?') ? '&' : '?') + `apiKey=${chave}`;
+      break;
+    case 'query-api_key':
       finalUrl = url + (url.includes('?') ? '&' : '?') + `api_key=${chave}`;
+      break;
+    case 'query-token':
+      finalUrl = url + (url.includes('?') ? '&' : '?') + `token=${chave}`;
+      break;
+    case 'query-key':
+      finalUrl = url + (url.includes('?') ? '&' : '?') + `key=${chave}`;
       break;
     case 'token':
       headers['Token'] = chave;
       break;
+    case 'access-token':
+      headers['Access-Token'] = chave;
+      break;
+    case 'machine-token':
+      headers['Machine-Token'] = chave;
+      break;
+    case 'mch-key':
+      headers['mch-key'] = chave;
+      break;
+    case 'mch-api-key':
+      headers['mch-api-key'] = chave;
+      break;
     case 'authorization-plain':
       headers['Authorization'] = chave;
+      break;
+    case 'authorization-token':
+      headers['Authorization'] = `Token ${chave}`;
+      break;
+    case 'authorization-apikey':
+      headers['Authorization'] = `ApiKey ${chave}`;
+      break;
+    case 'authorization-key':
+      headers['Authorization'] = `Key ${chave}`;
+      break;
+    case 'authorization-basic':
+      headers['Authorization'] = `Basic ${Buffer.from(chave + ':').toString('base64')}`;
+      break;
+    case 'authorization-basic2':
+      headers['Authorization'] = `Basic ${Buffer.from(':' + chave).toString('base64')}`;
+      break;
+    case 'post-body':
+      method = 'POST';
+      body = JSON.stringify({ apiKey: chave });
       break;
   }
   
   try {
-    const r = await fetch(finalUrl, { method: 'GET', headers });
+    const opts = { method, headers };
+    if (body) opts.body = body;
+    const r = await fetch(finalUrl, opts);
     const text = await r.text();
-    let body;
-    try { body = JSON.parse(text); } catch (e) { body = text; }
+    let respBody;
+    try { respBody = JSON.parse(text); } catch (e) { respBody = text; }
     
     return {
       status: r.status,
       ok: r.ok,
       headers_resposta: Object.fromEntries(r.headers.entries()),
-      body: body,
-      body_preview: typeof body === 'string' ? body.substring(0, 200) : JSON.stringify(body).substring(0, 500)
+      body: respBody,
+      body_preview: typeof respBody === 'string' ? respBody.substring(0, 200) : JSON.stringify(respBody).substring(0, 500)
     };
   } catch (err) {
     return { erro: err.message };
@@ -143,7 +190,14 @@ exports.handler = async function (event) {
   // ============================================================
   if (endpoint !== null && !metodoAuth) {
     const url = BASE_URL + (endpoint.startsWith('/') ? endpoint : '/' + endpoint);
-    const metodos = ['bearer', 'x-api-key', 'api-key', 'query', 'token', 'authorization-plain'];
+    const metodos = [
+      'bearer', 'x-api-key', 'api-key', 'apikey-junto',
+      'query-apikey', 'query-api_key', 'query-token', 'query-key',
+      'token', 'access-token', 'machine-token', 'mch-key', 'mch-api-key',
+      'authorization-plain', 'authorization-token', 'authorization-apikey',
+      'authorization-key', 'authorization-basic', 'authorization-basic2',
+      'post-body'
+    ];
     
     const resultados = {};
     for (const metodo of metodos) {
@@ -193,7 +247,14 @@ exports.handler = async function (event) {
   let metodoFuncionando = null;
   let primeiraResposta = null;
   
-  const metodos = ['bearer', 'x-api-key', 'api-key', 'query', 'token'];
+  const metodos = [
+    'bearer', 'x-api-key', 'api-key', 'apikey-junto',
+    'query-apikey', 'query-api_key', 'query-token', 'query-key',
+    'token', 'access-token', 'machine-token', 'mch-key', 'mch-api-key',
+    'authorization-plain', 'authorization-token', 'authorization-apikey',
+    'authorization-key', 'authorization-basic', 'authorization-basic2',
+    'post-body'
+  ];
   for (const metodo of metodos) {
     const r = await tentarComAuth(BASE_URL + '/', chave, metodo);
     if (r.ok || (r.status >= 200 && r.status < 500 && r.status !== 401 && r.status !== 403)) {
