@@ -97,7 +97,7 @@ exports.handler = async function(event){
     // Limite de paginas POR RECURSO:
     // condutor = poucos (varre ate 20 pag). solicitacao = pode ser MILHARES,
     // entao limita a 3 paginas (300 corridas recentes) pra nao estourar 502.
-    var MAX_PAGINAS = (recurso === 'condutor') ? 20 : 12;
+    var MAX_PAGINAS = (recurso === 'condutor') ? 20 : 50;
     var INICIO = Date.now();
     var TEMPO_MAX = 8500; // 8.5s (limite Netlify e 10s, deixa folga)
 
