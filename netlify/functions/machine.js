@@ -24,7 +24,7 @@ const RECURSOS_GET = {
 
 // Cache em memoria (por instancia) — respeita limite de 50 req/min
 var _cache = {};
-var CACHE_MS = 3 * 60 * 1000; // 3 minutos
+var CACHE_MS = 30 * 1000; // 30 segundos (fase de testes; subir pra 3min em producao)
 
 function getCidadeKey(cidade){
   if(!cidade) return null;
@@ -66,10 +66,11 @@ exports.handler = async function(event){
     }) };
   }
 
-  // Cache
+  // Cache (pode ser furado com &nocache=1)
   var cacheKey = cidade + ':' + recurso;
   var agora = Date.now();
-  if(_cache[cacheKey] && (agora - _cache[cacheKey].ts) < CACHE_MS){
+  var pularCache = (p.nocache === '1' || p.nocache === 'true');
+  if(!pularCache && _cache[cacheKey] && (agora - _cache[cacheKey].ts) < CACHE_MS){
     return { statusCode:200, headers:cors, body: JSON.stringify({
       success:true, cidade:cidade, recurso:recurso, cache:true,
       atualizado_em: new Date(_cache[cacheKey].ts).toISOString(),
@@ -77,7 +78,7 @@ exports.handler = async function(event){
     }) };
   }
 
-  // Chama a Machine (com paginacao automatica)
+  // Chama a Machine (com paginacao automatica + protecoes anti-502)
   try{
     var headers = {
       'Content-Type':'application/json',
@@ -88,19 +89,42 @@ exports.handler = async function(event){
 
     var todos = [];
     var pagina = 1;
-    var LIMITE = 100;       // condutores por pagina (a Machine aceita 'limite')
-    var MAX_PAGINAS = 50;   // trava de seguranca
-    var ultimoErro = null;
+    var LIMITE = 100;
+    // Limite de paginas POR RECURSO:
+    // condutor = poucos (varre ate 20 pag). solicitacao = pode ser MILHARES,
+    // entao limita a 3 paginas (300 corridas recentes) pra nao estourar 502.
+    var MAX_PAGINAS = (recurso === 'condutor') ? 20 : 3;
+    var INICIO = Date.now();
+    var TEMPO_MAX = 8000; // 8s (limite Netlify e 10s, deixa folga)
 
     while(pagina <= MAX_PAGINAS){
-      // Paginacao oficial da Machine: ?pagina=N&limite=M
+      // Trava de tempo: se ja passou de 8s, para e retorna o que tem
+      if(Date.now() - INICIO > TEMPO_MAX) break;
+
       var sep = path.indexOf('?')>=0 ? '&' : '?';
       var url = BASE_URL + path + sep + 'pagina=' + pagina + '&limite=' + LIMITE;
-      var r = await fetch(url, { method:'GET', headers });
-      var data = await r.json();
+
+      // Timeout por requisicao (5s cada)
+      var ctrl = new AbortController();
+      var t = setTimeout(function(){ ctrl.abort(); }, 5000);
+      var r, data;
+      try{
+        r = await fetch(url, { method:'GET', headers, signal: ctrl.signal });
+        clearTimeout(t);
+        data = await r.json();
+      }catch(fe){
+        clearTimeout(t);
+        // Timeout ou erro de rede: para e usa o que tiver
+        if(pagina === 1){
+          return { statusCode:504, headers:cors, body: JSON.stringify({
+            success:false, error:'Timeout ao consultar a Machine', recurso:recurso,
+            dica: 'O endpoint pode exigir filtro de data. Veja se ha muitos registros.'
+          }) };
+        }
+        break;
+      }
 
       if(!r.ok || !data || data.success === false){
-        ultimoErro = data;
         if(pagina === 1){
           return { statusCode: r.status||502, headers:cors, body: JSON.stringify({
             success:false, error:'Machine retornou erro', detalhe: data
@@ -112,13 +136,12 @@ exports.handler = async function(event){
       var lote = data.response || [];
       if(!Array.isArray(lote) || lote.length === 0) break;
 
-      // Protecao anti-duplicacao (caso a API ignore a pagina)
       if(pagina > 1 && lote.length && todos.some(function(x){ return x.id === lote[0].id; })){
         break;
       }
 
       todos = todos.concat(lote);
-      if(lote.length < LIMITE) break; // ultima pagina
+      if(lote.length < LIMITE) break;
       pagina++;
     }
 
