@@ -1,4 +1,4 @@
-<!-- v15.3 - Volta busca sequencial condutor (LIMITE=200, MAX=25) + aviso visivel erro - 28/05/2026 -->
+<!-- v15.4 - Fix Alertas Inteligentes sumindo ao trocar de aba (cache replay) - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10096,14 +10096,21 @@ function renderVisaoGeralCidade(){
   if(!window.__cidadeAtual) return;
   var c = window.__cidadeAtual;
 
-  // Comparativo: placeholder ate vgCarregarPainel preencher com dados reais
+  // Se ja tem cache (carregado pelo vgCarregarPainel), repreenche tudo
+  if(_vgCache && _vgCache[c.id]){
+    var d = _vgCache[c.id].dados;
+    if(typeof vgRenderPainel === 'function') vgRenderPainel(d.corridasDia, d.corridasMes, d.condutores, c.nome, d.filtroOK, d.hojeStr);
+    if(typeof vgRenderComparativo === 'function') vgRenderComparativo(d.corridasDia, d.corridasOntem, d.corridasMes, d.corridasMesAnt);
+    if(typeof vgRenderAlertas === 'function') vgRenderAlertas(d.corridas45d || d.corridasMes, d.hojeStr);
+    return;
+  }
+
+  // Sem cache: placeholder no comparativo, vazio nos alertas
   var comp = document.getElementById('cp-comparativo');
   if(comp){
     comp.innerHTML = '<div style="font-size:11px;color:var(--text3);font-style:italic;padding:12px;text-align:center">'
       + 'Clique em <strong>Carregar dados reais</strong> acima pra ver o comparativo.</div>';
   }
-
-  // Alertas: placeholder ate vgCarregarPainel preencher
   var alertas = document.getElementById('cp-alertas-box');
   if(alertas){ alertas.innerHTML = ''; }
 }
