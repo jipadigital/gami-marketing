@@ -1,4 +1,4 @@
-<!-- v12.37 - Fix DEFINITIVO: Bloqueio no HEAD (zero flash do dashboard) - 14/05/2026 -->
+<!-- v13.0 - Supabase: tarefas+delegacao, anotacoes, audit log, logs de acesso - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -996,7 +996,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <div style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px" title="Versão do dashboard">v12.37</div>
+    <div onclick="if(typeof verAuditLog==='function')verAuditLog()" style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px;cursor:pointer" title="Versão do dashboard">v13.0</div>
   </div>
 </div>
 </div><!-- /sidebar -->
@@ -5414,6 +5414,10 @@ async function tentarLogin(identificador, pin){
     if(typeof hookLoginDiario === 'function'){
       hookLoginDiario(usuario.pessoa_id);
     }
+    // Registra acesso (log de quem logou)
+    if(typeof registrarAcesso === 'function'){
+      try { registrarAcesso(usuarioFinal, true); } catch(e){}
+    }
     
     return { sucesso: true, usuario: usuarioFinal };
   } catch(err){
@@ -9011,6 +9015,16 @@ function renderAnotacoesCidade(){
   
   // Renderiza histórico
   renderHistoricoAnotacoes();
+
+  // Busca versão do Supabase (fonte da verdade) e atualiza se houver
+  if(typeof anotacaoCidadeCarregar==='function' && window.__cidadeAtual){
+    anotacaoCidadeCarregar(window.__cidadeAtual.id).then(function(conteudoSupa){
+      if(conteudoSupa && conteudoSupa !== ta.value){
+        ta.value = conteudoSupa;
+        try{ localStorage.setItem(key, conteudoSupa); }catch(e){}
+      }
+    });
+  }
 }
 
 function cidAnotacoesDirty(){
@@ -9050,6 +9064,11 @@ function cidSalvarAnotacoes(){
   }
   if(info){
     info.innerHTML = '<span style="color:#1D9E75">✓ Salvo agora · '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'</span>';
+  }
+  
+  // Sobe pro Supabase (fonte da verdade + sincroniza entre dispositivos)
+  if(typeof anotacaoCidadeSalvar==='function' && window.__cidadeAtual){
+    anotacaoCidadeSalvar(window.__cidadeAtual.id, val);
   }
   
   renderHistoricoAnotacoes();
@@ -12580,7 +12599,31 @@ function tfDataHoje(){
 }
 
 function initTarefas(){
+  // Sincroniza com Supabase em background (migração 1x + busca delegadas)
+  if(typeof tfMigrarLocalParaSupabase==='function'){
+    tfMigrarLocalParaSupabase().then(function(){
+      if(typeof tfSincronizarDoSupabase==='function'){
+        tfSincronizarDoSupabase().then(function(){
+          if(typeof tfRenderDiario==='function') tfRenderDiario();
+          if(typeof tfAtualizarBadgeDelegadas==='function') tfAtualizarBadgeDelegadas();
+        });
+      }
+    });
+  }
   tarefaAba('diario');
+}
+
+/* Atualiza o badge do menu Tarefas com nº de delegadas não vistas */
+async function tfAtualizarBadgeDelegadas(){
+  try{
+    var delegadas = (typeof tfBuscarDelegadasParaMim==='function') ? await tfBuscarDelegadasParaMim() : [];
+    var naoVistas = delegadas.filter(function(t){ return t.delegada_por && !t.feito; }).length;
+    var badge = document.getElementById('badge-tar');
+    if(badge){
+      if(naoVistas>0){ badge.textContent = naoVistas; badge.style.display=''; }
+      else { badge.style.display='none'; }
+    }
+  }catch(e){}
 }
 
 function tarefaAba(aba){
@@ -12707,13 +12750,31 @@ function tfIniciarDiario(){
 
 function tfRenderDiario(){
   var lista=getTarefas('diario');
+
+  // Mescla tarefas DELEGADAS pra mim (vindas do Supabase cache)
+  if(window._tfSupaCache && Array.isArray(window._tfSupaCache)){
+    var idsLocais = {}; lista.forEach(function(t){ if(t&&t.id) idsLocais[t.id]=true; });
+    window._tfSupaCache.forEach(function(t){
+      if(t.delegada_por && !idsLocais[t.id]){
+        lista.push({
+          id: t.id, texto: t.texto, prio: t.prio||'media', cat: t.cat||'Delegada',
+          feito: !!t.feito, prazo: t.data_limite||'',
+          delegada_por: t.delegada_por, delegada_por_nome: t.delegada_por_nome,
+          delegada_em: t.delegada_em, hora_limite: t.hora_limite,
+          prioridade_deleg: t.prioridade_deleg, mensagem_delegacao: t.mensagem_delegacao,
+          _supabase: true
+        });
+      }
+    });
+  }
+
   var el=document.getElementById('tf-diario-list'); if(!el) return;
   var filtradas=lista;
   if(_tfFiltroAtual==='pendente') filtradas=lista.filter(function(t){return !t.feito;});
   if(_tfFiltroAtual==='feito') filtradas=lista.filter(function(t){return t.feito;});
   
   var prios={alta:{bg:'#FCEBEB',cor:'#A32D2D',dot:'#E24B4A'},media:{bg:'#FAEEDA',cor:'#854F0B',dot:'#EF9F27'},baixa:{bg:'#EAF3DE',cor:'#3B6D11',dot:'#1D9E75'}};
-  var cats={Marketing:'#8B5CF6',Conteudo:'#1E88E5','Conteúdo':'#1E88E5',Campanhas:'#1AB8F0',Cidades:'#EF9F27',Reuniao:'#1D9E75','Reunião':'#1D9E75',Financeiro:'#16A085',Outro:'#888'};
+  var cats={Marketing:'#8B5CF6',Conteudo:'#1E88E5','Conteúdo':'#1E88E5',Campanhas:'#1AB8F0',Cidades:'#EF9F27',Reuniao:'#1D9E75','Reunião':'#1D9E75',Financeiro:'#16A085',Delegada:'#8B5CF6',Outro:'#888'};
 
   if(!filtradas.length){
     el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-weight:500">'+(_tfFiltroAtual==='feito'?'Nenhuma tarefa concluída ainda':'Nenhuma tarefa para hoje!')+' </div><div style="font-size:12px;margin-top:4px">Use o campo acima para adicionar</div></div>';
@@ -12730,17 +12791,25 @@ function tfRenderDiario(){
     filtradas.filter(function(t){return t.feito;})
   );
 
+  var hojeStr = new Date().toISOString().split('T')[0];
+
   el.innerHTML=sorted.map(function(t,i){
     var p=prios[t.prio]||prios.media;
     var catCor=cats[t.cat]||cats.Outro;
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-left:3px solid '+p.dot+';border-radius:9px;background:'+(t.feito?'var(--surface2)':'var(--surface)')+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
-      +'<div onclick="tfToggle(\'diario\',\''+t.id+'\')" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':p.dot)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
+    // Vencida? (tem prazo, prazo < hoje, não feita) → vermelho
+    var vencida = (!t.feito && t.prazo && t.prazo < hojeStr);
+    var borderCor = vencida ? '#E24B4A' : p.dot;
+    var bgCard = t.feito ? 'var(--surface2)' : (vencida ? '#FFF5F5' : 'var(--surface)');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid '+(vencida?'#E24B4A55':'var(--border)')+';border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
+      +'<div onclick="tfToggle(\'diario\',\''+t.id+'\')" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':borderCor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
       +'<div style="flex:1;min-width:0">'
       +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</div>'
+      +(t.delegada_por_nome?'<div style="font-size:10px;color:#8B5CF6;font-weight:600;margin-top:2px">📥 Delegada por '+t.delegada_por_nome+(t.delegada_em?' · '+new Date(t.delegada_em).toLocaleDateString('pt-BR')+' '+new Date(t.delegada_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'')+'</div>':'')
+      +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text2);font-style:italic;margin-top:2px">"'+t.mensagem_delegacao+'"</div>':'')
       +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">'
       +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:'+p.bg+';color:'+p.cor+'">'+t.prio+'</span>'
       +(t.cat?'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:'+catCor+'22;color:'+catCor+'">'+t.cat+'</span>':'')
-      +(t.prazo?'<span style="font-size:10px;color:var(--text3)">⏰ '+t.prazo+'</span>':'')
+      +(t.prazo?'<span style="font-size:10px;color:'+(vencida?'#E24B4A':'var(--text3)')+';font-weight:'+(vencida?'700':'400')+'">⏰ '+t.prazo+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+(vencida?' (vencida)':'')+'</span>':'')
       +'</div></div>'
       +'<button onclick="tfExcluir(\'diario\',\''+t.id+'\')" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:12px;color:var(--text3);flex-shrink:0">×</button>'
       +'</div>';
@@ -12786,8 +12855,27 @@ function tfAtualizarMetricas(){
 function tfToggle(tipo, id, sufixo){
   var lista=getTarefas(tipo,sufixo);
   var i=lista.findIndex(function(t){return t.id===id;});
-  if(i>=0){ lista[i].feito=!lista[i].feito; lista[i].feitaEm=lista[i].feito?new Date().toISOString():null; }
+  var tarefaTocada=null;
+  if(i>=0){ lista[i].feito=!lista[i].feito; lista[i].feitaEm=lista[i].feito?new Date().toISOString():null; tarefaTocada=lista[i]; }
   saveTarefas(tipo,sufixo,lista);
+
+  // Tarefa delegada (vem do Supabase cache, não está no localStorage)
+  if(!tarefaTocada && window._tfSupaCache){
+    var sc=window._tfSupaCache.find(function(t){return t.id===id;});
+    if(sc){ sc.feito=!sc.feito; tarefaTocada={id:sc.id,texto:sc.texto,feito:sc.feito,delegada_por:sc.delegada_por,delegada_por_nome:sc.delegada_por_nome}; }
+  }
+  // Sincroniza estado com Supabase
+  if(tarefaTocada && typeof supaUpsert==='function'){
+    supaUpsert('tarefas',{ id:id, feito:!!tarefaTocada.feito, concluido_em: tarefaTocada.feito?new Date().toISOString():null });
+    if(typeof auditLog==='function') auditLog(tarefaTocada.feito?'tarefa_concluida':'tarefa_reaberta', id, (tarefaTocada.texto||'').slice(0,60));
+    // Se era delegada e foi concluída, notifica quem delegou
+    if(tarefaTocada.feito && tarefaTocada.delegada_por){
+      var uu=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null;
+      criarNotificacao(tarefaTocada.delegada_por,'tarefa_concluida',
+        (uu?(uu.nome||uu.email):'Alguém')+' concluiu a tarefa', (tarefaTocada.texto||''),'tarefas');
+    }
+  }
+
   if(tipo==='diario') tfRenderDiario();
   if(tipo==='semana') tfRenderSemana();
   if(tipo==='mes') tfRenderMes();
@@ -12827,8 +12915,11 @@ function tfAdicionarRapido(){
   var cat=document.getElementById('tf-add-cat');
   if(!inp||!inp.value.trim()) return;
   var lista=getTarefas('diario');
-  lista.push({id:'tf'+Date.now(),texto:inp.value.trim(),prio:(prio||{}).value||'media',cat:(cat||{}).value||'Outro',feito:false,criadoEm:new Date().toISOString()});
+  var _nova={id:'tf'+Date.now(),texto:inp.value.trim(),prio:(prio||{}).value||'media',cat:(cat||{}).value||'Outro',feito:false,criadoEm:new Date().toISOString()};
+  lista.push(_nova);
   saveTarefas('diario',null,lista);
+  if(typeof tfSupaSalvar==='function') tfSupaSalvar(_nova,'diario',null);
+  if(typeof auditLog==='function') auditLog('tarefa_criada', _nova.id, (_nova.texto||'').slice(0,60));
   inp.value='';
   tfRenderDiario();
   tfAtualizarMetricas();
@@ -13651,11 +13742,51 @@ function abrirModalNovaTarefa(contexto){
       +'</div>'
     +'</div>'
     +'<div><div class="field-label">Observação</div><input id="tf-m-obs" class="inp" placeholder="Detalhes opcionais..."/></div>'
+    +'<div id="tf-m-deleg-wrap"></div>'
     +'<div style="display:flex;gap:8px;margin-top:6px"><button onclick="closeModal(\'modal-campanha\')" class="btn btn-ghost" style="flex:1">Cancelar</button><button onclick="tfSalvarModal()" class="btn btn-primary" style="flex:1">+ Adicionar</button></div>'
     +'</div></div>';
   // Set context
   var ctxSel=document.getElementById('tf-m-ctx');
   if(ctxSel&&ctx!=='diario') ctxSel.value=ctx;
+  // Monta seção de delegação (só pra quem pode)
+  if(typeof tfMontarDelegacao==='function') tfMontarDelegacao();
+}
+
+/* Monta a seção "Delegar pra outra pessoa" no modal (só quem tem permissão) */
+function tfMontarDelegacao(){
+  var wrap = document.getElementById('tf-m-deleg-wrap');
+  if(!wrap) return;
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  if(!u){ wrap.innerHTML=''; return; }
+  var nivel = (u.nivel||'').toLowerCase();
+  var ehSuper = u.email && u.email.toLowerCase()==='jipadigital@gmail.com';
+  var podeDelegar = ehSuper || ['diretoria','gerencia','gestor','marketing','super_admin'].indexOf(nivel)>=0;
+  if(!podeDelegar){ wrap.innerHTML=''; return; }
+
+  var pessoas = (typeof getPessoas==='function') ? getPessoas() : [];
+  var opcoes = pessoas
+    .filter(function(p){ return p && p.id && p.id!==u.id; })
+    .map(function(p){ return '<option value="'+p.id+'" data-nome="'+(p.nome||'')+'">'+(p.nome||p.id)+(p.cidade?' · '+(Array.isArray(p.cidade)?p.cidade.join('/'):p.cidade):'')+'</option>'; })
+    .join('');
+
+  wrap.innerHTML =
+    '<div style="padding:10px;border:1.5px dashed #8B5CF6;border-radius:8px;background:#F3E5F5;margin-top:2px">'
+    + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      + '<input type="checkbox" id="tf-m-deleg-on" onchange="document.getElementById(\'tf-m-deleg-cfg\').style.display=this.checked?\'block\':\'none\'" style="width:16px;height:16px;cursor:pointer"/>'
+      + '<label for="tf-m-deleg-on" style="font-size:12px;font-weight:600;color:#6A1B9A;cursor:pointer">📥 Delegar para outra pessoa</label>'
+    + '</div>'
+    + '<div id="tf-m-deleg-cfg" style="display:none">'
+      + '<div class="field-label" style="font-size:10px">Para quem:</div>'
+      + '<select id="tf-m-deleg-pessoa" class="sel">'+opcoes+'</select>'
+      + '<div class="g2" style="margin-top:8px">'
+        + '<div><div class="field-label" style="font-size:10px">Prioridade</div>'
+          + '<select id="tf-m-deleg-prio" class="sel"><option value="urgente">🔴 Urgente</option><option value="importante">🟡 Importante</option><option value="normal" selected>🟢 Normal</option></select></div>'
+        + '<div><div class="field-label" style="font-size:10px">Horário limite (opcional)</div>'
+          + '<input id="tf-m-deleg-hora" class="inp" type="time"/></div>'
+      + '</div>'
+      + '<div style="font-size:9px;color:#6A1B9A;margin-top:6px;font-style:italic">A tarefa cai direto na aba de quem recebe, com seu nome e uma notificação. O prazo usa a data definida em "Prazo" acima.</div>'
+    + '</div>'
+    + '</div>';
 }
 
 function tfMostrarConfigRecorrencia(){
@@ -13669,6 +13800,32 @@ function tfMostrarConfigRecorrencia(){
 function tfSalvarModal(){
   var texto=(document.getElementById('tf-m-texto')||{}).value||'';
   if(!texto.trim()){alert('Informe a tarefa.');return;}
+
+  // === DELEGAÇÃO: se marcado, cai direto na aba de outra pessoa ===
+  var delegOn = (document.getElementById('tf-m-deleg-on')||{}).checked || false;
+  if(delegOn){
+    var sel = document.getElementById('tf-m-deleg-pessoa');
+    if(!sel || !sel.value){ alert('Escolha para quem delegar.'); return; }
+    var destinoId = sel.value;
+    var destinoNome = sel.options[sel.selectedIndex] ? (sel.options[sel.selectedIndex].getAttribute('data-nome')||sel.value) : sel.value;
+    var prioDeleg = (document.getElementById('tf-m-deleg-prio')||{}).value||'normal';
+    var horaDeleg = (document.getElementById('tf-m-deleg-hora')||{}).value||null;
+    var prazoDeleg = (document.getElementById('tf-m-prazo')||{}).value||null;
+    var msgDeleg = (document.getElementById('tf-m-obs')||{}).value||null;
+    var btnD = event && event.target ? event.target : null;
+    if(btnD){ btnD.disabled=true; btnD.innerHTML='Delegando...'; }
+    tfDelegar(destinoId, destinoNome, texto, prioDeleg, prazoDeleg, horaDeleg, msgDeleg).then(function(ok){
+      if(ok){
+        closeModal('modal-campanha');
+        alert('✓ Tarefa delegada para '+destinoNome+'! Ela vai aparecer na aba de tarefas dele(a) com uma notificação.');
+      } else {
+        if(btnD){ btnD.disabled=false; btnD.innerHTML='+ Adicionar'; }
+        alert('Não consegui delegar agora. Verifique a conexão e tente de novo.');
+      }
+    });
+    return;
+  }
+
   var ctx=(document.getElementById('tf-m-ctx')||{}).value||'diario';
   var prio=(document.getElementById('tf-m-prio')||{}).value||'media';
   var cat=(document.getElementById('tf-m-cat')||{}).value||'Outro';
@@ -13737,6 +13894,13 @@ function tfSalvarModal(){
   if(ctx==='diario'){ var l=getTarefas('diario');l.push(nova);saveTarefas('diario',null,l); }
   else if(ctx==='semana'){ var sw=tfGetSemana(_tfSemanaOffset);var key=sw[0].key;var l=getTarefas('semana',key);nova.semana='Sem. '+sw[0].dia+'/'+sw[6].dia;l.push(nova);saveTarefas('semana',key,l); }
   else if(ctx==='mes'){ var mk=tfMesKey(_tfMesOffset);var l=getTarefas('mes',mk);nova.semana='Mês';l.push(nova);saveTarefas('mes',mk,l); }
+
+  // Sobe pro Supabase (fonte da verdade) + audit
+  if(typeof tfSupaSalvar==='function'){
+    var _sufixo = ctx==='semana' ? (tfGetSemana(_tfSemanaOffset)[0].key) : (ctx==='mes' ? tfMesKey(_tfMesOffset) : null);
+    tfSupaSalvar(nova, ctx, _sufixo);
+  }
+  if(typeof auditLog==='function') auditLog('tarefa_criada', nova.id, (nova.texto||'').slice(0,60));
   
   closeModal('modal-campanha');
   if(ctx==='diario') tfRenderDiario();
@@ -13745,6 +13909,307 @@ function tfSalvarModal(){
   tfAtualizarMetricas();
   if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda();
 }
+
+/* ===================================================================
+   ===============  MÓDULO v13: SUPABASE + DELEGAÇÃO  =================
+   Tarefas, anotações, audit log e logs de acesso no Supabase.
+   localStorage continua como CACHE; Supabase é a fonte da verdade.
+   Roda no Free; idêntico quando virar Pro.
+   =================================================================== */
+
+/* ---- AUDIT LOG (visível só pro Cleyton no app) ---- */
+async function auditLog(acao, alvo, detalhe){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return;
+    await supaUpsert('audit_log', {
+      id: (crypto.randomUUID ? crypto.randomUUID() : 'a'+Date.now()+Math.random().toString(36).slice(2,8)),
+      pessoa_id: u.id,
+      pessoa_nome: u.nome || u.email || u.id,
+      acao: acao,
+      alvo: alvo || null,
+      detalhe: detalhe || null
+    });
+  }catch(e){}
+}
+
+/* ---- LOG DE ACESSO (registra login) ---- */
+async function registrarAcesso(usuario, sucesso){
+  try{
+    if(!usuario) return;
+    await supaUpsert('acessos_log', {
+      id: (crypto.randomUUID ? crypto.randomUUID() : 'l'+Date.now()+Math.random().toString(36).slice(2,8)),
+      pessoa_id: usuario.id || usuario.pessoa_id || '?',
+      pessoa_nome: usuario.nome || usuario.email || '?',
+      sucesso: sucesso !== false,
+      user_agent: (navigator.userAgent||'').slice(0,200)
+    });
+  }catch(e){}
+}
+
+/* ---- NOTIFICAÇÕES ---- */
+async function criarNotificacao(paraPessoaId, tipo, titulo, mensagem, link){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    await supaUpsert('notificacoes', {
+      id: (crypto.randomUUID ? crypto.randomUUID() : 'n'+Date.now()+Math.random().toString(36).slice(2,8)),
+      para_pessoa_id: paraPessoaId,
+      de_pessoa_id: u ? u.id : null,
+      de_nome: u ? (u.nome||u.email) : null,
+      tipo: tipo,
+      titulo: titulo,
+      mensagem: mensagem || null,
+      link: link || null,
+      lida: false
+    });
+  }catch(e){}
+}
+
+async function contarNotificacoesNaoLidas(){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return 0;
+    var r = await supaSelect('notificacoes',
+      'para_pessoa_id=eq.'+encodeURIComponent(u.id)+'&lida=eq.false&select=id');
+    return (r||[]).length;
+  }catch(e){ return 0; }
+}
+
+/* ---- TAREFAS NO SUPABASE ----
+   Cada tarefa vira uma linha. tipo/bucket identificam o período.
+   id = mesmo id gerado no front (tf...) → upsert sem duplicar. */
+
+function _tfBucketDe(tipo, sufixo){
+  if(tipo==='diario'){
+    var d=new Date();
+    return 'd_'+d.getFullYear()+'_'+String(d.getMonth()+1).padStart(2,'0')+'_'+String(d.getDate()).padStart(2,'0');
+  }
+  return (sufixo||tipo);
+}
+
+/* Sobe UMA tarefa pro Supabase (chamado ao criar/editar/concluir) */
+async function tfSupaSalvar(tarefa, tipo, sufixo){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    var row = {
+      id: tarefa.id,
+      pessoa_id: tarefa.pessoa_id || (u ? u.id : '?'),
+      texto: tarefa.texto || '',
+      tipo: tipo || 'diario',
+      bucket: _tfBucketDe(tipo, sufixo),
+      prio: tarefa.prio || 'media',
+      cat: tarefa.cat || 'Outro',
+      feito: !!tarefa.feito,
+      criado_em: tarefa.criadoEm || new Date().toISOString(),
+      concluido_em: tarefa.feito ? (tarefa.concluidoEm || new Date().toISOString()) : null,
+      delegada_por: tarefa.delegada_por || null,
+      delegada_por_nome: tarefa.delegada_por_nome || null,
+      delegada_em: tarefa.delegada_em || null,
+      prioridade_deleg: tarefa.prioridade_deleg || 'normal',
+      data_limite: tarefa.data_limite || null,
+      hora_limite: tarefa.hora_limite || null,
+      mensagem_delegacao: tarefa.mensagem_delegacao || null,
+      vista_em: tarefa.vista_em || null
+    };
+    return await supaUpsert('tarefas', row);
+  }catch(e){ return false; }
+}
+
+/* Apaga tarefa do Supabase */
+async function tfSupaApagar(id){
+  try{ return await supaDelete('tarefas', id); }catch(e){ return false; }
+}
+
+/* Busca tarefas delegadas PRA MIM que ainda não vi (pro badge/notif) */
+async function tfBuscarDelegadasParaMim(){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return [];
+    var r = await supaSelect('tarefas',
+      'pessoa_id=eq.'+encodeURIComponent(u.id)+'&delegada_por=not.is.null&select=*&order=delegada_em.desc');
+    return r || [];
+  }catch(e){ return []; }
+}
+
+/* DELEGAÇÃO: cria tarefa direto pra outra pessoa (cai na aba dela) */
+async function tfDelegar(destinoPessoaId, destinoNome, texto, prioridadeDeleg, dataLimite, horaLimite, mensagem){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  if(!u) { alert('Sessão expirada. Faça login novamente.'); return false; }
+
+  // Só quem pode delegar: diretoria, gerencia, gestor, marketing/super_admin
+  var nivel = (u.nivel||'').toLowerCase();
+  var ehSuper = u.email && u.email.toLowerCase()==='jipadigital@gmail.com';
+  var podeDelegar = ehSuper || ['diretoria','gerencia','gestor','marketing','super_admin'].indexOf(nivel)>=0;
+  if(!podeDelegar){ alert('Seu perfil não pode delegar tarefas.'); return false; }
+
+  var tarefa = {
+    id: 'tf'+Date.now()+Math.random().toString(36).slice(2,5),
+    pessoa_id: destinoPessoaId,           // DONO = destinatário
+    texto: texto.trim(),
+    prio: (prioridadeDeleg==='urgente'?'alta':(prioridadeDeleg==='importante'?'media':'baixa')),
+    cat: 'Delegada',
+    feito: false,
+    criadoEm: new Date().toISOString(),
+    delegada_por: u.id,
+    delegada_por_nome: u.nome || u.email,
+    delegada_em: new Date().toISOString(),
+    prioridade_deleg: prioridadeDeleg || 'normal',
+    data_limite: dataLimite || null,
+    hora_limite: horaLimite || null,
+    mensagem_delegacao: mensagem || null,
+    vista_em: null
+  };
+
+  var ok = await tfSupaSalvar(tarefa, 'diario', null);
+  if(ok){
+    await criarNotificacao(destinoPessoaId, 'tarefa_nova',
+      'Nova tarefa de '+(u.nome||u.email),
+      texto.trim(), 'tarefas');
+    await auditLog('tarefa_delegada', tarefa.id,
+      (u.nome||u.email)+' → '+destinoNome+': '+texto.trim().slice(0,60));
+  }
+  return ok;
+}
+
+/* Sincroniza tarefas do Supabase pro cache local (chamado ao abrir aba) */
+async function tfSincronizarDoSupabase(){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return;
+    // Busca tarefas DESTA pessoa (as próprias + as delegadas pra ela)
+    var r = await supaSelect('tarefas',
+      'pessoa_id=eq.'+encodeURIComponent(u.id)+'&select=*&order=criado_em.desc');
+    if(!r) return; // offline → mantém cache local
+    window._tfSupaCache = r;
+    // Marca as delegadas não vistas como vistas
+    var naoVistas = r.filter(function(t){ return t.delegada_por && !t.vista_em; });
+    for(var i=0;i<naoVistas.length;i++){
+      naoVistas[i].vista_em = new Date().toISOString();
+      await supaUpsert('tarefas', { id: naoVistas[i].id, vista_em: naoVistas[i].vista_em });
+    }
+  }catch(e){}
+}
+
+/* MIGRAÇÃO ÚNICA: sobe tarefas que já existem no localStorage pro Supabase */
+async function tfMigrarLocalParaSupabase(){
+  try{
+    if(localStorage.getItem('gami_tf_migrado_v13')==='1') return;
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return;
+    // Varre chaves de tarefas no localStorage
+    var subiu = 0;
+    for(var i=0;i<localStorage.length;i++){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf('gami_tf_v2_')!==0) continue;
+      var lista; try{ lista = JSON.parse(localStorage.getItem(k)||'[]'); }catch(e){ continue; }
+      if(!Array.isArray(lista)) continue;
+      // Descobre tipo/bucket pela chave
+      var tipo='diario', bucket=k.replace('gami_tf_v2_','');
+      if(k.indexOf('_d_')>=0){ tipo='diario'; }
+      else if(k.indexOf('_s_')>=0){ tipo='semana'; }
+      else if(k.indexOf('_m_')>=0){ tipo='mes'; }
+      else if(k.indexOf('projetos')>=0){ tipo='projetos'; }
+      for(var j=0;j<lista.length;j++){
+        var t = lista[j];
+        if(!t || !t.id) continue;
+        if((t.pessoa_id||u.id)!==u.id) continue; // só as próprias
+        var row = {
+          id: t.id, pessoa_id: u.id, texto: t.texto||'', tipo: tipo, bucket: bucket,
+          prio: t.prio||'media', cat: t.cat||'Outro', feito: !!t.feito,
+          criado_em: t.criadoEm||new Date().toISOString()
+        };
+        await supaUpsert('tarefas', row); subiu++;
+      }
+    }
+    localStorage.setItem('gami_tf_migrado_v13','1');
+    if(subiu>0) console.log('[v13] '+subiu+' tarefas migradas pro Supabase');
+  }catch(e){}
+}
+
+/* ---- ANOTAÇÕES DE CIDADE NO SUPABASE ---- */
+async function anotacaoCidadeCarregar(cidadeId){
+  try{
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return '';
+    var r = await supaSelect('anotacoes_cidade',
+      'cidade_id=eq.'+encodeURIComponent(cidadeId)+'&pessoa_id=eq.'+encodeURIComponent(u.id)+'&select=conteudo&limit=1');
+    if(r && r.length) return r[0].conteudo || '';
+  }catch(e){}
+  // fallback cache local
+  try{ return localStorage.getItem('gami_cidade_anotacoes_'+cidadeId+'_'+(u?u.id:''))||''; }catch(e){ return ''; }
+}
+
+async function anotacaoCidadeSalvar(cidadeId, conteudo){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  if(!u) return false;
+  // cache local imediato
+  try{ localStorage.setItem('gami_cidade_anotacoes_'+cidadeId+'_'+u.id, conteudo); }catch(e){}
+  // Supabase (fonte da verdade) — upsert por cidade+pessoa
+  try{
+    var existe = await supaSelect('anotacoes_cidade',
+      'cidade_id=eq.'+encodeURIComponent(cidadeId)+'&pessoa_id=eq.'+encodeURIComponent(u.id)+'&select=id&limit=1');
+    if(existe && existe.length){
+      await fetch(SUPA_URL+'/rest/v1/anotacoes_cidade?id=eq.'+existe[0].id,{
+        method:'PATCH', headers:supaHeaders(),
+        body: JSON.stringify({ conteudo: conteudo, atualizado_em: new Date().toISOString() })
+      });
+    } else {
+      await supaUpsert('anotacoes_cidade', {
+        id: (crypto.randomUUID?crypto.randomUUID():'an'+Date.now()),
+        cidade_id: cidadeId, pessoa_id: u.id, conteudo: conteudo
+      });
+    }
+    await auditLog('anotacao_salva', cidadeId, 'Anotação de cidade atualizada');
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ---- PAINEL DE AUDIT LOG + ACESSOS (visível SÓ pro Cleyton) ----
+   Abre com a função verAuditLog() — chamável pelo console ou botão admin. */
+async function verAuditLog(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var ehSuper = u && u.email && u.email.toLowerCase()==='jipadigital@gmail.com';
+  if(!ehSuper){ alert('Acesso restrito.'); return; }
+
+  var ov=document.getElementById('modal-audit');
+  if(!ov){ ov=document.createElement('div'); ov.id='modal-audit'; ov.className='modal-overlay'; document.body.appendChild(ov); }
+  ov.classList.add('open');
+  ov.innerHTML='<div class="modal-box" style="max-width:640px;max-height:80vh;overflow:auto"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-size:15px;font-weight:700">🔍 Registro de Atividades</div><button onclick="closeModal(\'modal-audit\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer">×</button></div><div style="display:flex;gap:8px;margin-bottom:12px"><button id="aud-tab-1" onclick="verAuditTab(\'audit\')" class="btn btn-primary" style="font-size:12px;flex:1">Mudanças</button><button id="aud-tab-2" onclick="verAuditTab(\'acessos\')" class="btn btn-ghost" style="font-size:12px;flex:1">Acessos</button></div><div id="aud-conteudo" style="font-size:12px">Carregando...</div></div>';
+  verAuditTab('audit');
+}
+
+async function verAuditTab(qual){
+  var cont=document.getElementById('aud-conteudo'); if(!cont) return;
+  var b1=document.getElementById('aud-tab-1'), b2=document.getElementById('aud-tab-2');
+  if(b1&&b2){
+    b1.className='btn '+(qual==='audit'?'btn-primary':'btn-ghost'); b1.style.flex='1'; b1.style.fontSize='12px';
+    b2.className='btn '+(qual==='acessos'?'btn-primary':'btn-ghost'); b2.style.flex='1'; b2.style.fontSize='12px';
+  }
+  cont.innerHTML='Carregando...';
+  var tabela = qual==='acessos' ? 'acessos_log' : 'audit_log';
+  var dados = (typeof supaSelect==='function') ? await supaSelect(tabela,'select=*&order=criado_em.desc&limit=100') : null;
+  if(!dados || !dados.length){ cont.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)">Nenhum registro ainda.</div>'; return; }
+
+  if(qual==='acessos'){
+    cont.innerHTML = dados.map(function(r){
+      return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px">'
+        + '<div><b>'+(r.pessoa_nome||r.pessoa_id)+'</b> <span style="color:'+(r.sucesso?'#1D9E75':'#E24B4A')+'">'+(r.sucesso?'entrou':'falhou')+'</span></div>'
+        + '<div style="color:var(--text3);white-space:nowrap">'+new Date(r.criado_em).toLocaleString('pt-BR')+'</div>'
+        + '</div>';
+    }).join('');
+  } else {
+    cont.innerHTML = dados.map(function(r){
+      return '<div style="padding:8px 10px;border-bottom:1px solid var(--border)">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px"><b>'+(r.pessoa_nome||r.pessoa_id)+'</b><span style="color:var(--text3);white-space:nowrap">'+new Date(r.criado_em).toLocaleString('pt-BR')+'</span></div>'
+        + '<div style="color:var(--text2);margin-top:2px"><span style="font-size:10px;padding:1px 6px;border-radius:5px;background:#E6F6FE;color:#0E7AB8">'+r.acao+'</span> '+(r.detalhe||'')+'</div>'
+        + '</div>';
+    }).join('');
+  }
+}
+
+/* ===================================================================
+   ===============  FIM MÓDULO v13  ==================================
+   =================================================================== */
 
 /* ============== TAREFAS RECORRENTES ============== */
 function getTarefasRecorrentes(){
