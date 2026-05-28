@@ -1,4 +1,4 @@
-<!-- v13.3 - Machine: status oficiais (A/E/F/I/S/R/D) + paginacao com limite - 28/05/2026 -->
+<!-- v13.5 - Visao Geral painel operacional real (corridas+condutores) - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2177,6 +2177,18 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
 
     <div id="ctab-overview">
+      <!-- PAINEL RESUMO (dados reais Machine) -->
+      <div id="vg-painel-real" style="margin-bottom:14px">
+        <div id="vg-painel-banner" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+          <div id="vg-painel-icone" style="font-size:18px;flex-shrink:0">📊</div>
+          <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.4" id="vg-painel-texto">
+            <strong>Painel operacional</strong> — clique para carregar os dados reais das corridas e motoboys desta cidade.
+          </div>
+          <button onclick="vgCarregarPainel()" id="vg-painel-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
+        </div>
+        <div id="vg-painel-conteudo"></div>
+      </div>
+
       <div class="g2" style="margin-bottom:12px">
         <div class="card"><div class="card-title">Performance</div><div id="cp-perf"></div></div>
         <div class="card"><div class="card-title">Aniversários próximos</div><div id="cp-bdays"></div></div>
@@ -2290,20 +2302,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div class="metric"><div class="metric-label">Online agora</div><div class="metric-val" id="mb-online" style="color:var(--gami-blue)">—</div><div class="metric-sub">disponíveis</div></div>
         <div class="metric"><div class="metric-label">Em captação</div><div class="metric-val" id="mb-prospec" style="color:#EF9F27">—</div><div class="metric-sub">no pipeline</div></div>
         <div class="metric"><div class="metric-label">Sumiram</div><div class="metric-val" id="mb-churn" style="color:#E24B4A">—</div><div class="metric-sub">7+ dias sem corrida</div></div>
-      </div>
-
-      <!-- Pipeline de Captação -->
-      <div class="card" style="margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-          <div>
-            <div class="card-title" style="margin:0">🎯 Pipeline de Captação</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px">Acompanhe novos candidatos até virarem motoboys ativos · Dados via Machine API</div>
-          </div>
-          <div id="mb-acoes-btns" style="display:flex;gap:6px;flex-wrap:wrap">
-            <button onclick="abrirDMCidadeIG()" style="padding:6px 10px;border:none;border-radius:7px;background:linear-gradient(135deg,#E1306C,#C13584);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📷 Captar via Instagram</button>
-          </div>
-        </div>
-        <div id="mb-pipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto"></div>
       </div>
 
       <!-- Ranking + Churn -->
@@ -8900,6 +8898,221 @@ function cidAddRestauranteModal(){
 /* ============================================================== */
 /* RENDERS — VISÃO GERAL (comparativos, metas, alertas)           */
 /* ============================================================== */
+
+/* ============================================================== */
+/* PAINEL VISÃO GERAL — métricas reais (corridas + condutores)   */
+/* ============================================================== */
+async function vgCarregarPainel(){
+  var c = window.__cidadeAtual; if(!c) return;
+  var btn = document.getElementById('vg-painel-btn');
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
+
+  var slug = String(c.nome).toLowerCase()
+    .replace(/\u00e3/g,'a').replace(/\u00e1/g,'a').replace(/\u00e2/g,'a')
+    .replace(/\u00e9/g,'e').replace(/\u00ea/g,'e').replace(/\u00ed/g,'i')
+    .replace(/\u00f3/g,'o').replace(/\u00f4/g,'o').replace(/\u00fa/g,'u')
+    .replace(/\u00e7/g,'c').replace(/\s+/g,'-');
+
+  try{
+    // Busca corridas e condutores em paralelo
+    var [rCorr, rCond] = await Promise.all([
+      fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao').then(function(r){return r.json();}),
+      fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor').then(function(r){return r.json();})
+    ]);
+    var corridas = (rCorr && rCorr.response) ? rCorr.response : [];
+    var condutores = (rCond && rCond.response) ? rCond.response : [];
+    vgRenderPainel(corridas, condutores, c.nome);
+    // Banner verde
+    var banner=document.getElementById('vg-painel-banner');
+    if(banner){
+      banner.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+      banner.style.borderColor='#1D9E7566';
+      document.getElementById('vg-painel-icone').textContent='🟢';
+      document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+corridas.length+' corridas analisadas (amostra recente) · atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
+    }
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.innerHTML='🟢 Carregar dados reais'; }
+    alert('Não consegui carregar os dados: '+e.message);
+  }
+}
+
+function vgRenderPainel(corridas, condutores, cidadeNome){
+  var cont = document.getElementById('vg-painel-conteudo'); if(!cont) return;
+
+  // ---- CÁLCULOS ----
+  var finalizadas = corridas.filter(function(x){ return x.status_solicitacao==='F'; });
+  var canceladas = corridas.filter(function(x){ return x.status_solicitacao==='C'; });
+  var total = corridas.length;
+  var taxaConclusao = total>0 ? Math.round(finalizadas.length/total*100) : 0;
+
+  // Faturamento + ticket médio (só finalizadas)
+  var somaValor = 0;
+  finalizadas.forEach(function(x){ somaValor += parseFloat(x.valor_corrida||0); });
+  var ticketMedio = finalizadas.length>0 ? somaValor/finalizadas.length : 0;
+
+  // Tempo médio (duracao_corrida em minutos, só finalizadas com duração > 0)
+  var somaDur=0, nDur=0;
+  finalizadas.forEach(function(x){ var d=parseInt(x.duracao_corrida||0); if(d>0){ somaDur+=d; nDur++; } });
+  var tempoMedio = nDur>0 ? Math.round(somaDur/nDur) : 0;
+
+  // Motoboys ativos (status A) e total de condutores que rodaram
+  var ativos = condutores.filter(function(x){ return x.status==='A'; }).length;
+  var emAnalise = condutores.filter(function(x){ return x.status==='E'; }).length;
+
+  // Corridas por hora (distribuição)
+  var porHora = {};
+  corridas.forEach(function(x){
+    if(!x.data_hora_solicitacao) return;
+    var h = x.data_hora_solicitacao.split(' ')[1];
+    if(h){ var hora = parseInt(h.split(':')[0]); porHora[hora]=(porHora[hora]||0)+1; }
+  });
+
+  // Top lojas (por nome_passageiro)
+  var lojas = {};
+  corridas.forEach(function(x){
+    var nome = x.nome_passageiro||'?';
+    if(!lojas[nome]) lojas[nome]={nome:nome, total:0, valor:0};
+    lojas[nome].total++;
+    if(x.status_solicitacao==='F') lojas[nome].valor += parseFloat(x.valor_corrida||0);
+  });
+  var topLojas = Object.values(lojas).sort(function(a,b){return b.total-a.total;}).slice(0,8);
+  var totalLojas = Object.keys(lojas).length;
+
+  // Top motoboys (por condutor finalizadas)
+  var mbs = {};
+  finalizadas.forEach(function(x){
+    var nome = x.nome_condutor||'?'; if(nome==='') return;
+    if(!mbs[nome]) mbs[nome]={nome:nome, total:0, valor:0};
+    mbs[nome].total++; mbs[nome].valor += parseFloat(x.valor_corrida||0);
+  });
+  var topMbs = Object.values(mbs).sort(function(a,b){return b.total-a.total;}).slice(0,8);
+
+  // Corridas por bairro (área)
+  var bairros = {};
+  corridas.forEach(function(x){
+    var b = (x.coleta && x.coleta.bairro) ? x.coleta.bairro.trim() : '?';
+    if(b==='') b='?';
+    bairros[b]=(bairros[b]||0)+1;
+  });
+  var topBairros = Object.entries(bairros).map(function(e){return {nome:e[0],total:e[1]};}).sort(function(a,b){return b.total-a.total;}).slice(0,6);
+
+  // Status das corridas (contagem)
+  var statusMap = {F:'Finalizadas', C:'Canceladas', A:'Aceitas', E:'Em andamento', D:'Distribuindo', G:'Aguardando', N:'Não atendidas', P:'Pendentes', S:'Em espera', U:'Agrupadas'};
+  var statusCor = {F:'#1D9E75', C:'#E24B4A', A:'#1AB8F0', E:'#EF9F27', D:'#8B5CF6', G:'#888', N:'#E24B4A', P:'#EF9F27', S:'#888', U:'#888'};
+  var statusCont = {};
+  corridas.forEach(function(x){ var s=x.status_solicitacao||'?'; statusCont[s]=(statusCont[s]||0)+1; });
+
+  // Últimas corridas (5 mais recentes)
+  var ultimas = corridas.slice().sort(function(a,b){ return (b.data_hora_solicitacao||'').localeCompare(a.data_hora_solicitacao||''); }).slice(0,6);
+
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+
+  // ---- RENDER ----
+  var html = '';
+
+  // Cards de métricas principais
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">';
+  html += vgCard('🛵', 'Corridas (amostra)', total, '#1AB8F0');
+  html += vgCard('✅', 'Taxa de conclusão', taxaConclusao+'%', '#1D9E75');
+  html += vgCard('💰', 'Ticket médio', fmt(ticketMedio), '#16A085');
+  html += vgCard('⏱️', 'Tempo médio', tempoMedio+' min', '#EF9F27');
+  html += vgCard('🏍️', 'Motoboys ativos', ativos, '#8B5CF6');
+  html += vgCard('🏪', 'Lojas atendidas', totalLojas, '#E24B4A');
+  html += '</div>';
+
+  // Status das corridas (barras)
+  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">📊 Status das corridas</div><div style="margin-top:10px">';
+  Object.entries(statusCont).sort(function(a,b){return b[1]-a[1];}).forEach(function(e){
+    var s=e[0], n=e[1], pct=Math.round(n/total*100);
+    var label=statusMap[s]||s, cor=statusCor[s]||'#888';
+    html += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="font-weight:500">'+label+'</span><span style="color:var(--text3)">'+n+' ('+pct+'%)</span></div>'
+      + '<div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+cor+'"></div></div></div>';
+  });
+  html += '</div></div>';
+
+  // Top lojas + Top motoboys (lado a lado)
+  html += '<div class="g2" style="margin-bottom:12px">';
+  // Top lojas
+  html += '<div class="card"><div class="card-title">🏪 Top lojas (volume)</div><div style="margin-top:8px">';
+  if(topLojas.length){
+    topLojas.forEach(function(l,i){
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:11px;color:var(--text3);width:18px">'+(i+1)+'º</span>'
+        + '<span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+l.nome+'</span>'
+        + '<span style="font-size:12px;font-weight:700;color:var(--gami-blue)">'+l.total+'</span></div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem dados</div>';
+  html += '</div></div>';
+  // Top motoboys
+  html += '<div class="card"><div class="card-title">🏆 Top motoboys (corridas)</div><div style="margin-top:8px">';
+  if(topMbs.length){
+    var medals=['🥇','🥈','🥉'];
+    topMbs.forEach(function(m,i){
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:13px;width:20px">'+(medals[i]||((i+1)+'º'))+'</span>'
+        + '<span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.nome+'</span>'
+        + '<span style="font-size:12px;font-weight:700;color:var(--orange)">'+m.total+'</span></div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem dados</div>';
+  html += '</div></div>';
+  html += '</div>';
+
+  // Corridas por hora + Corridas por área (lado a lado)
+  html += '<div class="g2" style="margin-bottom:12px">';
+  // Por hora
+  html += '<div class="card"><div class="card-title">🕐 Corridas por hora</div><div style="display:flex;align-items:flex-end;gap:2px;height:90px;margin-top:10px">';
+  var maxHora = Math.max.apply(null, Object.values(porHora).concat([1]));
+  for(var h=0; h<24; h++){
+    var n = porHora[h]||0;
+    var altura = Math.round(n/maxHora*80);
+    html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="'+h+'h: '+n+' corridas">'
+      + '<div style="width:100%;background:'+(n>0?'var(--gami-blue)':'var(--surface2)')+';height:'+altura+'px;border-radius:2px 2px 0 0;min-height:2px"></div>'
+      + (h%6===0?'<div style="font-size:8px;color:var(--text3);margin-top:2px">'+h+'h</div>':'<div style="font-size:8px;margin-top:2px">&nbsp;</div>')+'</div>';
+  }
+  html += '</div></div>';
+  // Por bairro
+  html += '<div class="card"><div class="card-title">📍 Corridas por área</div><div style="margin-top:8px">';
+  if(topBairros.length){
+    var maxB = topBairros[0].total;
+    topBairros.forEach(function(b){
+      var pct=Math.round(b.total/maxB*100);
+      html += '<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%">'+b.nome+'</span><span style="color:var(--text3)">'+b.total+'</span></div>'
+        + '<div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:#EF9F27"></div></div></div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem dados</div>';
+  html += '</div></div>';
+  html += '</div>';
+
+  // Últimas corridas
+  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">🕒 Últimas corridas</div><div style="margin-top:8px">';
+  ultimas.forEach(function(x){
+    var st = x.status_solicitacao;
+    var stLabel = statusMap[st]||st, stCor=statusCor[st]||'#888';
+    var hora = x.data_hora_solicitacao ? x.data_hora_solicitacao.split(' ')[1].slice(0,5) : '';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      + '<span style="font-size:10px;color:var(--text3);width:38px">'+hora+'</span>'
+      + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_passageiro||'?')+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_condutor||'sem motoboy')+'</div></div>'
+      + '<span style="font-size:11px;font-weight:600;color:var(--text2)">'+fmt(parseFloat(x.valor_corrida||0))+'</span>'
+      + '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+stCor+'22;color:'+stCor+';white-space:nowrap">'+stLabel+'</span>'
+      + '</div>';
+  });
+  html += '</div></div>';
+
+  // Nota sobre amostra
+  html += '<div style="font-size:10px;color:var(--text3);font-style:italic;text-align:center;padding:4px">Amostra das corridas recentes. Faturamento total e histórico completo dependem de filtro por data (próxima etapa).</div>';
+
+  cont.innerHTML = html;
+}
+
+function vgCard(icone, label, valor, cor){
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px">'
+    + '<div style="font-size:18px">'+icone+'</div>'
+    + '<div style="font-size:22px;font-weight:700;color:'+cor+';margin:4px 0">'+valor+'</div>'
+    + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">'+label+'</div>'
+    + '</div>';
+}
 
 function renderVisaoGeralCidade(){
   if(!window.__cidadeAtual) return;
