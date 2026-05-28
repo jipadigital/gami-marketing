@@ -1,4 +1,4 @@
-<!-- v14.1 - Alertas 45 dias, threshold 5d, ordem crescente, mostra todas - 28/05/2026 -->
+<!-- v14.2 - Aba Motoboys Etapa 1 - banner novo + 6 cards superiores - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2194,37 +2194,34 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <!-- ===== ABA MOTOBOYS ===== -->
     <div id="ctab-motoboys" style="display:none">
-      <!-- Banner status fonte de dados (real/demo) -->
-      <div id="mb-fonte-banner" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-        <div id="mb-fonte-icone" style="font-size:20px;flex-shrink:0">⚠️</div>
-        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.5" id="mb-fonte-texto">
-          <strong>Dados de demonstração</strong> — os números, nomes e telefones abaixo são <strong>fictícios</strong>.
+      <!-- Banner igual ao da Visão Geral (auto-load + cache) -->
+      <div id="mb-painel-banner" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div id="mb-painel-icone" style="font-size:18px;flex-shrink:0">📊</div>
+        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.4" id="mb-painel-texto">
+          <strong>Painel de motoboys</strong> — clique para carregar os dados reais da Machine.
         </div>
-        <button onclick="mbAlternarFonte()" id="mb-fonte-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
-      </div>
-      
-      <!-- Métricas resumo -->
-      <div class="metrics" style="margin-bottom:14px">
-        <div class="metric"><div class="metric-label">Total ativos</div><div class="metric-val" id="mb-total-ativos" style="color:#1D9E75">—</div><div class="metric-sub">trabalhando</div></div>
-        <div class="metric"><div class="metric-label">Online agora</div><div class="metric-val" id="mb-online" style="color:var(--gami-blue)">—</div><div class="metric-sub">disponíveis</div></div>
-        <div class="metric"><div class="metric-label">Em captação</div><div class="metric-val" id="mb-prospec" style="color:#EF9F27">—</div><div class="metric-sub">no pipeline</div></div>
-        <div class="metric"><div class="metric-label">Sumiram</div><div class="metric-val" id="mb-churn" style="color:#E24B4A">—</div><div class="metric-sub">7+ dias sem corrida</div></div>
+        <button onclick="mbCarregarPainel({forcar:true})" id="mb-painel-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
       </div>
 
-      <!-- Ranking + Churn -->
-      <div class="g2" style="margin-bottom:14px">
-        <div class="card">
-          <div class="card-title">🏆 Top motoboys da semana</div>
-          <div id="mb-ranking-semana" style="margin-top:8px"></div>
-        </div>
-        <div class="card" style="border-left:3px solid #E24B4A">
-          <div class="card-title">⚠️ Motoboys sumidos</div>
-          <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Sem corridas há 7+ dias — risco de churn</div>
-          <div id="mb-churn-list"></div>
-        </div>
-      </div>
+      <!-- 6 cards de métricas no topo -->
+      <div id="mb-cards-topo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
 
-      <!-- Comunicação rápida -->
+      <!-- Top motoboys: Dia + Semana + Mês (lado a lado) -->
+      <div id="mb-top-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px"></div>
+
+      <!-- Motoboys sumidos -->
+      <div id="mb-sumidos-box" style="margin-bottom:14px"></div>
+
+      <!-- Destaques semanais (5 prêmios) -->
+      <div id="mb-destaques-box" style="margin-bottom:14px"></div>
+
+      <!-- Lista completa com filtros -->
+      <div id="mb-lista-box" style="margin-bottom:14px"></div>
+
+      <!-- Gráfico hora × cobertura -->
+      <div id="mb-grafico-box" style="margin-bottom:14px"></div>
+
+      <!-- Comunicação rápida (mantido) -->
       <div class="card" style="background:linear-gradient(135deg,#E6F6FE,#EAF3DE);border-color:#1AB8F033">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="flex:1">
@@ -8443,104 +8440,132 @@ function gerarRestaurantesMock(cidadeNome){
 /* RENDERS — Aba MOTOBOYS                                         */
 /* ============================================================== */
 
+/* ============================================================== */
+/* ABA MOTOBOYS — painel real (Etapa 1: cards superiores)         */
+/* Reutiliza o cache da Visão Geral pra zero requests extras.     */
+/* ============================================================== */
+async function mbCarregarPainel(opts){
+  opts = opts || {};
+  var forcado = !!opts.forcar;
+  var c = window.__cidadeAtual; if(!c) return;
+  var btn = document.getElementById('mb-painel-btn');
+
+  // Reusa cache da Visao Geral se existir e for recente (5min)
+  if(!forcado && _vgCache[c.id] && (Date.now() - _vgCache[c.id].ts) < _VG_CACHE_TTL){
+    var d = _vgCache[c.id].dados;
+    mbRenderCards(d.corridasDia, d.corridasMes, d.condutores, c.nome);
+    var bannerC = document.getElementById('mb-painel-banner');
+    if(bannerC){
+      bannerC.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+      bannerC.style.borderColor='#1D9E7566';
+      document.getElementById('mb-painel-icone').textContent='🟢';
+      var minsAtras = Math.round((Date.now() - _vgCache[c.id].ts)/60000);
+      document.getElementById('mb-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+(d.condutores||[]).length+' motoboys cadastrados · cache de '+(minsAtras===0?'agora mesmo':minsAtras+' min atrás');
+    }
+    if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
+    return;
+  }
+
+  // Sem cache: dispara vgCarregarPainel (centraliza fetchs) e ele preenche tudo
+  if(typeof vgCarregarPainel === 'function'){
+    // Loading
+    var banner = document.getElementById('mb-painel-banner');
+    if(banner){
+      banner.style.background='linear-gradient(135deg,#FFF8E1,#FAEEDA)';
+      banner.style.borderColor='#EF9F2766';
+      document.getElementById('mb-painel-icone').textContent='⏳';
+      document.getElementById('mb-painel-texto').innerHTML='<strong>Carregando dados da Machine...</strong> Pode levar alguns segundos.';
+    }
+    if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
+
+    await vgCarregarPainel({forcar:forcado, auto:true});
+
+    // Quando termina, vgCarregarPainel salvou no cache. Pega de la.
+    if(_vgCache[c.id]){
+      var d2 = _vgCache[c.id].dados;
+      mbRenderCards(d2.corridasDia, d2.corridasMes, d2.condutores, c.nome);
+      var banner2 = document.getElementById('mb-painel-banner');
+      if(banner2){
+        banner2.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+        banner2.style.borderColor='#1D9E7566';
+        document.getElementById('mb-painel-icone').textContent='🟢';
+        var hr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        document.getElementById('mb-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+(d2.condutores||[]).length+' motoboys cadastrados · atualizado '+hr;
+        if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
+      }
+    } else {
+      if(btn){ btn.disabled=false; btn.innerHTML='🟢 Carregar dados reais'; }
+    }
+  }
+}
+
+/* Card helper (mesma assinatura do vgCard) */
+function mbCard(icone, label, valor, sublabel, cor){
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px">'
+    + '<div style="font-size:18px">'+icone+'</div>'
+    + '<div style="font-size:22px;font-weight:700;color:'+cor+';margin:4px 0">'+valor+'</div>'
+    + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">'+label+'</div>'
+    + (sublabel ? '<div style="font-size:10px;color:var(--text3);margin-top:3px">'+sublabel+'</div>' : '')
+    + '</div>';
+}
+
+/* Renderiza os 6 cards superiores */
+function mbRenderCards(corridasDia, corridasMes, condutores, cidadeNome){
+  var host = document.getElementById('mb-cards-topo'); if(!host) return;
+  corridasDia = corridasDia || [];
+  corridasMes = corridasMes || [];
+  condutores = condutores || [];
+
+  // 1. Total cadastrados + breakdown (Ativo, Em analise, Inativo)
+  // Status oficiais Machine: A=Ativo, E=Em analise, F=Fila espera, I=Inativo, S=Suspenso, R=Rejeitado, D=Deletado
+  var total = condutores.length;
+  var ativos = condutores.filter(function(x){ return x.status==='A'; }).length;
+  var emAnalise = condutores.filter(function(x){ return x.status==='E'; }).length;
+  var inativos = condutores.filter(function(x){ return ['I','S','R','D'].indexOf(x.status)>=0; }).length;
+  var novos = condutores.filter(function(x){ return x.status==='F'; }).length;
+
+  // 2. Motoboys que rodaram hoje (ids unicos de condutor nas corridas de hoje)
+  var idsHoje = {};
+  corridasDia.forEach(function(x){ var id = x.condutor_id||x.taxista_id; if(id) idsHoje[id]=true; });
+  var rodaramHoje = Object.keys(idsHoje).length;
+
+  // 3. Total de corridas hoje (todos os motoboys)
+  var corridasHoje = corridasDia.length;
+
+  // 4. Ticket medio do dia (so finalizadas) — gestores+ apenas
+  var finalizadas = corridasDia.filter(function(x){return x.status_solicitacao==='F';});
+  var somaValor = 0;
+  finalizadas.forEach(function(x){ somaValor += parseFloat(x.valor_corrida||0); });
+  var ticketMedio = finalizadas.length>0 ? somaValor/finalizadas.length : 0;
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+
+  // 5. Motoboys ativos no mes (rodaram pelo menos 1 vez)
+  var idsMes = {};
+  corridasMes.forEach(function(x){ var id = x.condutor_id||x.taxista_id; if(id) idsMes[id]=true; });
+  var ativosMes = Object.keys(idsMes).length;
+
+  // 6. Em analise pendentes (gargalo)
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+
+  var html = '';
+  html += mbCard('🏍️', 'Total cadastrados', total, ativos+' ativos · '+emAnalise+' análise · '+inativos+' inativos', '#1AB8F0');
+  html += mbCard('⚡', 'Rodaram hoje', rodaramHoje, total>0 ? Math.round(rodaramHoje/total*100)+'% do total' : '', '#1D9E75');
+  html += mbCard('🛵', 'Corridas hoje', corridasHoje, finalizadas.length+' finalizadas', '#EF9F27');
+  if(verFin){
+    html += mbCard('🎫', 'Ticket médio hoje', fmt(ticketMedio), 'por corrida', '#16A085');
+  }
+  html += mbCard('📈', 'Ativos no mês', ativosMes, 'rodaram pelo menos 1 vez', '#8B5CF6');
+  html += mbCard('⏳', 'Em análise', emAnalise, emAnalise>5 ? 'gargalo no onboarding' : 'fluxo normal', emAnalise>5?'#E24B4A':'#888');
+
+  host.innerHTML = html;
+}
+
+/* Função antiga - mantida pra compatibilidade com chamadas externas (cidVerMotoboy, etc.) */
 function renderMotoboysAba(){
   if(!window.__cidadeAtual) return;
-  var cidade = window.__cidadeAtual;
-  // Ajusta banner conforme fonte ativa pra esta cidade
-  if(typeof mbAtualizarBanner==='function'){
-    var ehReal = window._mbFonteReal && window._mbFonteReal[cidade.nome];
-    var totReal = (window._cacheMotoboysReal && window._cacheMotoboysReal[cidade.nome]) ? window._cacheMotoboysReal[cidade.nome].length : 0;
-    mbAtualizarBanner(!!ehReal, null, totReal);
-  }
-  var motoboys = mbGetMotoboys(cidade.nome);
-  
-  // Métricas
-  var ativos = motoboys.filter(function(m){ return m.status === 'ativo' || m.status === 'online'; });
-  var online = motoboys.filter(function(m){ return m.status === 'online'; });
-  var prospec = motoboys.filter(function(m){ return ['novo','entrevista','treinamento'].indexOf(m.status) >= 0; });
-  var churn = motoboys.filter(function(m){ return m.status === 'inativo'; });
-  
-  var setMet = function(id, val){ var el = document.getElementById(id); if(el) el.textContent = val; };
-  setMet('mb-total-ativos', ativos.length);
-  setMet('mb-online', online.length);
-  setMet('mb-prospec', prospec.length);
-  setMet('mb-churn', churn.length);
-  
-  // Pipeline
-  var pipeline = document.getElementById('mb-pipeline');
-  if(pipeline){
-    var stages = [
-      {key:'novo', label:'📥 Novos', cor:'#1AB8F0'},
-      {key:'entrevista', label:'🤝 Entrevista', cor:'#EF9F27'},
-      {key:'treinamento', label:'🎓 Treinamento', cor:'#8B5CF6'},
-      {key:'ativo', label:'✅ Ativos', cor:'#1D9E75'}
-    ];
-    pipeline.innerHTML = stages.map(function(stage){
-      var items = motoboys.filter(function(m){ 
-        if(stage.key === 'ativo') return m.status === 'ativo' || m.status === 'online';
-        return m.status === stage.key; 
-      });
-      return '<div style="background:var(--surface2);border-radius:10px;padding:10px;min-height:100px;border-top:3px solid '+stage.cor+'">'
-        + '<div style="font-size:11px;font-weight:700;color:'+stage.cor+';margin-bottom:8px;display:flex;justify-content:space-between">'
-        + '<span>'+stage.label+'</span><span style="background:'+stage.cor+';color:white;padding:1px 7px;border-radius:8px;font-size:10px">'+items.length+'</span>'
-        + '</div>'
-        + '<div style="display:flex;flex-direction:column;gap:5px;max-height:300px;overflow:auto">'
-        + items.slice(0, stage.key === 'ativo' ? 8 : 20).map(function(m){
-            return '<div style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:11px;cursor:pointer;transition:all .1s" '
-              + 'onclick="cidVerMotoboy(\''+m.id+'\')" '
-              + 'onmouseover="this.style.borderColor=\''+stage.cor+'\'" '
-              + 'onmouseout="this.style.borderColor=\'var(--border)\'">'
-              + '<div style="font-weight:600;color:var(--text);font-size:11px">'+m.nome+'</div>'
-              + (stage.key === 'ativo' ? '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+(m.avaliacao?'⭐ '+m.avaliacao+' · ':'')+(m._real?(m.bairro||m.tel||''):(m.corridasSemana+' corridas/sem'))+'</div>' : '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+m.tel+'</div>')
-              + '</div>';
-          }).join('')
-        + (items.length > (stage.key === 'ativo' ? 8 : 20) ? '<div style="font-size:9px;color:var(--text3);text-align:center;padding:5px">+ '+(items.length - (stage.key === 'ativo' ? 8 : 20))+' outros</div>' : '')
-        + '</div>'
-        + '</div>';
-    }).join('');
-  }
-  
-  // Ranking semana (top 5)
-  var topSemana = ativos.slice().sort(function(a,b){ return b.corridasSemana - a.corridasSemana; }).slice(0,5);
-  var rank = document.getElementById('mb-ranking-semana');
-  if(rank){
-    if(topSemana.length === 0){
-      rank.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Sem dados ainda</div>';
-    } else {
-      var medals = ['🥇','🥈','🥉','4️⃣','5️⃣'];
-      rank.innerHTML = topSemana.map(function(m, i){
-        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
-          + '<div style="font-size:18px">'+medals[i]+'</div>'
-          + '<div style="flex:1">'
-          + '<div style="font-size:12px;font-weight:600">'+m.nome+'</div>'
-          + '<div style="font-size:10px;color:var(--text3)">'+(m.avaliacao?'⭐ '+m.avaliacao:(m._real?(m.tel||''):'⭐ —'))+'</div>'
-          + '</div>'
-          + '<div style="text-align:right">'
-          + '<div style="font-size:14px;font-weight:700;color:var(--orange)">'+m.corridasSemana+'</div>'
-          + '<div style="font-size:9px;color:var(--text3)">corridas</div>'
-          + '</div>'
-          + '</div>';
-      }).join('');
-    }
-  }
-  
-  // Churn
-  var churnList = document.getElementById('mb-churn-list');
-  if(churnList){
-    if(churn.length === 0){
-      churnList.innerHTML = '<div style="text-align:center;padding:20px;color:#1D9E75;font-size:11px">🎉 Nenhum motoboy sumido!</div>';
-    } else {
-      churnList.innerHTML = churn.slice(0,5).map(function(m){
-        return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
-          + '<div style="font-size:18px">⚠️</div>'
-          + '<div style="flex:1">'
-          + '<div style="font-size:12px;font-weight:600">'+m.nome+'</div>'
-          + '<div style="font-size:10px;color:#E24B4A">'+m.diasInativo+' dias sem corrida</div>'
-          + '</div>'
-          + '<a href="https://wa.me/55'+(m.tel||'').replace(/\D/g,'')+'" target="_blank" style="padding:4px 10px;border-radius:6px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600">WhatsApp</a>'
-          + '</div>';
-      }).join('') + (churn.length > 5 ? '<div style="font-size:10px;color:var(--text3);text-align:center;padding:6px">+ '+(churn.length-5)+' outros</div>' : '');
-    }
+  // Dispara auto-load (usa cache se existir)
+  if(typeof mbCarregarPainel === 'function'){
+    try { mbCarregarPainel({}); } catch(e){ console.warn('mbCarregarPainel:', e); }
   }
 }
 
