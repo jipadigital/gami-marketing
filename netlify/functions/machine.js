@@ -107,14 +107,16 @@ exports.handler = async function(event){
 
       var sep = path.indexOf('?')>=0 ? '&' : '?';
       var url = BASE_URL + path + sep + 'pagina=' + pagina + '&limite=' + LIMITE;
-      // Repassa filtro de data se informado (so pra solicitacao).
-      // Tenta os nomes mais provaveis da Machine/Gaudium.
+      // Filtro de data (so pra solicitacao). Nomes oficiais Machine API:
+      //   data_hora_solicitacao_min / data_hora_solicitacao_max
+      // Formato: ISO 8601 com hora (2025-05-28T00:00:00.000Z)
       if(recurso === 'solicitacao' && dataInicio){
-        url += '&data_inicio=' + encodeURIComponent(dataInicio);
-        url += '&data_solicitacao_inicio=' + encodeURIComponent(dataInicio);
+        // Aceita 'YYYY-MM-DD' (converte pra ISO com hora) ou ja ISO
+        var dIni = dataInicio.indexOf('T')>=0 ? dataInicio : (dataInicio + 'T00:00:00.000Z');
+        url += '&data_hora_solicitacao_min=' + encodeURIComponent(dIni);
         if(dataFim){
-          url += '&data_fim=' + encodeURIComponent(dataFim);
-          url += '&data_solicitacao_fim=' + encodeURIComponent(dataFim);
+          var dFim = dataFim.indexOf('T')>=0 ? dataFim : (dataFim + 'T23:59:59.999Z');
+          url += '&data_hora_solicitacao_max=' + encodeURIComponent(dFim);
         }
       }
 
