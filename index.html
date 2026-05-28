@@ -1,4 +1,4 @@
-<!-- v13.8 - Remove Performance + Aniversarios pra baixo - 28/05/2026 -->
+<!-- v14.0 - Auto-load Machine ao abrir cidade + cache 5min - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2164,16 +2164,11 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.4" id="vg-painel-texto">
             <strong>Painel operacional</strong> — clique para carregar os dados reais das corridas e motoboys desta cidade.
           </div>
-          <button onclick="vgCarregarPainel()" id="vg-painel-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
+          <button onclick="vgCarregarPainel({forcar:true})" id="vg-painel-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
         </div>
         <div id="vg-painel-conteudo"></div>
       </div>
 
-      <!-- 📅 Datas comemorativas da cidade -->
-      <div class="card" style="margin-bottom:12px">
-        <div class="card-title">📅 Datas comemorativas</div>
-        <div id="cp-datas-comemorativas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:6px"></div>
-      </div>
       <!-- Comparativo (Hoje vs Ontem, Mês vs Mês anterior — dados reais) -->
       <div class="card" style="margin-bottom:12px">
         <div class="card-title">📈 Comparativo</div>
@@ -8078,6 +8073,13 @@ function abrirCidade(id){
   document.getElementById('cidade-painel').style.display='block';
   setTimeout(function(){ if(typeof initMachineTab === 'function') initMachineTab(); }, 200);
 
+  // Auto-carrega dados Machine (usa cache de 5min se ja foi carregado recentemente)
+  setTimeout(function(){
+    if(typeof vgCarregarPainel === 'function'){
+      try { vgCarregarPainel({auto:true}); } catch(e){ console.warn('vgCarregarPainel auto:', e); }
+    }
+  }, 300);
+
   // Header
   document.getElementById('cp-nome').textContent = c.nome + ' — ' + c.uf;
   const s = STATUS_CIDADE[c.status]||STATUS_CIDADE.ativa;
@@ -8111,10 +8113,6 @@ function abrirCidade(id){
     const diff=Math.round((bday-new Date().setHours(0,0,0,0))/(1000*60*60*24));
     return `<div class="row"><span style="font-size:12px;font-weight:500">${p.nome}</span><span style="font-size:10px;color:var(--text3)">${diff===0?'Hoje!':diff===1?'Amanhã':'Em '+diff+' dias'}</span><button onclick="openAI('Crie um post de aniversário para ${p.nome} da Gâmi em ${c.nome}.')" style="font-size:10px;padding:2px 7px;border:1px solid var(--orange);border-radius:4px;background:transparent;color:var(--orange);cursor:pointer;margin-left:4px">Post ↗</button></div>`;
   }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px 0">Nenhum aniversário nos próximos 14 dias.</div>';
-
-  // 📅 Datas comemorativas da cidade
-  var hostDC = document.getElementById('cp-datas-comemorativas');
-  if(hostDC && typeof renderDatasCidade === 'function') hostDC.innerHTML = renderDatasCidade(c.nome);
 
   // Equipe (renderiza com função dedicada)
   if(typeof renderEquipeCidade === 'function') try { renderEquipeCidade(); } catch(e){ console.warn('renderEquipeCidade:', e); }
@@ -8799,9 +8797,92 @@ function _vgData(d){ // YYYY-MM-DD
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 
-async function vgCarregarPainel(){
+/* Verifica se o usuario logado pode ver dados financeiros operacionais
+   (faturamento, comparativo R$, valores nas corridas/motoboys).
+   Acesso: super_admin, diretoria, gerencia, gestor. NAO: colaborador. */
+function podeVerFaturamentoCidade(){
+  try{
+    if(typeof getUsuarioLogado !== 'function') return false;
+    var u = getUsuarioLogado(); if(!u) return false;
+    if(u.email && u.email.toLowerCase() === 'jipadigital@gmail.com') return true;
+    if(typeof detectarNivelPermissao !== 'function') return false;
+    var nivel = detectarNivelPermissao(u);
+    return nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia' || nivel === 'gestor';
+  }catch(e){ return false; }
+}
+
+/* Busca corridas de um periodo (data_inicio -> data_fim) em chunks paralelos.
+   Quando o periodo eh grande (>10 dias), divide em chunks de ~7 dias rodando
+   em paralelo, pra evitar timeout do Netlify em queries muito grandes. */
+async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim){
+  var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao';
+  // Calcula numero de dias
+  var dIni = new Date(dataInicio+'T00:00:00');
+  var dFim = new Date(dataFim+'T00:00:00');
+  var dias = Math.floor((dFim - dIni) / 86400000) + 1;
+
+  // Periodo pequeno (ate 10 dias): 1 fetch so
+  if(dias <= 10){
+    var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim).then(function(r){return r.json();});
+    return (r && r.response) ? r.response : [];
+  }
+
+  // Periodo grande: divide em chunks de ~7 dias e busca em paralelo
+  var chunks = [];
+  var atual = new Date(dIni);
+  while(atual <= dFim){
+    var fim = new Date(atual.getTime() + 6*86400000); // +6 dias = janela de 7
+    if(fim > dFim) fim = new Date(dFim);
+    chunks.push({ini: _vgData(atual), fim: _vgData(fim)});
+    atual = new Date(fim.getTime() + 86400000); // proximo dia
+  }
+  var promessas = chunks.map(function(c){
+    return fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim).then(function(r){return r.json();}).catch(function(){return {response:[]};});
+  });
+  var resultados = await Promise.all(promessas);
+  var todas = [];
+  resultados.forEach(function(r){ if(r && r.response) todas = todas.concat(r.response); });
+  return todas;
+}
+
+/* Cache em memoria dos dados Machine por cidade (TTL 5min).
+   Evita refazer 12 requests sempre que o usuario entra/sai da mesma cidade. */
+var _vgCache = {};
+var _VG_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+async function vgCarregarPainel(opts){
+  opts = opts || {};
+  var forcado = !!opts.forcar;     // true quando vem do botao Atualizar
+  var auto = !!opts.auto;          // true quando dispara sozinho ao abrir cidade
   var c = window.__cidadeAtual; if(!c) return;
   var btn = document.getElementById('vg-painel-btn');
+
+  // Tenta cache primeiro (se nao foi forcado)
+  if(!forcado && _vgCache[c.id] && (Date.now() - _vgCache[c.id].ts) < _VG_CACHE_TTL){
+    var d = _vgCache[c.id].dados;
+    vgRenderPainel(d.corridasDia, d.corridasMes, d.condutores, c.nome, d.filtroOK, d.hojeStr);
+    vgRenderComparativo(d.corridasDia, d.corridasOntem, d.corridasMes, d.corridasMesAnt);
+    vgRenderAlertas(d.corridasMes, d.hojeStr);
+    var bannerC = document.getElementById('vg-painel-banner');
+    if(bannerC){
+      bannerC.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+      bannerC.style.borderColor='#1D9E7566';
+      document.getElementById('vg-painel-icone').textContent='🟢';
+      var minsAtras = Math.round((Date.now() - _vgCache[c.id].ts)/60000);
+      document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+d.corridasDia.length+' corridas hoje · '+d.corridasMes.length+' no mês · cache de '+(minsAtras===0?'agora mesmo':minsAtras+' min atrás');
+    }
+    if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
+    return;
+  }
+
+  // Banner: loading
+  var banner = document.getElementById('vg-painel-banner');
+  if(banner){
+    banner.style.background='linear-gradient(135deg,#FFF8E1,#FAEEDA)';
+    banner.style.borderColor='#EF9F2766';
+    document.getElementById('vg-painel-icone').textContent='⏳';
+    document.getElementById('vg-painel-texto').innerHTML='<strong>Carregando dados da Machine...</strong> Pode levar alguns segundos na primeira vez.';
+  }
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
 
   var slug = _vgSlug(c.nome);
@@ -8811,34 +8892,27 @@ async function vgCarregarPainel(){
   var ontemStr = _vgData(ontem);
   var diaHoje = hoje.getDate();
   var inicioMes = _vgData(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
-  // Mes anterior: do dia 1 ate o mesmo dia (pra ser comparacao justa)
   var inicioMesAnt = _vgData(new Date(hoje.getFullYear(), hoje.getMonth()-1, 1));
   var fimMesAnt = _vgData(new Date(hoje.getFullYear(), hoje.getMonth()-1, diaHoje));
 
   var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
 
   try{
-    // 5 buscas em paralelo:
-    //  - corridas HOJE (00:00-23:59 de hoje)
-    //  - corridas ONTEM (00:00-23:59 de ontem) -> comparativo
-    //  - corridas MES atual (dia 1 ate hoje) -> top motoboys mes + alertas lojas
-    //  - corridas MES ANTERIOR (dia 1 ate mesmo dia mes passado) -> comparativo
-    //  - condutores
-    var [rDia, rOntem, rMes, rMesAnt, rCond] = await Promise.all([
+    var [rDia, rOntem, corridasMes, corridasMesAnt, rCond] = await Promise.all([
       fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr).then(function(r){return r.json();}),
       fetch(base+'&recurso=solicitacao&data_inicio='+ontemStr+'&data_fim='+ontemStr).then(function(r){return r.json();}),
-      fetch(base+'&recurso=solicitacao&data_inicio='+inicioMes+'&data_fim='+hojeStr).then(function(r){return r.json();}),
-      fetch(base+'&recurso=solicitacao&data_inicio='+inicioMesAnt+'&data_fim='+fimMesAnt).then(function(r){return r.json();}),
+      _vgBuscarCorridasPeriodo(slug, inicioMes, hojeStr),
+      _vgBuscarCorridasPeriodo(slug, inicioMesAnt, fimMesAnt),
       fetch(base+'&recurso=condutor').then(function(r){return r.json();})
     ]);
 
+    // Se trocou de cidade enquanto carregava, descarta resultado
+    if(!window.__cidadeAtual || window.__cidadeAtual.id !== c.id) return;
+
     var corridasDia = (rDia && rDia.response) ? rDia.response : [];
     var corridasOntem = (rOntem && rOntem.response) ? rOntem.response : [];
-    var corridasMes = (rMes && rMes.response) ? rMes.response : [];
-    var corridasMesAnt = (rMesAnt && rMesAnt.response) ? rMesAnt.response : [];
     var condutores = (rCond && rCond.response) ? rCond.response : [];
 
-    // Filtra no cliente por garantia
     corridasDia = corridasDia.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr; });
     corridasOntem = corridasOntem.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===ontemStr; });
     corridasMes = corridasMes.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMes && d<=hojeStr; });
@@ -8846,19 +8920,20 @@ async function vgCarregarPainel(){
 
     var filtroOK = (rDia && rDia.filtro_data) ? rDia.filtro_data.aplicado : null;
 
-    // Renderiza o painel principal
+    // Salva no cache
+    _vgCache[c.id] = {
+      ts: Date.now(),
+      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr}
+    };
+
     vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
-
-    // Renderiza Comparativo real (Hoje vs Ontem + Mes vs Mes anterior)
     vgRenderComparativo(corridasDia, corridasOntem, corridasMes, corridasMesAnt);
-
-    // Renderiza Alertas inteligentes (lojas sumidas a 7+ dias)
     vgRenderAlertas(corridasMes, hojeStr);
 
-    var banner=document.getElementById('vg-painel-banner');
-    if(banner){
-      banner.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
-      banner.style.borderColor='#1D9E7566';
+    var banner2=document.getElementById('vg-painel-banner');
+    if(banner2){
+      banner2.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+      banner2.style.borderColor='#1D9E7566';
       document.getElementById('vg-painel-icone').textContent='🟢';
       var hr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+corridasDia.length+' corridas hoje · '+corridasMes.length+' no mês · atualizado '+hr;
@@ -8866,13 +8941,22 @@ async function vgCarregarPainel(){
     }
   }catch(e){
     if(btn){ btn.disabled=false; btn.innerHTML='🟢 Carregar dados reais'; }
-    alert('Não consegui carregar os dados: '+e.message);
+    var bannerE = document.getElementById('vg-painel-banner');
+    if(bannerE){
+      bannerE.style.background='linear-gradient(135deg,#FEF3F2,#FCE7E6)';
+      bannerE.style.borderColor='#E24B4A66';
+      document.getElementById('vg-painel-icone').textContent='⚠️';
+      document.getElementById('vg-painel-texto').innerHTML='<strong>Não consegui carregar agora.</strong> Tente o botão novamente em alguns segundos.';
+    }
+    // Em auto-load, nao mostra alert (incomoda). Em manual, mostra.
+    if(!auto) alert('Não consegui carregar os dados: '+e.message);
   }
 }
 
 /* Comparativo Hoje vs Ontem + Mês vs Mês anterior */
 function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
   var comp = document.getElementById('cp-comparativo'); if(!comp) return;
+  var verFin = podeVerFaturamentoCidade();
 
   var nHoje = cDia.length;
   var nOntem = cOntem.length;
@@ -8882,7 +8966,6 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
   var nMesAnt = cMesAnt.length;
   var pctMes = nMesAnt>0 ? Math.round(((nMes - nMesAnt) / nMesAnt) * 100) : (nMes>0?100:0);
 
-  // Faturamento (finalizadas)
   var fmtBR = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
   var sumFin = function(arr){ var s=0; arr.forEach(function(x){ if(x.status_solicitacao==='F') s+=parseFloat(x.valor_corrida||0); }); return s; };
   var fatHoje = sumFin(cDia), fatOntem = sumFin(cOntem);
@@ -8893,23 +8976,23 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
   var seta = function(v){ return v >= 0 ? '↑' : '↓'; };
   var cor  = function(v){ return v >= 0 ? '#1D9E75' : '#E24B4A'; };
 
-  var linha = function(label, valorAtual, valorAnt, pct, sufixo){
-    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">'
+  var linha = function(label, valorAtual, valorAnt, pct, sufixo, ultima){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0' + (ultima?'':';border-bottom:1px solid var(--border)') + '">'
       + '<div style="flex:1"><div style="font-size:11px;color:var(--text3);margin-bottom:2px">'+label+'</div>'
       + '<div style="font-size:14px;font-weight:600">'+valorAtual+sufixo+' <span style="font-size:10px;color:var(--text3);font-weight:400">vs '+valorAnt+sufixo+'</span></div></div>'
       + '<div style="text-align:right;color:'+cor(pct)+';font-weight:700;font-size:14px">'+seta(pct)+' '+Math.abs(pct)+'%</div>'
       + '</div>';
   };
 
-  comp.innerHTML =
-      linha('🛵 Corridas hoje vs ontem', nHoje, nOntem, pctDia, '')
-    + linha('💰 Faturamento hoje vs ontem', fmtBR(fatHoje), fmtBR(fatOntem), pctFatDia, '')
-    + linha('🛵 Corridas mês vs mês anterior', nMes, nMesAnt, pctMes, '')
-    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">'
-      + '<div style="flex:1"><div style="font-size:11px;color:var(--text3);margin-bottom:2px">💰 Faturamento mês vs mês anterior</div>'
-      + '<div style="font-size:14px;font-weight:600">'+fmtBR(fatMes)+' <span style="font-size:10px;color:var(--text3);font-weight:400">vs '+fmtBR(fatMesAnt)+'</span></div></div>'
-      + '<div style="text-align:right;color:'+cor(pctFatMes)+';font-weight:700;font-size:14px">'+seta(pctFatMes)+' '+Math.abs(pctFatMes)+'%</div>'
-      + '</div>';
+  var html = linha('🛵 Corridas hoje vs ontem', nHoje, nOntem, pctDia, '', false);
+  if(verFin){
+    html += linha('💰 Faturamento hoje vs ontem', fmtBR(fatHoje), fmtBR(fatOntem), pctFatDia, '', false);
+  }
+  html += linha('🛵 Corridas mês vs mês anterior', nMes, nMesAnt, pctMes, '', !verFin);
+  if(verFin){
+    html += linha('💰 Faturamento mês vs mês anterior', fmtBR(fatMes), fmtBR(fatMesAnt), pctFatMes, '', true);
+  }
+  comp.innerHTML = html;
 }
 
 /* Alertas inteligentes: lojas sumidas
@@ -9046,6 +9129,7 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
 
   var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
   var dataLabel = hojeStr ? hojeStr.split('-').reverse().join('/') : 'hoje';
+  var verFin = podeVerFaturamentoCidade();
 
   // ---- RENDER ----
   var html = '';
@@ -9060,12 +9144,14 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
   // Título do dia
   html += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📅 Operação de hoje ('+dataLabel+')</div>';
 
-  // Cards de métricas principais
+  // Cards de métricas principais. Faturamento + Ticket medio = so quem tem permissao financeira.
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">';
   html += vgCard('🛵', 'Corridas hoje', total, '#1AB8F0');
   html += vgCard('✅', 'Taxa de conclusão', taxaConclusao+'%', '#1D9E75');
-  html += vgCard('💰', 'Faturamento', fmt(faturamento), '#16A085');
-  html += vgCard('🎫', 'Ticket médio', fmt(ticketMedio), '#EF9F27');
+  if(verFin){
+    html += vgCard('💰', 'Faturamento', fmt(faturamento), '#16A085');
+    html += vgCard('🎫', 'Ticket médio', fmt(ticketMedio), '#EF9F27');
+  }
   html += vgCard('⏱️', 'Tempo médio', tempoMedio+' min', '#8B5CF6');
   html += vgCard('🏪', 'Lojas atendidas', totalLojas, '#E24B4A');
   html += '</div>';
@@ -9157,7 +9243,7 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
         + '<span style="font-size:10px;color:var(--text3);width:38px">'+hora+'</span>'
         + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_passageiro||'?')+'</div>'
         + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_condutor||'sem motoboy')+'</div></div>'
-        + '<span style="font-size:11px;font-weight:600;color:var(--text2)">'+fmt(parseFloat(x.valor_corrida||0))+'</span>'
+        + (verFin ? '<span style="font-size:11px;font-weight:600;color:var(--text2)">'+fmt(parseFloat(x.valor_corrida||0))+'</span>' : '')
         + '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+stCor+'22;color:'+stCor+';white-space:nowrap">'+stLabel+'</span>'
         + '</div>';
     });
