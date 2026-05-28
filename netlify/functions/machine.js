@@ -77,7 +77,7 @@ exports.handler = async function(event){
     }) };
   }
 
-  // Chama a Machine
+  // Chama a Machine (com paginacao automatica)
   try{
     var headers = {
       'Content-Type':'application/json',
@@ -85,23 +85,51 @@ exports.handler = async function(event){
       'api-key': apiKey,
       'Authorization': 'Basic ' + Buffer.from(user + ':' + pass).toString('base64')
     };
-    var r = await fetch(BASE_URL + path, { method:'GET', headers });
-    var data = await r.json();
 
-    if(!r.ok || !data || data.success === false){
-      return { statusCode: r.status||502, headers:cors, body: JSON.stringify({
-        success:false, error:'Machine retornou erro', detalhe: data
-      }) };
+    var todos = [];
+    var pagina = 1;
+    var LIMITE = 100;       // condutores por pagina (a Machine aceita 'limite')
+    var MAX_PAGINAS = 50;   // trava de seguranca
+    var ultimoErro = null;
+
+    while(pagina <= MAX_PAGINAS){
+      // Paginacao oficial da Machine: ?pagina=N&limite=M
+      var sep = path.indexOf('?')>=0 ? '&' : '?';
+      var url = BASE_URL + path + sep + 'pagina=' + pagina + '&limite=' + LIMITE;
+      var r = await fetch(url, { method:'GET', headers });
+      var data = await r.json();
+
+      if(!r.ok || !data || data.success === false){
+        ultimoErro = data;
+        if(pagina === 1){
+          return { statusCode: r.status||502, headers:cors, body: JSON.stringify({
+            success:false, error:'Machine retornou erro', detalhe: data
+          }) };
+        }
+        break;
+      }
+
+      var lote = data.response || [];
+      if(!Array.isArray(lote) || lote.length === 0) break;
+
+      // Protecao anti-duplicacao (caso a API ignore a pagina)
+      if(pagina > 1 && lote.length && todos.some(function(x){ return x.id === lote[0].id; })){
+        break;
+      }
+
+      todos = todos.concat(lote);
+      if(lote.length < LIMITE) break; // ultima pagina
+      pagina++;
     }
 
-    var lista = data.response || [];
-    _cache[cacheKey] = { ts: agora, data: lista };
+    _cache[cacheKey] = { ts: agora, data: todos };
 
     return { statusCode:200, headers:cors, body: JSON.stringify({
       success:true, cidade:cidade, recurso:recurso, cache:false,
-      total: Array.isArray(lista) ? lista.length : 0,
+      total: todos.length,
+      paginas_lidas: pagina,
       atualizado_em: new Date(agora).toISOString(),
-      response: lista
+      response: todos
     }) };
   }catch(err){
     return { statusCode:502, headers:cors, body: JSON.stringify({

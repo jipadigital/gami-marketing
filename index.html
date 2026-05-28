@@ -1,4 +1,4 @@
-<!-- v13.1 - Machine API integrada (motoboys reais Maceio) + v13.0 features - 28/05/2026 -->
+<!-- v13.3 - Machine: status oficiais (A/E/F/I/S/R/D) + paginacao com limite - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8341,30 +8341,43 @@ function _seedRandom(seed){
 window._mbFonteReal = window._mbFonteReal || {};
 
 // Mapeia status do condutor da Machine -> status do dashboard
-// "A" = Ativo. Demais ainda a confirmar conforme aparecerem nos dados.
+// Codigos OFICIAIS da doc Machine:
+// A=Ativo, E=Em analise, F=Fila de espera, I=Inativo, S=Suspenso, R=Rejeitado, D=Deletado
 function _mbStatusMachine(cod){
-  var map = { 'A':'ativo', 'I':'inativo', 'B':'inativo', 'P':'novo' };
-  return map[cod] || 'ativo';
+  var map = {
+    'A':'ativo',        // Ativo
+    'E':'entrevista',   // Em analise -> pipeline de captacao
+    'F':'novo',         // Fila de espera -> pipeline
+    'I':'inativo',      // Inativo
+    'S':'inativo',      // Suspenso
+    'R':'inativo',      // Rejeitado
+    'D':'inativo'       // Deletado
+  };
+  return map[cod] || 'inativo';
 }
 
 // Converte um condutor da Machine pro formato que o render espera
 function _mbConverterCondutor(c){
   var ultima = c.data_hora_ultima_corrida;
   var diasInativo = 0;
+  var nuncaCorreu = !ultima;
   if(ultima){
     var d = new Date(ultima.replace(' ','T'));
     diasInativo = Math.floor((Date.now() - d.getTime())/(1000*60*60*24));
   }
   var status = _mbStatusMachine(c.status);
-  // Se faz 7+ dias sem corrida, considera "sumido" (regra do dashboard)
-  if(status==='ativo' && ultima && diasInativo>=7) status='inativo';
+  // "Sumido" (churn) = estava ATIVO mas faz 7+ dias sem corrida.
+  // Quem nunca correu nao e churn.
+  if(status==='ativo' && !nuncaCorreu && diasInativo>=7) status='inativo';
   return {
     id: 'mch_'+(c.id||Math.random().toString(36).slice(2)),
-    nome: (c.nome||'').replace(/\b\w/g, function(l){return l.toUpperCase();}), // capitaliza
+    nome: (c.nome||'').replace(/\b\w/g, function(l){return l.toUpperCase();}),
     tel: c.telefone || c.telefone_internacional || '',
     status: status,
-    diasInativo: diasInativo,
-    corridasSemana: 0, // a Machine nao retorna isso em /condutor
+    statusMachine: c.status,
+    diasInativo: nuncaCorreu ? 0 : diasInativo,
+    nuncaCorreu: nuncaCorreu,
+    corridasSemana: 0,
     corridasMes: 0,
     avaliacao: c.avaliacao_media || null,
     desde: c.data_hora_situacao_cadastral ? c.data_hora_situacao_cadastral.split(' ')[0] : null,
@@ -8596,7 +8609,7 @@ function renderMotoboysAba(){
               + 'onmouseover="this.style.borderColor=\''+stage.cor+'\'" '
               + 'onmouseout="this.style.borderColor=\'var(--border)\'">'
               + '<div style="font-weight:600;color:var(--text);font-size:11px">'+m.nome+'</div>'
-              + (stage.key === 'ativo' ? '<div style="font-size:9px;color:var(--text3);margin-top:2px">⭐ '+m.avaliacao+' · '+m.corridasSemana+' corridas/sem</div>' : '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+m.tel+'</div>')
+              + (stage.key === 'ativo' ? '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+(m.avaliacao?'⭐ '+m.avaliacao+' · ':'')+(m._real?(m.bairro||m.tel||''):(m.corridasSemana+' corridas/sem'))+'</div>' : '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+m.tel+'</div>')
               + '</div>';
           }).join('')
         + (items.length > (stage.key === 'ativo' ? 8 : 20) ? '<div style="font-size:9px;color:var(--text3);text-align:center;padding:5px">+ '+(items.length - (stage.key === 'ativo' ? 8 : 20))+' outros</div>' : '')
@@ -8618,7 +8631,7 @@ function renderMotoboysAba(){
           + '<div style="font-size:18px">'+medals[i]+'</div>'
           + '<div style="flex:1">'
           + '<div style="font-size:12px;font-weight:600">'+m.nome+'</div>'
-          + '<div style="font-size:10px;color:var(--text3)">⭐ '+m.avaliacao+'</div>'
+          + '<div style="font-size:10px;color:var(--text3)">'+(m.avaliacao?'⭐ '+m.avaliacao:(m._real?(m.tel||''):'⭐ —'))+'</div>'
           + '</div>'
           + '<div style="text-align:right">'
           + '<div style="font-size:14px;font-weight:700;color:var(--orange)">'+m.corridasSemana+'</div>'
