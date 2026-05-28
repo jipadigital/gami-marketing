@@ -47,6 +47,10 @@ exports.handler = async function(event){
   var p = event.queryStringParameters || {};
   var cidade = (p.cidade||'').toLowerCase();
   var recurso = (p.recurso||'condutor').toLowerCase();
+  // Filtros opcionais de data (repassados a Machine se informados).
+  // Nomes provaveis ajustaveis conforme a doc: data_inicio / data_fim.
+  var dataInicio = p.data_inicio || p.inicio || null;
+  var dataFim = p.data_fim || p.fim || null;
 
   // Valida recurso (whitelist)
   var path = RECURSOS_GET[recurso];
@@ -67,7 +71,7 @@ exports.handler = async function(event){
   }
 
   // Cache (pode ser furado com &nocache=1)
-  var cacheKey = cidade + ':' + recurso;
+  var cacheKey = cidade + ':' + recurso + ':' + (dataInicio||'') + ':' + (dataFim||'');
   var agora = Date.now();
   var pularCache = (p.nocache === '1' || p.nocache === 'true');
   if(!pularCache && _cache[cacheKey] && (agora - _cache[cacheKey].ts) < CACHE_MS){
@@ -93,16 +97,26 @@ exports.handler = async function(event){
     // Limite de paginas POR RECURSO:
     // condutor = poucos (varre ate 20 pag). solicitacao = pode ser MILHARES,
     // entao limita a 3 paginas (300 corridas recentes) pra nao estourar 502.
-    var MAX_PAGINAS = (recurso === 'condutor') ? 20 : 3;
+    var MAX_PAGINAS = (recurso === 'condutor') ? 20 : 12;
     var INICIO = Date.now();
-    var TEMPO_MAX = 8000; // 8s (limite Netlify e 10s, deixa folga)
+    var TEMPO_MAX = 8500; // 8.5s (limite Netlify e 10s, deixa folga)
 
     while(pagina <= MAX_PAGINAS){
-      // Trava de tempo: se ja passou de 8s, para e retorna o que tem
+      // Trava de tempo: se ja passou do limite, para e retorna o que tem
       if(Date.now() - INICIO > TEMPO_MAX) break;
 
       var sep = path.indexOf('?')>=0 ? '&' : '?';
       var url = BASE_URL + path + sep + 'pagina=' + pagina + '&limite=' + LIMITE;
+      // Repassa filtro de data se informado (so pra solicitacao).
+      // Tenta os nomes mais provaveis da Machine/Gaudium.
+      if(recurso === 'solicitacao' && dataInicio){
+        url += '&data_inicio=' + encodeURIComponent(dataInicio);
+        url += '&data_solicitacao_inicio=' + encodeURIComponent(dataInicio);
+        if(dataFim){
+          url += '&data_fim=' + encodeURIComponent(dataFim);
+          url += '&data_solicitacao_fim=' + encodeURIComponent(dataFim);
+        }
+      }
 
       // Timeout por requisicao (5s cada)
       var ctrl = new AbortController();
@@ -141,8 +155,27 @@ exports.handler = async function(event){
       }
 
       todos = todos.concat(lote);
+
+      // Otimizacao: se pediu filtro de data e o lote ja passou do dia pedido,
+      // nao precisa continuar paginando.
+      if(recurso === 'solicitacao' && dataFim && lote.length){
+        var ultima = lote[lote.length-1].data_hora_solicitacao || '';
+        if(ultima && ultima.split(' ')[0] > dataFim) break;
+      }
+
       if(lote.length < LIMITE) break;
       pagina++;
+    }
+
+    // Detecta se o filtro de data foi REALMENTE aplicado pela Machine.
+    // (Se pediu filtro mas as corridas voltaram fora do periodo, a API ignorou.)
+    var filtroAplicado = null;
+    if(recurso === 'solicitacao' && dataInicio && todos.length){
+      var dentro = todos.filter(function(x){
+        var d = (x.data_hora_solicitacao||'').split(' ')[0];
+        return d >= dataInicio && (!dataFim || d <= dataFim);
+      });
+      filtroAplicado = (dentro.length / todos.length) > 0.5; // maioria dentro do periodo?
     }
 
     _cache[cacheKey] = { ts: agora, data: todos };
@@ -151,6 +184,7 @@ exports.handler = async function(event){
       success:true, cidade:cidade, recurso:recurso, cache:false,
       total: todos.length,
       paginas_lidas: pagina,
+      filtro_data: (dataInicio||dataFim) ? {inicio:dataInicio, fim:dataFim, aplicado:filtroAplicado} : null,
       atualizado_em: new Date(agora).toISOString(),
       response: todos
     }) };

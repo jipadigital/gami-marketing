@@ -1,4 +1,4 @@
-<!-- v13.5 - Visao Geral painel operacional real (corridas+condutores) - 28/05/2026 -->
+<!-- v13.6 - Corridas diarias (filtro data) + Top motoboys dia/mes + remove duplicacao - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2220,69 +2220,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
 
     <!-- MACHINE INLINE (dentro de ctab-overview - só aparece em Visão Geral) -->
-    <div style="margin-top:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">
-          <span>🏍️ Machine API</span>
-          <div id="machine-status-dot" style="width:7px;height:7px;border-radius:50%;background:#1D9E75"></div>
-          <span id="machine-status-txt" style="font-size:10px;color:var(--text3);font-weight:400">clique em Sincronizar</span>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button onclick="sincronizarMachine()" id="btn-sync-machine" style="font-size:11px;padding:5px 12px;border:none;border-radius:7px;background:var(--orange);color:white;cursor:pointer;font-family:inherit">↻ Sincronizar</button>
-          <button onclick="analisarCidadeIA()" style="font-size:11px;padding:5px 12px;border:1px solid #8B5CF6;border-radius:7px;background:rgba(139,92,246,.08);color:#8B5CF6;cursor:pointer;font-family:inherit">🤖 IA Analisar</button>
-        </div>
-      </div>
-
-      <!-- IA RESULTADO -->
-      <div id="mch-ia-resultado" style="display:none;margin-bottom:12px;padding:12px;background:rgba(139,92,246,.06);border:1px solid #8B5CF644;border-radius:10px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:14px">🤖</span>
-          <span style="font-size:12px;font-weight:700;color:#C4B5FD">Análise IA — <span id="mch-ia-cidade"></span></span>
-          <button onclick="document.getElementById('mch-ia-resultado').style.display='none'" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">×</button>
-        </div>
-        <div id="mch-ia-texto" style="font-size:12px;color:var(--text2);line-height:1.7;white-space:pre-line"></div>
-      </div>
-
-      <!-- MÉTRICAS MACHINE -->
-      <div class="metrics" style="margin-bottom:12px">
-        <div class="metric"><div class="metric-label">Corridas hoje</div><div class="metric-val" id="mch-corridas" style="color:var(--orange)">—</div><div class="metric-sub" id="mch-corridas-sub">aguardando</div></div>
-        <div class="metric"><div class="metric-label">Motoboys ativos</div><div class="metric-val" id="mch-motoboys" style="color:#1D9E75">—</div><div class="metric-sub" id="mch-mb-sub"></div></div>
-        <div class="metric"><div class="metric-label">Lojas ativas</div><div class="metric-val" id="mch-lojas" style="color:#1E88E5">—</div><div class="metric-sub" id="mch-lj-sub"></div></div>
-        <div class="metric"><div class="metric-label">Ticket médio</div><div class="metric-val" id="mch-ticket" style="color:#EF9F27">—</div><div class="metric-sub">por corrida</div></div>
-        <div class="metric"><div class="metric-label">Taxa conclusão</div><div class="metric-val" id="mch-taxa" style="color:#1D9E75">—</div><div class="metric-sub">concluídas</div></div>
-        <div class="metric"><div class="metric-label">Tempo médio</div><div class="metric-val" id="mch-tempo" style="color:#8E24AA">—</div><div class="metric-sub">min/entrega</div></div>
-      </div>
-
-      <!-- GRÁFICOS L1 -->
-      <div class="g2" style="margin-bottom:12px">
-        <div class="card"><div class="card-title">📈 Corridas por hora</div><div id="mch-chart-horas" style="height:110px;display:flex;align-items:flex-end;gap:3px;padding:0 2px"></div><div id="mch-chart-horas-labels" style="display:flex;gap:3px;padding:4px 2px 0;margin-top:4px"></div></div>
-        <div class="card"><div class="card-title">🚦 Status das corridas</div><div id="mch-chart-status" style="display:flex;flex-direction:column;gap:8px;margin-top:4px"></div></div>
-      </div>
-
-      <!-- GRÁFICOS L2 -->
-      <div class="g2" style="margin-bottom:12px">
-        <div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="card-title" style="margin:0">🏪 Top lojas</div><span style="font-size:10px;color:var(--text3)">mais pedidos</span></div><div id="mch-top-lojas"></div></div>
-        <div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><div class="card-title" style="margin:0">🏍️ Top motoboys</div><span style="font-size:10px;color:var(--text3)">mais corridas</span></div><div id="mch-top-motoboys"></div></div>
-      </div>
-
-      <!-- GRÁFICOS L3 -->
-      <div class="g2" style="margin-bottom:12px">
-        <div class="card"><div class="card-title">📍 Corridas por área</div><div id="mch-chart-areas" style="display:flex;flex-direction:column;gap:6px"></div></div>
-        <div class="card"><div class="card-title">⏱️ Últimas corridas</div><div id="mch-ultimas-corridas"></div></div>
-      </div>
-
-      <!-- MOTOBOYS -->
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="card-title" style="margin:0">👥 Motoboys</div>
-          <div style="display:flex;gap:5px">
-            <span id="mch-mb-ativos-badge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:600"></span>
-            <span id="mch-mb-inativos-badge" style="font-size:10px;padding:2px 8px;border-radius:8px;background:#FAEEDA;color:#854F0B;font-weight:600"></span>
-          </div>
-        </div>
-        <div id="mch-motoboys-list"></div>
-      </div>
-    </div>
     </div><!-- /ctab-overview -->
 
     <!-- ===== ABA MOTOBOYS ===== -->
@@ -8902,33 +8839,59 @@ function cidAddRestauranteModal(){
 /* ============================================================== */
 /* PAINEL VISÃO GERAL — métricas reais (corridas + condutores)   */
 /* ============================================================== */
+function _vgSlug(nome){
+  return String(nome).toLowerCase()
+    .replace(/\u00e3/g,'a').replace(/\u00e1/g,'a').replace(/\u00e2/g,'a')
+    .replace(/\u00e9/g,'e').replace(/\u00ea/g,'e').replace(/\u00ed/g,'i')
+    .replace(/\u00f3/g,'o').replace(/\u00f4/g,'o').replace(/\u00fa/g,'u')
+    .replace(/\u00e7/g,'c').replace(/\s+/g,'-');
+}
+function _vgData(d){ // YYYY-MM-DD
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 async function vgCarregarPainel(){
   var c = window.__cidadeAtual; if(!c) return;
   var btn = document.getElementById('vg-painel-btn');
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
 
-  var slug = String(c.nome).toLowerCase()
-    .replace(/\u00e3/g,'a').replace(/\u00e1/g,'a').replace(/\u00e2/g,'a')
-    .replace(/\u00e9/g,'e').replace(/\u00ea/g,'e').replace(/\u00ed/g,'i')
-    .replace(/\u00f3/g,'o').replace(/\u00f4/g,'o').replace(/\u00fa/g,'u')
-    .replace(/\u00e7/g,'c').replace(/\s+/g,'-');
+  var slug = _vgSlug(c.nome);
+  var hoje = new Date();
+  var hojeStr = _vgData(hoje);
+  var inicioMes = _vgData(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+  var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
 
   try{
-    // Busca corridas e condutores em paralelo
-    var [rCorr, rCond] = await Promise.all([
-      fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao').then(function(r){return r.json();}),
-      fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor').then(function(r){return r.json();})
+    // 3 buscas em paralelo:
+    //  - corridas do DIA (00:00-23:59 de hoje)
+    //  - corridas do MÊS (dia 1 ate hoje) -> pro top motoboys mensal
+    //  - condutores (pra contar ativos)
+    var [rDia, rMes, rCond] = await Promise.all([
+      fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr).then(function(r){return r.json();}),
+      fetch(base+'&recurso=solicitacao&data_inicio='+inicioMes+'&data_fim='+hojeStr).then(function(r){return r.json();}),
+      fetch(base+'&recurso=condutor').then(function(r){return r.json();})
     ]);
-    var corridas = (rCorr && rCorr.response) ? rCorr.response : [];
+
+    var corridasDia = (rDia && rDia.response) ? rDia.response : [];
+    var corridasMes = (rMes && rMes.response) ? rMes.response : [];
     var condutores = (rCond && rCond.response) ? rCond.response : [];
-    vgRenderPainel(corridas, condutores, c.nome);
-    // Banner verde
+
+    // Filtra no cliente por garantia (caso a API ignore o filtro e devolva tudo)
+    corridasDia = corridasDia.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr; });
+    corridasMes = corridasMes.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMes && d<=hojeStr; });
+
+    // Detecta se o filtro de data funcionou de fato
+    var filtroOK = (rDia && rDia.filtro_data) ? rDia.filtro_data.aplicado : null;
+
+    vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
+
     var banner=document.getElementById('vg-painel-banner');
     if(banner){
       banner.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
       banner.style.borderColor='#1D9E7566';
       document.getElementById('vg-painel-icone').textContent='🟢';
-      document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+corridas.length+' corridas analisadas (amostra recente) · atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      var hr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+corridasDia.length+' corridas hoje · atualizado '+hr;
       if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
     }
   }catch(e){
@@ -8937,30 +8900,26 @@ async function vgCarregarPainel(){
   }
 }
 
-function vgRenderPainel(corridas, condutores, cidadeNome){
+function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK, hojeStr){
   var cont = document.getElementById('vg-painel-conteudo'); if(!cont) return;
 
-  // ---- CÁLCULOS ----
+  // ---- CÁLCULOS (corridas = HOJE) ----
   var finalizadas = corridas.filter(function(x){ return x.status_solicitacao==='F'; });
-  var canceladas = corridas.filter(function(x){ return x.status_solicitacao==='C'; });
   var total = corridas.length;
   var taxaConclusao = total>0 ? Math.round(finalizadas.length/total*100) : 0;
 
-  // Faturamento + ticket médio (só finalizadas)
   var somaValor = 0;
   finalizadas.forEach(function(x){ somaValor += parseFloat(x.valor_corrida||0); });
   var ticketMedio = finalizadas.length>0 ? somaValor/finalizadas.length : 0;
+  var faturamento = somaValor;
 
-  // Tempo médio (duracao_corrida em minutos, só finalizadas com duração > 0)
   var somaDur=0, nDur=0;
   finalizadas.forEach(function(x){ var d=parseInt(x.duracao_corrida||0); if(d>0){ somaDur+=d; nDur++; } });
   var tempoMedio = nDur>0 ? Math.round(somaDur/nDur) : 0;
 
-  // Motoboys ativos (status A) e total de condutores que rodaram
   var ativos = condutores.filter(function(x){ return x.status==='A'; }).length;
-  var emAnalise = condutores.filter(function(x){ return x.status==='E'; }).length;
 
-  // Corridas por hora (distribuição)
+  // Corridas por hora (hoje)
   var porHora = {};
   corridas.forEach(function(x){
     if(!x.data_hora_solicitacao) return;
@@ -8968,27 +8927,35 @@ function vgRenderPainel(corridas, condutores, cidadeNome){
     if(h){ var hora = parseInt(h.split(':')[0]); porHora[hora]=(porHora[hora]||0)+1; }
   });
 
-  // Top lojas (por nome_passageiro)
+  // Top lojas (hoje)
   var lojas = {};
   corridas.forEach(function(x){
     var nome = x.nome_passageiro||'?';
-    if(!lojas[nome]) lojas[nome]={nome:nome, total:0, valor:0};
+    if(!lojas[nome]) lojas[nome]={nome:nome, total:0};
     lojas[nome].total++;
-    if(x.status_solicitacao==='F') lojas[nome].valor += parseFloat(x.valor_corrida||0);
   });
   var topLojas = Object.values(lojas).sort(function(a,b){return b.total-a.total;}).slice(0,8);
   var totalLojas = Object.keys(lojas).length;
 
-  // Top motoboys (por condutor finalizadas)
-  var mbs = {};
+  // Top motoboys DIÁRIO (corridas finalizadas hoje)
+  var mbsDia = {};
   finalizadas.forEach(function(x){
-    var nome = x.nome_condutor||'?'; if(nome==='') return;
-    if(!mbs[nome]) mbs[nome]={nome:nome, total:0, valor:0};
-    mbs[nome].total++; mbs[nome].valor += parseFloat(x.valor_corrida||0);
+    var nome = x.nome_condutor||''; if(nome==='') return;
+    if(!mbsDia[nome]) mbsDia[nome]={nome:nome, total:0, valor:0};
+    mbsDia[nome].total++; mbsDia[nome].valor += parseFloat(x.valor_corrida||0);
   });
-  var topMbs = Object.values(mbs).sort(function(a,b){return b.total-a.total;}).slice(0,8);
+  var topMbsDia = Object.values(mbsDia).sort(function(a,b){return b.total-a.total;}).slice(0,8);
 
-  // Corridas por bairro (área)
+  // Top motoboys MENSAL (corridas finalizadas no mês)
+  var mbsMes = {};
+  (corridasMes||[]).filter(function(x){return x.status_solicitacao==='F';}).forEach(function(x){
+    var nome = x.nome_condutor||''; if(nome==='') return;
+    if(!mbsMes[nome]) mbsMes[nome]={nome:nome, total:0, valor:0};
+    mbsMes[nome].total++; mbsMes[nome].valor += parseFloat(x.valor_corrida||0);
+  });
+  var topMbsMes = Object.values(mbsMes).sort(function(a,b){return b.total-a.total;}).slice(0,8);
+
+  // Corridas por bairro (hoje)
   var bairros = {};
   corridas.forEach(function(x){
     var b = (x.coleta && x.coleta.bairro) ? x.coleta.bairro.trim() : '?';
@@ -8997,44 +8964,82 @@ function vgRenderPainel(corridas, condutores, cidadeNome){
   });
   var topBairros = Object.entries(bairros).map(function(e){return {nome:e[0],total:e[1]};}).sort(function(a,b){return b.total-a.total;}).slice(0,6);
 
-  // Status das corridas (contagem)
   var statusMap = {F:'Finalizadas', C:'Canceladas', A:'Aceitas', E:'Em andamento', D:'Distribuindo', G:'Aguardando', N:'Não atendidas', P:'Pendentes', S:'Em espera', U:'Agrupadas'};
   var statusCor = {F:'#1D9E75', C:'#E24B4A', A:'#1AB8F0', E:'#EF9F27', D:'#8B5CF6', G:'#888', N:'#E24B4A', P:'#EF9F27', S:'#888', U:'#888'};
   var statusCont = {};
   corridas.forEach(function(x){ var s=x.status_solicitacao||'?'; statusCont[s]=(statusCont[s]||0)+1; });
 
-  // Últimas corridas (5 mais recentes)
   var ultimas = corridas.slice().sort(function(a,b){ return (b.data_hora_solicitacao||'').localeCompare(a.data_hora_solicitacao||''); }).slice(0,6);
 
   var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+  var dataLabel = hojeStr ? hojeStr.split('-').reverse().join('/') : 'hoje';
 
   // ---- RENDER ----
   var html = '';
 
+  // Aviso se filtro de data NAO funcionou
+  if(filtroOK === false){
+    html += '<div style="background:#FEF3F2;border:1px solid #E24B4A55;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:11px;color:#A93226;line-height:1.5">'
+      + '⚠️ <strong>Atenção:</strong> a Machine API não aceitou o filtro de data — os números abaixo podem não ser só de hoje. '
+      + 'Preciso do nome correto do parâmetro de data na documentação da Machine pra corrigir.</div>';
+  }
+
+  // Título do dia
+  html += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📅 Operação de hoje ('+dataLabel+')</div>';
+
   // Cards de métricas principais
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">';
-  html += vgCard('🛵', 'Corridas (amostra)', total, '#1AB8F0');
+  html += vgCard('🛵', 'Corridas hoje', total, '#1AB8F0');
   html += vgCard('✅', 'Taxa de conclusão', taxaConclusao+'%', '#1D9E75');
-  html += vgCard('💰', 'Ticket médio', fmt(ticketMedio), '#16A085');
-  html += vgCard('⏱️', 'Tempo médio', tempoMedio+' min', '#EF9F27');
-  html += vgCard('🏍️', 'Motoboys ativos', ativos, '#8B5CF6');
+  html += vgCard('💰', 'Faturamento', fmt(faturamento), '#16A085');
+  html += vgCard('🎫', 'Ticket médio', fmt(ticketMedio), '#EF9F27');
+  html += vgCard('⏱️', 'Tempo médio', tempoMedio+' min', '#8B5CF6');
   html += vgCard('🏪', 'Lojas atendidas', totalLojas, '#E24B4A');
   html += '</div>';
 
   // Status das corridas (barras)
-  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">📊 Status das corridas</div><div style="margin-top:10px">';
-  Object.entries(statusCont).sort(function(a,b){return b[1]-a[1];}).forEach(function(e){
-    var s=e[0], n=e[1], pct=Math.round(n/total*100);
-    var label=statusMap[s]||s, cor=statusCor[s]||'#888';
-    html += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="font-weight:500">'+label+'</span><span style="color:var(--text3)">'+n+' ('+pct+'%)</span></div>'
-      + '<div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+cor+'"></div></div></div>';
-  });
+  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">📊 Status das corridas (hoje)</div><div style="margin-top:10px">';
+  if(total>0){
+    Object.entries(statusCont).sort(function(a,b){return b[1]-a[1];}).forEach(function(e){
+      var s=e[0], n=e[1], pct=Math.round(n/total*100);
+      var label=statusMap[s]||s, cor=statusCor[s]||'#888';
+      html += '<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="font-weight:500">'+label+'</span><span style="color:var(--text3)">'+n+' ('+pct+'%)</span></div>'
+        + '<div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+cor+'"></div></div></div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Nenhuma corrida hoje ainda.</div>';
   html += '</div></div>';
 
-  // Top lojas + Top motoboys (lado a lado)
+  // Top motoboys DIÁRIO + MENSAL (lado a lado)
   html += '<div class="g2" style="margin-bottom:12px">';
-  // Top lojas
-  html += '<div class="card"><div class="card-title">🏪 Top lojas (volume)</div><div style="margin-top:8px">';
+  // Diário
+  html += '<div class="card"><div class="card-title">🏆 Top motoboys — hoje</div><div style="margin-top:8px">';
+  if(topMbsDia.length){
+    var medals=['🥇','🥈','🥉'];
+    topMbsDia.forEach(function(m,i){
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:13px;width:20px">'+(medals[i]||((i+1)+'º'))+'</span>'
+        + '<span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.nome+'</span>'
+        + '<span style="font-size:12px;font-weight:700;color:var(--orange)">'+m.total+'</span></div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem corridas concluídas hoje</div>';
+  html += '</div></div>';
+  // Mensal
+  html += '<div class="card"><div class="card-title">📆 Top motoboys — mês</div><div style="margin-top:8px">';
+  if(topMbsMes.length){
+    var medals2=['🥇','🥈','🥉'];
+    topMbsMes.forEach(function(m,i){
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:13px;width:20px">'+(medals2[i]||((i+1)+'º'))+'</span>'
+        + '<span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.nome+'</span>'
+        + '<span style="font-size:12px;font-weight:700;color:#8B5CF6">'+m.total+'</span></div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem dados do mês</div>';
+  html += '</div></div>';
+  html += '</div>';
+
+  // Top lojas + Corridas por área (lado a lado)
+  html += '<div class="g2" style="margin-bottom:12px">';
+  html += '<div class="card"><div class="card-title">🏪 Top lojas — hoje</div><div style="margin-top:8px">';
   if(topLojas.length){
     topLojas.forEach(function(l,i){
       html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
@@ -9044,35 +9049,7 @@ function vgRenderPainel(corridas, condutores, cidadeNome){
     });
   } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem dados</div>';
   html += '</div></div>';
-  // Top motoboys
-  html += '<div class="card"><div class="card-title">🏆 Top motoboys (corridas)</div><div style="margin-top:8px">';
-  if(topMbs.length){
-    var medals=['🥇','🥈','🥉'];
-    topMbs.forEach(function(m,i){
-      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
-        + '<span style="font-size:13px;width:20px">'+(medals[i]||((i+1)+'º'))+'</span>'
-        + '<span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+m.nome+'</span>'
-        + '<span style="font-size:12px;font-weight:700;color:var(--orange)">'+m.total+'</span></div>';
-    });
-  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Sem dados</div>';
-  html += '</div></div>';
-  html += '</div>';
-
-  // Corridas por hora + Corridas por área (lado a lado)
-  html += '<div class="g2" style="margin-bottom:12px">';
-  // Por hora
-  html += '<div class="card"><div class="card-title">🕐 Corridas por hora</div><div style="display:flex;align-items:flex-end;gap:2px;height:90px;margin-top:10px">';
-  var maxHora = Math.max.apply(null, Object.values(porHora).concat([1]));
-  for(var h=0; h<24; h++){
-    var n = porHora[h]||0;
-    var altura = Math.round(n/maxHora*80);
-    html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="'+h+'h: '+n+' corridas">'
-      + '<div style="width:100%;background:'+(n>0?'var(--gami-blue)':'var(--surface2)')+';height:'+altura+'px;border-radius:2px 2px 0 0;min-height:2px"></div>'
-      + (h%6===0?'<div style="font-size:8px;color:var(--text3);margin-top:2px">'+h+'h</div>':'<div style="font-size:8px;margin-top:2px">&nbsp;</div>')+'</div>';
-  }
-  html += '</div></div>';
-  // Por bairro
-  html += '<div class="card"><div class="card-title">📍 Corridas por área</div><div style="margin-top:8px">';
+  html += '<div class="card"><div class="card-title">📍 Corridas por área — hoje</div><div style="margin-top:8px">';
   if(topBairros.length){
     var maxB = topBairros[0].total;
     topBairros.forEach(function(b){
@@ -9084,24 +9061,35 @@ function vgRenderPainel(corridas, condutores, cidadeNome){
   html += '</div></div>';
   html += '</div>';
 
-  // Últimas corridas
-  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">🕒 Últimas corridas</div><div style="margin-top:8px">';
-  ultimas.forEach(function(x){
-    var st = x.status_solicitacao;
-    var stLabel = statusMap[st]||st, stCor=statusCor[st]||'#888';
-    var hora = x.data_hora_solicitacao ? x.data_hora_solicitacao.split(' ')[1].slice(0,5) : '';
-    html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
-      + '<span style="font-size:10px;color:var(--text3);width:38px">'+hora+'</span>'
-      + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_passageiro||'?')+'</div>'
-      + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_condutor||'sem motoboy')+'</div></div>'
-      + '<span style="font-size:11px;font-weight:600;color:var(--text2)">'+fmt(parseFloat(x.valor_corrida||0))+'</span>'
-      + '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+stCor+'22;color:'+stCor+';white-space:nowrap">'+stLabel+'</span>'
-      + '</div>';
-  });
+  // Corridas por hora (hoje)
+  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">🕐 Corridas por hora — hoje</div><div style="display:flex;align-items:flex-end;gap:2px;height:90px;margin-top:10px">';
+  var maxHora = Math.max.apply(null, Object.values(porHora).concat([1]));
+  for(var h=0; h<24; h++){
+    var n = porHora[h]||0;
+    var altura = Math.round(n/maxHora*80);
+    html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%" title="'+h+'h: '+n+' corridas">'
+      + '<div style="width:100%;background:'+(n>0?'var(--gami-blue)':'var(--surface2)')+';height:'+altura+'px;border-radius:2px 2px 0 0;min-height:2px"></div>'
+      + (h%6===0?'<div style="font-size:8px;color:var(--text3);margin-top:2px">'+h+'h</div>':'<div style="font-size:8px;margin-top:2px">&nbsp;</div>')+'</div>';
+  }
   html += '</div></div>';
 
-  // Nota sobre amostra
-  html += '<div style="font-size:10px;color:var(--text3);font-style:italic;text-align:center;padding:4px">Amostra das corridas recentes. Faturamento total e histórico completo dependem de filtro por data (próxima etapa).</div>';
+  // Últimas corridas
+  html += '<div class="card" style="margin-bottom:12px"><div class="card-title">🕒 Últimas corridas — hoje</div><div style="margin-top:8px">';
+  if(ultimas.length){
+    ultimas.forEach(function(x){
+      var st = x.status_solicitacao;
+      var stLabel = statusMap[st]||st, stCor=statusCor[st]||'#888';
+      var hora = x.data_hora_solicitacao ? x.data_hora_solicitacao.split(' ')[1].slice(0,5) : '';
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+        + '<span style="font-size:10px;color:var(--text3);width:38px">'+hora+'</span>'
+        + '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_passageiro||'?')+'</div>'
+        + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(x.nome_condutor||'sem motoboy')+'</div></div>'
+        + '<span style="font-size:11px;font-weight:600;color:var(--text2)">'+fmt(parseFloat(x.valor_corrida||0))+'</span>'
+        + '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+stCor+'22;color:'+stCor+';white-space:nowrap">'+stLabel+'</span>'
+        + '</div>';
+    });
+  } else html += '<div style="color:var(--text3);font-size:11px;padding:10px">Nenhuma corrida hoje ainda.</div>';
+  html += '</div></div>';
 
   cont.innerHTML = html;
 }
