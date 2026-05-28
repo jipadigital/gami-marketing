@@ -1,4 +1,4 @@
-<!-- v14.0 - Auto-load Machine ao abrir cidade + cache 5min - 28/05/2026 -->
+<!-- v14.1 - Alertas 45 dias, threshold 5d, ordem crescente, mostra todas - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8862,7 +8862,7 @@ async function vgCarregarPainel(opts){
     var d = _vgCache[c.id].dados;
     vgRenderPainel(d.corridasDia, d.corridasMes, d.condutores, c.nome, d.filtroOK, d.hojeStr);
     vgRenderComparativo(d.corridasDia, d.corridasOntem, d.corridasMes, d.corridasMesAnt);
-    vgRenderAlertas(d.corridasMes, d.hojeStr);
+    vgRenderAlertas(d.corridas45d || d.corridasMes, d.hojeStr);
     var bannerC = document.getElementById('vg-painel-banner');
     if(bannerC){
       bannerC.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
@@ -8894,15 +8894,18 @@ async function vgCarregarPainel(opts){
   var inicioMes = _vgData(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
   var inicioMesAnt = _vgData(new Date(hoje.getFullYear(), hoje.getMonth()-1, 1));
   var fimMesAnt = _vgData(new Date(hoje.getFullYear(), hoje.getMonth()-1, diaHoje));
+  // 45 dias atras (pros alertas de lojas sumidas)
+  var ha45dias = _vgData(new Date(hoje.getTime() - 45*86400000));
 
   var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
 
   try{
-    var [rDia, rOntem, corridasMes, corridasMesAnt, rCond] = await Promise.all([
+    var [rDia, rOntem, corridasMes, corridasMesAnt, corridas45d, rCond] = await Promise.all([
       fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr).then(function(r){return r.json();}),
       fetch(base+'&recurso=solicitacao&data_inicio='+ontemStr+'&data_fim='+ontemStr).then(function(r){return r.json();}),
       _vgBuscarCorridasPeriodo(slug, inicioMes, hojeStr),
       _vgBuscarCorridasPeriodo(slug, inicioMesAnt, fimMesAnt),
+      _vgBuscarCorridasPeriodo(slug, ha45dias, hojeStr),
       fetch(base+'&recurso=condutor').then(function(r){return r.json();})
     ]);
 
@@ -8917,18 +8920,19 @@ async function vgCarregarPainel(opts){
     corridasOntem = corridasOntem.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===ontemStr; });
     corridasMes = corridasMes.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMes && d<=hojeStr; });
     corridasMesAnt = corridasMesAnt.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMesAnt && d<=fimMesAnt; });
+    corridas45d = corridas45d.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=ha45dias && d<=hojeStr; });
 
     var filtroOK = (rDia && rDia.filtro_data) ? rDia.filtro_data.aplicado : null;
 
     // Salva no cache
     _vgCache[c.id] = {
       ts: Date.now(),
-      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr}
+      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr}
     };
 
     vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
     vgRenderComparativo(corridasDia, corridasOntem, corridasMes, corridasMesAnt);
-    vgRenderAlertas(corridasMes, hojeStr);
+    vgRenderAlertas(corridas45d, hojeStr);
 
     var banner2=document.getElementById('vg-painel-banner');
     if(banner2){
@@ -8996,16 +9000,16 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
 }
 
 /* Alertas inteligentes: lojas sumidas
-   - Considera lojas que pediram nos ultimos 28 dias (estavam ativas)
-   - Sinaliza as que NAO pediram nos ultimos 7 dias
-   - Mostra dias sem pedir, ordenado pelo mais grave */
-function vgRenderAlertas(corridasMes, hojeStr){
+   - Considera lojas que pediram nos ultimos 45 dias (estavam ativas)
+   - Sinaliza as que NAO pediram nos ultimos 5+ dias
+   - Mostra TODAS, em ORDEM CRESCENTE (menos graves primeiro: 5 dias, 6, 7...) */
+function vgRenderAlertas(corridas45d, hojeStr){
   var box = document.getElementById('cp-alertas-box'); if(!box) return;
-  if(!corridasMes || !corridasMes.length){ box.innerHTML=''; return; }
+  if(!corridas45d || !corridas45d.length){ box.innerHTML=''; return; }
 
   var hoje = new Date(hojeStr+'T00:00:00');
   var lojas = {};
-  corridasMes.forEach(function(x){
+  corridas45d.forEach(function(x){
     var nome = (x.nome_passageiro||'').trim(); if(!nome) return;
     var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
     if(!lojas[nome]) lojas[nome] = {nome:nome, ultima:dStr, total:0};
@@ -9013,46 +9017,44 @@ function vgRenderAlertas(corridasMes, hojeStr){
     lojas[nome].total++;
   });
 
-  // Calcula dias sem pedir + filtra criterio: sumida ha 7+ dias mas estava ativa (pediu no periodo)
+  // Filtra: sumida ha 5+ dias mas pediu pelo menos uma vez no periodo (ativa)
   var sumidas = [];
   Object.values(lojas).forEach(function(l){
     var ult = new Date(l.ultima+'T00:00:00');
     var dias = Math.floor((hoje - ult) / 86400000);
-    if(dias >= 7) sumidas.push({nome:l.nome, dias:dias, total:l.total, ultima:l.ultima});
+    if(dias >= 5) sumidas.push({nome:l.nome, dias:dias, total:l.total, ultima:l.ultima});
   });
-  sumidas.sort(function(a,b){ return b.dias - a.dias; });
+  // ORDEM CRESCENTE: menos graves primeiro (5, 6, 7... 45)
+  sumidas.sort(function(a,b){ return a.dias - b.dias; });
 
   if(!sumidas.length){
     box.innerHTML = '<div class="card" style="background:#EAF3DE;border-left:4px solid #1D9E75;margin-bottom:12px">'
       + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">✅</span>'
-      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as lojas que pedem regularmente fizeram pedido nos últimos 7 dias.</span></div></div>';
+      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as lojas que pedem regularmente fizeram pedido nos últimos 5 dias.</span></div></div>';
     return;
   }
 
-  var topMostrar = sumidas.slice(0, 8);
   var html = '<div class="card" style="background:#FFF8E1;border-left:4px solid #EF9F27;margin-bottom:12px">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-    + '<div style="font-size:11px;font-weight:700;color:#854F0B;text-transform:uppercase;letter-spacing:.5px">🧠 Alertas Inteligentes</div>'
-    + '<span style="font-size:10px;color:#854F0B;background:#EF9F2722;padding:2px 7px;border-radius:6px">'+sumidas.length+' lojas sem pedir</span>'
+    + '<div style="font-size:11px;font-weight:700;color:#854F0B;text-transform:uppercase;letter-spacing:.5px">🧠 Alertas Inteligentes — Lojas sumidas</div>'
+    + '<span style="font-size:10px;color:#854F0B;background:#EF9F2722;padding:2px 7px;border-radius:6px">'+sumidas.length+' lojas</span>'
     + '</div>'
-    + '<div style="font-size:11px;color:#854F0B;margin-bottom:8px">Lojas que pediam até recentemente mas <strong>sumiram há 7+ dias</strong>. Vale uma ligação:</div>';
+    + '<div style="font-size:11px;color:#854F0B;margin-bottom:10px">Lojas que pediram nos últimos 45 dias mas estão há <strong>5+ dias sem pedido</strong>. Ordenadas das mais recentes para as mais antigas.</div>'
+    + '<div style="max-height:520px;overflow-y:auto;padding-right:4px">';
 
-  topMostrar.forEach(function(l){
-    var corBadge = l.dias>=21 ? '#E24B4A' : l.dias>=14 ? '#EF9F27' : '#854F0B';
-    html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px dashed #EF9F2733">'
+  sumidas.forEach(function(l){
+    var corBadge = l.dias>=30 ? '#E24B4A' : l.dias>=15 ? '#EF9F27' : '#854F0B';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px dashed #EF9F2733">'
       + '<span style="font-size:14px">🏪</span>'
       + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+l.nome+'</div>'
-        + '<div style="font-size:10px;color:var(--text3)">Último pedido: '+l.ultima.split('-').reverse().join('/')+' · '+l.total+' pedidos no mês</div>'
+        + '<div style="font-size:10px;color:var(--text3)">Último pedido: '+l.ultima.split('-').reverse().join('/')+' · '+l.total+' pedidos nos últimos 45 dias</div>'
       + '</div>'
       + '<span style="font-size:11px;font-weight:700;color:white;background:'+corBadge+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+l.dias+' dias</span>'
       + '</div>';
   });
 
-  if(sumidas.length > topMostrar.length){
-    html += '<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px 0 0;font-style:italic">+'+(sumidas.length - topMostrar.length)+' lojas com mesmo status</div>';
-  }
-  html += '</div>';
+  html += '</div></div>';
   box.innerHTML = html;
 }
 
