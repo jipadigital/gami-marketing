@@ -1,4 +1,4 @@
-<!-- v13.0 - Supabase: tarefas+delegacao, anotacoes, audit log, logs de acesso - 28/05/2026 -->
+<!-- v13.1 - Machine API integrada (motoboys reais Maceio) + v13.0 features - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2275,13 +2275,13 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <!-- ===== ABA MOTOBOYS ===== -->
     <div id="ctab-motoboys" style="display:none">
-      <!-- Banner Demo -->
-      <div style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-        <div style="font-size:20px;flex-shrink:0">⚠️</div>
-        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.5">
-          <strong>Dados de demonstração</strong> — os números, nomes e telefones abaixo são <strong>fictícios</strong>.<br>
-          Em breve, esta aba será alimentada automaticamente pela <strong>integração Machine API</strong> com dados reais da operação.
+      <!-- Banner status fonte de dados (real/demo) -->
+      <div id="mb-fonte-banner" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div id="mb-fonte-icone" style="font-size:20px;flex-shrink:0">⚠️</div>
+        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.5" id="mb-fonte-texto">
+          <strong>Dados de demonstração</strong> — os números, nomes e telefones abaixo são <strong>fictícios</strong>.
         </div>
+        <button onclick="mbAlternarFonte()" id="mb-fonte-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
       </div>
       
       <!-- Métricas resumo -->
@@ -8333,6 +8333,121 @@ function _seedRandom(seed){
 }
 
 /* Gera lista de motoboys fictícia (consistente por cidade) */
+/* ============================================================== */
+/* MACHINE API — dados REAIS de motoboys (condutores)            */
+/* ============================================================== */
+
+// Estado: qual fonte usar por cidade (false=demo, true=real)
+window._mbFonteReal = window._mbFonteReal || {};
+
+// Mapeia status do condutor da Machine -> status do dashboard
+// "A" = Ativo. Demais ainda a confirmar conforme aparecerem nos dados.
+function _mbStatusMachine(cod){
+  var map = { 'A':'ativo', 'I':'inativo', 'B':'inativo', 'P':'novo' };
+  return map[cod] || 'ativo';
+}
+
+// Converte um condutor da Machine pro formato que o render espera
+function _mbConverterCondutor(c){
+  var ultima = c.data_hora_ultima_corrida;
+  var diasInativo = 0;
+  if(ultima){
+    var d = new Date(ultima.replace(' ','T'));
+    diasInativo = Math.floor((Date.now() - d.getTime())/(1000*60*60*24));
+  }
+  var status = _mbStatusMachine(c.status);
+  // Se faz 7+ dias sem corrida, considera "sumido" (regra do dashboard)
+  if(status==='ativo' && ultima && diasInativo>=7) status='inativo';
+  return {
+    id: 'mch_'+(c.id||Math.random().toString(36).slice(2)),
+    nome: (c.nome||'').replace(/\b\w/g, function(l){return l.toUpperCase();}), // capitaliza
+    tel: c.telefone || c.telefone_internacional || '',
+    status: status,
+    diasInativo: diasInativo,
+    corridasSemana: 0, // a Machine nao retorna isso em /condutor
+    corridasMes: 0,
+    avaliacao: c.avaliacao_media || null,
+    desde: c.data_hora_situacao_cadastral ? c.data_hora_situacao_cadastral.split(' ')[0] : null,
+    viatura: c.numero_viatura || '',
+    bairro: c.bairro || '',
+    _real: true
+  };
+}
+
+// Busca condutores reais da Machine via funcao Netlify
+async function mbBuscarReais(cidadeNome){
+  var slug = String(cidadeNome).toLowerCase()
+    .replace(/\u00e3/g,'a').replace(/\u00e1/g,'a').replace(/\u00e2/g,'a')
+    .replace(/\u00e9/g,'e').replace(/\u00ea/g,'e').replace(/\u00ed/g,'i')
+    .replace(/\u00f3/g,'o').replace(/\u00f4/g,'o').replace(/\u00fa/g,'u')
+    .replace(/\u00e7/g,'c').replace(/\s+/g,'-');
+  var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor');
+  var data = await r.json();
+  if(!data || !data.success) throw new Error((data && data.error) || 'Falha ao buscar dados reais');
+  var lista = (data.response||[]).map(_mbConverterCondutor);
+  return { lista: lista, atualizado: data.atualizado_em, cache: data.cache };
+}
+
+// Alterna entre dados reais e demo
+async function mbAlternarFonte(){
+  var c = window.__cidadeAtual; if(!c) return;
+  var btn = document.getElementById('mb-fonte-btn');
+  var jaReal = window._mbFonteReal[c.nome];
+
+  if(jaReal){
+    // Volta pra demo
+    window._mbFonteReal[c.nome] = false;
+    window._cacheMotoboysReal = window._cacheMotoboysReal || {};
+    delete window._cacheMotoboysReal[c.nome];
+    mbAtualizarBanner(false);
+    renderMotoboysAba();
+    return;
+  }
+
+  // Carrega reais
+  if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
+  try{
+    var res = await mbBuscarReais(c.nome);
+    window._cacheMotoboysReal = window._cacheMotoboysReal || {};
+    window._cacheMotoboysReal[c.nome] = res.lista;
+    window._mbFonteReal[c.nome] = true;
+    mbAtualizarBanner(true, res.atualizado, res.lista.length);
+    renderMotoboysAba();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.innerHTML='🟢 Carregar dados reais'; }
+    alert('Não consegui carregar os dados reais: '+e.message+'\n\nVerifique se a função machine.js está publicada e as credenciais configuradas.');
+  }
+}
+
+function mbAtualizarBanner(real, atualizado, total){
+  var banner = document.getElementById('mb-fonte-banner');
+  var icone = document.getElementById('mb-fonte-icone');
+  var texto = document.getElementById('mb-fonte-texto');
+  var btn = document.getElementById('mb-fonte-btn');
+  if(!banner) return;
+  if(real){
+    banner.style.background = 'linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+    banner.style.borderColor = '#1D9E7566';
+    if(icone) icone.textContent = '🟢';
+    if(texto) texto.innerHTML = '<strong>Dados ao vivo da Machine</strong> — '+(total||0)+' condutores'+(atualizado?' · atualizado '+new Date(atualizado).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'');
+    if(btn){ btn.disabled=false; btn.innerHTML='🎲 Ver demo'; btn.style.background='#888'; }
+  } else {
+    banner.style.background = 'linear-gradient(135deg,#FFF8E1,#FAEEDA)';
+    banner.style.borderColor = '#EF9F2766';
+    if(icone) icone.textContent = '⚠️';
+    if(texto) texto.innerHTML = '<strong>Dados de demonstração</strong> — os números, nomes e telefones abaixo são <strong>fictícios</strong>.';
+    if(btn){ btn.disabled=false; btn.innerHTML='🟢 Carregar dados reais'; btn.style.background='var(--gami-blue)'; }
+  }
+}
+
+// Retorna a fonte certa (real se ativado, senão mock)
+function mbGetMotoboys(cidadeNome){
+  if(window._mbFonteReal && window._mbFonteReal[cidadeNome] && window._cacheMotoboysReal && window._cacheMotoboysReal[cidadeNome]){
+    return window._cacheMotoboysReal[cidadeNome];
+  }
+  return gerarMotoboysMock(cidadeNome);
+}
+
 function gerarMotoboysMock(cidadeNome){
   // Cache em memória
   if(!window._cacheMotoboys) window._cacheMotoboys = {};
@@ -8436,7 +8551,13 @@ function gerarRestaurantesMock(cidadeNome){
 function renderMotoboysAba(){
   if(!window.__cidadeAtual) return;
   var cidade = window.__cidadeAtual;
-  var motoboys = gerarMotoboysMock(cidade.nome);
+  // Ajusta banner conforme fonte ativa pra esta cidade
+  if(typeof mbAtualizarBanner==='function'){
+    var ehReal = window._mbFonteReal && window._mbFonteReal[cidade.nome];
+    var totReal = (window._cacheMotoboysReal && window._cacheMotoboysReal[cidade.nome]) ? window._cacheMotoboysReal[cidade.nome].length : 0;
+    mbAtualizarBanner(!!ehReal, null, totReal);
+  }
+  var motoboys = mbGetMotoboys(cidade.nome);
   
   // Métricas
   var ativos = motoboys.filter(function(m){ return m.status === 'ativo' || m.status === 'online'; });
@@ -8531,7 +8652,7 @@ function renderMotoboysAba(){
 function cidVerMotoboy(id){
   var c = window.__cidadeAtual;
   if(!c) return;
-  var motoboys = gerarMotoboysMock(c.nome);
+  var motoboys = mbGetMotoboys(c.nome);
   var m = motoboys.find(function(x){ return x.id === id; });
   if(!m) return;
   var statusLbl = {ativo:'✅ Ativo',online:'🟢 Online agora',novo:'📥 Novo candidato',entrevista:'🤝 Em entrevista',treinamento:'🎓 Treinamento',inativo:'⚠️ Inativo'};
@@ -8579,7 +8700,7 @@ function cidAddMotoboyModal(){
 function cidEnviarMsgMotoboys(){
   var c = window.__cidadeAtual;
   if(!c) return;
-  var motoboys = gerarMotoboysMock(c.nome);
+  var motoboys = mbGetMotoboys(c.nome);
   var ativos = motoboys.filter(function(m){ return m.status === 'ativo' || m.status === 'online'; });
   var msg = prompt('Mensagem pra enviar a '+ativos.length+' motoboys ativos de '+c.nome+':\n\n(Exemplo: "Reunião amanhã 8h no escritório. Confirma presença!")');
   if(!msg) return;
@@ -8817,7 +8938,7 @@ function renderVisaoGeralCidade(){
     var alertasArr = [];
     if(pctDia < -10) alertasArr.push({icon:'⚠️',cor:'#E24B4A',texto:'Performance '+Math.abs(pctDia)+'% abaixo de ontem. Verifique o que mudou.'});
     if(pctMeta < 50) alertasArr.push({icon:'🚨',cor:'#E24B4A',texto:'Meta do dia muito longe. Reforce captação ou ajuste motoboys ativos.'});
-    var motoboys = gerarMotoboysMock(c.nome);
+    var motoboys = mbGetMotoboys(c.nome);
     var churnCount = motoboys.filter(function(m){ return m.status === 'inativo'; }).length;
     if(churnCount >= 3) alertasArr.push({icon:'🏍️',cor:'#EF9F27',texto:churnCount+' motoboys sem corridas há 7+ dias. Vale entrar em contato!'});
     var rests = gerarRestaurantesMock(c.nome);
