@@ -139,6 +139,7 @@ exports.handler = async function(event){
     if(recurso === 'condutor'){
       var LOTE = 5;
       var fim = false;
+      var errosEncontrados = 0;
       while(pagina <= MAX_PAGINAS && !fim){
         if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
         var paginasLote = [];
@@ -153,16 +154,33 @@ exports.handler = async function(event){
           }) };
         }
 
-        // Processa lotes na ordem; para quando achar pagina < LIMITE (fim) ou vazia
+        // Processa resultados na ordem. Distinguir "erro" de "fim natural":
+        //   - lote vazio SEM erro = fim natural (acabaram os condutores)
+        //   - lote vazio COM erro = falha transitoria, NAO considerar fim, segue tentando
+        //   - lote < LIMITE sem erro = ultima pagina (fim)
         for(var j=0; j<resultados.length; j++){
-          var lote = resultados[j].lote;
-          if(!Array.isArray(lote) || lote.length === 0){ fim = true; break; }
+          var res = resultados[j];
+          var lote = res.lote || [];
+          if(res.erro){
+            // Falha intermitente nesta pagina, continua p/ proximas
+            errosEncontrados++;
+            continue;
+          }
+          if(lote.length === 0){
+            // Fim natural (sem erro, sem itens) = parou de ter condutor
+            fim = true;
+            break;
+          }
           // Dedup por id (paranoia contra repeticao entre paginas)
           var idsExistentes = {};
           todos.forEach(function(x){ if(x && x.id != null) idsExistentes[x.id] = true; });
           var novos = lote.filter(function(x){ return x && x.id != null && !idsExistentes[x.id]; });
           todos = todos.concat(novos);
-          if(lote.length < LIMITE){ fim = true; break; }
+          if(lote.length < LIMITE){
+            // Ultima pagina, podemos parar
+            fim = true;
+            break;
+          }
         }
         pagina += LOTE;
       }

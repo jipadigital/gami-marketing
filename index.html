@@ -1,4 +1,4 @@
-<!-- v15.1 - Condutores paralelos ate 10000 + aviso truncamento - 28/05/2026 -->
+<!-- v15.2 - Fix paginas intermediarias condutor + nocache no botao Atualizar + log diagnostico - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9618,8 +9618,9 @@ function podeVerFaturamentoCidade(){
 /* Busca corridas de um periodo (data_inicio -> data_fim) em chunks paralelos.
    Quando o periodo eh grande (>10 dias), divide em chunks de ~7 dias rodando
    em paralelo, pra evitar timeout do Netlify em queries muito grandes. */
-async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim){
+async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
   var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao';
+  var nc = forcado ? '&nocache=1' : '';
   // Calcula numero de dias
   var dIni = new Date(dataInicio+'T00:00:00');
   var dFim = new Date(dataFim+'T00:00:00');
@@ -9627,7 +9628,7 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim){
 
   // Periodo pequeno (ate 10 dias): 1 fetch so
   if(dias <= 10){
-    var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim).then(function(r){return r.json();});
+    var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim+nc).then(function(r){return r.json();});
     return (r && r.response) ? r.response : [];
   }
 
@@ -9641,7 +9642,7 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim){
     atual = new Date(fim.getTime() + 86400000); // proximo dia
   }
   var promessas = chunks.map(function(c){
-    return fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim).then(function(r){return r.json();}).catch(function(){return {response:[]};});
+    return fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim+nc).then(function(r){return r.json();}).catch(function(){return {response:[]};});
   });
   var resultados = await Promise.all(promessas);
   var todas = [];
@@ -9702,15 +9703,16 @@ async function vgCarregarPainel(opts){
   var ha45dias = _vgData(new Date(hoje.getTime() - 45*86400000));
 
   var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
+  var nc = forcado ? '&nocache=1' : '';
 
   try{
     var [rDia, rOntem, corridasMes, corridasMesAnt, corridas45d, rCond] = await Promise.all([
-      fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr).then(function(r){return r.json();}),
-      fetch(base+'&recurso=solicitacao&data_inicio='+ontemStr+'&data_fim='+ontemStr).then(function(r){return r.json();}),
-      _vgBuscarCorridasPeriodo(slug, inicioMes, hojeStr),
-      _vgBuscarCorridasPeriodo(slug, inicioMesAnt, fimMesAnt),
-      _vgBuscarCorridasPeriodo(slug, ha45dias, hojeStr),
-      fetch(base+'&recurso=condutor').then(function(r){return r.json();})
+      fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr+nc).then(function(r){return r.json();}),
+      fetch(base+'&recurso=solicitacao&data_inicio='+ontemStr+'&data_fim='+ontemStr+nc).then(function(r){return r.json();}),
+      _vgBuscarCorridasPeriodo(slug, inicioMes, hojeStr, forcado),
+      _vgBuscarCorridasPeriodo(slug, inicioMesAnt, fimMesAnt, forcado),
+      _vgBuscarCorridasPeriodo(slug, ha45dias, hojeStr, forcado),
+      fetch(base+'&recurso=condutor'+nc).then(function(r){return r.json();})
     ]);
 
     // Se trocou de cidade enquanto carregava, descarta resultado
@@ -9719,6 +9721,18 @@ async function vgCarregarPainel(opts){
     var corridasDia = (rDia && rDia.response) ? rDia.response : [];
     var corridasOntem = (rOntem && rOntem.response) ? rOntem.response : [];
     var condutores = (rCond && rCond.response) ? rCond.response : [];
+
+    // Log de diagnostico (abra F12 -> Console pra ver)
+    console.log('[Machine] Cidade:', c.nome, {
+      condutores: condutores.length,
+      condutoresTruncado: !!(rCond && rCond.truncado),
+      condPaginasLidas: rCond && rCond.paginas_lidas,
+      corridasHoje: corridasDia.length,
+      corridasMes: corridasMes.length,
+      corridasMesAnt: corridasMesAnt.length,
+      corridas45d: corridas45d.length,
+      respostaCondutorBruta: rCond
+    });
 
     corridasDia = corridasDia.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr; });
     corridasOntem = corridasOntem.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===ontemStr; });
