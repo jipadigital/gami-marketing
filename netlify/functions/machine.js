@@ -135,56 +135,57 @@ exports.handler = async function(event){
       }
     };
 
-    // === CONDUTOR: busca paralela em lotes de 5 paginas ===
+    // === CONDUTOR: busca sequencial (testada e estavel) ===
+    // LIMITE=200 por pagina (se a API aceitar) + 25 paginas = ate 5000 condutores
+    // Cabe em ~5-6s no tempo limite do Netlify
     if(recurso === 'condutor'){
-      var LOTE = 5;
-      var fim = false;
-      var errosEncontrados = 0;
-      while(pagina <= MAX_PAGINAS && !fim){
+      var LIMITE_COND = 200;
+      var MAX_COND = 25;
+      while(pagina <= MAX_COND){
         if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
-        var paginasLote = [];
-        for(var i=0; i<LOTE && (pagina+i) <= MAX_PAGINAS; i++) paginasLote.push(pagina+i);
 
-        var resultados = await Promise.all(paginasLote.map(fetchPagina));
+        var sepC = path.indexOf('?')>=0 ? '&' : '?';
+        var urlC = BASE_URL + path + sepC + 'pagina=' + pagina + '&limite=' + LIMITE_COND;
 
-        // Erro na primeira pagina absoluta = retorna erro fatal
-        if(pagina === 1 && resultados[0].erro){
-          return { statusCode: 502, headers:cors, body: JSON.stringify({
-            success:false, error:'Machine retornou erro/timeout na primeira pagina', detalhe: resultados[0].erro
-          }) };
+        var ctrlC = new AbortController();
+        var tC = setTimeout(function(){ ctrlC.abort(); }, 8000);
+        var rC, dataC;
+        try{
+          rC = await fetch(urlC, { method:'GET', headers, signal: ctrlC.signal });
+          clearTimeout(tC);
+          dataC = await rC.json();
+        }catch(fc){
+          clearTimeout(tC);
+          if(pagina === 1){
+            return { statusCode:504, headers:cors, body: JSON.stringify({
+              success:false, error:'Timeout ao consultar a Machine (condutor)', detalhe: String(fc)
+            }) };
+          }
+          break;
         }
 
-        // Processa resultados na ordem. Distinguir "erro" de "fim natural":
-        //   - lote vazio SEM erro = fim natural (acabaram os condutores)
-        //   - lote vazio COM erro = falha transitoria, NAO considerar fim, segue tentando
-        //   - lote < LIMITE sem erro = ultima pagina (fim)
-        for(var j=0; j<resultados.length; j++){
-          var res = resultados[j];
-          var lote = res.lote || [];
-          if(res.erro){
-            // Falha intermitente nesta pagina, continua p/ proximas
-            errosEncontrados++;
-            continue;
+        if(!rC.ok || !dataC || dataC.success === false){
+          if(pagina === 1){
+            // Pode ser que a API nao aceite LIMITE=200; tenta 100
+            if(LIMITE_COND > 100){
+              LIMITE_COND = 100;
+              continue; // tenta de novo a pagina 1 com limite menor
+            }
+            return { statusCode: rC.status||502, headers:cors, body: JSON.stringify({
+              success:false, error:'Machine retornou erro (condutor)', detalhe: dataC, status_http: rC.status
+            }) };
           }
-          if(lote.length === 0){
-            // Fim natural (sem erro, sem itens) = parou de ter condutor
-            fim = true;
-            break;
-          }
-          // Dedup por id (paranoia contra repeticao entre paginas)
-          var idsExistentes = {};
-          todos.forEach(function(x){ if(x && x.id != null) idsExistentes[x.id] = true; });
-          var novos = lote.filter(function(x){ return x && x.id != null && !idsExistentes[x.id]; });
-          todos = todos.concat(novos);
-          if(lote.length < LIMITE){
-            // Ultima pagina, podemos parar
-            fim = true;
-            break;
-          }
+          break;
         }
-        pagina += LOTE;
+
+        var loteC = dataC.response || [];
+        if(!Array.isArray(loteC) || loteC.length === 0) break;
+        if(pagina > 1 && loteC.length && todos.some(function(x){ return x.id === loteC[0].id; })) break;
+        todos = todos.concat(loteC);
+        if(loteC.length < LIMITE_COND) break;
+        pagina++;
       }
-      if(pagina > MAX_PAGINAS && !fim) truncado = true;
+      if(pagina > MAX_COND) truncado = true;
     }
     // === SOLICITACAO: busca sequencial (mantida, com filtro de data) ===
     else {

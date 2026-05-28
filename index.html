@@ -1,4 +1,4 @@
-<!-- v15.2 - Fix paginas intermediarias condutor + nocache no botao Atualizar + log diagnostico - 28/05/2026 -->
+<!-- v15.3 - Volta busca sequencial condutor (LIMITE=200, MAX=25) + aviso visivel erro - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8558,13 +8558,20 @@ function mbRenderCards(corridasDia, corridasMes, condutores, cidadeNome){
 
   var html = '';
   var labelTotal = ativos+' ativos · '+emAnalise+' análise · '+inativos+' inativos';
+  var corTotal = '#1AB8F0';
   try{
     var c2 = window.__cidadeAtual;
-    if(c2 && _vgCache[c2.id] && _vgCache[c2.id].dados.condTruncado){
-      labelTotal = '⚠️ ' + total + '+ (limite atingido) · ' + ativos+' ativos · '+emAnalise+' análise';
+    if(c2 && _vgCache[c2.id]){
+      var dC = _vgCache[c2.id].dados;
+      if(dC.erroCond){
+        labelTotal = '❌ Falha ao buscar: '+dC.erroCond;
+        corTotal = '#E24B4A';
+      } else if(dC.condTruncado){
+        labelTotal = '⚠️ ' + total + '+ (limite atingido) · ' + ativos+' ativos · '+emAnalise+' análise';
+      }
     }
   }catch(e){}
-  html += mbCard('🏍️', 'Total cadastrados', total, labelTotal, '#1AB8F0');
+  html += mbCard('🏍️', 'Total cadastrados', total, labelTotal, corTotal);
   html += mbCard('⚡', 'Rodaram hoje', rodaramHoje, total>0 ? Math.round(rodaramHoje/total*100)+'% do total' : '', '#1D9E75');
   html += mbCard('🛵', 'Corridas hoje', corridasHoje, finalizadas.length+' finalizadas', '#EF9F27');
   if(verFin){
@@ -9722,11 +9729,15 @@ async function vgCarregarPainel(opts){
     var corridasOntem = (rOntem && rOntem.response) ? rOntem.response : [];
     var condutores = (rCond && rCond.response) ? rCond.response : [];
 
+    // Aviso visivel se a API de condutor falhou
+    var erroCond = (rCond && rCond.success === false) ? (rCond.error||'falha desconhecida') : null;
+
     // Log de diagnostico (abra F12 -> Console pra ver)
     console.log('[Machine] Cidade:', c.nome, {
       condutores: condutores.length,
       condutoresTruncado: !!(rCond && rCond.truncado),
       condPaginasLidas: rCond && rCond.paginas_lidas,
+      erroCondutor: erroCond,
       corridasHoje: corridasDia.length,
       corridasMes: corridasMes.length,
       corridasMesAnt: corridasMesAnt.length,
@@ -9745,7 +9756,7 @@ async function vgCarregarPainel(opts){
     // Salva no cache
     _vgCache[c.id] = {
       ts: Date.now(),
-      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado)}
+      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado), erroCond: erroCond}
     };
 
     vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
