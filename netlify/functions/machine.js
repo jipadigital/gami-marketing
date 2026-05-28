@@ -95,78 +95,105 @@ exports.handler = async function(event){
     var pagina = 1;
     var LIMITE = 100;
     // Limite de paginas POR RECURSO:
-    // condutor = poucos (varre ate 20 pag). solicitacao = pode ser MILHARES,
-    // entao limita a 3 paginas (300 corridas recentes) pra nao estourar 502.
-    var MAX_PAGINAS = (recurso === 'condutor') ? 20 : 50;
+    // condutor = ate 100 paginas (10000 condutores), busca paralela em lotes
+    // solicitacao = ate 50 paginas, busca sequencial (precisa parar quando passa do periodo)
+    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 50;
     var INICIO = Date.now();
     var TEMPO_MAX = 8500; // 8.5s (limite Netlify e 10s, deixa folga)
+    var truncado = false;
 
-    while(pagina <= MAX_PAGINAS){
-      // Trava de tempo: se ja passou do limite, para e retorna o que tem
-      if(Date.now() - INICIO > TEMPO_MAX) break;
-
+    // Helper: monta a URL pra uma pagina especifica
+    var montarUrl = function(p){
       var sep = path.indexOf('?')>=0 ? '&' : '?';
-      var url = BASE_URL + path + sep + 'pagina=' + pagina + '&limite=' + LIMITE;
-      // Filtro de data (so pra solicitacao). Nomes oficiais Machine API:
-      //   data_hora_solicitacao_min / data_hora_solicitacao_max
-      // Formato: ISO 8601 com hora (2025-05-28T00:00:00.000Z)
+      var u = BASE_URL + path + sep + 'pagina=' + p + '&limite=' + LIMITE;
       if(recurso === 'solicitacao' && dataInicio){
-        // Aceita 'YYYY-MM-DD' (converte pra ISO com hora) ou ja ISO
         var dIni = dataInicio.indexOf('T')>=0 ? dataInicio : (dataInicio + 'T00:00:00.000Z');
-        url += '&data_hora_solicitacao_min=' + encodeURIComponent(dIni);
+        u += '&data_hora_solicitacao_min=' + encodeURIComponent(dIni);
         if(dataFim){
           var dFim = dataFim.indexOf('T')>=0 ? dataFim : (dataFim + 'T23:59:59.999Z');
-          url += '&data_hora_solicitacao_max=' + encodeURIComponent(dFim);
+          u += '&data_hora_solicitacao_max=' + encodeURIComponent(dFim);
         }
       }
+      return u;
+    };
 
-      // Timeout por requisicao (5s cada)
+    // Helper: faz 1 fetch com timeout de 6s
+    var fetchPagina = async function(p){
       var ctrl = new AbortController();
-      var t = setTimeout(function(){ ctrl.abort(); }, 5000);
-      var r, data;
+      var t = setTimeout(function(){ ctrl.abort(); }, 6000);
       try{
-        r = await fetch(url, { method:'GET', headers, signal: ctrl.signal });
+        var r = await fetch(montarUrl(p), { method:'GET', headers, signal: ctrl.signal });
         clearTimeout(t);
-        data = await r.json();
+        var data = await r.json();
+        if(!r.ok || !data || data.success === false){
+          return { erro: data || {status:r.status}, lote: [] };
+        }
+        return { lote: (data.response || []) };
       }catch(fe){
         clearTimeout(t);
-        // Timeout ou erro de rede: para e usa o que tiver
-        if(pagina === 1){
-          return { statusCode:504, headers:cors, body: JSON.stringify({
-            success:false, error:'Timeout ao consultar a Machine', recurso:recurso,
-            dica: 'O endpoint pode exigir filtro de data. Veja se ha muitos registros.'
+        return { erro: {message:String(fe)}, lote: [] };
+      }
+    };
+
+    // === CONDUTOR: busca paralela em lotes de 5 paginas ===
+    if(recurso === 'condutor'){
+      var LOTE = 5;
+      var fim = false;
+      while(pagina <= MAX_PAGINAS && !fim){
+        if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
+        var paginasLote = [];
+        for(var i=0; i<LOTE && (pagina+i) <= MAX_PAGINAS; i++) paginasLote.push(pagina+i);
+
+        var resultados = await Promise.all(paginasLote.map(fetchPagina));
+
+        // Erro na primeira pagina absoluta = retorna erro fatal
+        if(pagina === 1 && resultados[0].erro){
+          return { statusCode: 502, headers:cors, body: JSON.stringify({
+            success:false, error:'Machine retornou erro/timeout na primeira pagina', detalhe: resultados[0].erro
           }) };
         }
-        break;
-      }
 
-      if(!r.ok || !data || data.success === false){
-        if(pagina === 1){
-          return { statusCode: r.status||502, headers:cors, body: JSON.stringify({
-            success:false, error:'Machine retornou erro', detalhe: data
-          }) };
+        // Processa lotes na ordem; para quando achar pagina < LIMITE (fim) ou vazia
+        for(var j=0; j<resultados.length; j++){
+          var lote = resultados[j].lote;
+          if(!Array.isArray(lote) || lote.length === 0){ fim = true; break; }
+          // Dedup por id (paranoia contra repeticao entre paginas)
+          var idsExistentes = {};
+          todos.forEach(function(x){ if(x && x.id != null) idsExistentes[x.id] = true; });
+          var novos = lote.filter(function(x){ return x && x.id != null && !idsExistentes[x.id]; });
+          todos = todos.concat(novos);
+          if(lote.length < LIMITE){ fim = true; break; }
         }
-        break;
+        pagina += LOTE;
       }
-
-      var lote = data.response || [];
-      if(!Array.isArray(lote) || lote.length === 0) break;
-
-      if(pagina > 1 && lote.length && todos.some(function(x){ return x.id === lote[0].id; })){
-        break;
+      if(pagina > MAX_PAGINAS && !fim) truncado = true;
+    }
+    // === SOLICITACAO: busca sequencial (mantida, com filtro de data) ===
+    else {
+      while(pagina <= MAX_PAGINAS){
+        if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
+        var rs = await fetchPagina(pagina);
+        if(rs.erro){
+          if(pagina === 1){
+            return { statusCode: 502, headers:cors, body: JSON.stringify({
+              success:false, error:'Machine retornou erro na primeira pagina', detalhe: rs.erro
+            }) };
+          }
+          break;
+        }
+        var loteS = rs.lote;
+        if(!Array.isArray(loteS) || loteS.length === 0) break;
+        if(pagina > 1 && loteS.length && todos.some(function(x){ return x.id === loteS[0].id; })) break;
+        todos = todos.concat(loteS);
+        // Otimizacao: se filtro de data e o lote ja passou do dia pedido, para
+        if(dataFim && loteS.length){
+          var ultima = loteS[loteS.length-1].data_hora_solicitacao || '';
+          if(ultima && ultima.split(' ')[0] > dataFim) break;
+        }
+        if(loteS.length < LIMITE) break;
+        pagina++;
       }
-
-      todos = todos.concat(lote);
-
-      // Otimizacao: se pediu filtro de data e o lote ja passou do dia pedido,
-      // nao precisa continuar paginando.
-      if(recurso === 'solicitacao' && dataFim && lote.length){
-        var ultima = lote[lote.length-1].data_hora_solicitacao || '';
-        if(ultima && ultima.split(' ')[0] > dataFim) break;
-      }
-
-      if(lote.length < LIMITE) break;
-      pagina++;
+      if(pagina > MAX_PAGINAS) truncado = true;
     }
 
     // Detecta se o filtro de data foi REALMENTE aplicado pela Machine.
@@ -177,7 +204,7 @@ exports.handler = async function(event){
         var d = (x.data_hora_solicitacao||'').split(' ')[0];
         return d >= dataInicio && (!dataFim || d <= dataFim);
       });
-      filtroAplicado = (dentro.length / todos.length) > 0.5; // maioria dentro do periodo?
+      filtroAplicado = (dentro.length / todos.length) > 0.5;
     }
 
     _cache[cacheKey] = { ts: agora, data: todos };
@@ -186,6 +213,7 @@ exports.handler = async function(event){
       success:true, cidade:cidade, recurso:recurso, cache:false,
       total: todos.length,
       paginas_lidas: pagina,
+      truncado: truncado,
       filtro_data: (dataInicio||dataFim) ? {inicio:dataInicio, fim:dataFim, aplicado:filtroAplicado} : null,
       atualizado_em: new Date(agora).toISOString(),
       response: todos

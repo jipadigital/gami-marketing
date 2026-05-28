@@ -1,4 +1,4 @@
-<!-- v15.0 - Aba Motoboys completa (Etapas 1-7): cards, top dia/sem/mes, sumidos, destaques, lista filtros, modal+IA, grafico cobertura - 28/05/2026 -->
+<!-- v15.1 - Condutores paralelos ate 10000 + aviso truncamento - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8557,7 +8557,14 @@ function mbRenderCards(corridasDia, corridasMes, condutores, cidadeNome){
   var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
 
   var html = '';
-  html += mbCard('🏍️', 'Total cadastrados', total, ativos+' ativos · '+emAnalise+' análise · '+inativos+' inativos', '#1AB8F0');
+  var labelTotal = ativos+' ativos · '+emAnalise+' análise · '+inativos+' inativos';
+  try{
+    var c2 = window.__cidadeAtual;
+    if(c2 && _vgCache[c2.id] && _vgCache[c2.id].dados.condTruncado){
+      labelTotal = '⚠️ ' + total + '+ (limite atingido) · ' + ativos+' ativos · '+emAnalise+' análise';
+    }
+  }catch(e){}
+  html += mbCard('🏍️', 'Total cadastrados', total, labelTotal, '#1AB8F0');
   html += mbCard('⚡', 'Rodaram hoje', rodaramHoje, total>0 ? Math.round(rodaramHoje/total*100)+'% do total' : '', '#1D9E75');
   html += mbCard('🛵', 'Corridas hoje', corridasHoje, finalizadas.length+' finalizadas', '#EF9F27');
   if(verFin){
@@ -9724,7 +9731,7 @@ async function vgCarregarPainel(opts){
     // Salva no cache
     _vgCache[c.id] = {
       ts: Date.now(),
-      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr}
+      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado)}
     };
 
     vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
