@@ -1,4 +1,4 @@
-<!-- v18.0 - Sprints 6, 7 e 10 (estrategico, operacao avancada, exportar CSV) - 29/05/2026 -->
+<!-- v18.2 - Sync nuvem silencioso (so mostra badge em erros) - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9481,6 +9481,13 @@ function empAtualizarLista(){
 /* Curva ABC + Em Alta + Em Queda + Novos Parceiros + Fantasmas    */
 /* ============================================================== */
 
+/* Toggle da caixinha de ajuda da Curva ABC */
+function _empToggleAjudaABC(){
+  var box = document.getElementById('emp-ajuda-abc');
+  if(!box) return;
+  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+}
+
 /* Conta pedidos finalizados por empresa (retorna mapa nome->{n, valor}) */
 function _empAgruparPorEmp(corridas){
   var map = {};
@@ -9523,8 +9530,19 @@ function empRenderInsights(corridasMes, corridasMesAnt, corridas45d, empresasGer
 
   var abcHtml = '<div class="card" style="border-left:3px solid '+alertaCor+'">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">'
-      + '<div class="card-title" style="margin:0">📊 Curva ABC — Concentração de Pedidos</div>'
+      + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<div class="card-title" style="margin:0">📊 Curva ABC — Concentração de Pedidos</div>'
+        + '<button onclick="_empToggleAjudaABC()" style="background:none;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;color:var(--text2);font-family:inherit" title="O que é isso?">ℹ️ ajuda</button>'
+      + '</div>'
       + '<span style="font-size:11px;color:'+alertaCor+';font-weight:600">'+alertaTxt+'</span>'
+    + '</div>'
+    // Caixinha de ajuda (escondida por padrao)
+    + '<div id="emp-ajuda-abc" style="display:none;background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text2);line-height:1.6">'
+      + '<strong>O que é a Curva ABC?</strong><br>'
+      + 'Mostra quanto sua operação depende de poucos parceiros. Se o Top 10 gera 70% das corridas, perder 1-2 lojas grandes derruba a cidade.<br><br>'
+      + '<span style="color:#1D9E75">🟢 menos de 50%</span> — saudável, várias empresas seguram a operação<br>'
+      + '<span style="color:#EF9F27">🟠 entre 50% e 70%</span> — diversificar parceiros<br>'
+      + '<span style="color:#E24B4A">🔴 acima de 70%</span> — risco alto, agir já'
     + '</div>'
     + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">'
       + '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">'
@@ -15053,12 +15071,11 @@ async function _gamiCloudFlush(){
   var batch = _GAMI_CLOUD_PEND;
   _GAMI_CLOUD_PEND = {};
 
-  _gamiSyncBadge('💾 Sincronizando ' + keys.length + ' alteração' + (keys.length>1?'es':'') + '…', 'blue');
-
+  // Sync silencioso: nao mostra badge "Sincronizando..." nem "Salvo na nuvem"
+  // pra nao poluir a tela. So mostra badge se der ERRO.
   try{
     var registros = keys.map(function(k){
       var v = batch[k];
-      // null = remoção; o supa não suporta null direto então guardamos como string vazia + flag
       return {
         chave: k,
         valor: (v === null || v === undefined) ? '' : (typeof v === 'string' ? v : JSON.stringify(v)),
@@ -15070,15 +15087,13 @@ async function _gamiCloudFlush(){
       headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
       body: JSON.stringify(registros)
     });
-    if(r.ok){
-      _gamiSyncBadge('✓ Salvo na nuvem', 'green');
-      setTimeout(_gamiHideSyncBadge, 1500);
-    } else {
-      _gamiSyncBadge('⚠️ Erro HTTP ' + r.status, 'red');
+    if(!r.ok){
+      _gamiSyncBadge('⚠️ Erro ao salvar na nuvem (HTTP ' + r.status + ')', 'red');
       console.warn('cloudFlush HTTP', r.status, await r.text());
-      // Re-enfileira pra próxima tentativa
+      setTimeout(_gamiHideSyncBadge, 4000);
       Object.keys(batch).forEach(function(k){ _GAMI_CLOUD_PEND[k] = batch[k]; });
     }
+    // Sucesso: nao mostra nada (silencioso)
   }catch(e){
     _gamiSyncBadge('⚠️ Sem conexão — salvo localmente', 'red');
     console.warn('cloudFlush:', e);
@@ -15167,8 +15182,8 @@ async function initSupabase(){
     //    onde edits feitos no boot sobrescrevem o que está no servidor).
     var puxadas = await gamiCloudPull();
     if(puxadas > 0){
-      _gamiSyncBadge('☁️ ' + puxadas + ' chaves sincronizadas do servidor', 'blue');
-      setTimeout(_gamiHideSyncBadge, 1800);
+      // Pull inicial tambem e silencioso - so loga no console
+      console.log('[Cloud] '+puxadas+' chaves sincronizadas do servidor');
     }
 
     // Carrega do Supabase como FONTE DA VERDADE
