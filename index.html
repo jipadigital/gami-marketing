@@ -1,4 +1,4 @@
-<!-- v16.8 ROLLBACK - volta pra arquitetura estavel v16.4 (chunks 7 dias paralelos + LIMITE 100) - 28/05/2026 -->
+<!-- v16.9 - Sprint 3: Empresas sumidas + Lista completa com filtros - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8843,6 +8843,285 @@ function empRenderTopEmpresas(corridasDia, corridas45d, corridasMes, empresasGer
 function empVerEmpresa(nomeEncoded){
   var nome = decodeURIComponent(nomeEncoded);
   alert('Modal detalhado da empresa "'+nome+'" será implementado na Sprint 4.');
+}
+
+/* ============================================================== */
+/* SPRINT 3a — Empresas sumidas                                   */
+/* Pediram nos ultimos 45 dias MAS sumiram ha 5+ dias             */
+/* ============================================================== */
+function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
+  var box = document.getElementById('emp-sumidas-box'); if(!box) return;
+  if(!corridas45d || !corridas45d.length){ box.innerHTML = ''; return; }
+
+  var cidadeAtual = window.__cidadeAtual;
+  var empresasCidade = _empFiltrarPorCidade(empresasGeral || [], cidadeAtual ? cidadeAtual.nome : '');
+  // Indexa empresas pelo nome (pra puxar telefone, status, id ao clicar)
+  var mapEmp = {};
+  empresasCidade.forEach(function(e){
+    var n = (e.nome||'').trim();
+    if(n) mapEmp[n.toLowerCase()] = e;
+  });
+
+  var hoje = new Date(hojeStr+'T00:00:00');
+  // Agrupa corridas por empresa, descobre ultima
+  var byEmp = {};
+  corridas45d.forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
+    if(!byEmp[n]) byEmp[n] = {nome:n, ultima:dStr, total:0};
+    if(dStr > byEmp[n].ultima) byEmp[n].ultima = dStr;
+    byEmp[n].total++;
+  });
+
+  // Filtra: pediu em 45d mas sumiu ha 5+ dias
+  var sumidas = [];
+  Object.values(byEmp).forEach(function(e){
+    var ult = new Date(e.ultima+'T00:00:00');
+    var dias = Math.floor((hoje - ult) / 86400000);
+    if(dias >= 5){
+      var info = mapEmp[e.nome.toLowerCase()] || {};
+      sumidas.push({
+        nome: e.nome, dias: dias, total: e.total, ultima: e.ultima,
+        tel: info.telefone || '', status: info.status_empresa || '?', bairro: info.bairro || ''
+      });
+    }
+  });
+  // Ordem crescente: mais recentes primeiro (5 dias, 6, 7...)
+  sumidas.sort(function(a,b){ return a.dias - b.dias; });
+
+  if(!sumidas.length){
+    box.innerHTML = '<div class="card" style="background:#EAF3DE;border-left:4px solid #1D9E75">'
+      + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">✅</span>'
+      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as empresas que pediram nos últimos 45 dias continuam ativas (pediram nos últimos 5 dias).</span></div></div>';
+    return;
+  }
+
+  var html = '<div class="card" style="background:#FEF3F2;border-left:4px solid #E24B4A">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    + '<div style="font-size:11px;font-weight:700;color:#A93226;text-transform:uppercase;letter-spacing:.5px">🚨 Empresas Sumidas</div>'
+    + '<span style="font-size:10px;color:#A93226;background:#E24B4A22;padding:2px 7px;border-radius:6px">'+sumidas.length+' lojas</span>'
+    + '</div>'
+    + '<div style="font-size:11px;color:#A93226;margin-bottom:10px">Pediram nos últimos 45 dias mas estão há <strong>5+ dias sem pedir</strong>. Ordenadas das mais recentes para as mais antigas.</div>'
+    + '<div style="max-height:520px;overflow-y:auto;padding-right:4px">';
+
+  sumidas.forEach(function(e){
+    var corBadge = e.dias>=30 ? '#E24B4A' : e.dias>=15 ? '#EF9F27' : '#854F0B';
+    var telLimpo = (e.tel||'').replace(/\D/g,'');
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px dashed #E24B4A33">'
+      + '<span style="font-size:14px">🏪</span>'
+      + '<div style="flex:1;min-width:0;cursor:pointer" onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')">'
+        + '<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
+        + '<div style="font-size:10px;color:var(--text3)">Último pedido: '+e.ultima.split('-').reverse().join('/')+' · '+e.total+' pedidos nos últimos 45 dias'+(e.bairro?' · '+e.bairro:'')+'</div>'
+      + '</div>'
+      + '<span style="font-size:11px;font-weight:700;color:white;background:'+corBadge+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+e.dias+' dias</span>'
+      + (telLimpo ? '<a href="https://wa.me/55'+telLimpo+'" target="_blank" style="padding:4px 9px;border-radius:6px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600;white-space:nowrap">📱</a>' : '')
+      + '</div>';
+  });
+  html += '</div></div>';
+  box.innerHTML = html;
+}
+
+/* ============================================================== */
+/* SPRINT 3b — Lista completa com filtros + busca + paginacao     */
+/* ============================================================== */
+var _empListaEstado = {busca:'', status:'todos', bairro:'todos', faixa:'todas', ordem:'pedidos_desc', pagina:1};
+
+function empRenderLista(corridasMes, empresasGeral, hojeStr){
+  var box = document.getElementById('emp-lista-box'); if(!box) return;
+  var cidadeAtual = window.__cidadeAtual;
+  var empresas = _empFiltrarPorCidade(empresasGeral || [], cidadeAtual ? cidadeAtual.nome : '');
+  if(!empresas.length){ box.innerHTML=''; return; }
+
+  // Indexa corridas por nome de empresa
+  var statsMes = {};
+  (corridasMes||[]).forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var key = n.toLowerCase();
+    if(!statsMes[key]) statsMes[key] = {total:0, fin:0, can:0, valor:0, ultima:''};
+    statsMes[key].total++;
+    if(x.status_solicitacao==='F'){ statsMes[key].fin++; statsMes[key].valor += parseFloat(x.valor_corrida||0); }
+    if(x.status_solicitacao==='C'){ statsMes[key].can++; }
+    var dStr = (x.data_hora_solicitacao||'').slice(0,10);
+    if(dStr > (statsMes[key].ultima||'')) statsMes[key].ultima = dStr;
+  });
+
+  var hoje = new Date(hojeStr+'T00:00:00');
+
+  // Monta lista com metricas
+  var lista = empresas.map(function(e){
+    var key = (e.nome||'').toLowerCase();
+    var s = statsMes[key] || {total:0, fin:0, can:0, valor:0, ultima:''};
+    var taxa = (s.fin+s.can)>0 ? Math.round(s.fin/(s.fin+s.can)*100) : null;
+    var ticket = s.fin>0 ? s.valor/s.fin : 0;
+    var diasInativo = 999;
+    if(s.ultima){
+      var ult = new Date(s.ultima+'T00:00:00');
+      diasInativo = Math.floor((hoje - ult) / 86400000);
+    }
+    return {
+      id: e.id, nome: e.nome||'?', status: e.status_empresa||'?', tel: e.telefone||'',
+      bairro: e.bairro||'', pedidos: s.total, fin: s.fin, can: s.can,
+      taxa: taxa, ticket: ticket, faturamento: s.valor, ultima: s.ultima, diasInativo: diasInativo
+    };
+  });
+
+  // Calcula faixas (top 10%, medias, baixas) baseado em pedidos
+  var listaOrd = lista.slice().sort(function(a,b){return b.pedidos-a.pedidos;});
+  var top10pct = Math.max(1, Math.ceil(listaOrd.length * 0.1));
+  var idsTop = {}; for(var i=0; i<top10pct; i++) idsTop[listaOrd[i].id] = true;
+  var medianaIdx = Math.floor(listaOrd.length * 0.5);
+  var threshold = listaOrd[medianaIdx] ? listaOrd[medianaIdx].pedidos : 0;
+  lista.forEach(function(m){
+    if(idsTop[m.id]) m._faixa = 'top10';
+    else if(m.pedidos > threshold) m._faixa = 'media';
+    else m._faixa = 'baixa';
+  });
+
+  // Bairros pro filtro
+  var bairrosSet = {};
+  lista.forEach(function(m){ if(m.bairro) bairrosSet[m.bairro] = true; });
+  var listaBairros = Object.keys(bairrosSet).sort();
+
+  // Aplica filtros
+  var st = _empListaEstado;
+  var filtrada = lista.filter(function(m){
+    if(st.busca){
+      if(m.nome.toLowerCase().indexOf(st.busca.toLowerCase()) < 0) return false;
+    }
+    if(st.status !== 'todos'){
+      if(st.status === 'ativa' && m.status !== 'A') return false;
+      if(st.status === 'suspensa' && m.status !== 'S') return false;
+      if(st.status === 'aguardando' && m.status !== 'G') return false;
+    }
+    if(st.bairro !== 'todos' && m.bairro !== st.bairro) return false;
+    if(st.faixa !== 'todas' && m._faixa !== st.faixa) return false;
+    return true;
+  });
+
+  // Ordenacao
+  var ord = st.ordem;
+  filtrada.sort(function(a,b){
+    if(ord==='nome_asc') return a.nome.localeCompare(b.nome);
+    if(ord==='pedidos_desc') return b.pedidos - a.pedidos;
+    if(ord==='ticket_desc') return b.ticket - a.ticket;
+    if(ord==='dias_inativo_desc') return b.diasInativo - a.diasInativo;
+    if(ord==='faturamento_desc') return b.faturamento - a.faturamento;
+    return 0;
+  });
+
+  // Paginacao
+  var porPagina = 20;
+  var totalPaginas = Math.max(1, Math.ceil(filtrada.length / porPagina));
+  if(st.pagina > totalPaginas) st.pagina = totalPaginas;
+  var ini = (st.pagina-1)*porPagina;
+  var paginaItens = filtrada.slice(ini, ini + porPagina);
+
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+
+  var statusBadge = function(s){
+    var map = {
+      'A':{lbl:'Ativa', bg:'#EAF3DE', cor:'#3B6D11'},
+      'S':{lbl:'Suspensa', bg:'#FEF3F2', cor:'#A93226'},
+      'G':{lbl:'Aguardando', bg:'#FAEEDA', cor:'#854F0B'},
+      'D':{lbl:'Deletada', bg:'#EEE', cor:'#666'}
+    };
+    var m = map[s] || {lbl:s, bg:'#EEE', cor:'#666'};
+    return '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+m.bg+';color:'+m.cor+';white-space:nowrap;font-weight:600">'+m.lbl+'</span>';
+  };
+
+  var optBairros = '<option value="todos">Todos os bairros</option>' + listaBairros.map(function(b){return '<option value="'+b+'"'+(st.bairro===b?' selected':'')+'>'+b+'</option>';}).join('');
+
+  var html = '<div class="card">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
+      + '<div class="card-title" style="margin:0">🔍 Lista completa de empresas</div>'
+      + '<span style="font-size:10px;color:var(--text3)">'+filtrada.length+' encontradas</span>'
+    + '</div>'
+    // Linha de filtros
+    + '<div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;margin-bottom:10px;align-items:center">'
+      + '<input id="emp-lista-busca" type="text" value="'+st.busca+'" placeholder="🔍 Buscar por nome..." '
+        + 'oninput="_empListaEstado.busca=this.value;_empListaEstado.pagina=1;empAtualizarLista()" '
+        + 'style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">'
+      + '<select onchange="_empListaEstado.status=this.value;_empListaEstado.pagina=1;empAtualizarLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:white">'
+        + '<option value="todos"'+(st.status==='todos'?' selected':'')+'>Todos os status</option>'
+        + '<option value="ativa"'+(st.status==='ativa'?' selected':'')+'>Ativas</option>'
+        + '<option value="suspensa"'+(st.status==='suspensa'?' selected':'')+'>Suspensas</option>'
+        + '<option value="aguardando"'+(st.status==='aguardando'?' selected':'')+'>Aguardando</option>'
+      + '</select>'
+      + '<select onchange="_empListaEstado.bairro=this.value;_empListaEstado.pagina=1;empAtualizarLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:white;max-width:160px">'
+        + optBairros
+      + '</select>'
+      + '<select onchange="_empListaEstado.faixa=this.value;_empListaEstado.pagina=1;empAtualizarLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:white">'
+        + '<option value="todas"'+(st.faixa==='todas'?' selected':'')+'>Todas as faixas</option>'
+        + '<option value="top10"'+(st.faixa==='top10'?' selected':'')+'>Top 10% (mais pedidos)</option>'
+        + '<option value="media"'+(st.faixa==='media'?' selected':'')+'>Médias</option>'
+        + '<option value="baixa"'+(st.faixa==='baixa'?' selected':'')+'>Baixas</option>'
+      + '</select>'
+      + '<select onchange="_empListaEstado.ordem=this.value;empAtualizarLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:white">'
+        + '<option value="pedidos_desc"'+(st.ordem==='pedidos_desc'?' selected':'')+'>Mais pedidos</option>'
+        + '<option value="nome_asc"'+(st.ordem==='nome_asc'?' selected':'')+'>Nome (A-Z)</option>'
+        + '<option value="ticket_desc"'+(st.ordem==='ticket_desc'?' selected':'')+'>Maior ticket médio</option>'
+        + '<option value="dias_inativo_desc"'+(st.ordem==='dias_inativo_desc'?' selected':'')+'>Mais dias sem pedir</option>'
+        + (verFin ? '<option value="faturamento_desc"'+(st.ordem==='faturamento_desc'?' selected':'')+'>Maior faturamento</option>' : '')
+      + '</select>'
+    + '</div>'
+    // Tabela
+    + '<div style="overflow-x:auto"><table style="width:100%;font-size:11px;border-collapse:collapse">'
+      + '<thead><tr style="border-bottom:2px solid var(--border);text-align:left;color:var(--text3)">'
+        + '<th style="padding:6px 4px">Nome</th>'
+        + '<th style="padding:6px 4px;text-align:center">Status</th>'
+        + '<th style="padding:6px 4px;text-align:center">Bairro</th>'
+        + '<th style="padding:6px 4px;text-align:center">Pedidos mês</th>'
+        + '<th style="padding:6px 4px;text-align:center">Taxa</th>'
+        + (verFin ? '<th style="padding:6px 4px;text-align:center">Ticket</th>' : '')
+        + '<th style="padding:6px 4px;text-align:center">Dias inativa</th>'
+        + '<th style="padding:6px 4px;text-align:center">Ações</th>'
+      + '</tr></thead><tbody>';
+
+  if(paginaItens.length === 0){
+    html += '<tr><td colspan="9" style="padding:20px;text-align:center;color:var(--text3)">Nenhuma empresa encontrada com esses filtros.</td></tr>';
+  } else {
+    paginaItens.forEach(function(m){
+      var telLimpo = (m.tel||'').replace(/\D/g,'');
+      var diasLbl = m.diasInativo===999 ? 'nunca' : m.diasInativo+'d';
+      var diasCor = m.diasInativo===999 ? 'var(--text3)' : m.diasInativo>=5 ? '#E24B4A' : 'var(--text)';
+      html += '<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<td style="padding:7px 4px;cursor:pointer" onclick="empVerEmpresa(\''+encodeURIComponent(m.nome)+'\')"><div style="font-weight:600;color:var(--text)">'+m.nome+'</div></td>'
+        + '<td style="padding:7px 4px;text-align:center">'+statusBadge(m.status)+'</td>'
+        + '<td style="padding:7px 4px;text-align:center;color:var(--text2);font-size:10px">'+(m.bairro||'—')+'</td>'
+        + '<td style="padding:7px 4px;text-align:center;font-weight:600">'+m.pedidos+'</td>'
+        + '<td style="padding:7px 4px;text-align:center">'+(m.taxa!==null?m.taxa+'%':'—')+'</td>'
+        + (verFin ? '<td style="padding:7px 4px;text-align:center">'+(m.ticket>0?fmt(m.ticket):'—')+'</td>' : '')
+        + '<td style="padding:7px 4px;text-align:center;color:'+diasCor+';font-weight:600">'+diasLbl+'</td>'
+        + '<td style="padding:7px 4px;text-align:center;white-space:nowrap">'
+          + '<button onclick="empVerEmpresa(\''+encodeURIComponent(m.nome)+'\')" style="padding:3px 8px;border:none;border-radius:5px;background:var(--gami-blue);color:white;font-size:10px;cursor:pointer;font-family:inherit;margin-right:3px">Ver</button>'
+          + (telLimpo ? '<a href="https://wa.me/55'+telLimpo+'" target="_blank" style="padding:3px 8px;border-radius:5px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600">📱</a>' : '')
+        + '</td>'
+        + '</tr>';
+    });
+  }
+  html += '</tbody></table></div>';
+
+  // Paginacao
+  if(totalPaginas > 1){
+    html += '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px">'
+      + '<button onclick="_empListaEstado.pagina=Math.max(1,_empListaEstado.pagina-1);empAtualizarLista()" '
+        + (st.pagina<=1 ? 'disabled' : '') + ' style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer;font-size:11px;'+(st.pagina<=1?'opacity:.4':'')+'">← Anterior</button>'
+      + '<span style="font-size:11px;color:var(--text2)">Página '+st.pagina+' de '+totalPaginas+'</span>'
+      + '<button onclick="_empListaEstado.pagina=Math.min('+totalPaginas+',_empListaEstado.pagina+1);empAtualizarLista()" '
+        + (st.pagina>=totalPaginas ? 'disabled' : '') + ' style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer;font-size:11px;'+(st.pagina>=totalPaginas?'opacity:.4':'')+'">Próximo →</button>'
+      + '</div>';
+  }
+  html += '</div>';
+  box.innerHTML = html;
+}
+
+/* Re-renderiza lista usando cache atual da cidade (sem refazer fetch) */
+function empAtualizarLista(){
+  var c = window.__cidadeAtual; if(!c) return;
+  if(!_vgCache[c.id]) return;
+  var d = _vgCache[c.id].dados;
+  empRenderLista(d.corridasMes, d.empresas, d.hojeStr);
 }
 
 /* ============================================================== */
