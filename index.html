@@ -1,4 +1,4 @@
-<!-- v17.1 - Fix Analisar IA: resposta inline (era abrindo Claude externo) - 29/05/2026 -->
+<!-- v17.2 - Fix IA: logs + suporte multi-formato de resposta - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8587,7 +8587,7 @@ async function empCarregarPainel(opts){
     if(typeof empRenderTopEmpresas === 'function') empRenderTopEmpresas(d.corridasDia, d.corridas45d, d.corridasMes, d.empresas, d.hojeStr);
     if(typeof empRenderSumidas === 'function') empRenderSumidas(d.corridas45d, d.empresas, d.hojeStr);
     if(typeof empRenderLista === 'function') empRenderLista(d.corridasMes, d.empresas, d.hojeStr);
-    if(typeof empRenderInsights === 'function') empRenderInsights(d.corridasMes, d.corridasMesAnt, d.empresas, d.hojeStr);
+    if(typeof empRenderInsights === 'function') empRenderInsights(d.corridasMes, d.corridasMesAnt, d.corridas45d, d.empresas, d.hojeStr);
     if(typeof empRenderEstrategico === 'function') empRenderEstrategico(d.corridasMes, d.empresas, d.hojeStr);
     if(typeof empRenderOperacao === 'function') empRenderOperacao(d.corridasMes, d.empresas, d.hojeStr);
   };
@@ -9155,13 +9155,28 @@ async function empAnalisarIA(nomeEncoded){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 600 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 800 })
     });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var resposta = (data.content || []).map(function(b){return b.text||'';}).join('').trim();
-    texto.textContent = resposta || 'Sem resposta da IA.';
+    console.log('[empAnalisarIA] HTTP '+resp.status+' - resposta:', data);
+
+    if(!resp.ok){ throw new Error('HTTP '+resp.status+': '+(data && (data.error||data.message)||'falhou')); }
+
+    var resposta = '';
+    if(data && Array.isArray(data.content)){
+      resposta = data.content.map(function(b){return b.text||'';}).join('').trim();
+    } else if(data && typeof data.text === 'string'){
+      resposta = data.text.trim();
+    } else if(data && typeof data.completion === 'string'){
+      resposta = data.completion.trim();
+    } else if(data && typeof data.message === 'string'){
+      resposta = data.message.trim();
+    } else if(typeof data === 'string'){
+      resposta = data.trim();
+    }
+    texto.textContent = resposta || ('Sem resposta da IA. Veja o console (F12) pra formato bruto.');
   }catch(e){
+    console.error('[empAnalisarIA] Erro:', e);
     texto.textContent = 'Erro ao chamar a IA: '+e.message;
   }
 }
@@ -10096,13 +10111,28 @@ async function mbAnalisarIA(idCondutor){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 600 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 800 })
     });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var resposta = (data.content || []).map(function(b){return b.text||'';}).join('').trim();
-    texto.textContent = resposta || 'Sem resposta da IA.';
+    console.log('[mbAnalisarIA] HTTP '+resp.status+' - resposta:', data);
+
+    if(!resp.ok){ throw new Error('HTTP '+resp.status+': '+(data && (data.error||data.message)||'falhou')); }
+
+    var resposta = '';
+    if(data && Array.isArray(data.content)){
+      resposta = data.content.map(function(b){return b.text||'';}).join('').trim();
+    } else if(data && typeof data.text === 'string'){
+      resposta = data.text.trim();
+    } else if(data && typeof data.completion === 'string'){
+      resposta = data.completion.trim();
+    } else if(data && typeof data.message === 'string'){
+      resposta = data.message.trim();
+    } else if(typeof data === 'string'){
+      resposta = data.trim();
+    }
+    texto.textContent = resposta || ('Sem resposta da IA. Veja o console (F12) pra formato bruto.');
   }catch(e){
+    console.error('[mbAnalisarIA] Erro:', e);
     texto.textContent = 'Erro ao chamar a IA: '+e.message;
   }
 }
