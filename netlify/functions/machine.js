@@ -94,9 +94,7 @@ exports.handler = async function(event){
 
     var todos = [];
     var pagina = 1;
-    // Pra solicitacao: tenta LIMITE=500 primeiro. Se Machine recusar,
-    // o fallback abaixo cai pra 100. Pra outros recursos, fica em 100.
-    var LIMITE = (recurso === 'solicitacao') ? 500 : 100;
+    var LIMITE = 100;
     var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 50;
     var INICIO = Date.now();
     var TEMPO_MAX = 8500;
@@ -196,11 +194,6 @@ exports.handler = async function(event){
         var rs = await fetchPagina(pagina);
         if(rs.erro){
           if(pagina === 1){
-            // Se LIMITE=500 falhou na 1a pagina, tenta com 100
-            if(LIMITE > 100){
-              LIMITE = 100;
-              continue;
-            }
             return { statusCode: 502, headers:cors, body: JSON.stringify({
               success:false, error:'Machine retornou erro na primeira pagina', detalhe: rs.erro
             }) };
