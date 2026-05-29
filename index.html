@@ -1,4 +1,4 @@
-<!-- v15.4 - Fix Alertas Inteligentes sumindo ao trocar de aba (cache replay) - 28/05/2026 -->
+<!-- v16.0 - Integracao /empresa ativada (Machine API) + cache - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9713,13 +9713,14 @@ async function vgCarregarPainel(opts){
   var nc = forcado ? '&nocache=1' : '';
 
   try{
-    var [rDia, rOntem, corridasMes, corridasMesAnt, corridas45d, rCond] = await Promise.all([
+    var [rDia, rOntem, corridasMes, corridasMesAnt, corridas45d, rCond, rEmp] = await Promise.all([
       fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr+nc).then(function(r){return r.json();}),
       fetch(base+'&recurso=solicitacao&data_inicio='+ontemStr+'&data_fim='+ontemStr+nc).then(function(r){return r.json();}),
       _vgBuscarCorridasPeriodo(slug, inicioMes, hojeStr, forcado),
       _vgBuscarCorridasPeriodo(slug, inicioMesAnt, fimMesAnt, forcado),
       _vgBuscarCorridasPeriodo(slug, ha45dias, hojeStr, forcado),
-      fetch(base+'&recurso=condutor'+nc).then(function(r){return r.json();})
+      fetch(base+'&recurso=condutor'+nc).then(function(r){return r.json();}),
+      fetch(base+'&recurso=empresa'+nc).then(function(r){return r.json();}).catch(function(){return {success:false, response:[]};})
     ]);
 
     // Se trocou de cidade enquanto carregava, descarta resultado
@@ -9728,9 +9729,11 @@ async function vgCarregarPainel(opts){
     var corridasDia = (rDia && rDia.response) ? rDia.response : [];
     var corridasOntem = (rOntem && rOntem.response) ? rOntem.response : [];
     var condutores = (rCond && rCond.response) ? rCond.response : [];
+    var empresas = (rEmp && rEmp.response) ? rEmp.response : [];
 
     // Aviso visivel se a API de condutor falhou
     var erroCond = (rCond && rCond.success === false) ? (rCond.error||'falha desconhecida') : null;
+    var erroEmp = (rEmp && rEmp.success === false) ? (rEmp.error||'falha desconhecida') : null;
 
     // Log de diagnostico (abra F12 -> Console pra ver)
     console.log('[Machine] Cidade:', c.nome, {
@@ -9738,11 +9741,15 @@ async function vgCarregarPainel(opts){
       condutoresTruncado: !!(rCond && rCond.truncado),
       condPaginasLidas: rCond && rCond.paginas_lidas,
       erroCondutor: erroCond,
+      empresas: empresas.length,
+      empresasTruncado: !!(rEmp && rEmp.truncado),
+      erroEmpresa: erroEmp,
       corridasHoje: corridasDia.length,
       corridasMes: corridasMes.length,
       corridasMesAnt: corridasMesAnt.length,
       corridas45d: corridas45d.length,
-      respostaCondutorBruta: rCond
+      respostaCondutorBruta: rCond,
+      respostaEmpresaBruta: rEmp
     });
 
     corridasDia = corridasDia.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr; });
@@ -9756,7 +9763,7 @@ async function vgCarregarPainel(opts){
     // Salva no cache
     _vgCache[c.id] = {
       ts: Date.now(),
-      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, filtroOK:filtroOK, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado), erroCond: erroCond}
+      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, empresas:empresas, filtroOK:filtroOK, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado), empTruncado: !!(rEmp && rEmp.truncado), erroCond: erroCond, erroEmp: erroEmp}
     };
 
     vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
@@ -9769,7 +9776,7 @@ async function vgCarregarPainel(opts){
       banner2.style.borderColor='#1D9E7566';
       document.getElementById('vg-painel-icone').textContent='🟢';
       var hr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+corridasDia.length+' corridas hoje · '+corridasMes.length+' no mês · atualizado '+hr;
+      document.getElementById('vg-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+corridasDia.length+' corridas hoje · '+corridasMes.length+' no mês · '+empresas.length+' empresas · atualizado '+hr;
       if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
     }
   }catch(e){

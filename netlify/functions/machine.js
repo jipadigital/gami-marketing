@@ -19,7 +19,8 @@ const BASE_URL = 'https://api.taximachine.com.br/api/integracao';
 const RECURSOS_GET = {
   condutor: '/condutor',
   solicitacao: '/solicitacao',
-  programada: '/consultarProgramada'
+  programada: '/consultarProgramada',
+  empresa: '/empresa'
 };
 
 // Cache em memoria (por instancia) — respeita limite de 50 req/min
@@ -135,12 +136,14 @@ exports.handler = async function(event){
       }
     };
 
-    // === CONDUTOR: busca sequencial (testada e estavel) ===
-    // LIMITE=200 por pagina (se a API aceitar) + 25 paginas = ate 5000 condutores
-    // Cabe em ~5-6s no tempo limite do Netlify
-    if(recurso === 'condutor'){
-      var LIMITE_COND = 200;
+    // === CONDUTOR / EMPRESA: busca sequencial (testada e estavel) ===
+    // Condutor: LIMITE=200 (com fallback 100), MAX=25 paginas (ate 5000 condutores)
+    // Empresa:  LIMITE=100 (max da API segundo doc), MAX=25 paginas (ate 2500 empresas)
+    if(recurso === 'condutor' || recurso === 'empresa'){
+      var ehEmpresa = (recurso === 'empresa');
+      var LIMITE_COND = ehEmpresa ? 100 : 200;
       var MAX_COND = 25;
+      var nomeRec = ehEmpresa ? 'empresa' : 'condutor';
       while(pagina <= MAX_COND){
         if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
 
@@ -158,7 +161,7 @@ exports.handler = async function(event){
           clearTimeout(tC);
           if(pagina === 1){
             return { statusCode:504, headers:cors, body: JSON.stringify({
-              success:false, error:'Timeout ao consultar a Machine (condutor)', detalhe: String(fc)
+              success:false, error:'Timeout ao consultar a Machine ('+nomeRec+')', detalhe: String(fc)
             }) };
           }
           break;
@@ -166,13 +169,13 @@ exports.handler = async function(event){
 
         if(!rC.ok || !dataC || dataC.success === false){
           if(pagina === 1){
-            // Pode ser que a API nao aceite LIMITE=200; tenta 100
+            // Pode ser que a API nao aceite LIMITE maior; tenta 100
             if(LIMITE_COND > 100){
               LIMITE_COND = 100;
-              continue; // tenta de novo a pagina 1 com limite menor
+              continue;
             }
             return { statusCode: rC.status||502, headers:cors, body: JSON.stringify({
-              success:false, error:'Machine retornou erro (condutor)', detalhe: dataC, status_http: rC.status
+              success:false, error:'Machine retornou erro ('+nomeRec+')', detalhe: dataC, status_http: rC.status
             }) };
           }
           break;
