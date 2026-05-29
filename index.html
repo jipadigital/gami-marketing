@@ -1,4 +1,4 @@
-<!-- v16.4 - Empresas: retry chunks + combina 45d+mes pra semana - 28/05/2026 -->
+<!-- v16.5 - Chunks de 3 dias (resolve underfetch em cidades alto volume) - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9886,20 +9886,21 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
   var dFim = new Date(dataFim+'T00:00:00');
   var dias = Math.floor((dFim - dIni) / 86400000) + 1;
 
-  // Periodo pequeno (ate 10 dias): 1 fetch so
-  if(dias <= 10){
+  // Periodo pequeno (ate 3 dias): 1 fetch so (cabe folgado nas 50 paginas)
+  if(dias <= 3){
     var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim+nc).then(function(r){return r.json();});
     return (r && r.response) ? r.response : [];
   }
 
-  // Periodo grande: divide em chunks de ~7 dias e busca em paralelo
+  // Periodo grande: divide em chunks de 3 dias (cabe em ~4500 corridas/chunk)
+  // Cidades de alto volume (Maceio 1500+/dia) precisam disso pra nao truncar
   var chunks = [];
   var atual = new Date(dIni);
   while(atual <= dFim){
-    var fim = new Date(atual.getTime() + 6*86400000); // +6 dias = janela de 7
+    var fim = new Date(atual.getTime() + 2*86400000); // +2 dias = janela de 3
     if(fim > dFim) fim = new Date(dFim);
     chunks.push({ini: _vgData(atual), fim: _vgData(fim)});
-    atual = new Date(fim.getTime() + 86400000); // proximo dia
+    atual = new Date(fim.getTime() + 86400000);
   }
   // Tenta cada chunk, com 1 retry se falhar (502/504 da Netlify sao frequentes)
   var buscarChunk = async function(c, tentativa){
@@ -9911,7 +9912,6 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
       return r || {response:[]};
     }catch(e){
       if(!tentativa){
-        // Retry 1x com pausa de 800ms
         await new Promise(function(res){ setTimeout(res, 800); });
         return buscarChunk(c, 1);
       }
