@@ -1,4 +1,4 @@
-<!-- v16.1 - Aba Empresas Sprint 1 (rename + remove pipeline + banner + 6 cards) - 28/05/2026 -->
+<!-- v16.2 - Aba Empresas Sprint 2 (Top Dia/Semana/Mes) - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8733,6 +8733,98 @@ function renderEmpresasAba(){
   if(typeof empCarregarPainel === 'function'){
     try { empCarregarPainel({}); } catch(e){ console.warn('empCarregarPainel:', e); }
   }
+}
+
+/* ============================================================== */
+/* SPRINT 2 — Top Empresas (Dia, Semana, Mes) lado a lado         */
+/* ============================================================== */
+function _empCalcRanking(corridas){
+  // Agrupa por empresa (nome_passageiro), filtra so finalizadas, ordena
+  var map = {};
+  var totalGeral = 0;
+  corridas.filter(function(x){return x.status_solicitacao==='F';}).forEach(function(x){
+    var nome = (x.nome_passageiro||'').trim(); if(!nome) return;
+    if(!map[nome]){ map[nome] = {nome:nome, total:0, valor:0, finalizadas:0, canceladas:0}; }
+    map[nome].total++; map[nome].finalizadas++;
+    map[nome].valor += parseFloat(x.valor_corrida||0);
+    totalGeral++;
+  });
+  // Adiciona canceladas pra calcular taxa (mas nao conta no totalGeral)
+  corridas.filter(function(x){return x.status_solicitacao==='C';}).forEach(function(x){
+    var nome = (x.nome_passageiro||'').trim(); if(!nome) return;
+    if(!map[nome]) return;
+    map[nome].canceladas++;
+  });
+  var lista = Object.values(map).sort(function(a,b){return b.total-a.total;});
+  // Adiciona % do total e ticket medio
+  lista.forEach(function(e){
+    e.pctTotal = totalGeral>0 ? Math.round(e.total/totalGeral*100) : 0;
+    e.ticket = e.finalizadas>0 ? e.valor/e.finalizadas : 0;
+  });
+  return {lista: lista.slice(0,10), totalGeral: totalGeral};
+}
+
+function _empCardTopEmpresas(titulo, icone, ranking, cor, verFin){
+  var medals = ['🥇','🥈','🥉'];
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+  var lista = ranking.lista || [];
+
+  var html = '<div class="card" style="border-top:3px solid '+cor+'">'
+    + '<div class="card-title" style="display:flex;align-items:center;gap:6px;color:'+cor+'">'
+    + '<span style="font-size:14px">'+icone+'</span><span>'+titulo+'</span>'
+    + '</div>'
+    + '<div style="margin-top:8px">';
+
+  if(!lista.length){
+    html += '<div style="color:var(--text3);font-size:11px;padding:14px;text-align:center">Sem dados</div>';
+  } else {
+    lista.forEach(function(e, i){
+      var pos = medals[i] || ((i+1)+'º');
+      html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" '
+        + 'onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<span style="font-size:14px;width:24px;text-align:center">'+pos+'</span>'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
+          + '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+e.pctTotal+'% do total'+(verFin?' · ticket '+fmt(e.ticket):'')+'</div>'
+        + '</div>'
+        + '<div style="text-align:right">'
+          + '<div style="font-size:14px;font-weight:700;color:'+cor+'">'+e.total+'</div>'
+          + '<div style="font-size:9px;color:var(--text3)">pedidos</div>'
+        + '</div>'
+        + '</div>';
+    });
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function empRenderTopEmpresas(corridasDia, corridas45d, corridasMes, empresasGeral, hojeStr){
+  var host = document.getElementById('emp-top-row'); if(!host) return;
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+
+  // Filtra "semana" = ultimos 7 dias dos corridas45d
+  var hoje = new Date(hojeStr+'T00:00:00');
+  var inicioSemana = new Date(hoje.getTime() - 6*86400000);
+  var inicioSemanaStr = _vgData(inicioSemana);
+  var corridasSemana = (corridas45d||[]).filter(function(x){
+    var d = (x.data_hora_solicitacao||'').slice(0,10);
+    return d >= inicioSemanaStr && d <= hojeStr;
+  });
+
+  var topDia = _empCalcRanking(corridasDia||[]);
+  var topSemana = _empCalcRanking(corridasSemana);
+  var topMes = _empCalcRanking(corridasMes||[]);
+
+  host.innerHTML =
+      _empCardTopEmpresas('Top Empresas — Hoje', '⚡', topDia, '#1AB8F0', verFin)
+    + _empCardTopEmpresas('Top Empresas — Semana', '🏆', topSemana, '#EF9F27', verFin)
+    + _empCardTopEmpresas('Top Empresas — Mês', '📆', topMes, '#8B5CF6', verFin);
+}
+
+/* Stub - sera implementado na Sprint 4 (modal) */
+function empVerEmpresa(nomeEncoded){
+  var nome = decodeURIComponent(nomeEncoded);
+  alert('Modal detalhado da empresa "'+nome+'" será implementado na Sprint 4.');
 }
 
 /* ============================================================== */
