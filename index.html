@@ -1,4 +1,4 @@
-<!-- v17.0 - Sprint 4: Modal detalhado por empresa + Analisar com IA - 29/05/2026 -->
+<!-- v17.1 - Fix Analisar IA: resposta inline (era abrindo Claude externo) - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9102,7 +9102,7 @@ function empVerEmpresa(nomeEncoded){
 }
 
 /* ============================================================== */
-/* SPRINT 4b — Analisar com IA (chama Claude via openAI())         */
+/* SPRINT 4b — Analisar com IA (chamada interna - resposta inline) */
 /* ============================================================== */
 async function empAnalisarIA(nomeEncoded){
   var nome = decodeURIComponent(nomeEncoded);
@@ -9143,7 +9143,7 @@ async function empAnalisarIA(nomeEncoded){
     + '- Taxa de cancelamento: ' + taxaCanc + '%\n'
     + '- Ticket médio: R$ ' + ticket.toFixed(2) + '\n'
     + '- Último pedido: ' + (diasSemPedir===999?'nunca registrado':'há '+diasSemPedir+' dias') + '\n\n'
-    + 'Em 3-5 frases curtas: diagnóstico breve + 3 ações sugeridas pra atendimento/comercial agir. Tom direto, sem rodeios.';
+    + 'Em 3-5 frases curtas: diagnóstico breve + 3 ações sugeridas pra atendimento/comercial agir. Tom direto, sem rodeios. Sem markdown, sem emoji, texto corrido.';
 
   var box = document.getElementById('emp-modal-ia');
   var texto = document.getElementById('emp-modal-ia-texto');
@@ -9151,15 +9151,18 @@ async function empAnalisarIA(nomeEncoded){
   box.style.display = 'block';
   texto.textContent = '⏳ Pensando...';
 
-  if(typeof openAI === 'function'){
-    try{
-      var resposta = await openAI(prompt);
-      texto.textContent = resposta || 'Sem resposta da IA.';
-    }catch(e){
-      texto.textContent = 'Erro ao chamar a IA: '+e.message;
-    }
-  } else {
-    texto.textContent = 'Função de IA não disponível.';
+  try{
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 600 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var resposta = (data.content || []).map(function(b){return b.text||'';}).join('').trim();
+    texto.textContent = resposta || 'Sem resposta da IA.';
+  }catch(e){
+    texto.textContent = 'Erro ao chamar a IA: '+e.message;
   }
 }
 
@@ -10081,7 +10084,7 @@ async function mbAnalisarIA(idCondutor){
     + '- Total nos últimos 45 dias: ' + corridas45.length + ' (' + fin45 + ' finalizadas, ' + can45 + ' canceladas)\n'
     + '- Taxa de conclusão: ' + (taxa!==null?taxa+'%':'—') + '\n'
     + '- Última corrida: ' + (diasSemRodar===999?'nunca registrada':'há '+diasSemRodar+' dias') + '\n\n'
-    + 'Em 3-5 frases curtas: diagnóstico + 3 ações sugeridas. Tom direto, sem rodeios.';
+    + 'Em 3-5 frases curtas: diagnóstico + 3 ações sugeridas. Tom direto, sem rodeios. Sem markdown, sem emoji, texto corrido.';
 
   var box = document.getElementById('mb-modal-ia');
   var texto = document.getElementById('mb-modal-ia-texto');
@@ -10089,15 +10092,18 @@ async function mbAnalisarIA(idCondutor){
   box.style.display = 'block';
   texto.textContent = '⏳ Pensando...';
 
-  if(typeof openAI === 'function'){
-    try{
-      var resposta = await openAI(prompt);
-      texto.textContent = resposta || 'Sem resposta da IA.';
-    }catch(e){
-      texto.textContent = 'Erro ao chamar a IA: '+e.message;
-    }
-  } else {
-    texto.textContent = 'Função de IA não disponível.';
+  try{
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 600 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var resposta = (data.content || []).map(function(b){return b.text||'';}).join('').trim();
+    texto.textContent = resposta || 'Sem resposta da IA.';
+  }catch(e){
+    texto.textContent = 'Erro ao chamar a IA: '+e.message;
   }
 }
 
