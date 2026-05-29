@@ -1,4 +1,4 @@
-<!-- v16.2 - Aba Empresas Sprint 2 (Top Dia/Semana/Mes) - 28/05/2026 -->
+<!-- v16.4 - Empresas: retry chunks + combina 45d+mes pra semana - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8802,13 +8802,31 @@ function empRenderTopEmpresas(corridasDia, corridas45d, corridasMes, empresasGer
   var host = document.getElementById('emp-top-row'); if(!host) return;
   var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
 
-  // Filtra "semana" = ultimos 7 dias dos corridas45d
+  // Filtra "semana" = ultimos 7 dias
   var hoje = new Date(hojeStr+'T00:00:00');
   var inicioSemana = new Date(hoje.getTime() - 6*86400000);
   var inicioSemanaStr = _vgData(inicioSemana);
-  var corridasSemana = (corridas45d||[]).filter(function(x){
+
+  // Combina corridas45d + corridasMes (com dedup por id) pra garantir
+  // que nao perdemos dias por falha de chunk
+  var combinado = {};
+  (corridas45d||[]).forEach(function(x){ if(x.id) combinado[x.id] = x; });
+  (corridasMes||[]).forEach(function(x){ if(x.id) combinado[x.id] = x; });
+  var fonteSemana = Object.values(combinado);
+
+  var corridasSemana = fonteSemana.filter(function(x){
     var d = (x.data_hora_solicitacao||'').slice(0,10);
     return d >= inicioSemanaStr && d <= hojeStr;
+  });
+
+  // Log de diagnostico
+  console.log('[Empresas] Top Semana:', {
+    corridas45d_total: (corridas45d||[]).length,
+    corridasMes_total: (corridasMes||[]).length,
+    combinado_dedup: fonteSemana.length,
+    corridasSemana_total: corridasSemana.length,
+    inicioSemana: inicioSemanaStr,
+    hojeStr: hojeStr
   });
 
   var topDia = _empCalcRanking(corridasDia||[]);
@@ -9883,12 +9901,35 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
     chunks.push({ini: _vgData(atual), fim: _vgData(fim)});
     atual = new Date(fim.getTime() + 86400000); // proximo dia
   }
-  var promessas = chunks.map(function(c){
-    return fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim+nc).then(function(r){return r.json();}).catch(function(){return {response:[]};});
-  });
+  // Tenta cada chunk, com 1 retry se falhar (502/504 da Netlify sao frequentes)
+  var buscarChunk = async function(c, tentativa){
+    try{
+      var r = await fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim+nc).then(function(r){
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      });
+      return r || {response:[]};
+    }catch(e){
+      if(!tentativa){
+        // Retry 1x com pausa de 800ms
+        await new Promise(function(res){ setTimeout(res, 800); });
+        return buscarChunk(c, 1);
+      }
+      console.warn('[Machine] Chunk falhou apos retry: '+c.ini+' a '+c.fim, e.message);
+      return {response:[], _falhou:true, _periodo: c.ini+' a '+c.fim};
+    }
+  };
+  var promessas = chunks.map(function(c){ return buscarChunk(c, 0); });
   var resultados = await Promise.all(promessas);
   var todas = [];
-  resultados.forEach(function(r){ if(r && r.response) todas = todas.concat(r.response); });
+  var falhas = [];
+  resultados.forEach(function(r){
+    if(r && r.response) todas = todas.concat(r.response);
+    if(r && r._falhou) falhas.push(r._periodo);
+  });
+  if(falhas.length){
+    console.warn('[Machine] '+falhas.length+' chunks falharam: '+falhas.join(', '));
+  }
   return todas;
 }
 
