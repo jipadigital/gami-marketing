@@ -1,4 +1,4 @@
-<!-- v16.9 - Sprint 3: Empresas sumidas + Lista completa com filtros - 28/05/2026 -->
+<!-- v17.0 - Sprint 4: Modal detalhado por empresa + Analisar com IA - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8839,10 +8839,328 @@ function empRenderTopEmpresas(corridasDia, corridas45d, corridasMes, empresasGer
     + _empCardTopEmpresas('Top Empresas — Mês', '📆', topMes, '#8B5CF6', verFin);
 }
 
-/* Stub - sera implementado na Sprint 4 (modal) */
+/* ============================================================== */
+/* SPRINT 4 — Modal detalhado por empresa + Analisar com IA        */
+/* ============================================================== */
 function empVerEmpresa(nomeEncoded){
   var nome = decodeURIComponent(nomeEncoded);
-  alert('Modal detalhado da empresa "'+nome+'" será implementado na Sprint 4.');
+  var c = window.__cidadeAtual; if(!c) return;
+  if(!_vgCache[c.id]){ alert('Carregue os dados da Machine primeiro.'); return; }
+  var d = _vgCache[c.id].dados;
+
+  // Procura empresa cadastrada (Machine /empresa) pelo nome
+  var empresasCidade = _empFiltrarPorCidade(d.empresas || [], c.nome);
+  var emp = empresasCidade.find(function(e){ return (e.nome||'').trim().toLowerCase() === nome.toLowerCase(); });
+
+  // Se nao achar no cadastro, monta stub minimo a partir das corridas
+  if(!emp){
+    var qualquer = (d.corridas45d||[]).find(function(x){ return (x.nome_passageiro||'').trim().toLowerCase() === nome.toLowerCase(); });
+    if(!qualquer){ alert('Empresa não encontrada nos dados atuais.'); return; }
+    emp = {nome: nome, status_empresa: '?', telefone: '', bairro: '', endereco: '', tipos_pagamento: [], categorias: []};
+  }
+
+  // Corridas dessa empresa nos ultimos 45d
+  var corridas45 = (d.corridas45d||[]).filter(function(x){ return (x.nome_passageiro||'').trim().toLowerCase() === nome.toLowerCase(); });
+  var corridasHoje = corridas45.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10) === d.hojeStr; });
+
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioSem = _vgData(new Date(hoje.getTime() - 6*86400000));
+  var inicioMes = _vgData(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+  var ha30dias = _vgData(new Date(hoje.getTime() - 29*86400000));
+  var corridasSem = corridas45.filter(function(x){ var dt=(x.data_hora_solicitacao||'').slice(0,10); return dt>=inicioSem && dt<=d.hojeStr; });
+  var corridasMesEmp = corridas45.filter(function(x){ var dt=(x.data_hora_solicitacao||'').slice(0,10); return dt>=inicioMes && dt<=d.hojeStr; });
+
+  // Stats gerais (45d)
+  var fin = corridas45.filter(function(x){return x.status_solicitacao==='F';});
+  var can = corridas45.filter(function(x){return x.status_solicitacao==='C';});
+  var taxaCanc = (fin.length+can.length)>0 ? Math.round(can.length/(fin.length+can.length)*100) : 0;
+  var somaVal = 0, somaDur = 0, nDur = 0;
+  fin.forEach(function(x){
+    somaVal += parseFloat(x.valor_corrida||0);
+    var dur = parseFloat(x.duracao_corrida||0); if(dur>0){ somaDur += dur; nDur++; }
+  });
+  var ticket = fin.length>0 ? somaVal/fin.length : 0;
+  var fatMes = corridasMesEmp.filter(function(x){return x.status_solicitacao==='F';}).reduce(function(a,x){return a + parseFloat(x.valor_corrida||0);}, 0);
+  var tempoMedio = nDur>0 ? Math.round(somaDur/nDur) : 0;
+
+  // Top 3 motoboys que mais atendem
+  var motoMap = {};
+  fin.forEach(function(x){
+    var n = x.nome_condutor || x.nome_taxista || '?';
+    if(n==='?') return;
+    motoMap[n] = (motoMap[n]||0)+1;
+  });
+  var topMoto = Object.entries(motoMap).map(function(e){return {nome:e[0],n:e[1]};}).sort(function(a,b){return b.n-a.n;}).slice(0,3);
+
+  // Top 5 bairros de entrega
+  var bMap = {};
+  corridas45.forEach(function(x){
+    var b = (x.entrega && x.entrega.bairro) ? x.entrega.bairro.trim() : '';
+    if(!b && x.coleta && x.coleta.bairro) b = x.coleta.bairro.trim();
+    if(b){ bMap[b] = (bMap[b]||0)+1; }
+  });
+  var topBairros = Object.entries(bMap).map(function(e){return {nome:e[0],n:e[1]};}).sort(function(a,b){return b.n-a.n;}).slice(0,5);
+
+  // Forma de pagamento principal
+  var pagNomes = {D:'Dinheiro', B:'Débito', C:'Crédito', F:'Faturado', X:'Pix', P:'Picpay', H:'WhatsApp', R:'Carteira'};
+  var pagMap = {};
+  fin.forEach(function(x){
+    var p = x.tipo_pagamento || x.pagamento || '?';
+    if(p === '?') return;
+    pagMap[p] = (pagMap[p]||0)+1;
+  });
+  var topPag = Object.entries(pagMap).map(function(e){return {sigla:e[0], nome:pagNomes[e[0]]||e[0], n:e[1]};}).sort(function(a,b){return b.n-a.n;});
+
+  // Motivos de cancelamento
+  var cancMot = {};
+  can.forEach(function(x){
+    var m = (x.motivo_cancelamento || x.motivo || 'Não informado').toString().trim();
+    cancMot[m] = (cancMot[m]||0)+1;
+  });
+  var topCanc = Object.entries(cancMot).map(function(e){return {motivo:e[0],n:e[1]};}).sort(function(a,b){return b.n-a.n;}).slice(0,3);
+
+  // Evolucao 30 dias (pedidos por dia)
+  var porDia = {};
+  for(var dd = new Date(ha30dias+'T00:00:00'); dd <= hoje; dd = new Date(dd.getTime()+86400000)){
+    porDia[_vgData(dd)] = 0;
+  }
+  corridas45.forEach(function(x){
+    var dt = (x.data_hora_solicitacao||'').slice(0,10);
+    if(dt && porDia[dt] !== undefined) porDia[dt]++;
+  });
+  var diasArr = Object.keys(porDia).sort();
+  var valsDia = diasArr.map(function(k){return porDia[k];});
+  var maxDia = Math.max.apply(null, valsDia.concat([1]));
+
+  // Horario de pico (24h)
+  var porHora = {};
+  corridas45.forEach(function(x){
+    var h = (x.data_hora_solicitacao||'').split(' ')[1];
+    if(h){ var hora = parseInt(h.split(':')[0]); porHora[hora] = (porHora[hora]||0)+1; }
+  });
+  var maxH = Math.max.apply(null, Object.values(porHora).concat([1]));
+
+  // Cadastro
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+  var statusLbl = {A:'✅ Ativa', S:'⛔ Suspensa', G:'⏳ Aguardando', D:'🗑️ Deletada'};
+  var telLimpo = (emp.telefone||'').replace(/\D/g,'');
+
+  var enderecoCompleto = '';
+  if(emp.endereco){ enderecoCompleto = emp.endereco; }
+  if(emp.complemento){ enderecoCompleto += ', '+emp.complemento; }
+  if(emp.bairro){ enderecoCompleto += (enderecoCompleto?' · ':'')+emp.bairro; }
+  if(emp.cep){ enderecoCompleto += (enderecoCompleto?' · CEP '+emp.cep:''); }
+
+  // Pagamentos aceitos (cadastro)
+  var pagAceitos = (emp.tipos_pagamento||[]).map(function(p){return pagNomes[p]||p;}).join(', ') || '—';
+  var categs = (emp.categorias||[]).map(function(c){return c.nome;}).join(', ');
+
+  // Monta HTML do modal
+  var html = '<div id="emp-modal" style="position:fixed;inset:0;background:rgba(11,37,66,0.55);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto" onclick="if(event.target===this)this.remove()">'
+    + '<div style="background:#fff;border-radius:14px;max-width:680px;width:100%;padding:22px;box-shadow:0 12px 40px rgba(11,37,66,.25);margin:auto" onclick="event.stopPropagation()">'
+    // Header
+    + '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:10px">'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:700;color:#0B2542;margin-bottom:4px">🏪 '+emp.nome+'</div>'
+        + '<div style="font-size:11px;color:var(--text3)">'+(statusLbl[emp.status_empresa]||emp.status_empresa)+(emp.numero_contrato?' · Contrato '+emp.numero_contrato:'')+(emp.tipo_documento?' · '+emp.tipo_documento+' '+(emp.documento||'—'):'')+'</div>'
+      + '</div>'
+      + '<button onclick="document.getElementById(\'emp-modal\').remove()" style="background:none;border:none;font-size:22px;color:var(--text3);cursor:pointer;line-height:1">×</button>'
+    + '</div>'
+    // Endereco + contato
+    + '<div style="background:var(--surface2);border-radius:8px;padding:10px;margin-bottom:12px">'
+      + '<div style="font-size:11px;color:var(--text2)">📍 '+(enderecoCompleto || 'Endereço não cadastrado')+'</div>'
+      + (telLimpo ? '<div style="margin-top:6px"><a href="https://wa.me/55'+telLimpo+'" target="_blank" style="font-size:11px;color:#25D366;text-decoration:none;font-weight:600">📱 WhatsApp '+emp.telefone+'</a></div>' : '')
+    + '</div>'
+    // 4 cards de metricas
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">'
+      + '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#1AB8F0">'+corridasHoje.length+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Hoje</div></div>'
+      + '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#EF9F27">'+corridasSem.length+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Semana</div></div>'
+      + '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#8B5CF6">'+corridasMesEmp.length+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Mês</div></div>'
+      + (verFin
+          ? '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:14px;font-weight:700;color:#16A085;line-height:1.2">'+fmt(ticket)+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Ticket méd.</div></div>'
+          : '<div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:700;color:#E24B4A">'+taxaCanc+'%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Cancel.</div></div>'
+        )
+    + '</div>'
+    + (verFin
+        ? '<div style="background:#EAF3DE;border-radius:8px;padding:10px;margin-bottom:14px;text-align:center"><div style="font-size:10px;color:#3B6D11;text-transform:uppercase">Faturamento no mês</div><div style="font-size:16px;font-weight:700;color:#1D9E75;margin-top:2px">'+fmt(fatMes)+'</div></div>'
+        : '');
+
+  // Evolucao 30 dias (mini grafico SVG)
+  html += '<div style="margin-bottom:14px">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">📈 Evolução dos últimos 30 dias</div>'
+    + '<div style="background:var(--surface2);border-radius:8px;padding:10px">'
+    + '<svg viewBox="0 0 600 80" preserveAspectRatio="none" style="width:100%;height:80px">';
+  var bw = 600 / diasArr.length;
+  valsDia.forEach(function(v, i){
+    var h = (v/maxDia) * 70;
+    var x = i*bw;
+    var y = 80-h;
+    var cor = v===0 ? '#E5E5E5' : '#8B5CF6';
+    html += '<rect x="'+(x+1)+'" y="'+y+'" width="'+(bw-2)+'" height="'+h+'" fill="'+cor+'"><title>'+diasArr[i].split('-').reverse().join('/')+': '+v+' pedidos</title></rect>';
+  });
+  html += '</svg>'
+    + '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:4px"><span>'+diasArr[0].split('-').reverse().slice(0,2).join('/')+'</span><span>Hoje</span></div>'
+    + '</div>'
+    + '</div>';
+
+  // Horario de pico
+  html += '<div style="margin-bottom:14px">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">🕐 Horário de pico (últimos 45 dias)</div>'
+    + '<div style="background:var(--surface2);border-radius:8px;padding:10px;display:flex;align-items:flex-end;gap:1px;height:60px">';
+  for(var h2=0; h2<24; h2++){
+    var v2 = porHora[h2]||0;
+    var hp = v2>0 ? (v2/maxH)*100 : 2;
+    html += '<div style="flex:1;background:'+(v2===0?'#E5E5E5':'#EF9F27')+';height:'+hp+'%;border-radius:2px 2px 0 0" title="'+h2+'h: '+v2+' pedidos"></div>';
+  }
+  html += '</div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:4px"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>23h</span></div>'
+    + '</div>';
+
+  // Top motoboys + bairros (lado a lado)
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">';
+  // Top motoboys
+  html += '<div style="background:var(--surface2);border-radius:8px;padding:10px">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">🛵 Top motoboys</div>';
+  if(topMoto.length){
+    var maxMt = topMoto[0].n;
+    topMoto.forEach(function(m, i){
+      var pct = Math.round(m.n/maxMt*100);
+      html += '<div style="margin:4px 0">'
+        + '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">'+(['🥇','🥈','🥉'][i])+' '+m.nome+'</span><span>'+m.n+'</span></div>'
+        + '<div style="height:4px;background:#E5E5E5;border-radius:2px;overflow:hidden;margin-top:2px"><div style="height:100%;background:#1AB8F0;width:'+pct+'%"></div></div>'
+        + '</div>';
+    });
+  } else { html += '<div style="font-size:10px;color:var(--text3)">Sem dados</div>'; }
+  html += '</div>';
+  // Top bairros
+  html += '<div style="background:var(--surface2);border-radius:8px;padding:10px">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">📍 Bairros de entrega</div>';
+  if(topBairros.length){
+    var maxBr = topBairros[0].n;
+    topBairros.forEach(function(b){
+      var pct = Math.round(b.n/maxBr*100);
+      html += '<div style="margin:4px 0">'
+        + '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px">'+b.nome+'</span><span>'+b.n+'</span></div>'
+        + '<div style="height:4px;background:#E5E5E5;border-radius:2px;overflow:hidden;margin-top:2px"><div style="height:100%;background:#1D9E75;width:'+pct+'%"></div></div>'
+        + '</div>';
+    });
+  } else { html += '<div style="font-size:10px;color:var(--text3)">Sem dados</div>'; }
+  html += '</div></div>';
+
+  // Pagamento + cancelamento (lado a lado)
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">';
+  // Forma de pagamento
+  html += '<div style="background:var(--surface2);border-radius:8px;padding:10px">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">💳 Forma de pagamento</div>';
+  if(topPag.length){
+    var totPag = topPag.reduce(function(a,p){return a+p.n;}, 0);
+    topPag.slice(0,4).forEach(function(p){
+      var pct = Math.round(p.n/totPag*100);
+      html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2);padding:2px 0"><span>'+p.nome+'</span><span><strong>'+pct+'%</strong></span></div>';
+    });
+    if(emp.tipos_pagamento && emp.tipos_pagamento.length){
+      html += '<div style="font-size:9px;color:var(--text3);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">Aceita: '+pagAceitos+'</div>';
+    }
+  } else { html += '<div style="font-size:10px;color:var(--text3)">Sem dados</div>'; }
+  html += '</div>';
+  // Cancelamento
+  html += '<div style="background:var(--surface2);border-radius:8px;padding:10px">'
+    + '<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">❌ Cancelamentos ('+can.length+' de '+(fin.length+can.length)+')</div>'
+    + '<div style="font-size:18px;font-weight:700;color:'+(taxaCanc>=15?'#E24B4A':taxaCanc>=10?'#EF9F27':'#1D9E75')+';margin-bottom:6px">'+taxaCanc+'%</div>';
+  if(topCanc.length){
+    topCanc.forEach(function(c){
+      html += '<div style="font-size:10px;color:var(--text2);padding:1px 0">• '+c.motivo+' <span style="color:var(--text3)">('+c.n+'x)</span></div>';
+    });
+  }
+  html += '</div></div>';
+
+  // Tempo medio + IA
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:14px">'
+    + '<div><div style="font-size:11px;color:var(--text3)">⏱️ Tempo médio de entrega</div><div style="font-size:14px;font-weight:600;color:var(--text)">'+(tempoMedio>0?tempoMedio+' min':'—')+'</div></div>'
+    + (categs ? '<div style="text-align:right"><div style="font-size:11px;color:var(--text3)">Categorias</div><div style="font-size:11px;color:var(--text2);font-weight:500">'+categs+'</div></div>' : '')
+    + '</div>';
+
+  // Botao IA + sair
+  html += '<div style="display:flex;gap:8px;margin-top:14px">'
+    + '<button onclick="empAnalisarIA(\''+encodeURIComponent(nome)+'\')" style="flex:1;padding:9px 14px;border:none;border-radius:7px;background:#8B5CF6;color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🤖 Analisar com IA</button>'
+    + (telLimpo ? '<a href="https://wa.me/55'+telLimpo+'" target="_blank" style="padding:9px 14px;border-radius:7px;background:#25D366;color:white;font-size:12px;font-weight:600;text-decoration:none">📱 Conversar</a>' : '')
+    + '</div>'
+    // Caixa de resposta da IA
+    + '<div id="emp-modal-ia" style="display:none;margin-top:14px;padding:12px;background:rgba(139,92,246,.08);border:1px solid #8B5CF644;border-radius:10px">'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+        + '<span style="font-size:13px">🤖</span>'
+        + '<span style="font-size:11px;font-weight:600;color:#8B5CF6">Análise da IA</span>'
+        + '<button onclick="document.getElementById(\'emp-modal-ia\').style.display=\'none\'" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">×</button>'
+      + '</div>'
+      + '<div id="emp-modal-ia-texto" style="font-size:12px;color:var(--text2);line-height:1.7;white-space:pre-line"></div>'
+    + '</div>'
+    + '</div></div>';
+
+  var old = document.getElementById('emp-modal'); if(old) old.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+/* ============================================================== */
+/* SPRINT 4b — Analisar com IA (chama Claude via openAI())         */
+/* ============================================================== */
+async function empAnalisarIA(nomeEncoded){
+  var nome = decodeURIComponent(nomeEncoded);
+  var c = window.__cidadeAtual; if(!c) return;
+  if(!_vgCache[c.id]) return;
+  var d = _vgCache[c.id].dados;
+
+  var empresasCidade = _empFiltrarPorCidade(d.empresas || [], c.nome);
+  var emp = empresasCidade.find(function(e){ return (e.nome||'').trim().toLowerCase() === nome.toLowerCase(); }) || {nome:nome};
+
+  var corridas45 = (d.corridas45d||[]).filter(function(x){ return (x.nome_passageiro||'').trim().toLowerCase() === nome.toLowerCase(); });
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioSem = _vgData(new Date(hoje.getTime() - 6*86400000));
+  var inicioSemAnt = _vgData(new Date(hoje.getTime() - 13*86400000));
+  var fimSemAnt = _vgData(new Date(hoje.getTime() - 7*86400000));
+
+  var sem = corridas45.filter(function(x){var dt=(x.data_hora_solicitacao||'').slice(0,10); return dt>=inicioSem && dt<=d.hojeStr;});
+  var semAnt = corridas45.filter(function(x){var dt=(x.data_hora_solicitacao||'').slice(0,10); return dt>=inicioSemAnt && dt<=fimSemAnt;});
+  var fin = corridas45.filter(function(x){return x.status_solicitacao==='F';});
+  var can = corridas45.filter(function(x){return x.status_solicitacao==='C';});
+  var taxaCanc = (fin.length+can.length)>0 ? Math.round(can.length/(fin.length+can.length)*100) : 0;
+
+  var ultDt = corridas45.length ? corridas45.slice().sort(function(a,b){return (b.data_hora_solicitacao||'').localeCompare(a.data_hora_solicitacao||'');})[0].data_hora_solicitacao : null;
+  var diasSemPedir = ultDt ? Math.floor((hoje - new Date(ultDt.slice(0,10)+'T00:00:00'))/86400000) : 999;
+
+  var somaVal=0; fin.forEach(function(x){somaVal += parseFloat(x.valor_corrida||0);});
+  var ticket = fin.length>0 ? somaVal/fin.length : 0;
+
+  var statusLbl = {A:'Ativa', S:'Suspensa', G:'Aguardando ativação', D:'Deletada'};
+
+  var prompt = 'Analise esta empresa parceira do Gâmi Delivery em ' + c.nome + ' e sugira 3 ações concretas pro gestor:\n\n'
+    + '- Nome: ' + emp.nome + ' (status: ' + (statusLbl[emp.status_empresa]||emp.status_empresa||'?') + ')\n'
+    + '- Bairro: ' + (emp.bairro || '?') + '\n'
+    + '- Categoria: ' + ((emp.categorias||[]).map(function(c){return c.nome;}).join(', ') || '?') + '\n'
+    + '- Pedidos semana atual: ' + sem.length + '\n'
+    + '- Pedidos semana anterior: ' + semAnt.length + '\n'
+    + '- Total nos últimos 45 dias: ' + corridas45.length + ' (' + fin.length + ' finalizados, ' + can.length + ' cancelados)\n'
+    + '- Taxa de cancelamento: ' + taxaCanc + '%\n'
+    + '- Ticket médio: R$ ' + ticket.toFixed(2) + '\n'
+    + '- Último pedido: ' + (diasSemPedir===999?'nunca registrado':'há '+diasSemPedir+' dias') + '\n\n'
+    + 'Em 3-5 frases curtas: diagnóstico breve + 3 ações sugeridas pra atendimento/comercial agir. Tom direto, sem rodeios.';
+
+  var box = document.getElementById('emp-modal-ia');
+  var texto = document.getElementById('emp-modal-ia-texto');
+  if(!box || !texto) return;
+  box.style.display = 'block';
+  texto.textContent = '⏳ Pensando...';
+
+  if(typeof openAI === 'function'){
+    try{
+      var resposta = await openAI(prompt);
+      texto.textContent = resposta || 'Sem resposta da IA.';
+    }catch(e){
+      texto.textContent = 'Erro ao chamar a IA: '+e.message;
+    }
+  } else {
+    texto.textContent = 'Função de IA não disponível.';
+  }
 }
 
 /* ============================================================== */
