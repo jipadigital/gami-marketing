@@ -1,4 +1,4 @@
-<!-- v17.4 - Debug IA: fallback exibe JSON cru no modal pra reportar - 29/05/2026 -->
+<!-- v17.5 - Sprint 5 ajustada: 50 itens por aba com scroll interno 500px - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9554,23 +9554,30 @@ function empRenderInsights(corridasMes, corridasMesAnt, corridas45d, empresasGer
     var pctVar = ant>0 ? Math.round((atual-ant)/ant*100) : 999;
     variacoes.push({nome:nome, atual:atual, anterior:ant, pct:pctVar});
   });
-  var emAlta = variacoes.filter(function(v){ return v.pct >= 30 && v.atual >= 10 && v.pct < 999; }).sort(function(a,b){return b.pct-a.pct;}).slice(0,7);
-  var emQueda = variacoes.filter(function(v){ return v.pct <= -30 && v.atual >= 5 && v.anterior >= 5; }).sort(function(a,b){return a.pct-b.pct;}).slice(0,7);
+  var emAlta = variacoes.filter(function(v){ return v.pct >= 30 && v.atual >= 10 && v.pct < 999; }).sort(function(a,b){return b.pct-a.pct;}).slice(0,50);
+  var emQueda = variacoes.filter(function(v){ return v.pct <= -30 && v.atual >= 5 && v.anterior >= 5; }).sort(function(a,b){return a.pct-b.pct;}).slice(0,50);
 
   var listaVariacao = function(titulo, icone, dados, cor, vazio){
     var html = '<div class="card" style="border-top:3px solid '+cor+'">'
-      + '<div class="card-title" style="display:flex;align-items:center;gap:6px;color:'+cor+';margin-bottom:8px"><span style="font-size:14px">'+icone+'</span><span>'+titulo+'</span></div>';
-    if(!dados.length){ html += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">'+vazio+'</div>'; }
-    else dados.forEach(function(e){
-      var sinal = e.pct>0?'+':'';
-      html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
-        + '<div style="flex:1;min-width:0">'
-          + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
-          + '<div style="font-size:9px;color:var(--text3)">'+e.anterior+' → '+e.atual+' pedidos</div>'
-        + '</div>'
-        + '<span style="font-size:13px;font-weight:700;color:'+cor+';white-space:nowrap">'+sinal+e.pct+'%</span>'
+      + '<div class="card-title" style="display:flex;align-items:center;justify-content:space-between;color:'+cor+';margin-bottom:8px">'
+        + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">'+icone+'</span><span>'+titulo+'</span></div>'
+        + (dados.length ? '<span style="font-size:10px;background:'+cor+'22;color:'+cor+';padding:2px 7px;border-radius:6px;font-weight:600">'+dados.length+'</span>' : '')
       + '</div>';
-    });
+    if(!dados.length){ html += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">'+vazio+'</div>'; }
+    else {
+      html += '<div style="max-height:500px;overflow-y:auto;padding-right:4px">';
+      dados.forEach(function(e){
+        var sinal = e.pct>0?'+':'';
+        html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+          + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
+            + '<div style="font-size:9px;color:var(--text3)">'+e.anterior+' → '+e.atual+' pedidos</div>'
+          + '</div>'
+          + '<span style="font-size:13px;font-weight:700;color:'+cor+';white-space:nowrap">'+sinal+e.pct+'%</span>'
+        + '</div>';
+      });
+      html += '</div>';
+    }
     html += '</div>';
     return html;
   };
@@ -9597,7 +9604,7 @@ function empRenderInsights(corridasMes, corridasMesAnt, corridas45d, empresasGer
     var n = (x.nome_passageiro||'').trim(); if(!n) return;
     if(primeiroPed[n]) primeiroPed[n].total++;
   });
-  var novos = Object.values(primeiroPed).filter(function(e){ return e.primeiro >= ha14dias; }).sort(function(a,b){return b.primeiro.localeCompare(a.primeiro);}).slice(0,10);
+  var novos = Object.values(primeiroPed).filter(function(e){ return e.primeiro >= ha14dias; }).sort(function(a,b){return b.primeiro.localeCompare(a.primeiro);}).slice(0,50);
 
   // ========== 5) EMPRESAS FANTASMA ==========
   // Cadastradas (status A) ha pelo menos 30 dias mas com 0-2 pedidos nos 45d
@@ -9623,33 +9630,43 @@ function empRenderInsights(corridasMes, corridasMesAnt, corridas45d, empresasGer
       pedidos45d: contagem45d[(e.nome||'').toLowerCase()] || 0,
       tel: e.telefone||''
     };
-  }).sort(function(a,b){ return b.diasCad - a.diasCad; }).slice(0,15);
+  }).sort(function(a,b){ return b.diasCad - a.diasCad; }).slice(0,50);
 
   var novosFantasmaHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:14px">';
   // Novos parceiros
   novosFantasmaHtml += '<div class="card" style="border-top:3px solid #1AB8F0">'
-    + '<div class="card-title" style="display:flex;align-items:center;gap:6px;color:#1AB8F0;margin-bottom:8px"><span style="font-size:14px">🎉</span><span>Novos parceiros (últimos 14 dias)</span></div>';
-  if(!novos.length){ novosFantasmaHtml += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">Nenhum novo parceiro fez primeiro pedido nas últimas 2 semanas.</div>'; }
-  else novos.forEach(function(e){
-    var dias = Math.floor((hoje - new Date(e.primeiro+'T00:00:00')) / 86400000);
-    novosFantasmaHtml += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
-      + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
-        + '<div style="font-size:9px;color:var(--text3)">1º pedido há '+dias+'d · '+e.total+' pedidos no total</div>'
-      + '</div>'
-      + '<span style="font-size:10px;background:#1AB8F022;color:#1AB8F0;padding:2px 7px;border-radius:6px;font-weight:600;white-space:nowrap">NOVO</span>'
+    + '<div class="card-title" style="display:flex;align-items:center;justify-content:space-between;color:#1AB8F0;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">🎉</span><span>Novos parceiros (últimos 14 dias)</span></div>'
+      + (novos.length ? '<span style="font-size:10px;background:#1AB8F022;color:#1AB8F0;padding:2px 7px;border-radius:6px;font-weight:600">'+novos.length+'</span>' : '')
     + '</div>';
-  });
+  if(!novos.length){ novosFantasmaHtml += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">Nenhum novo parceiro fez primeiro pedido nas últimas 2 semanas.</div>'; }
+  else {
+    novosFantasmaHtml += '<div style="max-height:500px;overflow-y:auto;padding-right:4px">';
+    novos.forEach(function(e){
+      var dias = Math.floor((hoje - new Date(e.primeiro+'T00:00:00')) / 86400000);
+      novosFantasmaHtml += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
+          + '<div style="font-size:9px;color:var(--text3)">1º pedido há '+dias+'d · '+e.total+' pedidos no total</div>'
+        + '</div>'
+        + '<span style="font-size:10px;background:#1AB8F022;color:#1AB8F0;padding:2px 7px;border-radius:6px;font-weight:600;white-space:nowrap">NOVO</span>'
+      + '</div>';
+    });
+    novosFantasmaHtml += '</div>';
+  }
   novosFantasmaHtml += '<div style="font-size:9px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">💡 Ligue de boas-vindas, ofereça treinamento — não deixe o novato sem suporte.</div>';
   novosFantasmaHtml += '</div>';
 
   // Fantasmas
   novosFantasmaHtml += '<div class="card" style="border-top:3px solid #888">'
-    + '<div class="card-title" style="display:flex;align-items:center;gap:6px;color:#666;margin-bottom:8px"><span style="font-size:14px">👻</span><span>Empresas fantasma</span></div>'
+    + '<div class="card-title" style="display:flex;align-items:center;justify-content:space-between;color:#666;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">👻</span><span>Empresas fantasma</span></div>'
+      + (fantasmas.length ? '<span style="font-size:10px;background:#88888822;color:#666;padding:2px 7px;border-radius:6px;font-weight:600">'+fantasmas.length+'</span>' : '')
+    + '</div>'
     + '<div style="font-size:10px;color:var(--text3);margin-bottom:8px">Cadastradas há 30+ dias mas com 0-2 pedidos. Possível problema de onboarding.</div>';
   if(!fantasmas.length){ novosFantasmaHtml += '<div style="font-size:11px;color:#1D9E75;padding:14px;text-align:center">✅ Todas as empresas cadastradas estão pedindo regularmente.</div>'; }
   else {
-    novosFantasmaHtml += '<div style="max-height:280px;overflow-y:auto">';
+    novosFantasmaHtml += '<div style="max-height:500px;overflow-y:auto;padding-right:4px">';
     fantasmas.forEach(function(e){
       var telLimpo = (e.tel||'').replace(/\D/g,'');
       novosFantasmaHtml += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
