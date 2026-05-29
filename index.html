@@ -1,4 +1,4 @@
-<!-- v16.5 - Chunks de 3 dias (resolve underfetch em cidades alto volume) - 28/05/2026 -->
+<!-- v16.7 - UMA busca grande de 60 dias + filtros derivados (reduz 5x trafego Machine) - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9881,28 +9881,26 @@ function podeVerFaturamentoCidade(){
 async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
   var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao';
   var nc = forcado ? '&nocache=1' : '';
-  // Calcula numero de dias
   var dIni = new Date(dataInicio+'T00:00:00');
   var dFim = new Date(dataFim+'T00:00:00');
   var dias = Math.floor((dFim - dIni) / 86400000) + 1;
 
-  // Periodo pequeno (ate 3 dias): 1 fetch so (cabe folgado nas 50 paginas)
+  // Periodo pequeno (ate 3 dias): 1 fetch so
   if(dias <= 3){
     var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim+nc).then(function(r){return r.json();});
     return (r && r.response) ? r.response : [];
   }
 
   // Periodo grande: divide em chunks de 3 dias (cabe em ~4500 corridas/chunk)
-  // Cidades de alto volume (Maceio 1500+/dia) precisam disso pra nao truncar
   var chunks = [];
   var atual = new Date(dIni);
   while(atual <= dFim){
-    var fim = new Date(atual.getTime() + 2*86400000); // +2 dias = janela de 3
+    var fim = new Date(atual.getTime() + 2*86400000);
     if(fim > dFim) fim = new Date(dFim);
     chunks.push({ini: _vgData(atual), fim: _vgData(fim)});
     atual = new Date(fim.getTime() + 86400000);
   }
-  // Tenta cada chunk, com 1 retry se falhar (502/504 da Netlify sao frequentes)
+
   var buscarChunk = async function(c, tentativa){
     try{
       var r = await fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim+nc).then(function(r){
@@ -9919,17 +9917,26 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
       return {response:[], _falhou:true, _periodo: c.ini+' a '+c.fim};
     }
   };
-  var promessas = chunks.map(function(c){ return buscarChunk(c, 0); });
-  var resultados = await Promise.all(promessas);
+
+  // Lotes sequenciais de 3 paralelos (conservador pra nao estourar rate limit
+  // da Machine API que e 100 req/min em /solicitacao). Cada chunk internamente
+  // faz ate ~45 requests, entao 3 paralelos = ~135 req simultaneas.
+  var LOTE_PARALELO = 3;
   var todas = [];
   var falhas = [];
-  resultados.forEach(function(r){
-    if(r && r.response) todas = todas.concat(r.response);
-    if(r && r._falhou) falhas.push(r._periodo);
-  });
-  if(falhas.length){
-    console.warn('[Machine] '+falhas.length+' chunks falharam: '+falhas.join(', '));
+  for(var i=0; i<chunks.length; i+=LOTE_PARALELO){
+    var lote = chunks.slice(i, i+LOTE_PARALELO);
+    var resultados = await Promise.all(lote.map(function(c){ return buscarChunk(c, 0); }));
+    resultados.forEach(function(r){
+      if(r && r.response) todas = todas.concat(r.response);
+      if(r && r._falhou) falhas.push(r._periodo);
+    });
   }
+
+  if(falhas.length){
+    console.warn('[Machine] '+falhas.length+' chunks falharam ao final: '+falhas.join(', '));
+  }
+  console.log('[Machine] Periodo '+dataInicio+' a '+dataFim+': '+todas.length+' corridas em '+chunks.length+' chunks ('+falhas.length+' falharam)');
   return todas;
 }
 
@@ -9940,8 +9947,8 @@ var _VG_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 
 async function vgCarregarPainel(opts){
   opts = opts || {};
-  var forcado = !!opts.forcar;     // true quando vem do botao Atualizar
-  var auto = !!opts.auto;          // true quando dispara sozinho ao abrir cidade
+  var forcado = !!opts.forcar;
+  var auto = !!opts.auto;
   var c = window.__cidadeAtual; if(!c) return;
   var btn = document.getElementById('vg-painel-btn');
 
@@ -9969,7 +9976,7 @@ async function vgCarregarPainel(opts){
     banner.style.background='linear-gradient(135deg,#FFF8E1,#FAEEDA)';
     banner.style.borderColor='#EF9F2766';
     document.getElementById('vg-painel-icone').textContent='⏳';
-    document.getElementById('vg-painel-texto').innerHTML='<strong>Carregando dados da Machine...</strong> Pode levar alguns segundos na primeira vez.';
+    document.getElementById('vg-painel-texto').innerHTML='<strong>Carregando dados da Machine...</strong> Pode levar 15-20 segundos na primeira vez.';
   }
   if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
 
@@ -9982,67 +9989,63 @@ async function vgCarregarPainel(opts){
   var inicioMes = _vgData(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
   var inicioMesAnt = _vgData(new Date(hoje.getFullYear(), hoje.getMonth()-1, 1));
   var fimMesAnt = _vgData(new Date(hoje.getFullYear(), hoje.getMonth()-1, diaHoje));
-  // 45 dias atras (pros alertas de lojas sumidas)
   var ha45dias = _vgData(new Date(hoje.getTime() - 45*86400000));
+
+  // Data minima necessaria = mais antiga entre (inicio mes anterior, 45 dias atras)
+  var dataMin = inicioMesAnt < ha45dias ? inicioMesAnt : ha45dias;
 
   var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
   var nc = forcado ? '&nocache=1' : '';
 
   try{
-    var [rDia, rOntem, corridasMes, corridasMesAnt, corridas45d, rCond, rEmp] = await Promise.all([
-      fetch(base+'&recurso=solicitacao&data_inicio='+hojeStr+'&data_fim='+hojeStr+nc).then(function(r){return r.json();}),
-      fetch(base+'&recurso=solicitacao&data_inicio='+ontemStr+'&data_fim='+ontemStr+nc).then(function(r){return r.json();}),
-      _vgBuscarCorridasPeriodo(slug, inicioMes, hojeStr, forcado),
-      _vgBuscarCorridasPeriodo(slug, inicioMesAnt, fimMesAnt, forcado),
-      _vgBuscarCorridasPeriodo(slug, ha45dias, hojeStr, forcado),
+    // FASE 1: Buscas leves em paralelo (condutor + empresa)
+    var [rCond, rEmp] = await Promise.all([
       fetch(base+'&recurso=condutor'+nc).then(function(r){return r.json();}),
       fetch(base+'&recurso=empresa'+nc).then(function(r){return r.json();}).catch(function(){return {success:false, response:[]};})
     ]);
 
-    // Se trocou de cidade enquanto carregava, descarta resultado
     if(!window.__cidadeAtual || window.__cidadeAtual.id !== c.id) return;
 
-    var corridasDia = (rDia && rDia.response) ? rDia.response : [];
-    var corridasOntem = (rOntem && rOntem.response) ? rOntem.response : [];
+    // FASE 2: UMA busca grande de corridas (dataMin ate hoje, ~60 dias)
+    // Derivamos TUDO dessa busca: hoje, ontem, mes, mes anterior, 45d
+    var todasCorridas = await _vgBuscarCorridasPeriodo(slug, dataMin, hojeStr, forcado);
+
+    if(!window.__cidadeAtual || window.__cidadeAtual.id !== c.id) return;
+
+    // Deriva subconjuntos por data
+    var corridasDia = todasCorridas.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr; });
+    var corridasOntem = todasCorridas.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===ontemStr; });
+    var corridasMes = todasCorridas.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMes && d<=hojeStr; });
+    var corridasMesAnt = todasCorridas.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMesAnt && d<=fimMesAnt; });
+    var corridas45d = todasCorridas.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=ha45dias && d<=hojeStr; });
+
     var condutores = (rCond && rCond.response) ? rCond.response : [];
     var empresas = (rEmp && rEmp.response) ? rEmp.response : [];
 
-    // Aviso visivel se a API de condutor falhou
     var erroCond = (rCond && rCond.success === false) ? (rCond.error||'falha desconhecida') : null;
     var erroEmp = (rEmp && rEmp.success === false) ? (rEmp.error||'falha desconhecida') : null;
 
-    // Log de diagnostico (abra F12 -> Console pra ver)
     console.log('[Machine] Cidade:', c.nome, {
-      condutores: condutores.length,
-      condutoresTruncado: !!(rCond && rCond.truncado),
-      condPaginasLidas: rCond && rCond.paginas_lidas,
-      erroCondutor: erroCond,
-      empresas: empresas.length,
-      empresasTruncado: !!(rEmp && rEmp.truncado),
-      erroEmpresa: erroEmp,
+      totalCorridasBuscadas: todasCorridas.length,
+      periodo: dataMin+' a '+hojeStr,
       corridasHoje: corridasDia.length,
+      corridasOntem: corridasOntem.length,
       corridasMes: corridasMes.length,
       corridasMesAnt: corridasMesAnt.length,
       corridas45d: corridas45d.length,
-      respostaCondutorBruta: rCond,
-      respostaEmpresaBruta: rEmp
+      condutores: condutores.length,
+      empresas: empresas.length,
+      erroCondutor: erroCond,
+      erroEmpresa: erroEmp
     });
-
-    corridasDia = corridasDia.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr; });
-    corridasOntem = corridasOntem.filter(function(x){ return (x.data_hora_solicitacao||'').slice(0,10)===ontemStr; });
-    corridasMes = corridasMes.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMes && d<=hojeStr; });
-    corridasMesAnt = corridasMesAnt.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=inicioMesAnt && d<=fimMesAnt; });
-    corridas45d = corridas45d.filter(function(x){ var d=(x.data_hora_solicitacao||'').slice(0,10); return d>=ha45dias && d<=hojeStr; });
-
-    var filtroOK = (rDia && rDia.filtro_data) ? rDia.filtro_data.aplicado : null;
 
     // Salva no cache
     _vgCache[c.id] = {
       ts: Date.now(),
-      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, empresas:empresas, filtroOK:filtroOK, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado), empTruncado: !!(rEmp && rEmp.truncado), erroCond: erroCond, erroEmp: erroEmp}
+      dados: {corridasDia:corridasDia, corridasOntem:corridasOntem, corridasMes:corridasMes, corridasMesAnt:corridasMesAnt, corridas45d:corridas45d, condutores:condutores, empresas:empresas, filtroOK:true, hojeStr:hojeStr, condTruncado: !!(rCond && rCond.truncado), empTruncado: !!(rEmp && rEmp.truncado), erroCond: erroCond, erroEmp: erroEmp}
     };
 
-    vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, filtroOK, hojeStr);
+    vgRenderPainel(corridasDia, corridasMes, condutores, c.nome, true, hojeStr);
     vgRenderComparativo(corridasDia, corridasOntem, corridasMes, corridasMesAnt);
     vgRenderAlertas(corridas45d, hojeStr);
 
@@ -10064,7 +10067,6 @@ async function vgCarregarPainel(opts){
       document.getElementById('vg-painel-icone').textContent='⚠️';
       document.getElementById('vg-painel-texto').innerHTML='<strong>Não consegui carregar agora.</strong> Tente o botão novamente em alguns segundos.';
     }
-    // Em auto-load, nao mostra alert (incomoda). Em manual, mostra.
     if(!auto) alert('Não consegui carregar os dados: '+e.message);
   }
 }
