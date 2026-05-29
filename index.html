@@ -1,4 +1,4 @@
-<!-- v17.5 - Sprint 5 ajustada: 50 itens por aba com scroll interno 500px - 29/05/2026 -->
+<!-- v18.0 - Sprints 6, 7 e 10 (estrategico, operacao avancada, exportar CSV) - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8588,7 +8588,7 @@ async function empCarregarPainel(opts){
     if(typeof empRenderSumidas === 'function') empRenderSumidas(d.corridas45d, d.empresas, d.hojeStr);
     if(typeof empRenderLista === 'function') empRenderLista(d.corridasMes, d.empresas, d.hojeStr);
     if(typeof empRenderInsights === 'function') empRenderInsights(d.corridasMes, d.corridasMesAnt, d.corridas45d, d.empresas, d.hojeStr);
-    if(typeof empRenderEstrategico === 'function') empRenderEstrategico(d.corridasMes, d.empresas, d.hojeStr);
+    if(typeof empRenderEstrategico === 'function') empRenderEstrategico(d.corridasMes, d.corridasMesAnt, d.empresas, d.hojeStr);
     if(typeof empRenderOperacao === 'function') empRenderOperacao(d.corridasMes, d.empresas, d.hojeStr);
   };
 
@@ -9384,7 +9384,10 @@ function empRenderLista(corridasMes, empresasGeral, hojeStr){
   var html = '<div class="card">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
       + '<div class="card-title" style="margin:0">🔍 Lista completa de empresas</div>'
-      + '<span style="font-size:10px;color:var(--text3)">'+filtrada.length+' encontradas</span>'
+      + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<span style="font-size:10px;color:var(--text3)">'+filtrada.length+' encontradas</span>'
+        + '<button onclick="empExportarCSV()" style="padding:5px 10px;border:none;border-radius:6px;background:#1D9E75;color:white;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Exporta as empresas filtradas em CSV (abre no Excel)">📥 Exportar CSV</button>'
+      + '</div>'
     + '</div>'
     // Linha de filtros
     + '<div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;margin-bottom:10px;align-items:center">'
@@ -9682,6 +9685,482 @@ function empRenderInsights(corridasMes, corridasMesAnt, corridas45d, empresasGer
   novosFantasmaHtml += '</div></div>';
 
   box.innerHTML = abcHtml + altaQuedaHtml + novosFantasmaHtml;
+}
+
+/* ============================================================== */
+/* SPRINT 6 — Análise estratégica                                  */
+/* Por bairro + Por categoria + Comparativo similares + Financeiro */
+/* ============================================================== */
+
+/* Extrai bairro de uma corrida (entrega > coleta > '') */
+function _empBairroDeCorrida(c){
+  if(c.entrega && c.entrega.bairro) return String(c.entrega.bairro).trim();
+  if(c.coleta && c.coleta.bairro) return String(c.coleta.bairro).trim();
+  return '';
+}
+
+function empRenderEstrategico(corridasMes, corridasMesAnt, empresasGeral, hojeStr){
+  var box = document.getElementById('emp-estrategico-box'); if(!box) return;
+  if(!corridasMes || !corridasMes.length){ box.innerHTML = ''; return; }
+
+  var c = window.__cidadeAtual;
+  var empresasCidade = _empFiltrarPorCidade(empresasGeral || [], c ? c.nome : '');
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+
+  // Indexa empresas pelo nome (lowercase) - pega bairro/categorias do cadastro
+  var mapEmpCad = {};
+  empresasCidade.forEach(function(e){
+    var n = (e.nome||'').trim().toLowerCase();
+    if(n) mapEmpCad[n] = e;
+  });
+
+  // ========== 1) ANALISE POR BAIRRO ==========
+  // Agrupa empresas e pedidos por bairro (usa bairro do cadastro como fonte primaria)
+  var bairros = {};
+  empresasCidade.forEach(function(e){
+    if(e.status_empresa === 'D') return;
+    var b = (e.bairro||'').trim();
+    if(!b) return;
+    if(!bairros[b]) bairros[b] = {nome:b, empresas:0, pedidos:0, fin:0, valor:0, empNomes:{}};
+    bairros[b].empresas++;
+    bairros[b].empNomes[(e.nome||'').trim().toLowerCase()] = true;
+  });
+  // Conta pedidos finalizados por bairro
+  corridasMes.filter(function(x){return x.status_solicitacao==='F';}).forEach(function(x){
+    var nEmp = (x.nome_passageiro||'').trim().toLowerCase(); if(!nEmp) return;
+    var emp = mapEmpCad[nEmp];
+    var b = emp && emp.bairro ? emp.bairro.trim() : _empBairroDeCorrida(x);
+    if(!b) return;
+    if(!bairros[b]) bairros[b] = {nome:b, empresas:0, pedidos:0, fin:0, valor:0, empNomes:{}};
+    bairros[b].pedidos++; bairros[b].fin++;
+    bairros[b].valor += parseFloat(x.valor_corrida||0);
+    bairros[b].empNomes[nEmp] = true;
+  });
+  var listaBairros = Object.values(bairros).filter(function(b){return b.empresas>0 || b.pedidos>0;}).map(function(b){
+    b.empUnicas = Object.keys(b.empNomes).length;
+    b.ticket = b.fin>0 ? b.valor/b.fin : 0;
+    return b;
+  }).sort(function(a,b){return b.pedidos - a.pedidos;}).slice(0,15);
+
+  var maxPedBai = Math.max.apply(null, listaBairros.map(function(b){return b.pedidos;}).concat([1]));
+
+  var html = '<div class="card">'
+    + '<div class="card-title" style="margin-bottom:10px">📍 Análise por bairro</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Concentração de pedidos por região. Áreas com poucos parceiros e muito volume = oportunidade.</div>';
+  if(!listaBairros.length){
+    html += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">Sem bairros identificados no cadastro.</div>';
+  } else {
+    html += '<div style="max-height:400px;overflow-y:auto">';
+    listaBairros.forEach(function(b){
+      var pct = Math.round(b.pedidos/maxPedBai*100);
+      html += '<div style="padding:7px 0;border-bottom:1px solid var(--border)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+          + '<div style="font-size:12px;font-weight:600">'+b.nome+'</div>'
+          + '<div style="font-size:11px;color:var(--text2)"><strong>'+b.pedidos+'</strong> pedidos · '+b.empUnicas+' empresas'+(verFin?' · ticket '+fmt(b.ticket):'')+'</div>'
+        + '</div>'
+        + '<div style="height:5px;background:#E5E5E5;border-radius:3px;overflow:hidden"><div style="height:100%;background:#1D9E75;width:'+pct+'%"></div></div>'
+      + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ========== 2) ANALISE POR CATEGORIA ==========
+  // Categorias vêm do cadastro Machine. Cruza com pedidos do mes.
+  var categorias = {};
+  empresasCidade.forEach(function(e){
+    if(e.status_empresa === 'D') return;
+    var cats = e.categorias || [];
+    if(!cats.length){
+      // Empresa sem categoria - agrupa em "Sem categoria"
+      var key = 'Sem categoria';
+      if(!categorias[key]) categorias[key] = {nome:key, empresas:0, pedidos:0, fin:0, valor:0};
+      categorias[key].empresas++;
+      return;
+    }
+    cats.forEach(function(cat){
+      var key = cat.nome || '?';
+      if(!categorias[key]) categorias[key] = {nome:key, empresas:0, pedidos:0, fin:0, valor:0};
+      categorias[key].empresas++;
+    });
+  });
+  // Conta pedidos por categoria (cada empresa pode ter varias categorias - distribui igual)
+  corridasMes.filter(function(x){return x.status_solicitacao==='F';}).forEach(function(x){
+    var nEmp = (x.nome_passageiro||'').trim().toLowerCase(); if(!nEmp) return;
+    var emp = mapEmpCad[nEmp];
+    if(!emp || !emp.categorias || !emp.categorias.length){
+      if(categorias['Sem categoria']){
+        categorias['Sem categoria'].pedidos++;
+        categorias['Sem categoria'].fin++;
+        categorias['Sem categoria'].valor += parseFloat(x.valor_corrida||0);
+      }
+      return;
+    }
+    emp.categorias.forEach(function(cat){
+      var key = cat.nome || '?';
+      if(categorias[key]){
+        categorias[key].pedidos++;
+        categorias[key].fin++;
+        categorias[key].valor += parseFloat(x.valor_corrida||0);
+      }
+    });
+  });
+  var listaCats = Object.values(categorias).filter(function(c){return c.empresas>0;}).map(function(c){
+    c.ticket = c.fin>0 ? c.valor/c.fin : 0;
+    return c;
+  }).sort(function(a,b){return b.pedidos - a.pedidos;});
+  var totalPedCats = listaCats.reduce(function(a,c){return a+c.pedidos;}, 0);
+
+  html += '<div class="card" style="margin-top:14px">'
+    + '<div class="card-title" style="margin-bottom:10px">🏷️ Análise por categoria</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Distribuição de empresas e pedidos por segmento. Útil pra estratégia de captação.</div>';
+  if(!listaCats.length){
+    html += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">Sem categorias no cadastro.</div>';
+  } else {
+    html += '<div style="max-height:300px;overflow-y:auto">';
+    listaCats.slice(0,12).forEach(function(cat){
+      var pctV = totalPedCats>0 ? Math.round(cat.pedidos/totalPedCats*100) : 0;
+      html += '<div style="padding:7px 0;border-bottom:1px solid var(--border)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+          + '<div style="font-size:12px;font-weight:600">'+cat.nome+'</div>'
+          + '<div style="font-size:11px;color:var(--text2)"><strong>'+pctV+'%</strong> · '+cat.pedidos+' pedidos · '+cat.empresas+' empresas'+(verFin?' · ticket '+fmt(cat.ticket):'')+'</div>'
+        + '</div>'
+        + '<div style="height:5px;background:#E5E5E5;border-radius:3px;overflow:hidden"><div style="height:100%;background:#8B5CF6;width:'+pctV+'%"></div></div>'
+      + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ========== 3) COMPARATIVO ENTRE EMPRESAS SIMILARES (mesmo bairro) ==========
+  // Pra cada bairro com 3+ empresas ativas, mostra range (lider vs media vs lanterna)
+  var pedidosPorEmp = {};
+  corridasMes.filter(function(x){return x.status_solicitacao==='F';}).forEach(function(x){
+    var nEmp = (x.nome_passageiro||'').trim(); if(!nEmp) return;
+    pedidosPorEmp[nEmp.toLowerCase()] = (pedidosPorEmp[nEmp.toLowerCase()]||0) + 1;
+  });
+
+  var bairrosComp = {};
+  empresasCidade.forEach(function(e){
+    if(e.status_empresa !== 'A') return; // so ativas
+    var b = (e.bairro||'').trim(); if(!b) return;
+    if(!bairrosComp[b]) bairrosComp[b] = [];
+    bairrosComp[b].push({nome: e.nome, pedidos: pedidosPorEmp[(e.nome||'').trim().toLowerCase()] || 0});
+  });
+  var compRows = [];
+  Object.keys(bairrosComp).forEach(function(b){
+    var arr = bairrosComp[b];
+    if(arr.length < 3) return; // precisa de 3+ pra ter comparativo
+    arr.sort(function(a,b){return b.pedidos - a.pedidos;});
+    var lider = arr[0];
+    var lanterna = arr[arr.length-1];
+    var soma = arr.reduce(function(a,e){return a+e.pedidos;}, 0);
+    var media = arr.length>0 ? soma/arr.length : 0;
+    compRows.push({bairro:b, n:arr.length, lider:lider, lanterna:lanterna, media:Math.round(media)});
+  });
+  compRows.sort(function(a,b){return b.lider.pedidos - a.lider.pedidos;});
+  compRows = compRows.slice(0,10);
+
+  html += '<div class="card" style="margin-top:14px">'
+    + '<div class="card-title" style="margin-bottom:10px">⚖️ Comparativo entre empresas similares (mesmo bairro)</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Empresas no mesmo bairro deveriam ter desempenho parecido. Gap grande pode indicar problema na empresa fraca.</div>';
+  if(!compRows.length){
+    html += '<div style="font-size:11px;color:var(--text3);padding:14px;text-align:center">Nenhum bairro com 3+ empresas ativas pra comparar.</div>';
+  } else {
+    html += '<div style="max-height:400px;overflow-y:auto">';
+    compRows.forEach(function(r){
+      var gap = r.lider.pedidos - r.lanterna.pedidos;
+      var corGap = gap >= 30 ? '#E24B4A' : gap >= 15 ? '#EF9F27' : '#1D9E75';
+      html += '<div style="padding:9px 0;border-bottom:1px solid var(--border)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+          + '<div style="font-size:12px;font-weight:600">'+r.bairro+' <span style="color:var(--text3);font-weight:400">('+r.n+' empresas ativas)</span></div>'
+          + '<span style="font-size:10px;background:'+corGap+'22;color:'+corGap+';padding:2px 7px;border-radius:6px;font-weight:600">gap '+gap+'</span>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:10px">'
+          + '<div onclick="empVerEmpresa(\''+encodeURIComponent(r.lider.nome)+'\')" style="background:#EAF3DE;padding:5px;border-radius:5px;cursor:pointer"><div style="color:#3B6D11;font-weight:600">🥇 Líder</div><div style="margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.lider.nome+'</div><div style="font-weight:700">'+r.lider.pedidos+' pedidos</div></div>'
+          + '<div style="background:var(--surface2);padding:5px;border-radius:5px"><div style="color:var(--text3);font-weight:600">📊 Média</div><div style="margin-top:2px">do bairro</div><div style="font-weight:700">'+r.media+' pedidos</div></div>'
+          + '<div onclick="empVerEmpresa(\''+encodeURIComponent(r.lanterna.nome)+'\')" style="background:#FEF3F2;padding:5px;border-radius:5px;cursor:pointer"><div style="color:#A93226;font-weight:600">📉 Atenção</div><div style="margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.lanterna.nome+'</div><div style="font-weight:700">'+r.lanterna.pedidos+' pedidos</div></div>'
+        + '</div>'
+      + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ========== 4) PERFORMANCE FINANCEIRA (so gestores+) ==========
+  if(verFin){
+    // Ticket medio por empresa: mes atual vs mes anterior
+    var mapAtual = _empAgruparPorEmp(corridasMes);
+    var mapAnt = _empAgruparPorEmp(corridasMesAnt || []);
+    var ticketRows = [];
+    Object.keys(mapAtual).forEach(function(nome){
+      var a = mapAtual[nome];
+      var ant = mapAnt[nome];
+      if(a.n < 5) return; // ignora amostras muito pequenas
+      var ticketA = a.n>0 ? a.valor/a.n : 0;
+      var ticketAnt = (ant && ant.n>0) ? ant.valor/ant.n : 0;
+      var varTicket = ticketAnt>0 ? Math.round((ticketA-ticketAnt)/ticketAnt*100) : (ticketA>0 ? 999 : 0);
+      ticketRows.push({nome:nome, ticketAtual:ticketA, ticketAnt:ticketAnt, varTicket:varTicket, faturamento:a.valor});
+    });
+    var totalFat = ticketRows.reduce(function(a,r){return a+r.faturamento;}, 0);
+    var topFat = ticketRows.slice().sort(function(a,b){return b.faturamento - a.faturamento;}).slice(0,10);
+    var ticketSubindo = ticketRows.filter(function(r){return r.varTicket >= 10 && r.varTicket < 999;}).sort(function(a,b){return b.varTicket - a.varTicket;}).slice(0,10);
+    var ticketCaindo = ticketRows.filter(function(r){return r.varTicket <= -10;}).sort(function(a,b){return a.varTicket - b.varTicket;}).slice(0,10);
+
+    html += '<div class="card" style="margin-top:14px;background:linear-gradient(135deg,#F5FAF5,#EAF3DE40);border-left:3px solid #16A085">'
+      + '<div class="card-title" style="margin-bottom:10px;color:#16A085">💰 Performance financeira</div>'
+      + '<div style="font-size:11px;color:var(--text2);margin-bottom:10px">Faturamento total do mês: <strong>'+fmt(totalFat)+'</strong></div>'
+      // 3 colunas: top faturamento + ticket subindo + ticket caindo
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">';
+    // Top faturamento
+    html += '<div><div style="font-size:11px;font-weight:600;color:#16A085;margin-bottom:6px">🏆 Top faturamento</div>';
+    if(topFat.length){
+      topFat.forEach(function(r){
+        html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(r.nome)+'\')" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;cursor:pointer">'
+          + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px">'+r.nome+'</span>'
+          + '<span style="font-weight:600">'+fmt(r.faturamento)+'</span></div>';
+      });
+    } else html += '<div style="font-size:10px;color:var(--text3)">Sem dados.</div>';
+    html += '</div>';
+    // Ticket subindo
+    html += '<div><div style="font-size:11px;font-weight:600;color:#1D9E75;margin-bottom:6px">📈 Ticket subindo</div>';
+    if(ticketSubindo.length){
+      ticketSubindo.forEach(function(r){
+        html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(r.nome)+'\')" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;cursor:pointer">'
+          + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">'+r.nome+'</span>'
+          + '<span style="font-weight:600;color:#1D9E75">+'+r.varTicket+'%</span></div>';
+      });
+    } else html += '<div style="font-size:10px;color:var(--text3)">Sem dados (precisa do mês anterior).</div>';
+    html += '</div>';
+    // Ticket caindo
+    html += '<div><div style="font-size:11px;font-weight:600;color:#E24B4A;margin-bottom:6px">📉 Ticket caindo</div>';
+    if(ticketCaindo.length){
+      ticketCaindo.forEach(function(r){
+        html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(r.nome)+'\')" style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px;cursor:pointer">'
+          + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">'+r.nome+'</span>'
+          + '<span style="font-weight:600;color:#E24B4A">'+r.varTicket+'%</span></div>';
+      });
+    } else html += '<div style="font-size:10px;color:var(--text3)">Sem dados.</div>';
+    html += '</div>';
+    html += '</div></div>';
+  }
+
+  box.innerHTML = html;
+}
+
+/* ============================================================== */
+/* SPRINT 7 — Operação avançada                                    */
+/* Alerta cancelamento + Cadastro incompleto                       */
+/* ============================================================== */
+function empRenderOperacao(corridasMes, empresasGeral, hojeStr){
+  var box = document.getElementById('emp-operacao-box'); if(!box) return;
+  if(!corridasMes || !corridasMes.length){ box.innerHTML = ''; return; }
+
+  var c = window.__cidadeAtual;
+  var empresasCidade = _empFiltrarPorCidade(empresasGeral || [], c ? c.nome : '');
+
+  // ========== 1) ALERTA DE CANCELAMENTO ALTO ==========
+  // Calcula taxa de cancelamento por empresa, compara com a media da cidade
+  var statsEmp = {};
+  corridasMes.forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var key = n.toLowerCase();
+    if(!statsEmp[key]){ statsEmp[key] = {nome:n, fin:0, can:0, motivos:{}}; }
+    if(x.status_solicitacao === 'F') statsEmp[key].fin++;
+    if(x.status_solicitacao === 'C'){
+      statsEmp[key].can++;
+      var m = (x.motivo_cancelamento || x.motivo || 'Não informado').toString().trim();
+      statsEmp[key].motivos[m] = (statsEmp[key].motivos[m]||0) + 1;
+    }
+  });
+  // Media da cidade (ponderada)
+  var totalFin = 0, totalCan = 0;
+  Object.values(statsEmp).forEach(function(s){ totalFin += s.fin; totalCan += s.can; });
+  var mediaCidade = (totalFin+totalCan)>0 ? totalCan/(totalFin+totalCan)*100 : 0;
+
+  // Filtra empresas com >= 10 pedidos no mes e taxa acima da media + 5pp
+  var problematicas = Object.values(statsEmp).filter(function(s){
+    var total = s.fin+s.can;
+    if(total < 10) return false;
+    var taxa = total>0 ? (s.can/total)*100 : 0;
+    return taxa >= mediaCidade + 5 && taxa >= 10;
+  }).map(function(s){
+    var total = s.fin+s.can;
+    s.taxa = Math.round(s.can/total*100);
+    s.total = total;
+    s.topMotivo = Object.entries(s.motivos).sort(function(a,b){return b[1]-a[1];})[0];
+    return s;
+  }).sort(function(a,b){return b.taxa - a.taxa;}).slice(0,30);
+
+  var html = '<div class="card" style="border-left:3px solid '+(problematicas.length>=5?'#E24B4A':'#EF9F27')+'">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">'
+      + '<div class="card-title" style="margin:0">⚠️ Alerta de cancelamento alto</div>'
+      + '<span style="font-size:10px;color:var(--text3)">Média da cidade: <strong>'+mediaCidade.toFixed(1)+'%</strong> · '+problematicas.length+' empresas acima</span>'
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Empresas com ≥10 pedidos no mês e taxa de cancelamento <strong>pelo menos 5pp acima da média</strong>. Pode indicar problema com motoboy específico, endereço errado, demora excessiva ou problema da loja.</div>';
+  if(!problematicas.length){
+    html += '<div style="font-size:11px;color:#1D9E75;padding:14px;text-align:center">✅ Nenhuma empresa com cancelamento problemático.</div>';
+  } else {
+    html += '<div style="max-height:500px;overflow-y:auto">';
+    problematicas.forEach(function(s){
+      var corTaxa = s.taxa >= 30 ? '#E24B4A' : s.taxa >= 20 ? '#EF9F27' : '#854F0B';
+      html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(s.nome)+'\')" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:12px;font-weight:600">'+s.nome+'</div>'
+          + '<div style="font-size:9px;color:var(--text3)">'+s.can+' de '+s.total+' pedidos cancelados'+(s.topMotivo?' · principal motivo: <strong>'+s.topMotivo[0]+'</strong> ('+s.topMotivo[1]+'x)':'')+'</div>'
+        + '</div>'
+        + '<span style="font-size:13px;font-weight:700;color:white;background:'+corTaxa+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+s.taxa+'%</span>'
+      + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ========== 2) CADASTRO INCOMPLETO ==========
+  // Lista empresas com cadastro faltando dados importantes
+  var camposFaltando = function(e){
+    var faltas = [];
+    if(!e.documento || String(e.documento).indexOf('xx') >= 0) faltas.push('CNPJ/CPF');
+    if(!e.categorias || !e.categorias.length) faltas.push('categoria');
+    if(!e.telefone) faltas.push('telefone');
+    if(!e.endereco) faltas.push('endereço');
+    if(!e.bairro) faltas.push('bairro');
+    return faltas;
+  };
+  var incompletas = empresasCidade.filter(function(e){
+    if(e.status_empresa === 'D') return false; // ignora deletadas
+    return camposFaltando(e).length > 0;
+  }).map(function(e){
+    return {nome: e.nome, status: e.status_empresa, bairro: e.bairro||'', tel: e.telefone||'', faltando: camposFaltando(e), id: e.id};
+  }).sort(function(a,b){ return b.faltando.length - a.faltando.length; }).slice(0,50);
+
+  html += '<div class="card" style="margin-top:14px;border-left:3px solid #888">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">'
+      + '<div class="card-title" style="margin:0">📋 Cadastro incompleto</div>'
+      + (incompletas.length ? '<span style="font-size:10px;background:#88888822;color:#666;padding:2px 7px;border-radius:6px;font-weight:600">'+incompletas.length+'</span>' : '')
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Empresas com dados faltando no cadastro Machine. Higienização melhora a qualidade dos relatórios e da operação.</div>';
+  if(!incompletas.length){
+    html += '<div style="font-size:11px;color:#1D9E75;padding:14px;text-align:center">✅ Todos os cadastros estão completos.</div>';
+  } else {
+    html += '<div style="max-height:500px;overflow-y:auto">';
+    incompletas.forEach(function(e){
+      var statusLbl = {A:'Ativa', S:'Suspensa', G:'Aguardando'}[e.status] || e.status;
+      html += '<div onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')" style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:12px;font-weight:600">'+e.nome+' <span style="font-size:9px;color:var(--text3);font-weight:400">· '+statusLbl+(e.bairro?' · '+e.bairro:'')+'</span></div>'
+          + '<div style="font-size:10px;color:#A93226;margin-top:2px">Falta: '+e.faltando.join(', ')+'</div>'
+        + '</div>'
+        + '<span style="font-size:11px;color:var(--text3);white-space:nowrap">'+e.faltando.length+' campo'+(e.faltando.length>1?'s':'')+'</span>'
+      + '</div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  box.innerHTML = html;
+}
+
+/* ============================================================== */
+/* SPRINT 10 — Exportação CSV                                      */
+/* Exporta lista filtrada atual                                    */
+/* ============================================================== */
+function empExportarCSV(){
+  var c = window.__cidadeAtual; if(!c) return;
+  if(!_vgCache[c.id]){ alert('Carregue os dados primeiro.'); return; }
+  var d = _vgCache[c.id].dados;
+  var empresasCidade = _empFiltrarPorCidade(d.empresas || [], c.nome);
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+
+  // Indexa stats mês por empresa
+  var statsMes = {};
+  (d.corridasMes||[]).forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var key = n.toLowerCase();
+    if(!statsMes[key]) statsMes[key] = {total:0, fin:0, can:0, valor:0, ultima:''};
+    statsMes[key].total++;
+    if(x.status_solicitacao==='F'){ statsMes[key].fin++; statsMes[key].valor += parseFloat(x.valor_corrida||0); }
+    if(x.status_solicitacao==='C'){ statsMes[key].can++; }
+    var dStr = (x.data_hora_solicitacao||'').slice(0,10);
+    if(dStr > (statsMes[key].ultima||'')) statsMes[key].ultima = dStr;
+  });
+
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+
+  // Aplica os mesmos filtros que a lista da tela tem
+  var st = _empListaEstado;
+  var listaCompleta = empresasCidade.map(function(e){
+    var key = (e.nome||'').toLowerCase();
+    var s = statsMes[key] || {total:0, fin:0, can:0, valor:0, ultima:''};
+    var taxa = (s.fin+s.can)>0 ? Math.round(s.fin/(s.fin+s.can)*100) : null;
+    var ticket = s.fin>0 ? s.valor/s.fin : 0;
+    var diasInativo = 999;
+    if(s.ultima){ var ult = new Date(s.ultima+'T00:00:00'); diasInativo = Math.floor((hoje - ult) / 86400000); }
+    return {
+      id: e.id, nome: e.nome||'?', status: e.status_empresa||'?', documento: e.documento||'',
+      tel: e.telefone||'', bairro: e.bairro||'', endereco: e.endereco||'',
+      categorias: (e.categorias||[]).map(function(c){return c.nome;}).join('; '),
+      pedidos: s.total, fin: s.fin, can: s.can, taxa: taxa, ticket: ticket,
+      faturamento: s.valor, ultima: s.ultima, diasInativo: diasInativo
+    };
+  });
+
+  // Filtros
+  var filtrada = listaCompleta.filter(function(m){
+    if(st.busca && m.nome.toLowerCase().indexOf(st.busca.toLowerCase()) < 0) return false;
+    if(st.status !== 'todos'){
+      if(st.status === 'ativa' && m.status !== 'A') return false;
+      if(st.status === 'suspensa' && m.status !== 'S') return false;
+      if(st.status === 'aguardando' && m.status !== 'G') return false;
+    }
+    if(st.bairro !== 'todos' && m.bairro !== st.bairro) return false;
+    return true;
+  });
+
+  if(!filtrada.length){ alert('Nenhuma empresa pra exportar com os filtros atuais.'); return; }
+
+  // Monta CSV
+  var statusLbl = {A:'Ativa', S:'Suspensa', G:'Aguardando', D:'Deletada'};
+  var headers = ['Nome', 'Status', 'CNPJ/CPF', 'Telefone', 'Bairro', 'Endereço', 'Categorias',
+    'Pedidos mês', 'Finalizados', 'Cancelados', 'Taxa finalização (%)',
+    (verFin?'Ticket médio (R$)':'-'), (verFin?'Faturamento mês (R$)':'-'),
+    'Última atividade', 'Dias inativa'];
+  // Remove colunas vazias (financeiro pra nao-gestores)
+  if(!verFin){ headers = headers.filter(function(h){return h !== '-';}); }
+
+  var escapeCSV = function(v){
+    if(v === null || v === undefined) return '';
+    var s = String(v);
+    if(s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0){
+      return '"' + s.replace(/"/g,'""') + '"';
+    }
+    return s;
+  };
+  var linhas = [headers.map(escapeCSV).join(',')];
+  filtrada.forEach(function(m){
+    var row = [
+      m.nome, statusLbl[m.status]||m.status, m.documento, m.tel, m.bairro, m.endereco, m.categorias,
+      m.pedidos, m.fin, m.can, (m.taxa!==null?m.taxa:'-')
+    ];
+    if(verFin){
+      row.push(m.ticket.toFixed(2).replace('.',','));
+      row.push(m.faturamento.toFixed(2).replace('.',','));
+    }
+    row.push(m.ultima ? m.ultima.split('-').reverse().join('/') : '-');
+    row.push(m.diasInativo === 999 ? '-' : m.diasInativo);
+    linhas.push(row.map(escapeCSV).join(','));
+  });
+  var csv = '\uFEFF' + linhas.join('\n'); // BOM pra Excel reconhecer UTF-8
+
+  // Download
+  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var fname = 'empresas_'+_vgSlug(c.nome)+'_'+d.hojeStr+'.csv';
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);}, 100);
 }
 
 /* ============================================================== */
