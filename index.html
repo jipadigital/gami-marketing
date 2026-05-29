@@ -1,4 +1,4 @@
-<!-- v16.0 - Integracao /empresa ativada (Machine API) + cache - 28/05/2026 -->
+<!-- v16.1 - Aba Empresas Sprint 1 (rename + remove pipeline + banner + 6 cards) - 28/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2150,7 +2150,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="tabs" style="margin-bottom:14px">
       <button class="tab active" onclick="setCidadeTab(this,'overview')">📊 Visão geral</button>
       <button class="tab" onclick="setCidadeTab(this,'motoboys')">🏍️ Motoboys</button>
-      <button class="tab" onclick="setCidadeTab(this,'restaurantes')">🍴 Restaurantes</button>
+      <button class="tab" onclick="setCidadeTab(this,'empresas')">🏪 Empresas</button>
       <button class="tab" onclick="setCidadeTab(this,'equipe')">👥 Equipe</button>
       <button class="tab" onclick="setCidadeTab(this,'insights')">💡 Anotações</button>
       <button class="tab" onclick="setCidadeTab(this,'calendario')">📅 Datas</button>
@@ -2237,57 +2237,36 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
 
     <!-- ===== ABA RESTAURANTES ===== -->
-    <div id="ctab-restaurantes" style="display:none">
-      <!-- Banner Demo -->
-      <div style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-        <div style="font-size:20px;flex-shrink:0">⚠️</div>
-        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.5">
-          <strong>Dados de demonstração</strong> — restaurantes, telefones e pedidos abaixo são <strong>fictícios</strong>.<br>
-          Em breve, esta aba será alimentada automaticamente pela <strong>integração Machine API</strong> com dados reais.
+    <div id="ctab-empresas" style="display:none">
+      <!-- Banner igual ao da Visão Geral/Motoboys (auto-load + cache) -->
+      <div id="emp-painel-banner" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div id="emp-painel-icone" style="font-size:18px;flex-shrink:0">🏪</div>
+        <div style="flex:1;font-size:11px;color:#854F0B;line-height:1.4" id="emp-painel-texto">
+          <strong>Painel de empresas</strong> — clique para carregar os dados reais da Machine.
         </div>
-      </div>
-      
-      <!-- Métricas resumo -->
-      <div class="metrics" style="margin-bottom:14px">
-        <div class="metric"><div class="metric-label">Parceiros ativos</div><div class="metric-val" id="rest-ativos" style="color:#1D9E75">—</div><div class="metric-sub">pedindo</div></div>
-        <div class="metric"><div class="metric-label">Em prospecção</div><div class="metric-val" id="rest-prospec" style="color:#EF9F27">—</div><div class="metric-sub">no pipeline</div></div>
-        <div class="metric"><div class="metric-label">Inativos</div><div class="metric-val" id="rest-inativos" style="color:#E24B4A">—</div><div class="metric-sub">14+ dias sem pedido</div></div>
-        <div class="metric"><div class="metric-label">Top do mês</div><div class="metric-val" id="rest-top-num" style="color:var(--gami-blue);font-size:14px!important">—</div><div class="metric-sub" id="rest-top-nome">—</div></div>
+        <button onclick="empCarregarPainel({forcar:true})" id="emp-painel-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
       </div>
 
-      <!-- Pipeline de Prospecção -->
-      <div class="card" style="margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-          <div>
-            <div class="card-title" style="margin:0">🎯 Pipeline de Prospecção</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px">Lead → Contato → Reunião → Fechado · Dados via Machine API</div>
-          </div>
-        </div>
-        <div id="rest-pipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;overflow-x:auto"></div>
-      </div>
+      <!-- 6 cards de métricas no topo -->
+      <div id="emp-cards-topo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px"></div>
 
-      <!-- Top performers + Inativos -->
-      <div class="g2" style="margin-bottom:14px">
-        <div class="card">
-          <div class="card-title">🏆 Top performers do mês</div>
-          <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Mais pedidos = mais corridas pros motoboys</div>
-          <div id="rest-top-list" style="margin-top:8px"></div>
-        </div>
-        <div class="card" style="border-left:3px solid #E24B4A">
-          <div class="card-title">⚠️ Parceiros inativos</div>
-          <div style="font-size:10px;color:var(--text3);margin-bottom:8px">14+ dias sem pedido — vale uma ligação</div>
-          <div id="rest-inativos-list"></div>
-        </div>
-      </div>
+      <!-- Top empresas: Dia + Semana + Mês (lado a lado) - Sprint 2 -->
+      <div id="emp-top-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px"></div>
 
-      <!-- Lista completa -->
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="card-title" style="margin:0">📋 Todos os restaurantes</div>
-          <input id="rest-busca" class="inp" placeholder="🔍 Buscar..." style="width:200px;font-size:12px" oninput="renderRestaurantesLista()"/>
-        </div>
-        <div id="rest-lista-completa"></div>
-      </div>
+      <!-- Empresas sumidas - Sprint 3 -->
+      <div id="emp-sumidas-box" style="margin-bottom:14px"></div>
+
+      <!-- Lista completa com filtros - Sprint 3 -->
+      <div id="emp-lista-box" style="margin-bottom:14px"></div>
+
+      <!-- Insights operacionais (curva ABC, queda, alta, novos, fantasma) - Sprint 5 -->
+      <div id="emp-insights-box" style="margin-bottom:14px"></div>
+
+      <!-- Análise estratégica (bairro, categoria, comparativo) - Sprint 6 -->
+      <div id="emp-estrategico-box" style="margin-bottom:14px"></div>
+
+      <!-- Operação avançada (cancelamento, cadastro incompleto) - Sprint 7 -->
+      <div id="emp-operacao-box" style="margin-bottom:14px"></div>
     </div>
 
     <!-- ===== ABA EQUIPE ===== -->
@@ -8593,6 +8572,170 @@ function renderMotoboysAba(){
 }
 
 /* ============================================================== */
+/* ABA EMPRESAS — Sprint 1: banner + 6 cards superiores           */
+/* Reutiliza o cache da Visão Geral pra zero requests extras.     */
+/* ============================================================== */
+async function empCarregarPainel(opts){
+  opts = opts || {};
+  var forcado = !!opts.forcar;
+  var c = window.__cidadeAtual; if(!c) return;
+  var btn = document.getElementById('emp-painel-btn');
+
+  // Renderiza tudo a partir do cache (caminho rapido + caminho de cache hit)
+  var renderTudo = function(d){
+    empRenderCards(d.corridasDia, d.corridasMes, d.empresas, c.nome);
+    if(typeof empRenderTopEmpresas === 'function') empRenderTopEmpresas(d.corridasDia, d.corridas45d, d.corridasMes, d.empresas, d.hojeStr);
+    if(typeof empRenderSumidas === 'function') empRenderSumidas(d.corridas45d, d.empresas, d.hojeStr);
+    if(typeof empRenderLista === 'function') empRenderLista(d.corridasMes, d.empresas, d.hojeStr);
+    if(typeof empRenderInsights === 'function') empRenderInsights(d.corridasMes, d.corridasMesAnt, d.empresas, d.hojeStr);
+    if(typeof empRenderEstrategico === 'function') empRenderEstrategico(d.corridasMes, d.empresas, d.hojeStr);
+    if(typeof empRenderOperacao === 'function') empRenderOperacao(d.corridasMes, d.empresas, d.hojeStr);
+  };
+
+  // Reusa cache da Visao Geral se existir e for recente (5min)
+  if(!forcado && _vgCache[c.id] && (Date.now() - _vgCache[c.id].ts) < _VG_CACHE_TTL){
+    var d = _vgCache[c.id].dados;
+    renderTudo(d);
+    var bannerC = document.getElementById('emp-painel-banner');
+    if(bannerC){
+      bannerC.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+      bannerC.style.borderColor='#1D9E7566';
+      document.getElementById('emp-painel-icone').textContent='🟢';
+      var minsAtras = Math.round((Date.now() - _vgCache[c.id].ts)/60000);
+      document.getElementById('emp-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+(d.empresas||[]).length+' empresas cadastradas · cache de '+(minsAtras===0?'agora mesmo':minsAtras+' min atrás');
+    }
+    if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
+    return;
+  }
+
+  // Sem cache: dispara vgCarregarPainel (centraliza fetchs) e ele preenche tudo
+  if(typeof vgCarregarPainel === 'function'){
+    // Loading
+    var banner = document.getElementById('emp-painel-banner');
+    if(banner){
+      banner.style.background='linear-gradient(135deg,#FFF8E1,#FAEEDA)';
+      banner.style.borderColor='#EF9F2766';
+      document.getElementById('emp-painel-icone').textContent='⏳';
+      document.getElementById('emp-painel-texto').innerHTML='<strong>Carregando dados da Machine...</strong> Pode levar alguns segundos.';
+    }
+    if(btn){ btn.disabled=true; btn.innerHTML='⏳ Carregando...'; }
+
+    await vgCarregarPainel({forcar:forcado, auto:true});
+
+    if(_vgCache[c.id]){
+      var d2 = _vgCache[c.id].dados;
+      renderTudo(d2);
+      var banner2 = document.getElementById('emp-painel-banner');
+      if(banner2){
+        banner2.style.background='linear-gradient(135deg,#EAF3DE,#D4EDDA)';
+        banner2.style.borderColor='#1D9E7566';
+        document.getElementById('emp-painel-icone').textContent='🟢';
+        var hr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+        document.getElementById('emp-painel-texto').innerHTML='<strong>Dados ao vivo da Machine</strong> — '+(d2.empresas||[]).length+' empresas cadastradas · atualizado '+hr;
+        if(btn){ btn.disabled=false; btn.innerHTML='🔄 Atualizar'; btn.style.background='#1D9E75'; }
+      }
+    } else {
+      if(btn){ btn.disabled=false; btn.innerHTML='🟢 Carregar dados reais'; }
+    }
+  }
+}
+
+/* Card helper (mesma assinatura do vgCard/mbCard) */
+function empCard(icone, label, valor, sublabel, cor){
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px">'
+    + '<div style="font-size:18px">'+icone+'</div>'
+    + '<div style="font-size:22px;font-weight:700;color:'+cor+';margin:4px 0">'+valor+'</div>'
+    + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">'+label+'</div>'
+    + (sublabel ? '<div style="font-size:10px;color:var(--text3);margin-top:3px">'+sublabel+'</div>' : '')
+    + '</div>';
+}
+
+/* Filtra empresas por cidade.
+   Machine retorna TODAS empresas da bandeira, nao filtra por cidade automatico.
+   Filtramos no cliente usando o campo "cidade" da empresa. */
+function _empFiltrarPorCidade(empresas, cidadeNome){
+  if(!empresas || !empresas.length) return [];
+  var n = String(cidadeNome||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return empresas.filter(function(e){
+    var ec = String(e.cidade||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return ec === n || ec.indexOf(n) >= 0 || n.indexOf(ec) >= 0;
+  });
+}
+
+/* Renderiza os 6 cards superiores */
+function empRenderCards(corridasDia, corridasMes, empresasGeral, cidadeNome){
+  var host = document.getElementById('emp-cards-topo'); if(!host) return;
+  corridasDia = corridasDia || [];
+  corridasMes = corridasMes || [];
+  // IMPORTANTE: filtra empresas pela cidade atual (Machine retorna geral)
+  var empresas = _empFiltrarPorCidade(empresasGeral || [], cidadeNome);
+
+  // 1. Total cadastradas + breakdown
+  // Status oficiais Machine: A=Ativo, S=Suspenso, G=Aguardando, D=Deletado
+  var total = empresas.length;
+  var ativas = empresas.filter(function(x){ return x.status_empresa==='A'; }).length;
+  var suspensas = empresas.filter(function(x){ return x.status_empresa==='S'; }).length;
+  var aguardando = empresas.filter(function(x){ return x.status_empresa==='G'; }).length;
+
+  // 2. Empresas que pediram hoje (ids unicos)
+  var idsHoje = {};
+  corridasDia.forEach(function(x){
+    var nome = (x.nome_passageiro||'').trim();
+    if(nome) idsHoje[nome] = true;
+  });
+  var pediramHoje = Object.keys(idsHoje).length;
+
+  // 3. Total de pedidos hoje (todas empresas)
+  var corridasHoje = corridasDia.length;
+
+  // 4. Faturamento gerado hoje (gestores+)
+  var finalizadas = corridasDia.filter(function(x){return x.status_solicitacao==='F';});
+  var somaValor = 0;
+  finalizadas.forEach(function(x){ somaValor += parseFloat(x.valor_corrida||0); });
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+
+  // 5. Empresas ativas no mes (pediram pelo menos 1 vez)
+  var idsMes = {};
+  corridasMes.forEach(function(x){
+    var nome = (x.nome_passageiro||'').trim();
+    if(nome) idsMes[nome] = true;
+  });
+  var ativasMes = Object.keys(idsMes).length;
+
+  var fmt = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
+
+  var html = '';
+  var labelTotal = ativas+' ativas · '+suspensas+' suspensas · '+aguardando+' aguardando';
+  var corTotal = '#1AB8F0';
+  try{
+    if(_vgCache[window.__cidadeAtual.id] && _vgCache[window.__cidadeAtual.id].dados.erroEmp){
+      labelTotal = '❌ Falha ao buscar: '+_vgCache[window.__cidadeAtual.id].dados.erroEmp;
+      corTotal = '#E24B4A';
+    } else if(_vgCache[window.__cidadeAtual.id] && _vgCache[window.__cidadeAtual.id].dados.empTruncado){
+      labelTotal = '⚠️ '+total+'+ (limite atingido) · '+ativas+' ativas';
+    }
+  }catch(e){}
+  html += empCard('🏪', 'Total cadastradas', total, labelTotal, corTotal);
+  html += empCard('⚡', 'Pediram hoje', pediramHoje, total>0 ? Math.round(pediramHoje/total*100)+'% do total' : '', '#1D9E75');
+  html += empCard('🛵', 'Pedidos hoje', corridasHoje, finalizadas.length+' finalizados', '#EF9F27');
+  if(verFin){
+    html += empCard('💰', 'Faturamento hoje', fmt(somaValor), finalizadas.length+' corridas', '#16A085');
+  }
+  html += empCard('📈', 'Ativas no mês', ativasMes, 'pediram pelo menos 1 vez', '#8B5CF6');
+  html += empCard('⏳', 'Aguardando ativação', aguardando, aguardando>3 ? 'gargalo no onboarding' : 'fluxo normal', aguardando>3?'#E24B4A':'#888');
+
+  host.innerHTML = html;
+}
+
+/* Função principal - chamada quando a aba é ativada */
+function renderEmpresasAba(){
+  if(!window.__cidadeAtual) return;
+  if(typeof empCarregarPainel === 'function'){
+    try { empCarregarPainel({}); } catch(e){ console.warn('empCarregarPainel:', e); }
+  }
+}
+
+/* ============================================================== */
 /* ETAPA 2 — Top Motoboys (Dia, Semana, Mes) lado a lado          */
 /* ============================================================== */
 function _mbCalcRanking(corridas, key){
@@ -10125,13 +10268,13 @@ function renderVisaoGeralCidade(){
 function setCidadeTab(btn, tab){
   document.querySelectorAll('#pg-cidades .tab').forEach(t=>t.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  ['overview','motoboys','restaurantes','equipe','insights','calendario'].forEach(t=>{
+  ['overview','motoboys','empresas','equipe','insights','calendario'].forEach(t=>{
     const el = document.getElementById('ctab-'+t);
     if(el) el.style.display = t===tab ? 'block' : 'none';
   });
   // Renderiza conteúdo da aba selecionada
   if(tab === 'motoboys' && typeof renderMotoboysAba === 'function') renderMotoboysAba();
-  if(tab === 'restaurantes' && typeof renderRestaurantesAba === 'function') renderRestaurantesAba();
+  if(tab === 'empresas' && typeof renderEmpresasAba === 'function') renderEmpresasAba();
   if(tab === 'overview' && typeof renderVisaoGeralCidade === 'function') renderVisaoGeralCidade();
   if(tab === 'equipe' && typeof renderEquipeCidade === 'function') renderEquipeCidade();
   if(tab === 'insights' && typeof renderAnotacoesCidade === 'function') renderAnotacoesCidade();
