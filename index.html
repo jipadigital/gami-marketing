@@ -1,4 +1,4 @@
-<!-- v20.2 - Multiplas anotacoes por dia - 29/05/2026 -->
+<!-- v20.3 - Calendario sem marketing/planejado + check tarefa com toast - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4335,7 +4335,27 @@ function salvarNotaCalendario(dataKey, texto){
   _salvarNotasArray(dataKey, [{id:'n'+Date.now(), texto:texto.trim(), data:new Date().toISOString()}]);
 }
 
-/* Salva com feedback visual + toast + re-render */
+/* Toggle tarefa no calendario: marca/desmarca + re-renderiza grid + painel + toast */
+function calToggleTarefa(id, d, m, y){
+  if(typeof tfToggle !== 'function') return;
+  // Pega estado anterior pra dar toast correto
+  var estadoAntes = false;
+  try {
+    if(typeof getTarefas === 'function'){
+      var t = getTarefas('diario').find(function(t){ return t.id === id; });
+      if(t) estadoAntes = !!t.feito;
+    }
+  } catch(e){}
+  tfToggle('diario', id);
+  if(typeof toast === 'function'){
+    toast(estadoAntes ? 'Tarefa reaberta' : '✓ Tarefa concluída!', estadoAntes ? 'info' : 'success');
+  }
+  // Re-renderiza grid + painel do dia
+  if(typeof renderCalendar === 'function') renderCalendar();
+  if(typeof selectDay === 'function' && d !== undefined) setTimeout(function(){ selectDay(d, m, y); }, 30);
+}
+
+/* Salva nota com feedback visual + toast + re-render */
 function salvarNotaCalendarioComFeedback(dataKey, d, m, y){
   var ta = document.getElementById('cal-notas-'+dataKey);
   if(!ta) return;
@@ -4700,32 +4720,7 @@ function selectDay(d, m, y){
       </div>`:''}
     </div>`;
 
-  // Detecta se é Cleyton (Marketing/Super Admin) — ele vê tudo
-  var _u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  var ehCleytonCal = _u && _u.email && _u.email.toLowerCase() === 'jipadigital@gmail.com';
-  
-  // Planejamentos do dia (CONTEÚDO MARKETING — só Cleyton)
-  if(ehCleytonCal){
-    html += `<div style="margin-bottom:12px">
-      <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Planejado para este dia (${items.length})</div>`;
-
-    if(items.length===0){
-      html += `<div style="font-size:12px;color:var(--text3);text-align:center;padding:12px 0">Nenhum conteúdo planejado ainda.</div>`;
-    } else {
-      items.forEach((item,i) => {
-        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-          <div onclick="toggleCalItem('${key}',${i})" style="width:15px;height:15px;border-radius:4px;border:1.5px solid ${item.feito?'var(--green)':'var(--border2)'};background:${item.feito?'var(--green)':'transparent'};display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">
-            ${item.feito?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}
-          </div>
-          <span style="flex:1;font-size:12px;color:var(--text);text-decoration:${item.feito?'line-through':'none'};opacity:${item.feito?'.5':'1'}">${item.tipo}</span>
-          <button onclick="removeCalItem('${key}',${i})" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:14px;line-height:1;padding:0 2px">×</button>
-        </div>`;
-      });
-    }
-    html += `</div>`;
-  }
-
-  /* === NOVO: TAREFAS DESTE DIA === */
+  /* === TAREFAS DESTE DIA === */
   // Mostra as tarefas do sistema de Tarefas (diário/semana/mês) que tem prazo nesse dia
   // OU se for hoje, mostra todas as do dia
   var tarefasDoDia = [];
@@ -4755,7 +4750,7 @@ function selectDay(d, m, y){
       var t = item.t;
       var corPrio = t.prio === 'alta' ? '#E24B4A' : t.prio === 'media' ? '#EF9F27' : '#1D9E75';
       html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);'+(t.feito?'opacity:.5;':'')+'">'
-        +'<div onclick="tfToggle(\'diario\',\''+t.id+'\');setTimeout(function(){selectDay('+d+','+m+','+y+')},50)" style="width:15px;height:15px;border-radius:4px;border:1.5px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
+        +'<div onclick="calToggleTarefa(\''+t.id+'\','+d+','+m+','+y+')" style="width:15px;height:15px;border-radius:4px;border:1.5px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
         +(t.feito?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')
         +'</div>'
         +'<span style="flex:1;font-size:11px;color:var(--text);text-decoration:'+(t.feito?'line-through':'none')+'">'+t.texto+'</span>'
@@ -4815,33 +4810,6 @@ function selectDay(d, m, y){
       +(notasArr.length ? '<button onclick="limparNotaCalendario(\''+key+'\','+d+','+m+','+y+')" title="Apagar todas anotações do dia" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:white;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑️ Tudo</button>' : '')
     +'</div>'
     +'</div>';
-
-  // Opções de conteúdo — SÓ CLEYTON (Marketing)
-  if(ehCleytonCal){
-    html += `<div>
-      <div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📝 Marketing: o que criar neste dia?</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">`;
-
-    OPCOES_CONTEUDO.forEach(op => {
-      html += `<button onclick="addCalItem('${key}','${op.label}','${op.prompt.replace(/'/g,"\\'")}')"
-        style="display:flex;align-items:center;gap:6px;padding:7px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit;text-align:left;transition:all .1s"
-        onmouseover="this.style.borderColor='var(--orange)';this.style.color='var(--orange-d)';this.style.background='var(--orange-l)'"
-        onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text2)';this.style.background='var(--surface2)'">
-        <span style="font-size:14px">${op.icon}</span>${op.label}
-      </button>`;
-    });
-
-    html += `</div></div>`;
-    
-    // Botão IA — só Cleyton
-    html += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
-      <button onclick="openAI('Crie um planejamento de conteúdo completo para a Gâmi Delivery para o dia ${dataFmt}. Sugira posts, stories, campanhas e ações para as 10 cidades com base nos pilares: captação de motoboys, parcerias com restaurantes e cultura interna.')"
-        style="width:100%;padding:9px;border:none;border-radius:8px;background:var(--orange);color:white;font-size:12px;cursor:pointer;font-family:inherit;font-weight:500;display:flex;align-items:center;justify-content:center;gap:6px">
-        <svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg>
-        IA: Planejar este dia completo ↗
-      </button>
-    </div>`;
-  }
 
   const panel = document.getElementById('day-panel-content');
   if(panel) panel.innerHTML = html;
