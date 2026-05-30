@@ -1,4 +1,4 @@
-<!-- v23.3 - Delegar multi-select + IA filtrada por permissao + IA interna (blog-ai) - 30/05/2026 -->
+<!-- v23.7 - Marketing Visao Geral completa: 8 blocos estrategicos + graficos SVG - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1287,7 +1287,7 @@ window.nav = function(el, page){
         'dashboard':       function(){ if(typeof initDashboard==='function') initDashboard(); if(typeof renderBlocoPontuacao==='function') renderBlocoPontuacao(); if(typeof hookNavAba==='function') hookNavAba('dashboard'); },
         'calendario':      function(){ if(typeof renderCalendar==='function') renderCalendar(); },
         'tarefas':         function(){ if(typeof initTarefas==='function') initTarefas(); },
-        'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('agenda'); },
+        'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('visao'); },
         'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
         'cidades':         function(){ 
                               // Se atende SÓ 1 cidade → abre direto (Gestor ou Colaborador de 1 cidade)
@@ -2154,7 +2154,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <!-- Dicas -->
     <div style="margin-top:14px;padding:12px;background:#F0F8FF;border:1px dashed var(--gami-blue);border-radius:8px;font-size:11px;color:#0E7AB8;line-height:1.5">
-      💡 <strong>Como funciona:</strong> Preencha o formulário com seu contexto e clique em "Gerar sugestões". A IA vai te dar uma lista de tarefas adequadas ao seu cargo. Clique em "+ Adicionar" em cada tarefa que faz sentido pra você — ela vai pra sua aba "📋 Hoje" automaticamente.
+      💡 <strong>Como funciona:</strong> A IA só te dá <strong>uma lista de ideias</strong> baseada no seu contexto. Nada é adicionado automaticamente. Você lê, decide o que faz sentido, e vai criar manualmente na aba <strong>"📋 Hoje"</strong> — do seu jeito, com prazo, prioridade e categoria que você escolher.
     </div>
   </div>
 
@@ -2185,9 +2185,9 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
   <!-- SUB-TABS DE MARKETING -->
   <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:18px;overflow-x:auto">
-    <button id="mkt-tab-visao"     onclick="marketingAba('visao')"     class="mkt-tab-btn"     style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📊 Visão Geral</button>
+    <button id="mkt-tab-visao"     onclick="marketingAba('visao')"     class="mkt-tab-btn"     style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:600;color:var(--gami-blue);cursor:pointer;font-family:inherit;border-bottom:2.5px solid var(--gami-blue);margin-bottom:-1px;white-space:nowrap">📊 Visão Geral</button>
     <button id="mkt-tab-campanhas" onclick="marketingAba('campanhas')" class="mkt-tab-btn" style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📣 Campanhas</button>
-    <button id="mkt-tab-agenda"    onclick="marketingAba('agenda')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:600;color:var(--gami-blue);cursor:pointer;font-family:inherit;border-bottom:2.5px solid var(--gami-blue);margin-bottom:-1px;white-space:nowrap">📅 Agendamento</button>
+    <button id="mkt-tab-agenda"    onclick="marketingAba('agenda')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📅 Agendamento</button>
     <button id="mkt-tab-conteudo"  onclick="marketingAba('conteudo')"  class="mkt-tab-btn"  style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">🎨 Conteúdo</button>
     <button id="mkt-tab-ideias"    onclick="marketingAba('ideias')"    class="mkt-tab-btn"    style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">💡 Banco de Ideias</button>
     <button id="mkt-tab-scripts"   onclick="marketingAba('scripts')"   class="mkt-tab-btn"   style="padding:10px 18px;border:none;background:transparent;font-size:13px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2.5px solid transparent;margin-bottom:-1px;white-space:nowrap">📝 Scripts</button>
@@ -2195,50 +2195,623 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   </div>
 
   <!-- =========== SUB-ABA: VISÃO GERAL =========== -->
-  <div id="mkt-painel-visao" class="mkt-painel" style="display:none">
+  <div id="mkt-painel-visao" class="mkt-painel">
     
-    <!-- ALERTAS DE CAMPANHAS PRÓXIMAS (datas comemorativas) -->
-    <div id="dash-campanhas-alerta" style="margin-bottom:14px"></div>
-    
-    <!-- AÇÕES RÁPIDAS -->
-    <div class="card" style="margin-bottom:14px;padding:12px 14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:12px;font-weight:600;color:var(--text)">⚡ Ações rápidas</div>
-        <span style="font-size:10px;color:var(--text3)">acesso direto às tarefas mais comuns</span>
+    <!-- ============================================================ -->
+    <!-- CSS scoped da Visão Geral (.mv-*)                            -->
+    <!-- ============================================================ -->
+    <style>
+      .mv-section { margin-bottom:24px; animation: mv-fadeup .4s ease both; }
+      @keyframes mv-fadeup { 0%{opacity:0;transform:translateY(8px)} 100%{opacity:1;transform:translateY(0)} }
+      .mv-section-title { font-size:9px; font-weight:700; letter-spacing:1.2px; color:var(--text3); text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+      .mv-section-title::before { content:''; width:4px; height:14px; background:linear-gradient(180deg,#0D2B5C,#1AB8F0); border-radius:2px; }
+      .mv-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; transition:transform .2s, box-shadow .2s; }
+      .mv-card:hover { transform:translateY(-2px); box-shadow:0 6px 16px rgba(13,43,92,.08); }
+      .mv-kpi { padding:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; transition:all .2s; position:relative; overflow:hidden; cursor:default; }
+      .mv-kpi:hover { transform:translateY(-2px); box-shadow:0 4px 12px rgba(13,43,92,.1); border-color:#1AB8F055; }
+      .mv-kpi-label { font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
+      .mv-kpi-val { font-family:'Syne',sans-serif; font-size:24px; font-weight:800; color:var(--text); line-height:1; margin-bottom:4px; }
+      .mv-kpi-sub { font-size:10px; color:var(--text3); display:flex; align-items:center; gap:4px; }
+      .mv-kpi-trend-up { color:#1D9E75; font-weight:700; }
+      .mv-kpi-trend-down { color:#E24B4A; font-weight:700; }
+      .mv-valor-card { display:flex; align-items:center; gap:8px; padding:9px 10px; background:var(--surface); border:1px solid var(--border); border-radius:10px; font-size:11px; font-weight:500; color:var(--text2); cursor:pointer; transition:all .15s; }
+      .mv-valor-card:hover { border-color:#1AB8F0; background:linear-gradient(135deg,#E6F6FE,#fff); transform:translateY(-1px); }
+      .mv-swot-card { padding:14px; border-radius:12px; border:1px solid; transition:transform .2s; position:relative; }
+      .mv-swot-card:hover { transform:translateY(-3px); }
+      .mv-swot-title { font-size:11px; font-weight:800; letter-spacing:1px; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+      .mv-swot-list { list-style:none; padding:0; margin:0; }
+      .mv-swot-list li { font-size:11.5px; line-height:1.5; padding:5px 0; padding-left:18px; position:relative; color:var(--text2); border-bottom:1px solid rgba(0,0,0,.04); }
+      .mv-swot-list li:last-child { border-bottom:none; }
+      .mv-swot-list li::before { content:'•'; position:absolute; left:4px; font-weight:700; }
+      .mv-funil-row { display:flex; align-items:center; gap:14px; padding:14px; border-radius:12px; margin-bottom:8px; transition:transform .2s; position:relative; }
+      .mv-funil-row:hover { transform:translateX(4px); }
+      .mv-funil-bar { height:14px; background:rgba(255,255,255,.4); border-radius:7px; overflow:hidden; margin-top:8px; }
+      .mv-funil-bar-fill { height:100%; border-radius:7px; transition:width 1.2s cubic-bezier(.4,0,.2,1); width:0%; }
+      .mv-tabela { width:100%; border-collapse:collapse; font-size:11.5px; }
+      .mv-tabela thead { background:linear-gradient(135deg,#0D2B5C,#1565C0); color:white; }
+      .mv-tabela th { padding:11px 10px; text-align:left; font-weight:700; font-size:10.5px; letter-spacing:.3px; text-transform:uppercase; }
+      .mv-tabela th:first-child { border-radius:10px 0 0 0; }
+      .mv-tabela th:last-child { border-radius:0 10px 0 0; }
+      .mv-tabela tbody tr { border-bottom:1px solid var(--border); transition:all .15s; }
+      .mv-tabela tbody tr:hover { background:#E6F6FE; transform:scale(1.005); }
+      .mv-tabela tbody tr:last-child { border-bottom:none; }
+      .mv-tabela td { padding:11px 10px; color:var(--text); }
+      .mv-tabela td:first-child { font-weight:600; }
+      .mv-rating { display:inline-flex; gap:1px; color:#EF9F27; font-size:11px; }
+      .mv-plano-col { padding:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; border-top:4px solid; }
+      .mv-plano-acao { padding:9px 10px; margin-bottom:6px; background:var(--surface2); border-radius:8px; border-left:3px solid; font-size:11px; line-height:1.4; transition:transform .15s; cursor:pointer; }
+      .mv-plano-acao:hover { transform:translateX(3px); background:white; box-shadow:0 2px 6px rgba(13,43,92,.06); }
+      .mv-metrica-card { padding:14px; background:var(--surface); border:1px solid var(--border); border-radius:12px; }
+      .mv-metrica-title { font-size:12px; font-weight:700; color:var(--text); margin-bottom:4px; }
+      .mv-metrica-sub { font-size:10px; color:var(--text3); margin-bottom:10px; }
+      .mv-publico-card { padding:16px; border-radius:14px; border:2px solid; position:relative; transition:transform .2s; }
+      .mv-publico-card:hover { transform:translateY(-3px); }
+      .mv-publico-badge { position:absolute; top:-9px; left:14px; padding:3px 10px; border-radius:11px; font-size:9px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; }
+      @media(max-width:900px){
+        .mv-grid-6 { grid-template-columns:repeat(2,1fr)!important; }
+        .mv-grid-2 { grid-template-columns:1fr!important; }
+        .mv-grid-3 { grid-template-columns:1fr!important; }
+        .mv-grid-4 { grid-template-columns:repeat(2,1fr)!important; }
+        .mv-valores-grid { grid-template-columns:repeat(2,1fr)!important; }
+      }
+      @media(max-width:600px){
+        .mv-grid-6 { grid-template-columns:1fr!important; }
+        .mv-grid-4 { grid-template-columns:1fr!important; }
+        .mv-valores-grid { grid-template-columns:1fr!important; }
+        .mv-tabela { font-size:10px; }
+        .mv-tabela th, .mv-tabela td { padding:7px 5px; }
+      }
+    </style>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 1: HEADER DA PÁGINA                   -->
+    <!-- =========================================== -->
+    <div class="mv-section" style="background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);padding:20px 24px;border-radius:16px;color:white;position:relative;overflow:hidden;margin-bottom:18px">
+      <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,217,61,.18),transparent 70%);pointer-events:none"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;position:relative;z-index:1;flex-wrap:wrap">
+        <div>
+          <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:#FFD93D;text-transform:uppercase;margin-bottom:4px">📊 Dashboard estratégico</div>
+          <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;line-height:1.1">Marketing</div>
+          <div style="font-size:12px;opacity:.85;margin-top:3px">Estratégia, dados e operação</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div style="text-align:right;font-size:10px;opacity:.85;line-height:1.4">
+            <div style="font-weight:600">Última atualização</div>
+            <div id="mv-ultima-atualizacao" style="opacity:.85">—</div>
+          </div>
+          <button onclick="mvExportarPDF()" style="padding:9px 14px;border:none;border-radius:9px;background:white;color:#0D2B5C;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(0,0,0,.15);transition:transform .15s" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">📄 Exportar PDF</button>
+        </div>
       </div>
-      <div id="dash-quick-actions" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px"></div>
     </div>
 
-    <!-- CONTADOR REGRESSIVO + FOCO DA CIDADE -->
-    <div class="g2" style="margin-bottom:14px">
-      <div id="dash-countdown" style="padding:14px;background:linear-gradient(135deg,#E6F6FE,#E6F6FE);border:1.5px solid #1AB8F033;border-radius:12px">
-        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:var(--orange);text-transform:uppercase;margin-bottom:6px">⏳ Próxima campanha importante</div>
-        <div id="countdown-nome" style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">—</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <div id="countdown-num" style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--orange)">—</div>
-          <div style="font-size:12px;color:var(--text3)">dias restantes</div>
+    <!-- =========================================== -->
+    <!-- BLOCO 2: KPIs PRINCIPAIS (6 cards)          -->
+    <!-- TODO: plugar Meta API, Google Ads API e Supabase aqui -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">📈 KPIs do mês</div>
+      <div class="mv-grid-6" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px" id="mv-kpis-grid">
+        <!-- Leads do mês -->
+        <div class="mv-kpi" title="Empresas: 172 leads · Entregadores: 75 leads">
+          <div class="mv-kpi-label">📥 Leads do mês</div>
+          <div class="mv-kpi-val">247</div>
+          <div class="mv-kpi-sub">172 emp · 75 entr <span class="mv-kpi-trend-up">↑12%</span></div>
         </div>
-        <div style="height:5px;background:rgba(26,184,240,.15);border-radius:3px;overflow:hidden">
-          <div id="countdown-bar" style="height:100%;background:var(--orange);border-radius:3px;transition:width .5s"></div>
+        <!-- Investimento -->
+        <div class="mv-kpi" title="Meta Ads: R$ 6.200 · Google Ads: R$ 2.250">
+          <div class="mv-kpi-label">💸 Investimento</div>
+          <div class="mv-kpi-val">R$ 8,4k</div>
+          <div class="mv-kpi-sub">Meta + Google <span class="mv-kpi-trend-up">↑8%</span></div>
         </div>
-        <div id="countdown-sugestao" style="font-size:10px;color:var(--text2);margin-top:6px;line-height:1.4"></div>
-      </div>
-      <div id="dash-foco-cidade" style="padding:14px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;cursor:pointer">
-        <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:#E24B4A;text-transform:uppercase;margin-bottom:6px">🎯 Foco do dia — cidade em atenção</div>
-        <div id="foco-cidade-nome" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">—</div>
-        <div id="foco-cidade-motivo" style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:8px"></div>
-        <button id="foco-cidade-btn" onclick="" style="font-size:11px;padding:5px 12px;border:none;border-radius:7px;background:var(--orange);color:white;cursor:pointer;font-family:inherit">Resolver agora ↗</button>
+        <!-- CPA médio -->
+        <div class="mv-kpi" title="Custo médio por lead adquirido este mês">
+          <div class="mv-kpi-label">🎯 CPA médio</div>
+          <div class="mv-kpi-val">R$ 34</div>
+          <div class="mv-kpi-sub">por lead <span class="mv-kpi-trend-up">↓R$3</span></div>
+        </div>
+        <!-- ROAS -->
+        <div class="mv-kpi" title="Retorno estimado sobre o investimento em ads">
+          <div class="mv-kpi-label">💹 ROAS</div>
+          <div class="mv-kpi-val">4,2x</div>
+          <div class="mv-kpi-sub">estimado <span class="mv-kpi-trend-up">↑0,3</span></div>
+        </div>
+        <!-- Conversão LP → Lead -->
+        <div class="mv-kpi" title="Taxa de conversão dos visitantes da Landing Page em Leads">
+          <div class="mv-kpi-label">📊 Conv. LP→Lead</div>
+          <div class="mv-kpi-val">8,7%</div>
+          <div class="mv-kpi-sub">de visitas <span class="mv-kpi-trend-up">↑1,2pp</span></div>
+        </div>
+        <!-- Cidades ativas -->
+        <div class="mv-kpi" title="Cidades com integração Machine + Instagram + leads recentes">
+          <div class="mv-kpi-label">🏙️ Cidades ativas</div>
+          <div class="mv-kpi-val">9<span style="font-size:14px;color:var(--text3);font-weight:500"> / 11</span></div>
+          <div class="mv-kpi-sub">Vitória + Jaboatão pendentes</div>
+        </div>
       </div>
     </div>
-    
+
+    <!-- ============================================================ -->
+    <!-- OPERACIONAL DO DIA (mantido — alertas, ações rápidas, foco) -->
+    <!-- ============================================================ -->
+    <div class="mv-section">
+      <div class="mv-section-title">⚡ Operação do dia</div>
+      
+      <!-- ALERTAS DE CAMPANHAS PRÓXIMAS (datas comemorativas) -->
+      <div id="dash-campanhas-alerta" style="margin-bottom:14px"></div>
+      
+      <!-- AÇÕES RÁPIDAS -->
+      <div class="card" style="margin-bottom:14px;padding:12px 14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">⚡ Ações rápidas</div>
+          <span style="font-size:10px;color:var(--text3)">acesso direto às tarefas mais comuns</span>
+        </div>
+        <div id="dash-quick-actions" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px"></div>
+      </div>
+
+      <!-- CONTADOR REGRESSIVO + FOCO DA CIDADE -->
+      <div class="mv-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:0">
+        <div id="dash-countdown" style="padding:14px;background:linear-gradient(135deg,#E6F6FE,#E6F6FE);border:1.5px solid #1AB8F033;border-radius:12px">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:var(--orange);text-transform:uppercase;margin-bottom:6px">⏳ Próxima campanha importante</div>
+          <div id="countdown-nome" style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">—</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div id="countdown-num" style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--orange)">—</div>
+            <div style="font-size:12px;color:var(--text3)">dias restantes</div>
+          </div>
+          <div style="height:5px;background:rgba(26,184,240,.15);border-radius:3px;overflow:hidden">
+            <div id="countdown-bar" style="height:100%;background:var(--orange);border-radius:3px;transition:width .5s"></div>
+          </div>
+          <div id="countdown-sugestao" style="font-size:10px;color:var(--text2);margin-top:6px;line-height:1.4"></div>
+        </div>
+        <div id="dash-foco-cidade" style="padding:14px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;cursor:pointer">
+          <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:#E24B4A;text-transform:uppercase;margin-bottom:6px">🎯 Foco do dia — cidade em atenção</div>
+          <div id="foco-cidade-nome" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">—</div>
+          <div id="foco-cidade-motivo" style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:8px"></div>
+          <button id="foco-cidade-btn" onclick="" style="font-size:11px;padding:5px 12px;border:none;border-radius:7px;background:var(--orange);color:white;cursor:pointer;font-family:inherit">Resolver agora ↗</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 3: POSICIONAMENTO ESTRATÉGICO         -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">🧭 Posicionamento estratégico</div>
+      
+      <!-- Missão / Visão / Proposta -->
+      <div class="mv-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+        <div class="mv-card" style="border-left:4px solid #1AB8F0">
+          <div style="font-size:10px;font-weight:700;color:#0E7AB8;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">🎯 Missão</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.55">Conectar lojas e motoboys com tecnologia humana, transformando a logística do delivery em parceria de verdade.</div>
+        </div>
+        <div class="mv-card" style="border-left:4px solid #1D9E75">
+          <div style="font-size:10px;font-weight:700;color:#3B6D11;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">🔭 Visão</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.55">Ser a maior rede de logística humanizada do Nordeste até 2027 — uma operação por cidade, um sócio por operação.</div>
+        </div>
+        <div class="mv-card" style="border-left:4px solid #EF9F27;background:linear-gradient(135deg,#FFF8EE,#fff)">
+          <div style="font-size:10px;font-weight:700;color:#854F0B;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">💎 Proposta única</div>
+          <div style="font-size:12px;color:var(--text);font-weight:600;line-height:1.45">"Sócio na logística, não fornecedor."</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.4">Não cobramos comissão dos motoboys nem custo fixo das lojas.</div>
+        </div>
+      </div>
+
+      <!-- 2 públicos-alvo lado a lado -->
+      <div class="mv-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="mv-publico-card" style="background:linear-gradient(135deg,#E3F2FD,#fff);border-color:#1AB8F055">
+          <span class="mv-publico-badge" style="background:#0E7AB8;color:white">🎯 Público primário</span>
+          <div style="font-size:15px;font-weight:800;color:#0E7AB8;margin-top:6px;font-family:'Syne',sans-serif">Empresas parceiras</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.5">Lojas de delivery, farmácias e restaurantes que precisam de logística confiável e tecnologia plug-and-play. <strong>Cases:</strong> McDonald's, Burger King, KFC, Domino's, Drogasil, Boticário, Subway, Pague Menos.</div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <span style="font-size:9px;padding:3px 8px;border-radius:5px;background:#1AB8F022;color:#0E7AB8;font-weight:600">Restaurantes</span>
+            <span style="font-size:9px;padding:3px 8px;border-radius:5px;background:#1AB8F022;color:#0E7AB8;font-weight:600">Farmácias</span>
+            <span style="font-size:9px;padding:3px 8px;border-radius:5px;background:#1AB8F022;color:#0E7AB8;font-weight:600">Varejo</span>
+          </div>
+        </div>
+        <div class="mv-publico-card" style="background:linear-gradient(135deg,#FFF8EE,#fff);border-color:#EF9F2755">
+          <span class="mv-publico-badge" style="background:#854F0B;color:white">🏍️ Público secundário</span>
+          <div style="font-size:15px;font-weight:800;color:#854F0B;margin-top:6px;font-family:'Syne',sans-serif">Entregadores parceiros</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.5">Motoboys autônomos que buscam renda estável, suporte humano e respeito. Pagamento direto, sem intermediação abusiva, sem comissão da Gâmi.</div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <span style="font-size:9px;padding:3px 8px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:600">Autônomos</span>
+            <span style="font-size:9px;padding:3px 8px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:600">CNH A</span>
+            <span style="font-size:9px;padding:3px 8px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:600">Moto própria</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid de 8 valores -->
+      <div class="mv-card" style="padding:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;display:flex;align-items:center;gap:6px">💛 Os 8 valores da Gâmi</div>
+        <div class="mv-valores-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div class="mv-valor-card" title="Faça o certo, mesmo quando ninguém está vendo"><span style="font-size:18px">🛡️</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Caráter</div></div></div>
+          <div class="mv-valor-card" title="Pessoas antes de números"><span style="font-size:18px">👥</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Pessoas em 1º Lugar</div></div></div>
+          <div class="mv-valor-card" title="Existe um motivo maior que o lucro"><span style="font-size:18px">🎯</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Propósito Além do Lucro</div></div></div>
+          <div class="mv-valor-card" title="Palavra dada, palavra cumprida"><span style="font-size:18px">🤝</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Integridade</div></div></div>
+          <div class="mv-valor-card" title="O simples bem feito vence o complicado mal feito"><span style="font-size:18px">✨</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Excelência com Simplicidade</div></div></div>
+          <div class="mv-valor-card" title="Crescer sem perder o que importa"><span style="font-size:18px">🌱</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Crescimento Sustentável</div></div></div>
+          <div class="mv-valor-card" title="Somos uma família que trabalha junta"><span style="font-size:18px">🏡</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Comunidade e Família</div></div></div>
+          <div class="mv-valor-card" title="Fé que respeita todas as fés"><span style="font-size:18px">🙏</span><div><div style="font-weight:700;color:var(--text);font-size:11px">Fé com Respeito</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 4: ANÁLISE SWOT (2x2)                 -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">🔍 Análise SWOT</div>
+      <div class="mv-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <!-- FORÇAS -->
+        <div class="mv-swot-card" style="background:linear-gradient(135deg,#EAF3DE,#fff);border-color:#1D9E7555">
+          <div class="mv-swot-title" style="color:#3B6D11">💪 Forças</div>
+          <ul class="mv-swot-list">
+            <li>Cases peso-pesado (McDonald's, BK, KFC, Domino's, Drogasil)</li>
+            <li>Sócios operadores locais em cada cidade</li>
+            <li>Cultura "Fé com Respeito" — atendimento humano</li>
+            <li>Sem custo fixo de frota — modelo escalável</li>
+            <li>Tecnologia própria integrada (Machine + Dashboard)</li>
+            <li>Pagamento direto, sem comissão pra motoboys</li>
+          </ul>
+        </div>
+        <!-- FRAQUEZAS -->
+        <div class="mv-swot-card" style="background:linear-gradient(135deg,#FFF8EE,#fff);border-color:#EF9F2755">
+          <div class="mv-swot-title" style="color:#854F0B">⚠️ Fraquezas</div>
+          <ul class="mv-swot-list">
+            <li>Operação em expansão recente (11 cidades novas)</li>
+            <li>Dependência de motoboys autônomos (rotatividade)</li>
+            <li>Marca regional, ainda fora do mainstream nacional</li>
+            <li>Cobertura geográfica concentrada no Nordeste</li>
+            <li>Equipe enxuta de marketing (centralizada em Cleyton)</li>
+            <li>Sistema de pontos/ranking ainda em definição</li>
+          </ul>
+        </div>
+        <!-- OPORTUNIDADES -->
+        <div class="mv-swot-card" style="background:linear-gradient(135deg,#E3F2FD,#fff);border-color:#1AB8F055">
+          <div class="mv-swot-title" style="color:#0E7AB8">🚀 Oportunidades</div>
+          <ul class="mv-swot-list">
+            <li>Mercado de delivery cresce ~20% ao ano</li>
+            <li>Insatisfação crescente com iFood/Uber (alta comissão)</li>
+            <li>Expansão pra capitais Centro-Oeste e Sudeste</li>
+            <li>Mercado de farmácia/conveniência em alta</li>
+            <li>Parcerias com franquias regionais (B2B2C)</li>
+            <li>Demanda por motoboys "exclusivos" e fidelizados</li>
+          </ul>
+        </div>
+        <!-- AMEAÇAS -->
+        <div class="mv-swot-card" style="background:linear-gradient(135deg,#FCEBEB,#fff);border-color:#E24B4A55">
+          <div class="mv-swot-title" style="color:#A32D2D">⚡ Ameaças</div>
+          <ul class="mv-swot-list">
+            <li>iFood, Uber e 99 com poder financeiro maior</li>
+            <li>Mudanças regulatórias trabalhistas (motoboys CLT?)</li>
+            <li>Apps grandes podem dropar comissão pra reagir</li>
+            <li>Dependência de WhatsApp Business e Meta API</li>
+            <li>Volatilidade do combustível pressiona motoboys</li>
+            <li>Mudanças constantes nas regras do Instagram</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 5: FUNIL DE MARKETING (3 etapas)      -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">🌀 Funil de marketing — Distribuição de orçamento</div>
+      <div class="mv-card" style="padding:18px">
+        <!-- Etapa 1: Descoberta -->
+        <div class="mv-funil-row" style="background:linear-gradient(135deg,#E6F6FE,#fff);border-left:4px solid #1AB8F0">
+          <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#0E7AB8;min-width:80px">70%</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-size:14px;font-weight:800;color:#0E7AB8;letter-spacing:.5px">🔭 DESCOBERTA</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Topo do funil — atrair atenção e gerar awareness</div>
+              </div>
+              <span style="font-size:10px;padding:4px 10px;border-radius:12px;background:#1D9E7522;color:#3B6D11;font-weight:700">● Em alta</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.5">
+              <strong style="color:var(--text2)">Formatos:</strong> Reels, Stories, Posts orgânicos, Ads Meta segmentados<br>
+              <strong style="color:var(--text2)">Status:</strong> Boost ativo em 9 cidades · ~261 stories/semana automatizados
+            </div>
+            <div class="mv-funil-bar"><div class="mv-funil-bar-fill" data-pct="70" style="background:linear-gradient(90deg,#1AB8F0,#0E7AB8)"></div></div>
+          </div>
+        </div>
+        <!-- Etapa 2: Convicção -->
+        <div class="mv-funil-row" style="background:linear-gradient(135deg,#FFF8EE,#fff);border-left:4px solid #EF9F27">
+          <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#854F0B;min-width:80px">20%</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-size:14px;font-weight:800;color:#854F0B;letter-spacing:.5px">💡 CONVICÇÃO</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Meio do funil — educar e convencer com prova social</div>
+              </div>
+              <span style="font-size:10px;padding:4px 10px;border-radius:12px;background:#EF9F2722;color:#854F0B;font-weight:700">↑ Em construção</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.5">
+              <strong style="color:var(--text2)">Formatos:</strong> Cases de parceiros, depoimentos, comparativos, conteúdo educativo<br>
+              <strong style="color:var(--text2)">Status:</strong> 12 cases publicados · Série "Bastidores Gâmi" em planejamento
+            </div>
+            <div class="mv-funil-bar"><div class="mv-funil-bar-fill" data-pct="20" style="background:linear-gradient(90deg,#EF9F27,#F4B942)"></div></div>
+          </div>
+        </div>
+        <!-- Etapa 3: Decisão -->
+        <div class="mv-funil-row" style="background:linear-gradient(135deg,#FCEBEB,#fff);border-left:4px solid #E24B4A">
+          <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:#A32D2D;min-width:80px">10%</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <div>
+                <div style="font-size:14px;font-weight:800;color:#A32D2D;letter-spacing:.5px">🎯 DECISÃO</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:2px">Fundo do funil — converter intenção em parceria</div>
+              </div>
+              <span style="font-size:10px;padding:4px 10px;border-radius:12px;background:#E24B4A22;color:#A32D2D;font-weight:700">⚡ Ativo</span>
+            </div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.5">
+              <strong style="color:var(--text2)">Formatos:</strong> Landing pages, retargeting, WhatsApp closer, agendamento direto<br>
+              <strong style="color:var(--text2)">Status:</strong> Conversão LP→Lead em 8,7% · WhatsApp closer em implementação
+            </div>
+            <div class="mv-funil-bar"><div class="mv-funil-bar-fill" data-pct="10" style="background:linear-gradient(90deg,#E24B4A,#F25E5E)"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 6: MÉTRICAS E GRÁFICOS                -->
+    <!-- TODO: plugar Meta API + Google Ads + Supabase -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">📊 Métricas e gráficos</div>
+      <div class="mv-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <!-- Gráfico 1: Tendência Leads 30d -->
+        <div class="mv-metrica-card">
+          <div class="mv-metrica-title">📈 Tendência de Leads (30 dias)</div>
+          <div class="mv-metrica-sub">Captação diária — soma empresas + entregadores</div>
+          <div id="mv-chart-tendencia" style="width:100%;height:160px"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--text3)">
+            <span>Pico: <strong style="color:#1D9E75">14 leads</strong> (22/05)</span>
+            <span>Média: <strong>8,2/dia</strong></span>
+            <span>Total: <strong>247</strong></span>
+          </div>
+        </div>
+        <!-- Gráfico 2: Performance por cidade -->
+        <div class="mv-metrica-card">
+          <div class="mv-metrica-title">🏙️ Performance por cidade</div>
+          <div class="mv-metrica-sub">Leads ativos no mês — top 5 cidades</div>
+          <div id="mv-chart-cidades" style="width:100%"></div>
+        </div>
+        <!-- Gráfico 3: Mix de canal -->
+        <div class="mv-metrica-card">
+          <div class="mv-metrica-title">💬 Mix de canal</div>
+          <div class="mv-metrica-sub">Como os leads chegam</div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:12px">
+            <div id="mv-chart-mix" style="width:120px;height:120px;flex-shrink:0"></div>
+            <div style="flex:1;font-size:12px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                <span style="width:12px;height:12px;border-radius:3px;background:#25D366"></span>
+                <span style="flex:1">WhatsApp Direct</span>
+                <strong style="color:#25D366">68%</strong>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                <span style="width:12px;height:12px;border-radius:3px;background:#1AB8F0"></span>
+                <span style="flex:1">Formulário LP</span>
+                <strong style="color:#0E7AB8">32%</strong>
+              </div>
+              <div style="margin-top:8px;font-size:10px;color:var(--text3);font-style:italic;line-height:1.4">WhatsApp continua liderando como canal preferido — ajustar a LP pra direcionar mais pra WApp.</div>
+            </div>
+          </div>
+        </div>
+        <!-- Gráfico 4: CPA por plataforma -->
+        <div class="mv-metrica-card">
+          <div class="mv-metrica-title">💰 CPA por plataforma</div>
+          <div class="mv-metrica-sub">Custo por lead — comparativo</div>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                <div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">📘</span><strong style="font-size:12px">Meta Ads</strong></div>
+                <strong style="font-size:14px;color:#1D9E75">R$ 28,40</strong>
+              </div>
+              <div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden"><div style="height:100%;width:55%;background:linear-gradient(90deg,#1D9E75,#3DBC8D);border-radius:5px;transition:width 1s"></div></div>
+              <div style="font-size:9px;color:var(--text3);margin-top:3px">Melhor performance · ROAS 4,7x</div>
+            </div>
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                <div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">🔍</span><strong style="font-size:12px">Google Ads</strong></div>
+                <strong style="font-size:14px;color:#EF9F27">R$ 42,10</strong>
+              </div>
+              <div style="height:10px;background:var(--surface2);border-radius:5px;overflow:hidden"><div style="height:100%;width:82%;background:linear-gradient(90deg,#EF9F27,#F4B942);border-radius:5px;transition:width 1s .2s"></div></div>
+              <div style="font-size:9px;color:var(--text3);margin-top:3px">Custo maior · ROAS 3,2x</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 7: CONCORRÊNCIA                       -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">⚔️ Análise da concorrência</div>
+      <div class="mv-card" style="padding:0;overflow:hidden">
+        <div style="padding:12px 14px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="font-size:12px;font-weight:700;color:var(--text)">Comparativo de mercado</div>
+          <div style="font-size:10px;color:var(--text3)">Hover na linha pra destacar</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="mv-tabela">
+            <thead>
+              <tr>
+                <th>Concorrente</th>
+                <th>Tipo</th>
+                <th>Comissão</th>
+                <th>Suporte</th>
+                <th>Fidelidade</th>
+                <th>Escala</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- DIRETOS -->
+              <tr>
+                <td>iFood Entregas</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#E24B4A22;color:#A32D2D;font-weight:600">Direto</span></td>
+                <td><strong style="color:#A32D2D">23-30%</strong></td>
+                <td><span class="mv-rating">★★☆☆☆</span> chatbot</td>
+                <td><span class="mv-rating">★☆☆☆☆</span> só app</td>
+                <td><span class="mv-rating">★★★★★</span> nacional</td>
+              </tr>
+              <tr>
+                <td>Uber Direct</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#E24B4A22;color:#A32D2D;font-weight:600">Direto</span></td>
+                <td><strong style="color:#A32D2D">22-27%</strong></td>
+                <td><span class="mv-rating">★★☆☆☆</span> bot</td>
+                <td><span class="mv-rating">★☆☆☆☆</span> nenhuma</td>
+                <td><span class="mv-rating">★★★★★</span> nacional</td>
+              </tr>
+              <tr>
+                <td>99 Entregas</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#E24B4A22;color:#A32D2D;font-weight:600">Direto</span></td>
+                <td><strong style="color:#EF9F27">20-25%</strong></td>
+                <td><span class="mv-rating">★★☆☆☆</span> limitado</td>
+                <td><span class="mv-rating">★☆☆☆☆</span> nenhuma</td>
+                <td><span class="mv-rating">★★★★☆</span> forte</td>
+              </tr>
+              <tr>
+                <td>Loggi</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#E24B4A22;color:#A32D2D;font-weight:600">Direto</span></td>
+                <td><strong style="color:#EF9F27">18-24%</strong></td>
+                <td><span class="mv-rating">★★★☆☆</span> regular</td>
+                <td><span class="mv-rating">★★☆☆☆</span> média</td>
+                <td><span class="mv-rating">★★★☆☆</span> B2B</td>
+              </tr>
+              <!-- INDIRETOS -->
+              <tr>
+                <td>Motoboy avulso</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:600">Indireto</span></td>
+                <td><strong style="color:#1D9E75">0% (direto)</strong></td>
+                <td><span class="mv-rating">☆☆☆☆☆</span> nenhum</td>
+                <td><span class="mv-rating">★☆☆☆☆</span> nenhuma</td>
+                <td><span class="mv-rating">★☆☆☆☆</span> 1 entrega</td>
+              </tr>
+              <tr>
+                <td>Frota própria</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:600">Indireto</span></td>
+                <td><strong style="color:#E24B4A">Alto CAPEX</strong></td>
+                <td><span class="mv-rating">★★★★☆</span> interno</td>
+                <td><span class="mv-rating">★★★★★</span> total</td>
+                <td><span class="mv-rating">★★☆☆☆</span> limitada</td>
+              </tr>
+              <!-- GAMI (destaque) -->
+              <tr style="background:linear-gradient(135deg,#FFF8EE,#FFFCF5);font-weight:600;border-top:2px solid #EF9F27">
+                <td style="color:#854F0B">🚀 Gâmi Delivery</td>
+                <td><span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#1D9E7522;color:#3B6D11;font-weight:700">Você 🏆</span></td>
+                <td><strong style="color:#1D9E75">0% motoboy</strong></td>
+                <td><span class="mv-rating">★★★★★</span> humano</td>
+                <td><span class="mv-rating">★★★★☆</span> alta</td>
+                <td><span class="mv-rating">★★★☆☆</span> 11 cidades</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:10px 14px;background:#FFF8EE;border-top:1px solid #EF9F2733;font-size:10.5px;color:#854F0B;line-height:1.5">
+          💡 <strong>Diferencial Gâmi:</strong> Único player que combina <strong>0% comissão pro motoboy</strong> + <strong>suporte humano</strong> + <strong>sócios locais</strong>. Apostamos em relacionamento, não em escala bruta.
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================================== -->
+    <!-- BLOCO 8: PLANO DE AÇÃO (3 colunas)          -->
+    <!-- =========================================== -->
+    <div class="mv-section">
+      <div class="mv-section-title">🗓️ Plano de ação</div>
+      <div class="mv-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <!-- ESTE MÊS -->
+        <div class="mv-plano-col" style="border-top-color:#E24B4A">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:800;color:#A32D2D;letter-spacing:.5px;text-transform:uppercase">🔥 Este mês</div>
+            <span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#E24B4A22;color:#A32D2D;font-weight:600">Em execução</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#E24B4A">
+            <strong>Captação 50 motoboys</strong><br>
+            <span style="color:var(--text3);font-size:10px">Maceió + Recife · meta: 30 ativos até 15/06</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#E24B4A">
+            <strong>Sessão de fotos top motoboys</strong><br>
+            <span style="color:var(--text3);font-size:10px">3 cidades · banco de imagens pra reels</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#E24B4A">
+            <strong>Campanha "Black Maio" lojas</strong><br>
+            <span style="color:var(--text3);font-size:10px">Desconto setup + free trial 30d</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#E24B4A">
+            <strong>Renovar logo nas redes</strong><br>
+            <span style="color:var(--text3);font-size:10px">9 perfis · padrão visual unificado</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#E24B4A">
+            <strong>Relatório mensal Meta Ads</strong><br>
+            <span style="color:var(--text3);font-size:10px">Reunião diretoria · KPIs do mês</span>
+          </div>
+        </div>
+        <!-- PRÓXIMO MÊS -->
+        <div class="mv-plano-col" style="border-top-color:#EF9F27">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:800;color:#854F0B;letter-spacing:.5px;text-transform:uppercase">📅 Próximo mês</div>
+            <span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:600">Planejado</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#EF9F27">
+            <strong>Onboarding 3 franquias novas</strong><br>
+            <span style="color:var(--text3);font-size:10px">Subway, KFC e Domino's · Aracaju + Cuiabá</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#EF9F27">
+            <strong>Série "Bastidores Gâmi"</strong><br>
+            <span style="color:var(--text3);font-size:10px">10 reels · 1 por cidade ativa</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#EF9F27">
+            <strong>WhatsApp closer</strong><br>
+            <span style="color:var(--text3);font-size:10px">Templates utility · automação 6 fluxos</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#EF9F27">
+            <strong>Planejamento Q3</strong><br>
+            <span style="color:var(--text3);font-size:10px">Reunião diretoria · metas trimestrais</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#EF9F27">
+            <strong>Treinamento gestores</strong><br>
+            <span style="color:var(--text3);font-size:10px">Atendimento humanizado · 9 cidades</span>
+          </div>
+        </div>
+        <!-- 60-90 DIAS -->
+        <div class="mv-plano-col" style="border-top-color:#1AB8F0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-size:11px;font-weight:800;color:#0E7AB8;letter-spacing:.5px;text-transform:uppercase">🚀 60-90 dias</div>
+            <span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#1AB8F022;color:#0E7AB8;font-weight:600">Roadmap</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#1AB8F0">
+            <strong>Expansão Goiânia (12ª cidade)</strong><br>
+            <span style="color:var(--text3);font-size:10px">Pesquisa · sócio local · onboarding</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#1AB8F0">
+            <strong>App próprio Gâmi (MVP)</strong><br>
+            <span style="color:var(--text3);font-size:10px">Motoboy: aceitar corrida · histórico</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#1AB8F0">
+            <strong>Sistema de pontos definitivo</strong><br>
+            <span style="color:var(--text3);font-size:10px">Ranking Gâmi · gamificação interna</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#1AB8F0">
+            <strong>Programa de embaixadores</strong><br>
+            <span style="color:var(--text3);font-size:10px">Top motoboys · captação indireta</span>
+          </div>
+          <div class="mv-plano-acao" style="border-left-color:#1AB8F0">
+            <strong>Integração Meta API real-time</strong><br>
+            <span style="color:var(--text3);font-size:10px">Dashboard com dados ao vivo</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
   <!-- /VISÃO GERAL -->
-
-  <!-- placeholders para os outros painéis (preenchidos via marketingAba) -->
   <div id="mkt-painel-campanhas" class="mkt-painel" style="display:none"></div>
 
   <!-- ========== SUB-ABA: AGENDAMENTO INSTAGRAM (padrão) ========== -->
-  <div id="mkt-painel-agenda" class="mkt-painel">
+  <div id="mkt-painel-agenda" class="mkt-painel" style="display:none">
     <style>
       @keyframes ag-fadeup { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
       .ag-section { animation: ag-fadeup .4s ease both; }
@@ -17217,8 +17790,8 @@ function iaGerarSugestoes(){
     +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
       +'<span style="font-size:20px">💡</span>'
       +'<div style="flex:1">'
-        +'<div style="font-size:13px;font-weight:700">Sugestões personalizadas</div>'
-        +'<div style="font-size:10px;color:var(--text3)">Clique em "+ Adicionar" pra mandar pra sua aba "Hoje"</div>'
+        +'<div style="font-size:13px;font-weight:700">Sugestões de tarefas</div>'
+        +'<div style="font-size:10px;color:var(--text3)">Lista pra te inspirar. Crie no seu jeito na aba "📋 Hoje".</div>'
       +'</div>'
       +'<button onclick="iaGerarComIA()" id="ia-btn-real" style="padding:6px 11px;border:none;border-radius:6px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="Gera com IA do Claude (Anthropic)">🤖 Mais ideias com IA</button>'
     +'</div>'
@@ -17235,14 +17808,13 @@ function iaGerarSugestoes(){
               +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:var(--border);color:var(--text2)">'+s.cat+'</span>'
             +'</div>'
           +'</div>'
-          +'<button onclick="iaAdicionarSugestao('+i+')" id="ia-sug-btn-'+i+'" style="padding:6px 11px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Adicionar</button>'
         +'</div>';
       }).join('')
     +'</div>'
+    +'<div style="margin-top:12px;padding:10px;background:#FFF8EE;border:1px solid #EF9F2733;border-radius:8px;font-size:11px;color:#854F0B;text-align:center">'
+      +'👉 Gostou de alguma? Vá na aba <strong>📋 Hoje</strong> e adicione no seu jeito, com prazo, prioridade e categoria.'
+    +'</div>'
   +'</div>';
-
-  // Guarda as sugestões em memória pra adicionar depois
-  window._iaSugestoesAtuais = sugestoes;
 
   if(typeof toast === 'function') toast(sugestoes.length+' sugestões geradas', 'success');
 }
@@ -17327,7 +17899,7 @@ async function iaGerarComIA(){
         +'<span style="font-size:20px">🤖</span>'
         +'<div style="flex:1">'
           +'<div style="font-size:13px;font-weight:700">Sugestões geradas com Claude</div>'
-          +'<div style="font-size:10px;color:var(--text3)">Baseadas no seu contexto. Clique em "+ Adicionar"</div>'
+          +'<div style="font-size:10px;color:var(--text3)">Lista pra te inspirar. Crie no seu jeito na aba "📋 Hoje".</div>'
         +'</div>'
       +'</div>'
       +'<div style="display:flex;flex-direction:column;gap:6px">'
@@ -17343,12 +17915,13 @@ async function iaGerarComIA(){
                 +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:var(--border);color:var(--text2)">'+s.cat+'</span>'
               +'</div>'
             +'</div>'
-            +'<button onclick="iaAdicionarSugestao('+i+')" id="ia-sug-btn-'+i+'" style="padding:6px 11px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Adicionar</button>'
           +'</div>';
         }).join('')
       +'</div>'
+      +'<div style="margin-top:12px;padding:10px;background:#FFF8EE;border:1px solid #EF9F2733;border-radius:8px;font-size:11px;color:#854F0B;text-align:center">'
+        +'👉 Gostou de alguma? Vá na aba <strong>📋 Hoje</strong> e adicione no seu jeito, com prazo, prioridade e categoria.'
+      +'</div>'
     +'</div>';
-    window._iaSugestoesAtuais = sugIA;
     if(typeof toast === 'function') toast(sugIA.length+' sugestões geradas pela IA', 'success');
   } catch(err){
     // Erro: créditos esgotados ou rede
@@ -17367,40 +17940,6 @@ async function iaGerarComIA(){
   } finally {
     if(btn){ btn.disabled = false; btn.innerHTML = '🤖 Mais ideias com IA'; }
   }
-}
-
-function iaAdicionarSugestao(idx){
-  var s = window._iaSugestoesAtuais && window._iaSugestoesAtuais[idx];
-  if(!s) return;
-  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  if(!u || !u.id){
-    if(typeof toast === 'function') toast('Faça login pra adicionar tarefas', 'error');
-    return;
-  }
-  var lista = (typeof getTarefasRaw === 'function') ? getTarefasRaw('diario') : [];
-  var nova = {
-    id:'tf'+Date.now()+'_'+idx,
-    texto:s.t,
-    prio:s.prio||'media',
-    cat:s.cat||'Outro',
-    feito:false,
-    criadoEm:new Date().toISOString(),
-    pessoa_id:u.id,
-    origem:'ia'
-  };
-  lista.push(nova);
-  if(typeof saveTarefas === 'function') saveTarefas('diario', null, lista);
-  if(typeof tfSupaSalvar === 'function') tfSupaSalvar(nova, 'diario', null);
-  if(typeof auditLog === 'function') auditLog('tarefa_criada_ia', nova.id, (nova.texto||'').slice(0,60));
-  // Visual feedback no botão
-  var btn = document.getElementById('ia-sug-btn-'+idx);
-  if(btn){
-    btn.innerHTML = '✓ Adicionada';
-    btn.style.background = '#1D9E75';
-    btn.disabled = true;
-    btn.style.opacity = '.7';
-  }
-  if(typeof toast === 'function') toast('Tarefa adicionada à aba Hoje', 'success');
 }
 
 /* ============================================================ */
@@ -17708,6 +18247,129 @@ function renderDelegadasPorMim(){
 /* Move dinamicamente o conteúdo das páginas pg-campanhas /      */
 /* pg-inbox / pg-conteudo para dentro dos painéis da aba.        */
 /* ============================================================ */
+/* ============================================================ */
+/* MARKETING — VISÃO GERAL (Bloco estratégico)                  */
+/* Inicializa gráficos SVG, animações e botão Exportar PDF      */
+/* ============================================================ */
+function mvInit(){
+  // Atualiza data da última atualização
+  try {
+    var elData = document.getElementById('mv-ultima-atualizacao');
+    if(elData){
+      var d = new Date();
+      var dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+      elData.textContent = dias[d.getDay()]+', '+d.getDate()+' '+meses[d.getMonth()]+' · '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    }
+  } catch(e){}
+
+  // Anima as barras do funil
+  setTimeout(function(){
+    document.querySelectorAll('.mv-funil-bar-fill').forEach(function(bar){
+      var pct = bar.getAttribute('data-pct') || '0';
+      bar.style.width = pct + '%';
+    });
+  }, 100);
+
+  // Renderiza gráficos
+  try { mvRenderChartTendencia(); } catch(e){}
+  try { mvRenderChartCidades(); } catch(e){}
+  try { mvRenderChartMix(); } catch(e){}
+}
+
+/* SVG: Tendência de Leads (30 dias) — line chart simples */
+function mvRenderChartTendencia(){
+  var el = document.getElementById('mv-chart-tendencia');
+  if(!el) return;
+  // TODO: trocar por dados reais do Supabase (leads_diarios)
+  // Mock: 30 dias com variação realista, pico no meio
+  var dados = [4,6,3,5,8,7,9,6,8,10,7,9,11,8,12,9,11,14,10,12,9,11,8,10,12,9,11,13,10,8];
+  var w = el.offsetWidth || 320;
+  var h = 160;
+  var pad = { t:10, r:8, b:18, l:24 };
+  var maxV = Math.max.apply(null, dados);
+  var dx = (w - pad.l - pad.r) / (dados.length - 1);
+  var pts = dados.map(function(v, i){
+    var x = pad.l + i * dx;
+    var y = pad.t + (maxV - v) / maxV * (h - pad.t - pad.b);
+    return [x, y];
+  });
+  var path = pts.map(function(p, i){ return (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1); }).join(' ');
+  var area = path + ' L'+pts[pts.length-1][0]+','+(h-pad.b)+' L'+pts[0][0]+','+(h-pad.b)+' Z';
+  // Eixos Y (3 linhas)
+  var grid = '';
+  for(var i=0; i<=3; i++){
+    var y = pad.t + i*((h-pad.t-pad.b)/3);
+    var val = Math.round(maxV - (maxV/3)*i);
+    grid += '<line x1="'+pad.l+'" y1="'+y+'" x2="'+(w-pad.r)+'" y2="'+y+'" stroke="#E5E7EB" stroke-dasharray="3,3"/>';
+    grid += '<text x="'+(pad.l-4)+'" y="'+(y+3)+'" font-size="8" fill="#9CA3AF" text-anchor="end">'+val+'</text>';
+  }
+  // Pontos com hover
+  var dots = pts.map(function(p, i){
+    return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="2.5" fill="#1AB8F0" stroke="white" stroke-width="1.5"><title>Dia '+(i+1)+': '+dados[i]+' leads</title></circle>';
+  }).join('');
+  el.innerHTML =
+    '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:100%;display:block">'
+    +'<defs><linearGradient id="mv-grad-tend" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1AB8F0" stop-opacity=".4"/><stop offset="100%" stop-color="#1AB8F0" stop-opacity="0"/></linearGradient></defs>'
+    +grid
+    +'<path d="'+area+'" fill="url(#mv-grad-tend)"/>'
+    +'<path d="'+path+'" stroke="#0E7AB8" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+    +dots
+    +'<text x="'+pad.l+'" y="'+(h-4)+'" font-size="8" fill="#9CA3AF">há 30d</text>'
+    +'<text x="'+(w-pad.r)+'" y="'+(h-4)+'" font-size="8" fill="#9CA3AF" text-anchor="end">hoje</text>'
+    +'</svg>';
+}
+
+/* SVG: Performance por cidade — barras horizontais */
+function mvRenderChartCidades(){
+  var el = document.getElementById('mv-chart-cidades');
+  if(!el) return;
+  // TODO: trocar por dados reais do Supabase (leads agrupados por cidade)
+  var dados = [
+    { c:'Maceió',     v:62, cor:'#1AB8F0' },
+    { c:'Recife',     v:48, cor:'#0E7AB8' },
+    { c:'Fortaleza',  v:41, cor:'#EF9F27' },
+    { c:'João Pessoa',v:33, cor:'#1D9E75' },
+    { c:'Natal',      v:27, cor:'#8B5CF6' }
+  ];
+  var maxV = Math.max.apply(null, dados.map(function(d){return d.v;}));
+  el.innerHTML = '<div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">'
+    + dados.map(function(d, i){
+        var pct = Math.round((d.v / maxV) * 100);
+        return '<div>'
+          +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px"><span style="font-weight:500">'+d.c+'</span><strong>'+d.v+'</strong></div>'
+          +'<div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+d.cor+';border-radius:4px;transition:width 1s '+(i*.1)+'s"></div></div>'
+        +'</div>';
+      }).join('')
+    +'</div>';
+}
+
+/* SVG: Mix de canal — donut WhatsApp vs Form */
+function mvRenderChartMix(){
+  var el = document.getElementById('mv-chart-mix');
+  if(!el) return;
+  var w = 120, cx = 60, cy = 60, r = 42, sw = 16;
+  var wpp = 68, form = 32; // %
+  var c = 2 * Math.PI * r;
+  var d1 = c * (wpp/100);
+  var d2 = c * (form/100);
+  el.innerHTML =
+    '<svg viewBox="0 0 '+w+' '+w+'" style="width:100%;height:100%;display:block;transform:rotate(-90deg)">'
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="#1AB8F0" stroke-width="'+sw+'" stroke-dasharray="'+d2+' '+(c-d2)+'"/>'
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="#25D366" stroke-width="'+sw+'" stroke-dasharray="'+d1+' '+(c-d1)+'" stroke-dashoffset="'+(-d2)+'"/>'
+    +'</svg>'
+    +'<div style="text-align:center;margin-top:-78px;position:relative;font-family:\'Syne\',sans-serif"><div style="font-size:18px;font-weight:800;color:var(--text);line-height:1">247</div><div style="font-size:9px;color:var(--text3);font-weight:500">leads/mês</div></div>'
+    +'<div style="height:30px"></div>';
+}
+
+/* Exportar PDF — usa print API do navegador */
+function mvExportarPDF(){
+  if(typeof toast === 'function') toast('Abrindo diálogo de impressão... Escolha "Salvar como PDF"', 'info');
+  // Pequeno delay pra mostrar o toast antes do print
+  setTimeout(function(){ window.print(); }, 300);
+}
+
+/* ============================================================ */
 function marketingAba(aba){
   // Mostra/esconde painéis
   ['visao','campanhas','agenda','conteudo','ideias','scripts','blog'].forEach(function(t){
@@ -17721,6 +18383,7 @@ function marketingAba(aba){
     }
   });
   if(aba === 'agenda' && typeof agInit === 'function') agInit();
+  if(aba === 'visao' && typeof mvInit === 'function') mvInit();
   
   // Carrega conteúdo das páginas originais para dentro dos painéis (uma vez só)
   if(aba === 'campanhas'){
