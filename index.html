@@ -1,4 +1,4 @@
-<!-- v23.1 - Projetos integra com Hoje + Nova delegacao + Assistente IA + sem Rotina marketing - 30/05/2026 -->
+<!-- v23.3 - Delegar multi-select + IA filtrada por permissao + IA interna (blog-ai) - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2146,7 +2146,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="iaGerarSugestoes()" class="btn btn-primary" style="flex:1;min-width:140px;font-size:12px">✨ Gerar sugestões</button>
-        <button onclick="iaAbrirClaudeExterno()" style="padding:8px 14px;border:none;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🚀 Mais ideias com Claude</button>
       </div>
     </div>
 
@@ -17047,17 +17046,21 @@ function abrirModalNovaDelegacao(){
 /* TAREFAS — ASSISTENTE IA (sugestões locais por cargo/área)     */
 /* ============================================================ */
 
-/* Templates de tarefas por área da Gâmi - usadas como sugestões */
+/* Templates de tarefas por área da Gâmi - usadas como sugestões
+   Cada item tem flag "soSuper" se for tarefa específica de Cleyton (plataforma/marketing) */
 var IA_TEMPLATES_POR_AREA = {
   operacao: [
-    { t:'Conferir bot de stories automáticos (9 cidades)', cat:'Operação', prio:'media' },
-    { t:'Acompanhar fila de motoboys na Machine', cat:'Operação', prio:'media' },
     { t:'Reunião rápida com a equipe operacional', cat:'Reunião', prio:'alta' },
-    { t:'Verificar relatório diário de corridas', cat:'Operação', prio:'media' },
-    { t:'Atualizar lista de motoboys ativos no Supabase', cat:'Operação', prio:'baixa' },
+    { t:'Conferir relatório diário de corridas', cat:'Operação', prio:'media' },
     { t:'Conferir ocorrências da semana anterior', cat:'Operação', prio:'media' },
+    { t:'Acompanhar tempo médio de aceite/entrega', cat:'Operação', prio:'alta' },
+    { t:'Ligar pros motoboys que sumiram esta semana', cat:'Operação', prio:'alta' },
     { t:'Validar status de novos cadastros de motoboys', cat:'Operação', prio:'baixa' },
-    { t:'Acompanhar tempo médio de aceite/entrega', cat:'Operação', prio:'alta' }
+    { t:'Acompanhar tempo médio de aceite/entrega da minha cidade', cat:'Operação', prio:'media' },
+    { t:'Visita técnica em parceiro com queda de pedidos', cat:'Operação', prio:'alta' },
+    // Só super_admin
+    { t:'Conferir bot de stories automáticos (9 cidades)', cat:'Operação', prio:'media', soSuper:true },
+    { t:'Atualizar lista de motoboys ativos no Supabase', cat:'Operação', prio:'baixa', soSuper:true }
   ],
   comercial: [
     { t:'Visitar 3 lojas potenciais na minha cidade', cat:'Comercial', prio:'alta' },
@@ -17067,7 +17070,9 @@ var IA_TEMPLATES_POR_AREA = {
     { t:'Mapear concorrência local (preços, taxas)', cat:'Comercial', prio:'baixa' },
     { t:'Follow-up com lojas que pararam de pedir', cat:'Comercial', prio:'alta' },
     { t:'Agendar visita técnica em parceiro grande', cat:'Comercial', prio:'media' },
-    { t:'Renovar contrato com [nome do parceiro]', cat:'Comercial', prio:'media' }
+    { t:'Renovar contrato com parceiro próximo do fim', cat:'Comercial', prio:'media' },
+    { t:'Identificar 3 oportunidades de cross-sell em parceiros atuais', cat:'Comercial', prio:'media' },
+    { t:'Confirmar pedidos do dia com parceiros estratégicos', cat:'Comercial', prio:'media' }
   ],
   financeiro: [
     { t:'Conciliação bancária do dia', cat:'Financeiro', prio:'alta' },
@@ -17077,45 +17082,51 @@ var IA_TEMPLATES_POR_AREA = {
     { t:'Acompanhar contas a receber atrasadas', cat:'Financeiro', prio:'media' },
     { t:'Conferir comissões da semana', cat:'Financeiro', prio:'media' },
     { t:'Preparar relatório financeiro mensal', cat:'Financeiro', prio:'baixa' },
-    { t:'Reunião com contador sobre impostos', cat:'Reunião', prio:'media' }
+    { t:'Reunião com contador sobre impostos', cat:'Reunião', prio:'media' },
+    { t:'Revisar planilha de cobrança da semana', cat:'Financeiro', prio:'alta' },
+    { t:'Conferir descontos e bonificações de parceiros', cat:'Financeiro', prio:'media' }
   ],
   atendimento: [
-    { t:'Responder mensagens pendentes no inbox Instagram', cat:'Atendimento', prio:'alta' },
-    { t:'Triagem do WhatsApp da empresa (1h)', cat:'Atendimento', prio:'alta' },
+    { t:'Triagem do WhatsApp da empresa (1h focada)', cat:'Atendimento', prio:'alta' },
     { t:'Follow-up com cliente que reclamou ontem', cat:'Atendimento', prio:'alta' },
-    { t:'Resolver chamado #[número] pendente', cat:'Atendimento', prio:'media' },
-    { t:'Documentar caso recorrente no FAQ', cat:'Administrativo', prio:'baixa' },
+    { t:'Resolver chamados pendentes da semana', cat:'Atendimento', prio:'media' },
     { t:'NPS: enviar pesquisa pra parceiros últimos 30d', cat:'Atendimento', prio:'media' },
-    { t:'Análise de reclamações da semana', cat:'Atendimento', prio:'media' }
+    { t:'Análise de reclamações da semana', cat:'Atendimento', prio:'media' },
+    { t:'Ligar pros parceiros que reclamaram esta semana', cat:'Atendimento', prio:'alta' },
+    { t:'Atualizar perguntas frequentes do time', cat:'Administrativo', prio:'baixa' },
+    { t:'Conferir tickets em aberto há mais de 48h', cat:'Atendimento', prio:'alta' },
+    // Só super_admin
+    { t:'Responder mensagens pendentes no inbox Instagram', cat:'Atendimento', prio:'alta', soSuper:true }
   ],
   marketing: [
-    { t:'Criar story para Instagram da cidade X', cat:'Conteúdo', prio:'media' },
-    { t:'Planejar próxima campanha do mês', cat:'Campanhas', prio:'alta' },
-    { t:'Analisar performance da última campanha (Meta Ads)', cat:'Marketing', prio:'media' },
-    { t:'Editar post de aniversário do parceiro Y', cat:'Conteúdo', prio:'baixa' },
-    { t:'Briefing pra fotógrafo da próxima sessão', cat:'Conteúdo', prio:'media' },
-    { t:'Atualizar bio do Instagram com promoção atual', cat:'Marketing', prio:'baixa' },
-    { t:'Reels: gravar 3 ideias do banco', cat:'Conteúdo', prio:'media' },
+    { t:'Criar story para Instagram da cidade X', cat:'Conteúdo', prio:'media', soSuper:true },
+    { t:'Planejar próxima campanha do mês', cat:'Campanhas', prio:'alta', soSuper:true },
+    { t:'Analisar performance da última campanha (Meta Ads)', cat:'Marketing', prio:'media', soSuper:true },
+    { t:'Editar post de aniversário do parceiro Y', cat:'Conteúdo', prio:'baixa', soSuper:true },
+    { t:'Briefing pra fotógrafo da próxima sessão', cat:'Conteúdo', prio:'media', soSuper:true },
+    { t:'Atualizar bio do Instagram com promoção atual', cat:'Marketing', prio:'baixa', soSuper:true },
+    { t:'Reels: gravar 3 ideias do banco', cat:'Conteúdo', prio:'media', soSuper:true },
     { t:'Reunião de alinhamento com diretoria', cat:'Reunião', prio:'media' }
   ],
   conteudo: [
-    { t:'Criar 3 reels esta semana', cat:'Conteúdo', prio:'media' },
-    { t:'Planejar calendário editorial do próximo mês', cat:'Conteúdo', prio:'alta' },
-    { t:'Sessão de fotos com motoboys de [cidade]', cat:'Conteúdo', prio:'media' },
-    { t:'Editar vídeo do parceiro destaque', cat:'Conteúdo', prio:'media' },
-    { t:'Pesquisar tendências de conteúdo no nicho', cat:'Conteúdo', prio:'baixa' },
-    { t:'Atualizar banco de ideias com 5 novos posts', cat:'Conteúdo', prio:'baixa' },
-    { t:'Revisar copy de carrossel pendente', cat:'Conteúdo', prio:'media' }
+    { t:'Criar 3 reels esta semana', cat:'Conteúdo', prio:'media', soSuper:true },
+    { t:'Planejar calendário editorial do próximo mês', cat:'Conteúdo', prio:'alta', soSuper:true },
+    { t:'Sessão de fotos com motoboys', cat:'Conteúdo', prio:'media', soSuper:true },
+    { t:'Editar vídeo do parceiro destaque', cat:'Conteúdo', prio:'media', soSuper:true },
+    { t:'Pesquisar tendências de conteúdo no nicho', cat:'Conteúdo', prio:'baixa', soSuper:true },
+    { t:'Atualizar banco de ideias com 5 novos posts', cat:'Conteúdo', prio:'baixa', soSuper:true },
+    { t:'Revisar copy de carrossel pendente', cat:'Conteúdo', prio:'media', soSuper:true }
   ],
   rh: [
-    { t:'Aniversariante: organizar comemoração de [nome]', cat:'Pessoas/RH', prio:'media' },
+    { t:'Organizar comemoração do aniversariante da semana', cat:'Pessoas/RH', prio:'media' },
     { t:'1x1 com membro da equipe', cat:'Reunião', prio:'alta' },
     { t:'Atualizar lista de aniversariantes do mês', cat:'Pessoas/RH', prio:'baixa' },
-    { t:'Onboarding novo colaborador', cat:'Pessoas/RH', prio:'alta' },
+    { t:'Onboarding de novo colaborador', cat:'Pessoas/RH', prio:'alta' },
     { t:'Pesquisa de clima organizacional', cat:'Pessoas/RH', prio:'media' },
     { t:'Reunião de cultura semanal', cat:'Reunião', prio:'media' },
     { t:'Acompanhar feedback do time da semana', cat:'Pessoas/RH', prio:'media' },
-    { t:'Revisar metas/OKRs dos gestores', cat:'Pessoas/RH', prio:'alta' }
+    { t:'Revisar metas/OKRs dos gestores', cat:'Pessoas/RH', prio:'alta' },
+    { t:'Reconhecer publicamente alguém da equipe que se destacou', cat:'Pessoas/RH', prio:'media' }
   ],
   diretoria: [
     { t:'Reunião de diretoria semanal', cat:'Reunião', prio:'alta' },
@@ -17125,7 +17136,9 @@ var IA_TEMPLATES_POR_AREA = {
     { t:'1x1 com gestores das cidades', cat:'Reunião', prio:'media' },
     { t:'Conferir dashboard de cidades', cat:'Administrativo', prio:'media' },
     { t:'Definir foco estratégico da semana', cat:'Administrativo', prio:'alta' },
-    { t:'Comunicação ao time sobre próximos passos', cat:'Comercial', prio:'media' }
+    { t:'Comunicação ao time sobre próximos passos', cat:'Comercial', prio:'media' },
+    { t:'Reunião com parceiro estratégico', cat:'Reunião', prio:'media' },
+    { t:'Acompanhar projetos críticos em andamento', cat:'Administrativo', prio:'alta' }
   ]
 };
 
@@ -17150,15 +17163,27 @@ function iaGerarSugestoes(){
     return;
   }
 
+  // Detecta nível pra filtrar templates específicos
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var ehSuperAdmin = nivel === 'super_admin';
+
   // Pega sugestões por área se selecionada, senão mistura algumas
   var sugestoes = [];
   if(area && IA_TEMPLATES_POR_AREA[area]){
     sugestoes = IA_TEMPLATES_POR_AREA[area].slice();
   } else {
-    // Sem área específica: pega 2 de cada área
+    // Sem área específica: pega 2 de cada área (exceto marketing/conteudo se não for super)
     Object.keys(IA_TEMPLATES_POR_AREA).forEach(function(k){
+      // Pula áreas só-Cleyton pra outros
+      if(!ehSuperAdmin && (k === 'marketing' || k === 'conteudo')) return;
       sugestoes = sugestoes.concat(IA_TEMPLATES_POR_AREA[k].slice(0, 2));
     });
+  }
+
+  // FILTRO POR PERMISSÃO: remove tarefas marcadas como "só super_admin" pra outros usuários
+  if(!ehSuperAdmin){
+    sugestoes = sugestoes.filter(function(s){ return !s.soSuper; });
   }
 
   // Tenta filtrar baseado em palavras-chave do objetivo
@@ -17181,7 +17206,7 @@ function iaGerarSugestoes(){
   sugestoes = sugestoes.slice(0, 8);
 
   if(!sugestoes.length){
-    el.innerHTML = '<div class="card" style="padding:20px;text-align:center;color:var(--text3)"><div style="font-size:30px;margin-bottom:6px">🤔</div><div>Não consegui gerar sugestões. Tenta selecionar uma área específica.</div></div>';
+    el.innerHTML = '<div class="card" style="padding:20px;text-align:center;color:var(--text3)"><div style="font-size:30px;margin-bottom:6px">🤔</div><div>Não consegui gerar sugestões. Tenta selecionar uma área específica acima.</div></div>';
     return;
   }
 
@@ -17191,10 +17216,11 @@ function iaGerarSugestoes(){
   el.innerHTML = '<div class="card" style="padding:14px;margin-bottom:0">'
     +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
       +'<span style="font-size:20px">💡</span>'
-      +'<div>'
+      +'<div style="flex:1">'
         +'<div style="font-size:13px;font-weight:700">Sugestões personalizadas</div>'
         +'<div style="font-size:10px;color:var(--text3)">Clique em "+ Adicionar" pra mandar pra sua aba "Hoje"</div>'
       +'</div>'
+      +'<button onclick="iaGerarComIA()" id="ia-btn-real" style="padding:6px 11px;border:none;border-radius:6px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="Gera com IA do Claude (Anthropic)">🤖 Mais ideias com IA</button>'
     +'</div>'
     +'<div style="display:flex;flex-direction:column;gap:6px">'
     + sugestoes.map(function(s, i){
@@ -17219,6 +17245,128 @@ function iaGerarSugestoes(){
   window._iaSugestoesAtuais = sugestoes;
 
   if(typeof toast === 'function') toast(sugestoes.length+' sugestões geradas', 'success');
+}
+
+/* Chama a IA real (Anthropic via Netlify function blog-ai) */
+async function iaGerarComIA(){
+  var cargo = (document.getElementById('ia-cargo')||{}).value || '';
+  var area = (document.getElementById('ia-area')||{}).value || '';
+  var objetivo = (document.getElementById('ia-objetivo')||{}).value || '';
+  var btn = document.getElementById('ia-btn-real');
+  if(btn){ btn.disabled = true; btn.innerHTML = '🤖 Gerando...'; }
+
+  // Monta prompt rico com contexto
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var areasLabel = {
+    operacao:'Operação (acompanhar motoboys, fila, ocorrências)',
+    comercial:'Comercial / Captação de parceiros',
+    financeiro:'Financeiro (repasses, conciliação)',
+    atendimento:'Atendimento ao cliente',
+    marketing:'Marketing',
+    conteudo:'Conteúdo (posts, reels)',
+    rh:'Pessoas / RH',
+    diretoria:'Diretoria / Estratégia'
+  };
+  var prompt = 'Você é um assistente de produtividade para o time da Gâmi Delivery, '
+    +'uma empresa brasileira de delivery em 11 cidades do nordeste. '
+    +'Sugira 8 tarefas práticas e acionáveis (com VERBO no infinitivo) '
+    +'para esta pessoa fazer HOJE.\n\n'
+    +'Contexto da pessoa:\n'
+    +(cargo?'- Cargo: '+cargo+'\n':'')
+    +(area && areasLabel[area]?'- Área: '+areasLabel[area]+'\n':'')
+    +(objetivo?'- O que quer focar nesta semana: '+objetivo+'\n':'')
+    +'\nRegras:\n'
+    +'- NÃO inclua tarefas técnicas de plataforma (Supabase, Machine, bot de stories) — essas só o admin Cleyton faz.\n'
+    +'- NÃO sugira tarefas de marketing/conteúdo a menos que a pessoa seja explicitamente de marketing.\n'
+    +'- Foque em ações reais (visitar, ligar, conferir, organizar, conversar, reunir).\n'
+    +'- Cada tarefa precisa ser SHORT (máx 70 caracteres) e clara.\n\n'
+    +'Retorne APENAS JSON válido neste formato (sem ```, sem explicação):\n'
+    +'[{"texto":"...","prio":"alta|media|baixa","cat":"Operação|Comercial|Financeiro|Atendimento|Reunião|Administrativo|Pessoas/RH|Pessoal|Outro"}]\n';
+
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({prompt: prompt, max_tokens: 1200})
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+
+    // Tenta extrair JSON
+    var jsonMatch = texto.match(/\[[\s\S]*\]/);
+    if(!jsonMatch) throw new Error('Resposta sem JSON');
+    var arr = JSON.parse(jsonMatch[0]);
+    if(!Array.isArray(arr) || !arr.length) throw new Error('Lista vazia');
+
+    // Mapeia pra formato interno
+    var sugIA = arr.map(function(x){ return { t:x.texto, prio:x.prio||'media', cat:x.cat||'Outro' }; }).filter(function(s){return s.t;});
+
+    // Filtra por permissão (caso a IA tenha sugerido algo de marketing pra não-cleyton)
+    var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+    var ehSuperAdmin = nivel === 'super_admin';
+    if(!ehSuperAdmin){
+      sugIA = sugIA.filter(function(s){
+        var l = (s.t||'').toLowerCase();
+        // Remove se mencionar termos de plataforma/marketing
+        if(/supabase|machine|bot de stories|meta ads|instagram bio|reels/i.test(l)) return false;
+        // Remove se categoria for de marketing
+        if(['Marketing','Conteúdo','Campanhas'].indexOf(s.cat) >= 0) return false;
+        return true;
+      });
+    }
+
+    if(!sugIA.length) throw new Error('Todas filtradas');
+
+    // Renderiza
+    var coresPrio = { alta:'#E24B4A', media:'#EF9F27', baixa:'#1D9E75' };
+    var ico = (typeof TF_CAT_ICO !== 'undefined') ? TF_CAT_ICO : {};
+    var el = document.getElementById('ia-resultado');
+    el.innerHTML = '<div class="card" style="padding:14px;margin-bottom:0;background:linear-gradient(135deg,#FFFFFF,#F8F2FC)">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+        +'<span style="font-size:20px">🤖</span>'
+        +'<div style="flex:1">'
+          +'<div style="font-size:13px;font-weight:700">Sugestões geradas com Claude</div>'
+          +'<div style="font-size:10px;color:var(--text3)">Baseadas no seu contexto. Clique em "+ Adicionar"</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px">'
+      + sugIA.map(function(s, i){
+          var cor = coresPrio[s.prio] || coresPrio.media;
+          var emoji = ico[s.cat] || '📌';
+          return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid #8B5CF633;border-left:3px solid '+cor+';border-radius:8px;background:white">'
+            +'<span style="font-size:16px;flex-shrink:0">'+emoji+'</span>'
+            +'<div style="flex:1;min-width:0">'
+              +'<div style="font-size:12px;font-weight:500;color:var(--text)">'+s.t+'</div>'
+              +'<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">'
+                +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+cor+'22;color:'+cor+';font-weight:600">'+s.prio+'</span>'
+                +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:var(--border);color:var(--text2)">'+s.cat+'</span>'
+              +'</div>'
+            +'</div>'
+            +'<button onclick="iaAdicionarSugestao('+i+')" id="ia-sug-btn-'+i+'" style="padding:6px 11px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Adicionar</button>'
+          +'</div>';
+        }).join('')
+      +'</div>'
+    +'</div>';
+    window._iaSugestoesAtuais = sugIA;
+    if(typeof toast === 'function') toast(sugIA.length+' sugestões geradas pela IA', 'success');
+  } catch(err){
+    // Erro: créditos esgotados ou rede
+    var msg = err && err.message || '';
+    var el = document.getElementById('ia-resultado');
+    var aviso = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D;font-size:11px;margin-top:10px">'
+      +'<strong>⚠️ Não consegui gerar com IA agora.</strong> '
+      +(msg.indexOf('400')>=0 || msg.indexOf('insufficient')>=0 ? 'Os créditos da Anthropic API podem estar esgotados — me avise pra você recarregar.' : 'Erro de conexão. Tente novamente.')
+      +'<br><span style="color:var(--text3);font-size:10px">As sugestões locais acima continuam funcionando normalmente.</span>'
+    +'</div>';
+    if(el){
+      // Mantém as sugestões locais + adiciona aviso
+      el.insertAdjacentHTML('beforeend', aviso);
+    }
+    if(typeof toast === 'function') toast('Falha ao gerar com IA — use as sugestões locais', 'warn');
+  } finally {
+    if(btn){ btn.disabled = false; btn.innerHTML = '🤖 Mais ideias com IA'; }
+  }
 }
 
 function iaAdicionarSugestao(idx){
@@ -17253,24 +17401,6 @@ function iaAdicionarSugestao(idx){
     btn.style.opacity = '.7';
   }
   if(typeof toast === 'function') toast('Tarefa adicionada à aba Hoje', 'success');
-}
-
-function iaAbrirClaudeExterno(){
-  var cargo = (document.getElementById('ia-cargo')||{}).value || '';
-  var area = (document.getElementById('ia-area')||{}).value || '';
-  var objetivo = (document.getElementById('ia-objetivo')||{}).value || '';
-  var prompt = 'Sou da equipe Gâmi Delivery (empresa de delivery em 11 cidades do nordeste). ';
-  if(cargo) prompt += 'Meu cargo é: '+cargo+'. ';
-  if(area) prompt += 'Área principal: '+area+'. ';
-  if(objetivo) prompt += 'Esta semana quero focar em: '+objetivo+'. ';
-  prompt += '\n\nMe sugira 10 tarefas específicas e práticas que eu poderia fazer hoje pra avançar nesses objetivos. Cada tarefa precisa ser acionável (verbo + objeto). Liste no formato:\n\n1. [Tarefa] - prioridade (alta/média/baixa) - categoria';
-  if(typeof openAI === 'function'){
-    openAI(prompt);
-  } else {
-    // Fallback: abre claude.ai externo
-    var url = 'https://claude.ai/new?q='+encodeURIComponent(prompt);
-    window.open(url, '_blank');
-  }
 }
 
 /* ============================================================ */
@@ -18623,7 +18753,7 @@ function tfRenderProjetos(){
     var cor=pct===100?'#1D9E75':pct>50?'#EF9F27':'var(--orange)';
     // Calcula se está atrasado
     var atrasado = p.prazo && p.prazo < new Date().toISOString().split('T')[0] && p.status !== 'concluido';
-    return '<div style="border:1px solid var(--border);border-left:4px solid '+sm.borda+';border-radius:10px;padding:14px;background:var(--surface);transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">'
+    return '<div onclick="tfAbrirDetalheProjeto(\''+p.id+'\')" style="border:1px solid var(--border);border-left:4px solid '+sm.borda+';border-radius:10px;padding:14px;background:var(--surface);transition:transform .15s,box-shadow .15s;cursor:pointer" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">'
         +'<div style="flex:1;min-width:0">'
           +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:16px">🚀</span><div style="font-size:14px;font-weight:700;color:var(--text)">'+(p.nome||'Sem nome')+'</div></div>'
@@ -18633,19 +18763,226 @@ function tfRenderProjetos(){
       +'</div>'
       +(total>0?'<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>'+feitas+'/'+total+' tarefas</span><span style="font-weight:700;color:'+cor+'">'+pct+'%</span></div><div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+cor+';border-radius:3px;transition:width .3s"></div></div></div>':'')
       +(p.prazo?'<div style="font-size:11px;color:'+(atrasado?'#E24B4A':'var(--text3)')+';font-weight:'+(atrasado?'700':'400')+';margin-bottom:8px">📅 Prazo: '+p.prazo.split('-').reverse().join('/')+(atrasado?' ⚠️ atrasado':'')+'</div>':'')
-      +'<div id="proj-tarefas-'+p.id+'" style="margin-bottom:8px;max-height:160px;overflow-y:auto">'
-      +(p.tarefas||[]).slice(0,5).map(function(t){return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)"><div onclick="tfToggleProjTarefa(\''+p.id+'\',\''+t.id+'\')" style="width:14px;height:14px;border-radius:4px;border:1.5px solid '+(t.feito?'#1D9E75':'var(--border)')+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+(t.feito?'<span style="color:white;font-size:9px">✓</span>':'')+'</div><span style="font-size:11px;flex:1;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">'+t.texto+'</span></div>';}).join('')
-      +(total>5?'<div style="font-size:10px;color:var(--text3);margin-top:4px;text-align:center;font-style:italic">+ '+(total-5)+' tarefas...</div>':'')
-      +(total===0?'<div style="font-size:11px;color:var(--text3);font-style:italic;padding:8px 0">Sem tarefas ainda</div>':'')
-      +'</div>'
-      +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
-        +'<input placeholder="+ Adicionar tarefa..." style="flex:1;min-width:120px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;font-family:inherit" id="ptf-'+p.id+'" onkeydown="if(event.key===\'Enter\')tfAddTarefaProjeto(\''+p.id+'\')">'
-        +'<button onclick="tfAddTarefaProjeto(\''+p.id+'\')" title="Adicionar tarefa (vai também pra aba Hoje)" style="padding:6px 10px;border:none;border-radius:6px;background:var(--orange);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+</button>'
-        +'<button onclick="tfEditarProjeto(\''+p.id+'\')" title="Editar projeto" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;cursor:pointer;font-family:inherit">✏️</button>'
-        +'<button onclick="tfExcluirProjeto(\''+p.id+'\')" title="Excluir projeto" style="padding:6px 10px;border:1px solid #f5b5b5;border-radius:6px;background:#FCEBEB;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>'
-      +'</div>'
+      +(total>0?'<div style="font-size:11px;color:var(--text2);margin-bottom:8px;display:flex;align-items:center;gap:5px"><span>📋 '+total+' tarefa'+(total>1?'s':'')+'</span>'+(p.notas?'<span>·</span><span>📄 Tem anotações</span>':'')+'</div>':'')
+      +'<div style="font-size:10px;color:var(--gami-blue);font-weight:600;text-align:center;padding:6px;border-top:1px dashed var(--border);margin-top:4px">→ Clique pra ver detalhes</div>'
     +'</div>';
   }).join('');
+}
+
+/* ============================================================ */
+/* MODAL DE DETALHES DO PROJETO                                  */
+/* ============================================================ */
+var _projDetalheAtivo = null;
+var _projDetalheTab = 'sobre';
+
+function tfAbrirDetalheProjeto(id){
+  var projs = (typeof getTarefas === 'function') ? getTarefas('projetos') : [];
+  var p = projs.find(function(x){return x.id===id;});
+  if(!p){ if(typeof toast==='function') toast('Projeto não encontrado','error'); return; }
+  _projDetalheAtivo = id;
+  _projDetalheTab = 'sobre';
+  _renderModalDetalheProjeto();
+}
+
+function _renderModalDetalheProjeto(){
+  var projs = (typeof getTarefas === 'function') ? getTarefas('projetos') : [];
+  var p = projs.find(function(x){return x.id===_projDetalheAtivo;});
+  if(!p) return;
+  var ov = document.getElementById('modal-projeto-detalhe');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'modal-projeto-detalhe';
+    ov.className = 'modal-overlay';
+    document.body.appendChild(ov);
+  }
+  ov.classList.add('open');
+  var statusMap = {
+    ativo:{bg:'#EAF3DE',cor:'#3B6D11',emoji:'🟢',label:'Em andamento'},
+    pausado:{bg:'#FAEEDA',cor:'#854F0B',emoji:'⏸️',label:'Pausado'},
+    concluido:{bg:'#E3F2FD',cor:'#1565C0',emoji:'✅',label:'Concluído'},
+    planejamento:{bg:'#F3E5F5',cor:'#6A1B9A',emoji:'📋',label:'Planejamento'}
+  };
+  var sm = statusMap[p.status] || statusMap.ativo;
+  var total = (p.tarefas||[]).length;
+  var feitas = (p.tarefas||[]).filter(function(t){return t.feito;}).length;
+  var pct = total > 0 ? Math.round((feitas/total)*100) : 0;
+  var corPct = pct===100?'#1D9E75':pct>=50?'#EF9F27':'var(--orange)';
+
+  var corpoHtml = '';
+  if(_projDetalheTab === 'sobre'){
+    // Tab Sobre - descrição + notas + dados básicos
+    corpoHtml = ''
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
+        +'<div><div class="field-label">Status</div>'
+          +'<select id="proj-edit-status" onchange="_salvarCampoProjeto(\'status\', this.value)" class="sel">'
+            +Object.keys(statusMap).map(function(k){
+              return '<option value="'+k+'"'+(p.status===k?' selected':'')+'>'+statusMap[k].emoji+' '+statusMap[k].label+'</option>';
+            }).join('')
+          +'</select>'
+        +'</div>'
+        +'<div><div class="field-label">Prazo</div>'
+          +'<input id="proj-edit-prazo" type="date" value="'+(p.prazo||'')+'" onchange="_salvarCampoProjeto(\'prazo\', this.value)" class="inp">'
+        +'</div>'
+      +'</div>'
+      +'<div style="margin-bottom:12px"><div class="field-label">Descrição rápida</div>'
+        +'<input id="proj-edit-desc" value="'+((p.descricao||'').replace(/"/g,'&quot;'))+'" onchange="_salvarCampoProjeto(\'descricao\', this.value)" placeholder="Resumo do projeto em uma linha" class="inp">'
+      +'</div>'
+      +'<div><div class="field-label" style="display:flex;align-items:center;justify-content:space-between">'
+          +'<span>📄 Anotações do projeto</span>'
+          +'<span id="proj-notas-status" style="font-size:10px;color:var(--text3);font-style:italic">salvo</span>'
+        +'</div>'
+        +'<textarea id="proj-edit-notas" oninput="_marcarNotasProjeto()" onblur="_salvarCampoProjeto(\'notas\', this.value)" placeholder="Contexto, objetivos, decisões importantes, links, qualquer info do projeto..." style="width:100%;min-height:200px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:12px;font-family:inherit;color:var(--text);resize:vertical;line-height:1.5;box-sizing:border-box">'+(p.notas||'')+'</textarea>'
+      +'</div>';
+  } else if(_projDetalheTab === 'tarefas'){
+    // Tab Tarefas - lista + botão adicionar com data/hora
+    var prioMap = {alta:{cor:'#E24B4A',lbl:'Alta'},media:{cor:'#EF9F27',lbl:'Média'},baixa:{cor:'#1D9E75',lbl:'Baixa'}};
+    corpoHtml = ''
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        +'<div style="font-size:12px;color:var(--text2)"><strong>'+total+'</strong> tarefas · <strong style="color:#1D9E75">'+feitas+'</strong> concluídas · <strong style="color:'+corPct+'">'+pct+'%</strong> completo</div>'
+        +'<button onclick="abrirModalTarefaDoProjeto(\''+p.id+'\')" class="btn btn-primary" style="font-size:11px">+ Nova tarefa do projeto</button>'
+      +'</div>'
+      +(total === 0
+        ? '<div style="padding:30px;text-align:center;color:var(--text3);background:var(--surface2);border-radius:10px;border:1px dashed var(--border)"><div style="font-size:36px;margin-bottom:8px">📋</div><div style="font-size:13px;font-weight:500;margin-bottom:4px">Nenhuma tarefa ainda</div><div style="font-size:11px">Crie a primeira clicando em "+ Nova tarefa do projeto"<br>Cada tarefa pode ter data, horário e prioridade.</div></div>'
+        : '<div style="display:flex;flex-direction:column;gap:6px">'
+          +(p.tarefas||[]).slice().sort(function(a,b){
+            // Pendentes primeiro, depois feitas
+            if(a.feito !== b.feito) return a.feito?1:-1;
+            // Por prazo
+            if(a.prazo && b.prazo) return a.prazo.localeCompare(b.prazo);
+            return 0;
+          }).map(function(t){
+            var pp = prioMap[t.prio] || prioMap.media;
+            var prazoFmt = '';
+            if(t.prazo){
+              try { var pz = t.prazo.split('-'); prazoFmt = pz[2]+'/'+pz[1]; } catch(e){}
+            }
+            var atrasada = !t.feito && t.prazo && t.prazo < new Date().toISOString().split('T')[0];
+            return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid '+(atrasada?'#E24B4A55':'var(--border)')+';border-left:3px solid '+(t.feito?'#1D9E75':pp.cor)+';border-radius:8px;background:'+(t.feito?'var(--surface2)':atrasada?'#FFF5F5':'var(--surface)')+';'+(t.feito?'opacity:.65':'')+'">'
+              +'<div onclick="tfToggleProjTarefa(\''+p.id+'\',\''+t.id+'\');setTimeout(_renderModalDetalheProjeto,30)" style="width:18px;height:18px;border-radius:5px;border:2px solid '+(t.feito?'#1D9E75':pp.cor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:11px">✓</span>':'')+'</div>'
+              +'<div style="flex:1;min-width:0">'
+                +'<div style="font-size:12px;font-weight:500;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">'+t.texto+'</div>'
+                +'<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap;align-items:center">'
+                  +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+pp.cor+'22;color:'+pp.cor+';font-weight:600">'+pp.lbl+'</span>'
+                  +(prazoFmt?'<span style="font-size:9px;color:'+(atrasada?'#E24B4A':'var(--text3)')+';font-weight:'+(atrasada?'700':'500')+'">⏰ '+prazoFmt+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+(atrasada?' (atrasada)':'')+'</span>':'')
+                +'</div>'
+              +'</div>'
+              +'<button onclick="event.stopPropagation();tfExcluirTarefaProjeto(\''+p.id+'\',\''+t.id+'\')" title="Excluir tarefa" style="width:24px;height:24px;border-radius:5px;border:1px solid var(--border);background:transparent;cursor:pointer;font-size:11px;color:var(--text3);flex-shrink:0">×</button>'
+            +'</div>';
+          }).join('')
+        +'</div>'
+      );
+  }
+
+  var atrasado = p.prazo && p.prazo < new Date().toISOString().split('T')[0] && p.status !== 'concluido';
+
+  ov.innerHTML = '<div class="modal-box" style="max-width:680px;max-height:90vh;overflow-y:auto">'
+    // Header
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:14px">'
+      +'<div style="flex:1">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+          +'<span style="font-size:24px">🚀</span>'
+          +'<input id="proj-edit-nome" value="'+((p.nome||'').replace(/"/g,'&quot;'))+'" onchange="_salvarCampoProjeto(\'nome\', this.value)" style="font-size:18px;font-weight:800;color:var(--text);background:transparent;border:none;font-family:\'Syne\',sans-serif;padding:0;outline:none;flex:1;min-width:0;border-bottom:1px dashed transparent" onfocus="this.style.borderBottomColor=\'var(--border)\'" onblur="this.style.borderBottomColor=\'transparent\'">'
+        +'</div>'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+          +'<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:'+sm.bg+';color:'+sm.cor+';font-weight:600">'+sm.emoji+' '+sm.label+'</span>'
+          +(p.prazo?'<span style="font-size:10px;color:'+(atrasado?'#E24B4A':'var(--text3)')+';font-weight:'+(atrasado?'700':'500')+'">📅 '+p.prazo.split('-').reverse().join('/')+(atrasado?' atrasado':'')+'</span>':'')
+          +(total>0?'<span style="font-size:10px;color:var(--text3)">📋 '+feitas+'/'+total+' tarefas · '+pct+'%</span>':'')
+        +'</div>'
+      +'</div>'
+      +'<button onclick="closeModal(\'modal-projeto-detalhe\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
+    +'</div>'
+    // Progresso visual
+    +(total>0?'<div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-bottom:16px"><div style="height:100%;width:'+pct+'%;background:'+corPct+';border-radius:4px;transition:width .3s"></div></div>':'')
+    // Tabs internas
+    +'<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">'
+      +'<button onclick="_projDetalheTab=\'sobre\';_renderModalDetalheProjeto()" style="padding:8px 14px;border:none;background:transparent;font-size:12px;font-weight:'+(_projDetalheTab==='sobre'?'600':'500')+';color:'+(_projDetalheTab==='sobre'?'var(--orange)':'var(--text3)')+';cursor:pointer;font-family:inherit;border-bottom:2px solid '+(_projDetalheTab==='sobre'?'var(--orange)':'transparent')+';margin-bottom:-2px">📄 Sobre</button>'
+      +'<button onclick="_projDetalheTab=\'tarefas\';_renderModalDetalheProjeto()" style="padding:8px 14px;border:none;background:transparent;font-size:12px;font-weight:'+(_projDetalheTab==='tarefas'?'600':'500')+';color:'+(_projDetalheTab==='tarefas'?'var(--orange)':'var(--text3)')+';cursor:pointer;font-family:inherit;border-bottom:2px solid '+(_projDetalheTab==='tarefas'?'var(--orange)':'transparent')+';margin-bottom:-2px">📋 Tarefas ('+total+')</button>'
+    +'</div>'
+    // Corpo
+    +corpoHtml
+    // Footer
+    +'<div style="display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">'
+      +'<button onclick="if(confirm(\'Excluir o projeto e todas as suas tarefas?\')){tfExcluirProjeto(\''+p.id+'\');closeModal(\'modal-projeto-detalhe\')}" style="padding:8px 14px;border:1px solid #f5b5b5;border-radius:8px;background:#FCEBEB;color:#A32D2D;font-size:11px;cursor:pointer;font-family:inherit">🗑 Excluir projeto</button>'
+      +'<button onclick="closeModal(\'modal-projeto-detalhe\')" class="btn btn-primary" style="margin-left:auto;font-size:12px">Fechar</button>'
+    +'</div>'
+  +'</div>';
+}
+
+/* Auto-save individual de campos do projeto */
+function _salvarCampoProjeto(campo, valor){
+  if(!_projDetalheAtivo) return;
+  var projs = getTarefasRaw('projetos');
+  var p = projs.find(function(x){return x.id===_projDetalheAtivo;});
+  if(!p) return;
+  p[campo] = valor;
+  saveTarefas('projetos', null, projs);
+  if(typeof toast === 'function' && campo !== 'notas') toast('Salvo', 'success');
+  if(campo === 'notas'){
+    var s = document.getElementById('proj-notas-status');
+    if(s){ s.textContent = '✓ salvo'; s.style.color = '#1D9E75'; }
+  }
+  // Re-renderiza lista de projetos pra refletir mudanças
+  if(typeof tfRenderProjetos === 'function') tfRenderProjetos();
+}
+function _marcarNotasProjeto(){
+  var s = document.getElementById('proj-notas-status');
+  if(s){ s.textContent = '● escrevendo...'; s.style.color = '#EF9F27'; }
+}
+
+/* Excluir tarefa do projeto */
+function tfExcluirTarefaProjeto(projId, tarefaId){
+  if(!confirm('Excluir esta tarefa do projeto?')) return;
+  var projs = getTarefasRaw('projetos');
+  var p = projs.find(function(x){return x.id===projId;});
+  if(!p) return;
+  p.tarefas = (p.tarefas||[]).filter(function(t){return t.id!==tarefaId;});
+  saveTarefas('projetos', null, projs);
+  if(typeof toast === 'function') toast('Tarefa removida', 'info');
+  _renderModalDetalheProjeto();
+  tfRenderProjetos();
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
+}
+
+/* Abre modal de nova tarefa pré-marcado como do projeto */
+function abrirModalTarefaDoProjeto(projId){
+  if(typeof abrirModalNovaTarefa !== 'function') return;
+  // Fecha modal de detalhe temporariamente (mantém id ativo)
+  abrirModalNovaTarefa('diario');
+  setTimeout(function(){
+    // Pré-preenche prazo com o prazo do projeto se houver
+    var projs = (typeof getTarefas === 'function') ? getTarefas('projetos') : [];
+    var p = projs.find(function(x){return x.id===projId;});
+    if(p && p.prazo){
+      var elPrazo = document.getElementById('tf-m-prazo');
+      if(elPrazo) elPrazo.value = p.prazo;
+    }
+    // Adiciona hidden input com projetoId
+    var modal = document.getElementById('modal-campanha');
+    if(modal){
+      var existing = modal.querySelector('#tf-m-projeto-id');
+      if(!existing){
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.id = 'tf-m-projeto-id';
+        hidden.value = projId;
+        modal.querySelector('.modal-box').appendChild(hidden);
+      } else { existing.value = projId; }
+      // Adiciona aviso visual de que é do projeto
+      var aviso = modal.querySelector('#tf-m-projeto-aviso');
+      if(!aviso){
+        var av = document.createElement('div');
+        av.id = 'tf-m-projeto-aviso';
+        av.style.cssText = 'padding:8px 12px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:8px;font-size:11px;color:#0E7AB8;margin-bottom:10px;display:flex;align-items:center;gap:6px';
+        av.innerHTML = '🚀 <strong>Tarefa do projeto:</strong> '+(p?p.nome:'')+' — vai aparecer na aba Hoje e no Calendário com badge';
+        var modalBox = modal.querySelector('.modal-box');
+        var titulo = modalBox.querySelector('div');
+        if(titulo && titulo.nextSibling) modalBox.insertBefore(av, titulo.nextSibling);
+        else modalBox.appendChild(av);
+      }
+    }
+    var elTexto = document.getElementById('tf-m-texto');
+    if(elTexto) elTexto.focus();
+  }, 150);
 }
 
 /* Helper: retorna todas tarefas de projetos como se fossem tarefas diárias */
@@ -18736,9 +19073,8 @@ function tfExcluirProjeto(id){
 }
 
 function tfEditarProjeto(id){
-  var p=getTarefas('projetos').find(function(x){return x.id===id;});
-  if(!p) return;
-  tfAbrirModalProjeto(p);
+  // Edição agora acontece dentro do detalhe (campos inline editáveis)
+  tfAbrirDetalheProjeto(id);
 }
 
 function tfAbrirModalProjeto(proj){
@@ -18813,6 +19149,7 @@ function abrirModalNovaTarefa(contexto){
     '</select></div></div>'
     +'<div class="g2"><div><div class="field-label">Quando</div><select id="tf-m-ctx" class="sel"><option value="diario">Hoje</option><option value="semana">Esta semana</option><option value="mes">Este mês</option></select></div>'
     +'<div><div class="field-label">Prazo</div><input id="tf-m-prazo" class="inp" type="date" value="'+hoje+'"/></div></div>'
+    +'<div><div class="field-label">Horário (opcional)</div><input id="tf-m-hora-limite" class="inp" type="time" placeholder="Ex: 14:30"/></div>'
     /* === NOVO: RECORRÊNCIA === */
     +'<div style="padding:10px;border:1.5px dashed var(--gami-blue);border-radius:8px;background:#E6F6FE">'
       +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
@@ -18848,6 +19185,8 @@ function abrirModalNovaTarefa(contexto){
   // Set context
   var ctxSel=document.getElementById('tf-m-ctx');
   if(ctxSel&&ctx!=='diario') ctxSel.value=ctx;
+  // Reseta seleção multi pra começar limpo
+  window._tfDelegadosSelecionados = [];
   // Monta seção de delegação (só pra quem pode)
   if(typeof tfMontarDelegacao==='function') tfMontarDelegacao();
 }
@@ -18878,11 +19217,12 @@ function tfMontarDelegacao(){
     return '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,.08)">'+ini+'</div>';
   }
 
-  // Cards selecionáveis - só foto + nome (sem cidade)
+  // Cards selecionáveis - foto + nome (sem cidade) — MULTI-SELECT
   var cardsHtml = disponiveis.map(function(p){
-    return '<div onclick="_tfSelecionarDelegado(\''+p.id+'\',\''+(p.nome||'').replace(/\'/g,"\\'")+'\')" data-pessoa-id="'+p.id+'" class="tf-deleg-card" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:2px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:all .15s">'
+    return '<div onclick="_tfToggleDelegado(\''+p.id+'\',\''+(p.nome||'').replace(/\'/g,"\\'")+'\')" data-pessoa-id="'+p.id+'" class="tf-deleg-card" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:2px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:all .15s;position:relative">'
       + _delegAvatar(p)
       + '<span style="font-size:12px;color:var(--text);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.nome||p.id)+'</span>'
+      + '<span class="tf-deleg-check" style="display:none;width:18px;height:18px;border-radius:50%;background:#8B5CF6;color:white;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">✓</span>'
     + '</div>';
   }).join('');
 
@@ -18890,11 +19230,11 @@ function tfMontarDelegacao(){
     '<div style="padding:10px;border:1.5px dashed #8B5CF6;border-radius:8px;background:#F3E5F5;margin-top:2px">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
       + '<input type="checkbox" id="tf-m-deleg-on" onchange="document.getElementById(\'tf-m-deleg-cfg\').style.display=this.checked?\'block\':\'none\'" style="width:16px;height:16px;cursor:pointer"/>'
-      + '<label for="tf-m-deleg-on" style="font-size:12px;font-weight:600;color:#6A1B9A;cursor:pointer">📥 Delegar para outra pessoa</label>'
+      + '<label for="tf-m-deleg-on" style="font-size:12px;font-weight:600;color:#6A1B9A;cursor:pointer">📥 Delegar para outra(s) pessoa(s)</label>'
     + '</div>'
     + '<div id="tf-m-deleg-cfg" style="display:none">'
-      + '<input type="hidden" id="tf-m-deleg-pessoa" value="">'
-      + '<div class="field-label" style="font-size:10px">Escolha alguém:</div>'
+      + '<input type="hidden" id="tf-m-deleg-pessoas" value="">' // JSON array
+      + '<div class="field-label" style="font-size:10px;display:flex;align-items:center;justify-content:space-between"><span>Escolha uma ou mais pessoas:</span><span id="tf-m-deleg-count" style="color:#6A1B9A;font-weight:700">0 selecionada(s)</span></div>'
       + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;max-height:220px;overflow-y:auto;padding:4px">'+cardsHtml+'</div>'
       + '<div class="g2" style="margin-top:8px">'
         + '<div><div class="field-label" style="font-size:10px">Prioridade</div>'
@@ -18902,25 +19242,46 @@ function tfMontarDelegacao(){
         + '<div><div class="field-label" style="font-size:10px">Horário limite (opcional)</div>'
           + '<input id="tf-m-deleg-hora" class="inp" type="time"/></div>'
       + '</div>'
-      + '<div style="font-size:9px;color:#6A1B9A;margin-top:6px;font-style:italic">A tarefa cai direto na aba de quem recebe, com seu nome e uma notificação. O prazo usa a data definida em "Prazo" acima.</div>'
+      + '<div style="font-size:9px;color:#6A1B9A;margin-top:6px;font-style:italic">A tarefa cai na aba de cada pessoa selecionada, com seu nome e uma notificação. Você pode acompanhar todas na aba "📥 Delegadas por mim".</div>'
     + '</div>'
     + '</div>';
 }
 
-/* Seleciona pessoa pra delegar (visual feedback + grava no hidden) */
-function _tfSelecionarDelegado(pessoaId, nome){
-  var hidden = document.getElementById('tf-m-deleg-pessoa');
-  if(hidden){ hidden.value = pessoaId; hidden.dataset.nome = nome; }
-  // Atualiza visual: todos voltam ao normal, o clicado fica destacado
+/* Multi-select: toggle pessoa (clica pra adicionar/remover) */
+window._tfDelegadosSelecionados = []; // array de {id, nome}
+function _tfToggleDelegado(pessoaId, nome){
+  if(!Array.isArray(window._tfDelegadosSelecionados)) window._tfDelegadosSelecionados = [];
+  var idx = window._tfDelegadosSelecionados.findIndex(function(x){return x.id===pessoaId;});
+  if(idx >= 0){
+    window._tfDelegadosSelecionados.splice(idx, 1);
+  } else {
+    window._tfDelegadosSelecionados.push({id:pessoaId, nome:nome});
+  }
+  // Atualiza visual e contador
+  _tfAtualizarVisualDelegados();
+}
+
+function _tfAtualizarVisualDelegados(){
+  var selecionados = window._tfDelegadosSelecionados || [];
   document.querySelectorAll('.tf-deleg-card').forEach(function(card){
-    if(card.getAttribute('data-pessoa-id') === pessoaId){
+    var pid = card.getAttribute('data-pessoa-id');
+    var ativo = selecionados.find(function(x){return x.id===pid;});
+    var checkEl = card.querySelector('.tf-deleg-check');
+    if(ativo){
       card.style.borderColor = '#8B5CF6';
       card.style.background = 'linear-gradient(135deg,#F3E5F5,#E1BEE7)';
+      if(checkEl) checkEl.style.display = 'inline-flex';
     } else {
       card.style.borderColor = 'var(--border)';
       card.style.background = 'var(--surface)';
+      if(checkEl) checkEl.style.display = 'none';
     }
   });
+  // Atualiza hidden + contador
+  var hidden = document.getElementById('tf-m-deleg-pessoas');
+  if(hidden) hidden.value = JSON.stringify(selecionados);
+  var cnt = document.getElementById('tf-m-deleg-count');
+  if(cnt) cnt.textContent = selecionados.length + ' selecionada' + (selecionados.length===1?'':'s');
 }
 
 function tfMostrarConfigRecorrencia(){
@@ -18935,27 +19296,43 @@ function tfSalvarModal(){
   var texto=(document.getElementById('tf-m-texto')||{}).value||'';
   if(!texto.trim()){alert('Informe a tarefa.');return;}
 
-  // === DELEGAÇÃO: se marcado, cai direto na aba de outra pessoa ===
+  // === DELEGAÇÃO: se marcado, cai direto na aba de outra(s) pessoa(s) ===
   var delegOn = (document.getElementById('tf-m-deleg-on')||{}).checked || false;
   if(delegOn){
-    var hidden = document.getElementById('tf-m-deleg-pessoa');
-    if(!hidden || !hidden.value){ alert('Escolha pra quem delegar (clique no card da pessoa).'); return; }
-    var destinoId = hidden.value;
-    var destinoNome = hidden.dataset.nome || destinoId;
+    var hidden = document.getElementById('tf-m-deleg-pessoas');
+    var destinatarios = [];
+    try {
+      if(hidden && hidden.value) destinatarios = JSON.parse(hidden.value);
+    } catch(e){}
+    if(!destinatarios.length){ 
+      alert('Selecione pelo menos 1 pessoa pra delegar (clique nos cards).'); 
+      return; 
+    }
     var prioDeleg = (document.getElementById('tf-m-deleg-prio')||{}).value||'normal';
     var horaDeleg = (document.getElementById('tf-m-deleg-hora')||{}).value||null;
     var prazoDeleg = (document.getElementById('tf-m-prazo')||{}).value||null;
     var msgDeleg = (document.getElementById('tf-m-obs')||{}).value||null;
     var btnD = event && event.target ? event.target : null;
     if(btnD){ btnD.disabled=true; btnD.innerHTML='Delegando...'; }
-    tfDelegar(destinoId, destinoNome, texto, prioDeleg, prazoDeleg, horaDeleg, msgDeleg).then(function(ok){
-      if(ok){
+    
+    // Delega pra cada pessoa selecionada (em paralelo)
+    Promise.all(destinatarios.map(function(d){
+      return tfDelegar(d.id, d.nome, texto, prioDeleg, prazoDeleg, horaDeleg, msgDeleg);
+    })).then(function(resultados){
+      var sucessos = resultados.filter(function(r){return r;}).length;
+      var total = resultados.length;
+      if(sucessos === total){
         closeModal('modal-campanha');
-        if(typeof toast === 'function') toast('Tarefa delegada para '+destinoNome.split(' ')[0]+'!', 'success');
-        else alert('✓ Tarefa delegada para '+destinoNome+'!');
+        if(typeof toast === 'function'){
+          if(sucessos === 1){
+            toast('Tarefa delegada para '+destinatarios[0].nome.split(' ')[0]+'!', 'success');
+          } else {
+            toast('Tarefa delegada para '+sucessos+' pessoas!', 'success');
+          }
+        }
       } else {
         if(btnD){ btnD.disabled=false; btnD.innerHTML='+ Adicionar'; }
-        alert('Não consegui delegar agora. Verifique a conexão e tente de novo.');
+        alert('Delegou pra '+sucessos+' de '+total+' pessoas. Algumas falharam. Tente de novo.');
       }
     });
     return;
@@ -19014,6 +19391,7 @@ function tfSalvarModal(){
   
   // Não recorrente — comportamento original (com pessoa_id)
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var hora_limite = (document.getElementById('tf-m-hora-limite')||{}).value||null;
   var nova={
     id:'tf'+Date.now(),
     texto:texto.trim(),
@@ -19025,6 +19403,39 @@ function tfSalvarModal(){
     criadoEm:new Date().toISOString(),
     pessoa_id: u ? u.id : null
   };
+
+  // === Se for tarefa DE PROJETO (hidden input setado) — salva NO PROJETO ===
+  var projetoIdEl = document.getElementById('tf-m-projeto-id');
+  if(projetoIdEl && projetoIdEl.value){
+    var projId = projetoIdEl.value;
+    var projs = (typeof getTarefasRaw === 'function') ? getTarefasRaw('projetos') : [];
+    var p = projs.find(function(x){return x.id===projId;});
+    if(p){
+      if(!p.tarefas) p.tarefas = [];
+      p.tarefas.push({
+        id: 'pt'+Date.now(),
+        texto: texto.trim(),
+        feito: false,
+        prio: prio,
+        prazo: prazo,
+        hora_limite: hora_limite,
+        criadoEm: new Date().toISOString(),
+        pessoa_id: u ? u.id : null
+      });
+      saveTarefas('projetos', null, projs);
+      if(typeof toast === 'function') toast('Tarefa criada no projeto "'+p.nome+'"!', 'success');
+      closeModal('modal-campanha');
+      // Re-renderiza projetos e abre detalhes do projeto novamente
+      if(typeof tfRenderProjetos === 'function') tfRenderProjetos();
+      if(_projDetalheAtivo === projId){
+        setTimeout(function(){ _renderModalDetalheProjeto(); }, 100);
+      }
+      if(typeof tfRenderDiario === 'function') tfRenderDiario();
+      if(typeof renderCalendar === 'function') renderCalendar();
+      tfAtualizarMetricas();
+      return;
+    }
+  }
   
   if(ctx==='diario'){ var l=getTarefas('diario');l.push(nova);saveTarefas('diario',null,l); }
   else if(ctx==='semana'){ var sw=tfGetSemana(_tfSemanaOffset);var key=sw[0].key;var l=getTarefas('semana',key);nova.semana='Sem. '+sw[0].dia+'/'+sw[6].dia;l.push(nova);saveTarefas('semana',key,l); }
