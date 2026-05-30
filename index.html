@@ -1,4 +1,4 @@
-<!-- v21.3 - Calendario reestruturado: sem sidebar, tudo full-width vertical - 30/05/2026 -->
+<!-- v21.5 - Remove sub-abas e Ver todos - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1686,6 +1686,9 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     .cal-day.selected { box-shadow:0 0 0 2px var(--orange); transform: scale(1.04); }
 
     /* Responsividade do calendário */
+    @media(max-width:900px){
+      #cal-layout-grid { grid-template-columns:1fr!important; }
+    }
     @media(max-width:560px){
       .cal-day { font-size:13px!important; min-height:42px!important; }
       .cal-head { font-size:10px!important; padding:6px 2px!important; }
@@ -1700,7 +1703,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="calHoje()" style="font-size:12px">📍 Hoje</button>
-      <button class="btn btn-ghost" onclick="calTrazerAtrasadas()" id="btn-trazer-atrasadas" style="font-size:12px" title="Move tarefas vencidas pra hoje">📥 Trazer atrasadas</button>
       <button class="btn btn-ghost" onclick="calMostrarAniversarios()" style="font-size:12px">🎂 Aniversários</button>
     </div>
   </div>
@@ -1754,14 +1756,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
   </div>
 
-  <!-- TABS -->
-  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px;overflow-x:auto">
-    <button id="calt-calendario" onclick="calAba('calendario')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--orange);cursor:pointer;font-family:inherit;border-bottom:2px solid var(--orange);margin-bottom:-2px;white-space:nowrap">📅 Calendário</button>
-    <button id="calt-aniversarios" onclick="calAba('aniversarios')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🎂 Aniversariantes</button>
-    <button id="calt-datas" onclick="calAba('datas')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">📌 Datas sazonais</button>
-  </div>
-
-  <!-- TAB CALENDÁRIO -->
+  <!-- TAB CALENDÁRIO (única vista) -->
   <div id="cal-tab-calendario">
   <!-- LEGENDA -->
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
@@ -1774,8 +1769,11 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#E6F6FE;color:var(--orange)">⭐ Destaque</span>
   </div>
 
-  <!-- CALENDÁRIO PRINCIPAL (vistas alternativas) - full width -->
-  <div id="cal-views-host" style="margin-bottom:14px">
+  <!-- LAYOUT: Calendário + Painel lateral (quando dia selecionado) -->
+  <div id="cal-layout-grid" style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px">
+
+    <!-- CALENDÁRIO PRINCIPAL (vistas alternativas) -->
+    <div id="cal-views-host">
       <!-- VISTA MÊS -->
       <div id="cal-view-mes" class="card" style="padding:0;overflow:hidden">
         <!-- Header mês -->
@@ -1824,23 +1822,25 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         </div>
         <div id="cal-ano-grid" style="padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px"></div>
       </div>
-  </div>
-
-  <!-- DIA SELECIONADO (inline, full width, aparece ao clicar num dia) -->
-  <div class="card" id="cal-day-panel" style="display:none;border:2px solid var(--orange);box-shadow:0 4px 14px rgba(232,75,74,.15);animation:cal-fadeup .35s ease both;margin-bottom:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--orange)">📌 Detalhes do dia</div>
-      <button onclick="fecharDiaPainel()" title="Fechar" style="background:transparent;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0 4px;line-height:1">×</button>
     </div>
-    <!-- Conteúdo dinâmico injetado por selectDay() -->
-    <div id="day-panel-content"></div>
+
+    <!-- PAINEL LATERAL DETALHES DO DIA (só aparece quando seleciona dia) -->
+    <div id="cal-day-panel-wrap" style="display:none">
+      <div class="card" id="cal-day-panel" style="border:2px solid var(--orange);box-shadow:0 4px 14px rgba(232,75,74,.15);animation:cal-fadeup .35s ease both;position:sticky;top:14px;max-height:calc(100vh - 30px);overflow-y:auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--orange)">📌 Detalhes do dia</div>
+          <button onclick="fecharDiaPainel()" title="Fechar" style="background:transparent;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0 4px;line-height:1">×</button>
+        </div>
+        <!-- Conteúdo dinâmico injetado por selectDay() -->
+        <div id="day-panel-content"></div>
+      </div>
+    </div>
   </div>
 
   <!-- PRÓXIMOS ANIVERSÁRIOS (full width) -->
   <div class="card" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="card-title" style="margin:0">🎂 Próximos aniversários</div>
-      <button onclick="calAba('aniversarios')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text3);cursor:pointer;font-family:inherit">Ver todos</button>
     </div>
     <div id="cal-proximos-bdays" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px"></div>
   </div>
@@ -5486,21 +5486,32 @@ function selectDay(d, m, y){
 
   // 🚨 GARANTE que o painel fica VISÍVEL ao selecionar um dia
   const card = document.getElementById('cal-day-panel');
+  const wrap = document.getElementById('cal-day-panel-wrap');
+  const layoutGrid = document.getElementById('cal-layout-grid');
+  if(wrap) wrap.style.display = 'block';
   if(card) card.style.display = 'block';
+  // Ajusta grid pra 2 colunas (calendário + painel lateral)
+  if(layoutGrid) layoutGrid.style.gridTemplateColumns = '1fr 340px';
 
-  // Rola pra ver o painel (agora é inline, full-width)
+  // Rola pra ver o painel só em mobile (em desktop fica visível na lateral)
   try {
-    setTimeout(function(){
-      var el = document.getElementById('cal-day-panel');
-      if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
-    }, 80);
+    if(window.innerWidth <= 900){
+      setTimeout(function(){
+        var el = document.getElementById('cal-day-panel');
+        if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
+      }, 80);
+    }
   } catch(e){}
 }
 
 function fecharDiaPainel(){
   selectedDay = null;
   var p = document.getElementById('cal-day-panel');
+  var wrap = document.getElementById('cal-day-panel-wrap');
+  var layoutGrid = document.getElementById('cal-layout-grid');
   if(p) p.style.display = 'none';
+  if(wrap) wrap.style.display = 'none';
+  if(layoutGrid) layoutGrid.style.gridTemplateColumns = '1fr';
   if(typeof renderCalendar === 'function') renderCalendar();
 }
 
@@ -16433,14 +16444,12 @@ document.addEventListener('DOMContentLoaded',function(){setTimeout(initSupabase,
 
 
 function calAba(aba){
-  ['calendario','aniversarios','datas'].forEach(function(t){
-    var el=document.getElementById('cal-tab-'+t);
-    var btn=document.getElementById('calt-'+t);
-    if(el)el.style.display=t===aba?'block':'none';
-    if(btn){btn.style.color=t===aba?'var(--orange)':'var(--text3)';btn.style.borderBottomColor=t===aba?'var(--orange)':'transparent';btn.style.fontWeight=t===aba?'600':'500';}
-  });
-  if(aba==='aniversarios') renderAniversariantesFull();
-  if(aba==='datas') renderDatasSazonais();
+  // Sub-abas removidas - função mantida pra compat com chamadas antigas
+  if(aba === 'aniversarios'){
+    // Rola pra seção de aniversariantes (que agora fica abaixo do calendário)
+    var el = document.getElementById('cal-proximos-bdays');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }
 }
 
 function renderAniversariantesFull(){
