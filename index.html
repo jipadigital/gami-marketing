@@ -1,4 +1,4 @@
-<!-- v19.0 - Micro-interacoes: hover lift + toast + skeleton + sino + reactions + humor novo + mural inline - 29/05/2026 -->
+<!-- v19.2 - Pulse voto definitivo (nao pode trocar nem desfazer) - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -19540,10 +19540,33 @@ function pulseKey(){
 function getPulseHoje(){
   try { return JSON.parse(localStorage.getItem(pulseKey()) || '{}'); } catch(e) { return {}; }
 }
+/* Chave: voto do usuario logado pro dia atual */
+function _pulseMeuVotoKey(){
+  var d = new Date();
+  var uid = (typeof getUsuarioLogado === 'function' && getUsuarioLogado()) ? getUsuarioLogado().id : 'anon';
+  return 'gami_pulse_voto_'+uid+'_'+d.toISOString().slice(0,10);
+}
+function _pulseMeuVoto(){
+  try{ return localStorage.getItem(_pulseMeuVotoKey()); }catch(e){ return null; }
+}
+function _pulseSetMeuVoto(emoji){
+  try{
+    if(emoji) localStorage.setItem(_pulseMeuVotoKey(), emoji);
+    else localStorage.removeItem(_pulseMeuVotoKey());
+  }catch(e){}
+}
 function votarPulse(emoji){
+  var anterior = _pulseMeuVoto();
+  if(anterior){
+    // Já votou hoje - bloqueia
+    if(typeof toast === 'function') toast('Você já votou hoje', 'warn');
+    return;
+  }
   var p = getPulseHoje();
   p[emoji] = (p[emoji]||0) + 1;
+  _pulseSetMeuVoto(emoji);
   try { localStorage.setItem(pulseKey(), JSON.stringify(p)); } catch(e){}
+  if(typeof toast === 'function') toast('Voto registrado · obrigado!', 'success');
   renderPulse();
 }
 function renderPulse(){
@@ -19559,22 +19582,45 @@ function renderPulse(){
     {e:'😴', label:'Cansado'},
   ];
   var p = getPulseHoje();
+  var meuVoto = _pulseMeuVoto();
+  var jaVotou = !!meuVoto;
   var total = Object.values(p).reduce(function(a,b){return a+b;},0);
-  if(countHost) countHost.textContent = total + (total===1?' voto':' votos') + ' hoje';
+  if(countHost) countHost.textContent = total + (total===1?' voto':' votos') + ' hoje' + (jaVotou ? ' · você votou ✓' : '');
   host.innerHTML = emojis.map(function(em){
     var qtd = p[em.e] || 0;
-    return '<button onclick="votarPulse(\''+em.e+'\')" style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:'+(qtd>0?'#E6F6FE':'var(--surface2)')+';cursor:pointer;font-family:inherit;min-width:50px" title="'+em.label+'">'+
+    var ehMeu = (meuVoto === em.e);
+    var bg, corNum, borda, opacidade, cursor;
+    if(ehMeu){
+      bg = '#1AB8F0'; corNum = 'white'; borda = '2px solid #0E7AB8'; opacidade = '1'; cursor = 'default';
+    } else if(jaVotou){
+      // Outros ficam desabilitados se ja votou
+      bg = 'var(--surface2)'; corNum = 'var(--text3)'; borda = '1px solid var(--border)'; opacidade = '.45'; cursor = 'not-allowed';
+    } else {
+      bg = qtd>0 ? '#E6F6FE' : 'var(--surface2)'; corNum = 'var(--text3)'; borda = '1px solid var(--border)'; opacidade = '1'; cursor = 'pointer';
+    }
+    var titleText = ehMeu ? 'Seu voto de hoje · '+em.label : (jaVotou ? 'Você já votou hoje em outro' : em.label);
+    return '<button onclick="votarPulse(\''+em.e+'\')" '+(jaVotou?'disabled':'')+' style="display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 10px;border:'+borda+';border-radius:10px;background:'+bg+';cursor:'+cursor+';font-family:inherit;min-width:50px;transition:all .15s ease;opacity:'+opacidade+'" title="'+titleText+'">'+
       '<span style="font-size:22px">'+em.e+'</span>'+
-      '<span style="font-size:9px;color:var(--text3);font-weight:600">'+qtd+'</span>'+
+      '<span style="font-size:9px;color:'+corNum+';font-weight:600">'+qtd+'</span>'+
     '</button>';
   }).join('');
   if(resHost){
     if(total > 0){
       var topItem = emojis.map(function(em){return {e:em.e,label:em.label,qtd:p[em.e]||0};}).sort(function(a,b){return b.qtd-a.qtd;})[0];
       if(topItem.qtd > 0){
-        resHost.innerHTML = '<div style="font-size:11px;color:var(--text2);padding:8px 10px;background:var(--surface2);border-radius:7px"><strong>Sentimento dominante hoje:</strong> '+topItem.e+' '+topItem.label+'</div>';
+        var minhaParte = jaVotou
+          ? '<div style="font-size:10px;color:#1D9E75;margin-top:6px;font-weight:600">✓ Você votou hoje: '+((emojis.find(function(em){return em.e===meuVoto;})||{label:'?'}).label)+'. Pode votar novamente amanhã.</div>'
+          : '<div style="font-size:10px;color:var(--text3);margin-top:6px">Você ainda não votou hoje · 1 voto por dia</div>';
+        resHost.innerHTML = '<div style="font-size:11px;color:var(--text2);padding:8px 10px;background:var(--surface2);border-radius:7px"><strong>Sentimento dominante hoje:</strong> '+topItem.e+' '+topItem.label+minhaParte+'</div>';
       } else { resHost.innerHTML = ''; }
-    } else { resHost.innerHTML = ''; }
+    } else {
+      // Ninguém votou ainda
+      if(jaVotou){
+        resHost.innerHTML = '<div style="font-size:11px;color:#1D9E75;padding:8px 10px;background:#EAF3DE;border-radius:7px;font-weight:600">✓ Voto registrado!</div>';
+      } else {
+        resHost.innerHTML = '';
+      }
+    }
   }
 }
 
