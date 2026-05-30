@@ -1,4 +1,4 @@
-<!-- v22.2 - Devocional Gami: sem checkbox e sem cadeado (so informativo) - 30/05/2026 -->
+<!-- v23.0 - Refatoracao aba Tarefas: categorias por permissao + Delegadas por mim + busca/filtros + XP card + sem humor/notas duplicados - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1688,6 +1688,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     /* Responsividade do calendário */
     @media(max-width:900px){
       #cal-layout-grid { grid-template-columns:1fr!important; }
+      #tf-diario-layout { grid-template-columns:1fr!important; }
     }
     @media(max-width:560px){
       .cal-day { font-size:13px!important; min-height:42px!important; }
@@ -1885,10 +1886,10 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div class="metric-val" id="tf-m-mes">0/0</div>
       <div class="metric-sub" id="tf-m-mes-sub">concluídas</div>
     </div>
-    <div class="metric">
-      <div class="metric-label">Projetos</div>
-      <div class="metric-val" id="tf-m-proj">0</div>
-      <div class="metric-sub">ativos</div>
+    <div class="metric" id="tf-m-atrasadas-wrap">
+      <div class="metric-label">Atrasadas</div>
+      <div class="metric-val" id="tf-m-atrasadas" style="color:#E24B4A">0</div>
+      <div class="metric-sub" style="color:#E24B4A">requerem atenção</div>
     </div>
   </div>
 
@@ -1898,21 +1899,34 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <button id="tft-semana"   onclick="tarefaAba('semana')"   style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">📅 Semana</button>
     <button id="tft-mes"      onclick="tarefaAba('mes')"      style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🗓️ Mês</button>
     <button id="tft-projetos" onclick="tarefaAba('projetos')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🚀 Projetos</button>
-    <button id="tft-rotina"   onclick="tarefaAba('rotina')"   style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">⚡ Rotina diária</button>
+    <button id="tft-delegadas" onclick="tarefaAba('delegadas')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:none">📥 Delegadas por mim</button>
+    <button id="tft-rotina"   onclick="tarefaAba('rotina')"   style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:none">⚡ Rotina marketing</button>
     <button id="tft-recorrentes" onclick="tarefaAba('recorrentes')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🔁 Recorrentes</button>
   </div>
 
   <!-- TAB HOJE / DIÁRIO -->
   <div id="tf-tab-diario" style="display:block">
-    <div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+    <div style="display:grid;grid-template-columns:1fr 260px;gap:14px" id="tf-diario-layout">
       <div>
+        <!-- ALERTA DE ATRASADAS (aparece se houver) -->
+        <div id="tf-banner-atrasadas" style="display:none;margin-bottom:12px;padding:10px 14px;background:linear-gradient(135deg,#FFF5F5,#FCEBEB);border:1px solid #E24B4A33;border-left:4px solid #E24B4A;border-radius:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">⚠️</span>
+            <div style="flex:1">
+              <div style="font-size:12px;font-weight:700;color:#A32D2D">Você tem <span id="tf-banner-atrasadas-count">0</span> tarefa(s) atrasada(s)</div>
+              <div style="font-size:10px;color:#C0392B">Aparecem destacadas no topo da lista. Resolva primeiro pra liberar a mente!</div>
+            </div>
+            <button onclick="tfFiltrar(null,'atrasadas')" style="padding:5px 10px;border:1px solid #E24B4A;border-radius:6px;background:white;color:#E24B4A;font-size:11px;cursor:pointer;font-family:inherit;font-weight:600">Ver só atrasadas</button>
+          </div>
+        </div>
+
         <!-- Foco do dia -->
-        <div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#E6F6FE,#FCEBEB);border-color:#1AB8F033">
+        <div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#E6F6FE,#EAF3DE);border-color:#1AB8F033">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
             <span style="font-size:20px">🎯</span>
             <div>
-              <div style="font-size:13px;font-weight:700;color:#A32D2D">Foco do dia</div>
-              <div style="font-size:11px;color:#C0392B" id="tf-data-hoje"></div>
+              <div style="font-size:13px;font-weight:700;color:#0E7AB8">Foco do dia</div>
+              <div style="font-size:11px;color:#3B6D11" id="tf-data-hoje"></div>
             </div>
             <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
               <button onclick="tfSugerirFocoModal()" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px" title="Sugestões inteligentes baseadas no seu cargo">✨ Sugerir</button>
@@ -1925,35 +1939,48 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
         <!-- Adicionar rápido -->
         <div class="card" style="margin-bottom:12px">
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="tf-add-input" class="inp" placeholder="+ Adicionar tarefa para hoje..." style="flex:1;font-size:13px" onkeydown="if(event.key==='Enter')tfAdicionarRapido()"/>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="tf-add-input" class="inp" placeholder="+ Adicionar tarefa para hoje..." style="flex:1;min-width:200px;font-size:13px" onkeydown="if(event.key==='Enter')tfAdicionarRapido()"/>
             <select id="tf-add-prio" class="sel" style="width:110px;font-size:12px">
               <option value="alta">🔴 Alta</option>
               <option value="media" selected>🟡 Média</option>
               <option value="baixa">🟢 Baixa</option>
             </select>
-            <select id="tf-add-cat" class="sel" style="width:110px;font-size:12px">
-              <option>Marketing</option>
-              <option>Conteúdo</option>
-              <option>Campanhas</option>
-              <option>Cidades</option>
-              <option>Reunião</option>
-              <option>Financeiro</option>
-              <option>Outro</option>
-            </select>
-            <button onclick="tfSugerirTarefaModal()" style="padding:7px 11px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap" title="Sugestões de tarefas baseadas no seu cargo">✨ Sugerir</button>
+            <select id="tf-add-cat" class="sel" style="width:140px;font-size:12px"></select>
+            <button onclick="tfSugerirTarefaModal()" style="padding:7px 11px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap" title="Sugestões baseadas no seu cargo">✨ Sugerir</button>
             <button onclick="tfAdicionarRapido()" class="btn btn-primary" style="font-size:12px;white-space:nowrap">+ Adicionar</button>
           </div>
         </div>
 
-        <!-- Filtros -->
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
-          <button onclick="tfFiltrar(this,'todas')" class="tf-filtro" style="padding:4px 10px;border-radius:6px;border:1px solid var(--orange);background:var(--orange);color:white;font-size:11px;cursor:pointer;font-family:inherit">Todas</button>
-          <button onclick="tfFiltrar(this,'pendente')" class="tf-filtro" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">Pendentes</button>
-          <button onclick="tfFiltrar(this,'feito')" class="tf-filtro" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">Concluídas</button>
-          <div style="margin-left:auto;display:flex;gap:6px">
-            <button onclick="tfLimparConcluidas()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑 Limpar concluídas</button>
-            <button onclick="tfSugerirIA('tarefas')" style="padding:4px 10px;border-radius:6px;border:none;background:#F3E5F5;color:#6A1B9A;font-size:11px;cursor:pointer;font-family:inherit">🤖 Sugerir tarefas</button>
+        <!-- Filtros + Busca -->
+        <div class="card" style="padding:10px 12px;margin-bottom:10px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <!-- Busca -->
+            <div style="flex:1;min-width:200px;position:relative">
+              <input id="tf-busca" type="text" placeholder="🔍 Buscar nas tarefas..." oninput="tfAplicarFiltrosCompletos()"
+                style="width:100%;padding:6px 11px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;background:var(--surface2);box-sizing:border-box">
+            </div>
+            <!-- Filtro categoria -->
+            <select id="tf-filtro-cat" onchange="tfAplicarFiltrosCompletos()" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer;min-width:120px">
+              <option value="">📂 Todas categorias</option>
+            </select>
+            <!-- Filtro prioridade -->
+            <select id="tf-filtro-prio" onchange="tfAplicarFiltrosCompletos()" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer;min-width:110px">
+              <option value="">🎯 Todas prios</option>
+              <option value="alta">🔴 Alta</option>
+              <option value="media">🟡 Média</option>
+              <option value="baixa">🟢 Baixa</option>
+            </select>
+            <!-- Filtro status -->
+            <div style="display:flex;gap:3px">
+              <button onclick="tfFiltrar(this,'todas')" class="tf-filtro" data-filtro="todas" style="padding:5px 9px;border-radius:6px;border:1px solid var(--orange);background:var(--orange);color:white;font-size:11px;cursor:pointer;font-family:inherit">Todas</button>
+              <button onclick="tfFiltrar(this,'pendente')" class="tf-filtro" data-filtro="pendente" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">Pendentes</button>
+              <button onclick="tfFiltrar(this,'feito')" class="tf-filtro" data-filtro="feito" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">Feitas</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;justify-content:flex-end">
+            <button onclick="tfLimparConcluidas()" style="padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:10px;cursor:pointer;font-family:inherit">🗑 Limpar concluídas</button>
+            <button onclick="tfLimparFiltros()" style="padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:10px;cursor:pointer;font-family:inherit">↺ Limpar filtros</button>
           </div>
         </div>
 
@@ -1967,7 +1994,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div class="card">
           <div class="card-title">📊 Progresso hoje</div>
           <div style="text-align:center;margin-bottom:10px">
-            <div id="tf-prog-pct" style="font-size:32px;font-weight:800;color:var(--orange)">0%</div>
+            <div id="tf-prog-pct" style="font-size:32px;font-weight:800;color:var(--orange);font-family:'Syne',sans-serif">0%</div>
             <div id="tf-prog-label" style="font-size:11px;color:var(--text3)">0 de 0 concluídas</div>
           </div>
           <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
@@ -1975,30 +2002,23 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           </div>
         </div>
 
-        <!-- Humor do dia -->
-        <div class="card">
-          <div class="card-title">😊 Como está o dia?</div>
-          <div style="display:flex;justify-content:space-between;margin-top:4px" id="tf-humor-btns">
-            <button onclick="tfSetHumor(this,'😫')" style="font-size:22px;padding:6px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;flex:1;margin:0 2px">😫</button>
-            <button onclick="tfSetHumor(this,'😕')" style="font-size:22px;padding:6px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;flex:1;margin:0 2px">😕</button>
-            <button onclick="tfSetHumor(this,'😐')" style="font-size:22px;padding:6px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;flex:1;margin:0 2px">😐</button>
-            <button onclick="tfSetHumor(this,'😊')" style="font-size:22px;padding:6px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;flex:1;margin:0 2px">😊</button>
-            <button onclick="tfSetHumor(this,'🔥')" style="font-size:22px;padding:6px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;flex:1;margin:0 2px">🔥</button>
-          </div>
-          <div id="tf-humor-label" style="font-size:11px;color:var(--text3);text-align:center;margin-top:6px"></div>
+        <!-- XP / LEVEL / STREAK (dados reais) -->
+        <div class="card" style="background:linear-gradient(135deg,#FFF8EE,#FAEEDA);border-color:#EF9F2733" id="tf-xp-card">
+          <div class="card-title" style="color:#854F0B">🏆 Sua jornada</div>
+          <div id="tf-xp-content" style="font-size:11px;color:var(--text2)"></div>
         </div>
 
-        <!-- Notas do dia -->
+        <!-- PRÓXIMOS DIAS (atalho calendário) -->
         <div class="card">
-          <div class="card-title">📝 Notas do dia</div>
-          <textarea id="tf-notas-input" class="inp" style="min-height:80px;font-size:12px;resize:vertical" placeholder="Anotações, ideias, lembretes..."></textarea>
-          <button onclick="tfSalvarNotas()" class="btn btn-ghost" style="width:100%;font-size:12px;margin-top:6px">💾 Salvar notas</button>
+          <div class="card-title">📅 Próximos 7 dias</div>
+          <div id="tf-proximos-dias" style="display:flex;flex-direction:column;gap:5px;font-size:11px"></div>
+          <button onclick="nav(document.querySelector('.nav-item[onclick*=&quot;calendario&quot;]'),'calendario')" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">→ Ver calendário completo</button>
         </div>
 
-        <!-- Conquistas -->
+        <!-- Conquistas reais -->
         <div class="card">
-          <div class="card-title">🏆 Conquistas recentes</div>
-          <div id="tf-conquistas" style="font-size:12px;color:var(--text3)">Conclua tarefas para ganhar conquistas!</div>
+          <div class="card-title">⭐ Conquistas</div>
+          <div id="tf-conquistas" style="font-size:11px;color:var(--text2)"></div>
         </div>
       </div>
     </div>
@@ -2064,6 +2084,28 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <button onclick="tfAbrirModalProjeto()" class="btn btn-primary" style="font-size:12px">+ Novo projeto</button>
     </div>
     <div id="tf-projetos-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px"></div>
+  </div>
+
+  <!-- TAB DELEGADAS POR MIM -->
+  <div id="tf-tab-delegadas" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:13px;font-weight:700">📥 Tarefas que você delegou</div>
+        <div style="font-size:11px;color:var(--text3)">Acompanhe o status das tarefas que você passou pra outras pessoas</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="tf-deleg-filtro" onchange="renderDelegadasPorMim()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer">
+          <option value="todas">Todas</option>
+          <option value="pendente">Pendentes</option>
+          <option value="atrasada">Atrasadas</option>
+          <option value="feita">Feitas</option>
+        </select>
+      </div>
+    </div>
+    <!-- Contadores -->
+    <div class="g4" id="tf-deleg-contadores" style="margin-bottom:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px"></div>
+    <!-- Lista de delegadas -->
+    <div id="tf-delegadas-list"></div>
   </div>
 
   <!-- TAB ROTINA -->
@@ -16929,7 +16971,7 @@ async function tfAtualizarBadgeDelegadas(){
 }
 
 function tarefaAba(aba){
-  ['diario','semana','mes','projetos','rotina','recorrentes'].forEach(function(t){
+  ['diario','semana','mes','projetos','delegadas','rotina','recorrentes'].forEach(function(t){
     var el=document.getElementById('tf-tab-'+t);
     var btn=document.getElementById('tft-'+t);
     if(el) el.style.display=t===aba?'block':'none';
@@ -16943,6 +16985,7 @@ function tarefaAba(aba){
   if(aba==='semana') tfRenderSemana();
   if(aba==='mes') tfRenderMes();
   if(aba==='projetos') tfRenderProjetos();
+  if(aba==='delegadas' && typeof renderDelegadasPorMim==='function') renderDelegadasPorMim();
   if(aba==='recorrentes') renderTarefasRecorrentes();
   if(aba==='rotina'){
     var rList=document.getElementById('tf-rotina-list');
@@ -16950,6 +16993,310 @@ function tarefaAba(aba){
     tfAtualizarRotinaBar();
   }
   tfAtualizarMetricas();
+}
+
+/* ============================================================ */
+/* TAREFAS — Setup das sub-abas conforme permissão              */
+/* ============================================================ */
+function tfSetupAbasConformePermissao(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var ehSuperAdmin = nivel === 'super_admin';
+  var podeDelegar = ehSuperAdmin || ['diretoria','gerencia','gestor'].indexOf(nivel) >= 0;
+
+  // Mostra aba "Delegadas por mim" só pra quem pode delegar
+  var btnDeleg = document.getElementById('tft-delegadas');
+  if(btnDeleg) btnDeleg.style.display = podeDelegar ? '' : 'none';
+
+  // Mostra "Rotina Marketing" só pro super_admin (Cleyton)
+  var btnRot = document.getElementById('tft-rotina');
+  if(btnRot) btnRot.style.display = ehSuperAdmin ? '' : 'none';
+
+  // Popula o select de categorias do "Adicionar rápido"
+  var selAddCat = document.getElementById('tf-add-cat');
+  if(selAddCat && typeof tfGetCategoriasPermitidas === 'function'){
+    var cats = tfGetCategoriasPermitidas();
+    selAddCat.innerHTML = cats.map(function(c){
+      var ico = (typeof TF_CAT_ICO !== 'undefined' && TF_CAT_ICO[c]) ? TF_CAT_ICO[c]+' ' : '';
+      return '<option value="'+c+'">'+ico+c+'</option>';
+    }).join('');
+  }
+
+  // Popula o select de filtro de categoria
+  var selFltCat = document.getElementById('tf-filtro-cat');
+  if(selFltCat && typeof tfGetCategoriasPermitidas === 'function'){
+    var cats2 = tfGetCategoriasPermitidas();
+    selFltCat.innerHTML = '<option value="">📂 Todas categorias</option>' + cats2.map(function(c){
+      var ico = (typeof TF_CAT_ICO !== 'undefined' && TF_CAT_ICO[c]) ? TF_CAT_ICO[c]+' ' : '';
+      return '<option value="'+c+'">'+ico+c+'</option>';
+    }).join('');
+  }
+}
+
+/* ============================================================ */
+/* TAREFAS — Filtros completos (busca + cat + prio + status)    */
+/* ============================================================ */
+var _tfFiltrosState = { busca:'', cat:'', prio:'', status:'todas' };
+
+function tfAplicarFiltrosCompletos(){
+  _tfFiltrosState.busca = (document.getElementById('tf-busca')||{}).value || '';
+  _tfFiltrosState.cat = (document.getElementById('tf-filtro-cat')||{}).value || '';
+  _tfFiltrosState.prio = (document.getElementById('tf-filtro-prio')||{}).value || '';
+  // status mantém o atual (controlado por tfFiltrar)
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
+}
+
+function tfLimparFiltros(){
+  _tfFiltrosState = { busca:'', cat:'', prio:'', status:'todas' };
+  var b = document.getElementById('tf-busca'); if(b) b.value = '';
+  var fc = document.getElementById('tf-filtro-cat'); if(fc) fc.value = '';
+  var fp = document.getElementById('tf-filtro-prio'); if(fp) fp.value = '';
+  // Reset botões de status
+  document.querySelectorAll('.tf-filtro').forEach(function(btn){
+    var f = btn.getAttribute('data-filtro');
+    if(f === 'todas'){
+      btn.style.background = 'var(--orange)';
+      btn.style.color = 'white';
+      btn.style.borderColor = 'var(--orange)';
+    } else {
+      btn.style.background = 'var(--surface2)';
+      btn.style.color = 'var(--text2)';
+      btn.style.borderColor = 'var(--border)';
+    }
+  });
+  _tfFiltroAtual = 'todas';
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
+  if(typeof toast === 'function') toast('Filtros limpos', 'info');
+}
+
+/* ============================================================ */
+/* TAREFAS — Renderiza XP/Streak/Level (dados reais)             */
+/* ============================================================ */
+function tfRenderXpCard(){
+  var el = document.getElementById('tf-xp-content');
+  if(!el) return;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){ el.innerHTML = '<div style="color:var(--text3);font-style:italic">Faça login pra ver sua jornada</div>'; return; }
+  var uid = u.id;
+  // Tenta pegar XP e level do sistema existente
+  var xp = 0, level = 1, streak = 0;
+  try {
+    xp = parseInt(localStorage.getItem('gami_xp_'+uid) || '0', 10);
+    level = parseInt(localStorage.getItem('gami_level_'+uid) || '1', 10);
+    streak = parseInt(localStorage.getItem('gami_streak_'+uid) || '0', 10);
+  } catch(e){}
+  var xpParaProximo = (level * 100);
+  var xpAtualNivel = xp % 100;
+  var pctNivel = Math.min(100, Math.round((xpAtualNivel / 100) * 100));
+  el.innerHTML = 
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+      +'<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#EF9F27,#F4B942);color:white;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;font-family:\'Syne\',sans-serif;box-shadow:0 2px 6px rgba(239,159,39,.3)">'+level+'</div>'
+      +'<div style="flex:1">'
+        +'<div style="font-size:13px;font-weight:700;color:#854F0B">Nível '+level+'</div>'
+        +'<div style="font-size:10px;color:var(--text3)">'+xp+' XP total</div>'
+      +'</div>'
+    +'</div>'
+    +'<div style="height:6px;background:rgba(239,159,39,.15);border-radius:3px;overflow:hidden;margin-bottom:4px">'
+      +'<div style="height:100%;width:'+pctNivel+'%;background:linear-gradient(90deg,#EF9F27,#F4B942);border-radius:3px;transition:width .3s"></div>'
+    +'</div>'
+    +'<div style="font-size:9px;color:var(--text3);text-align:right;margin-bottom:8px">'+xpAtualNivel+' / 100 XP pro próximo nível</div>'
+    +(streak > 0 
+      ? '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:white;border-radius:6px;border:1px solid #FFD93D55"><span style="font-size:14px">🔥</span><span style="font-size:11px;font-weight:600;color:#854F0B">Streak: '+streak+' dia'+(streak>1?'s':'')+'</span></div>'
+      : '<div style="font-size:10px;color:var(--text3);text-align:center;font-style:italic">Complete tarefas pra iniciar sua sequência!</div>'
+    );
+}
+
+/* ============================================================ */
+/* TAREFAS — Próximos 7 dias (sidebar resumo)                    */
+/* ============================================================ */
+function tfRenderProximosDias(){
+  var el = document.getElementById('tf-proximos-dias');
+  if(!el) return;
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var lista = (typeof getTarefas === 'function') ? getTarefas('diario') : [];
+  var html = '';
+  for(var i=1; i<=7; i++){
+    var d = new Date(hoje); d.setDate(hoje.getDate()+i);
+    var key = d.toISOString().split('T')[0];
+    var lbl = i===1 ? 'Amanhã' : (['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'));
+    var count = lista.filter(function(t){ return t.prazo === key && !t.feito; }).length;
+    // Tarefa fixa do dia
+    var fixas = 0;
+    try { if(typeof getTarefasFixasNoDia === 'function') fixas = getTarefasFixasNoDia(d).length; } catch(e){}
+    var total = count + fixas;
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">'
+      +'<span style="color:'+(total?'var(--text)':'var(--text3)')+';font-weight:'+(total?'500':'400')+'">'+lbl+'</span>'
+      +(total ? '<span style="font-size:10px;padding:1px 7px;border-radius:5px;background:var(--gami-blue)22;color:#0E7AB8;font-weight:600">'+total+'</span>' : '<span style="font-size:10px;color:var(--text3)">—</span>')
+    +'</div>';
+  }
+  el.innerHTML = html;
+}
+
+/* ============================================================ */
+/* TAREFAS — Conquistas reais (badges desbloqueadas)             */
+/* ============================================================ */
+function tfRenderConquistasReais(){
+  var el = document.getElementById('tf-conquistas');
+  if(!el) return;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){ el.innerHTML = '<div style="color:var(--text3);font-style:italic;font-size:10px">Faça login</div>'; return; }
+  var uid = u.id;
+  // Detecta conquistas a partir de dados existentes
+  var stats = { total:0, feitas:0, streak:0, xp:0 };
+  try {
+    var lista = JSON.parse(localStorage.getItem('gami_tarefas_diario_v2')||'[]');
+    stats.total = lista.filter(function(t){ return t.pessoa_id === uid; }).length;
+    stats.feitas = lista.filter(function(t){ return t.pessoa_id === uid && t.feito; }).length;
+    stats.streak = parseInt(localStorage.getItem('gami_streak_'+uid)||'0', 10);
+    stats.xp = parseInt(localStorage.getItem('gami_xp_'+uid)||'0', 10);
+  } catch(e){}
+  
+  var conquistas = [];
+  if(stats.feitas >= 1) conquistas.push({icon:'🌱', txt:'Primeira tarefa concluída'});
+  if(stats.feitas >= 10) conquistas.push({icon:'🎯', txt:'10 tarefas concluídas'});
+  if(stats.feitas >= 50) conquistas.push({icon:'⚡', txt:'50 tarefas concluídas'});
+  if(stats.feitas >= 100) conquistas.push({icon:'💎', txt:'100 tarefas concluídas'});
+  if(stats.streak >= 3) conquistas.push({icon:'🔥', txt:'Streak de 3 dias'});
+  if(stats.streak >= 7) conquistas.push({icon:'🔥🔥', txt:'Semana inteira de streak'});
+  if(stats.streak >= 30) conquistas.push({icon:'🔥💎', txt:'30 dias de streak'});
+  if(stats.xp >= 100) conquistas.push({icon:'⭐', txt:'100 XP'});
+  if(stats.xp >= 500) conquistas.push({icon:'🌟', txt:'500 XP'});
+
+  if(!conquistas.length){
+    el.innerHTML = '<div style="color:var(--text3);font-style:italic;font-size:11px">Comece concluindo sua primeira tarefa pra desbloquear conquistas!</div>';
+    return;
+  }
+  el.innerHTML = conquistas.slice(0, 4).map(function(c){
+    return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">'
+      +'<span style="font-size:14px">'+c.icon+'</span>'
+      +'<span style="color:var(--text2);font-weight:500">'+c.txt+'</span>'
+    +'</div>';
+  }).join('') + (conquistas.length > 4 ? '<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:4px">+'+(conquistas.length-4)+' conquista'+(conquistas.length-4>1?'s':'')+'</div>' : '');
+}
+
+/* ============================================================ */
+/* TAREFAS — Banner de atrasadas no topo                         */
+/* ============================================================ */
+function tfRenderBannerAtrasadas(){
+  var banner = document.getElementById('tf-banner-atrasadas');
+  var countEl = document.getElementById('tf-banner-atrasadas-count');
+  if(!banner) return;
+  var hojeStr = new Date().toISOString().split('T')[0];
+  var lista = (typeof getTarefas === 'function') ? getTarefas('diario') : [];
+  var atrasadas = lista.filter(function(t){
+    return !t.feito && t.prazo && t.prazo < hojeStr && !t.fixa;
+  });
+  if(atrasadas.length){
+    banner.style.display = 'block';
+    if(countEl) countEl.textContent = atrasadas.length;
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+/* ============================================================ */
+/* TAREFAS — DELEGADAS POR MIM (acompanhamento)                  */
+/* ============================================================ */
+function renderDelegadasPorMim(){
+  var el = document.getElementById('tf-delegadas-list');
+  var contEl = document.getElementById('tf-deleg-contadores');
+  if(!el || !contEl) return;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){ el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Faça login pra ver as tarefas delegadas</div>'; return; }
+
+  // Busca tarefas delegadas (da cache Supabase ou localStorage)
+  var todas = [];
+  // Busca na cache Supabase
+  if(window._tfSupaCache && Array.isArray(window._tfSupaCache)){
+    window._tfSupaCache.forEach(function(t){
+      if(t.delegada_por === u.id){
+        todas.push(t);
+      }
+    });
+  }
+  // Também no localStorage diário (caso tenha delegadas locais)
+  try {
+    var listaLocal = JSON.parse(localStorage.getItem('gami_tarefas_diario_v2')||'[]');
+    listaLocal.forEach(function(t){
+      if(t.delegada_por === u.id && !todas.find(function(x){return x.id===t.id;})){
+        todas.push(t);
+      }
+    });
+  } catch(e){}
+
+  var hojeStr = new Date().toISOString().split('T')[0];
+  // Calcula status de cada
+  todas = todas.map(function(t){
+    var status = 'pendente';
+    if(t.feito) status = 'feita';
+    else if(t.prazo && t.prazo < hojeStr) status = 'atrasada';
+    else if(t.prazo === hojeStr) status = 'hoje';
+    return Object.assign({}, t, { _status: status });
+  });
+
+  // Contadores
+  var cFeita = todas.filter(function(t){return t._status==='feita';}).length;
+  var cAtras = todas.filter(function(t){return t._status==='atrasada';}).length;
+  var cHoje  = todas.filter(function(t){return t._status==='hoje';}).length;
+  var cPend  = todas.filter(function(t){return t._status==='pendente';}).length;
+
+  contEl.innerHTML = 
+    '<div class="metric" style="background:white;border-color:var(--border)"><div class="metric-label">Total</div><div class="metric-val">'+todas.length+'</div><div class="metric-sub">delegadas</div></div>'
+    +'<div class="metric" style="background:#FFF5F5;border-color:#E24B4A33"><div class="metric-label" style="color:#A32D2D">Atrasadas</div><div class="metric-val" style="color:#E24B4A">'+cAtras+'</div><div class="metric-sub" style="color:#A32D2D">urgente</div></div>'
+    +'<div class="metric" style="background:#FFF8EE;border-color:#EF9F2733"><div class="metric-label" style="color:#854F0B">Pendentes</div><div class="metric-val" style="color:#EF9F27">'+(cPend+cHoje)+'</div><div class="metric-sub" style="color:#854F0B">aguardando</div></div>'
+    +'<div class="metric" style="background:#F4F9EE;border-color:#1D9E7533"><div class="metric-label" style="color:#3B6D11">Feitas</div><div class="metric-val" style="color:#1D9E75">'+cFeita+'</div><div class="metric-sub" style="color:#3B6D11">concluídas</div></div>';
+
+  // Aplica filtro
+  var filtro = (document.getElementById('tf-deleg-filtro')||{}).value || 'todas';
+  var filtradas = todas;
+  if(filtro === 'pendente') filtradas = todas.filter(function(t){return t._status==='pendente' || t._status==='hoje';});
+  if(filtro === 'atrasada') filtradas = todas.filter(function(t){return t._status==='atrasada';});
+  if(filtro === 'feita') filtradas = todas.filter(function(t){return t._status==='feita';});
+
+  if(!filtradas.length){
+    el.innerHTML = '<div class="card" style="padding:30px;text-align:center;color:var(--text3)">'
+      +'<div style="font-size:36px;margin-bottom:8px">📭</div>'
+      +'<div style="font-size:13px;font-weight:500">'+(todas.length===0?'Você ainda não delegou nenhuma tarefa':'Nenhuma tarefa com esse filtro')+'</div>'
+      +'<div style="font-size:11px;margin-top:4px">Quando você delegar uma tarefa, ela aparecerá aqui pra acompanhamento</div>'
+    +'</div>';
+    return;
+  }
+
+  // Pega dados das pessoas pra mostrar foto+nome
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  function _pessoaPorId(id){
+    return pessoas.find(function(p){return p.id===id;}) || {nome:id, foto_url:''};
+  }
+  function _avatarHTML(p){
+    var foto = p.foto_url || p.foto || '';
+    if(foto) return '<img src="'+foto+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.1);flex-shrink:0">';
+    var ini = (p.nome||'?').split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+    return '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.1)">'+ini+'</div>';
+  }
+
+  // Ordena: atrasadas primeiro, depois pendentes, depois feitas
+  var ordem = { atrasada:0, hoje:1, pendente:2, feita:3 };
+  filtradas.sort(function(a,b){ return (ordem[a._status]||9) - (ordem[b._status]||9); });
+
+  el.innerHTML = filtradas.map(function(t){
+    var p = _pessoaPorId(t.pessoa_id);
+    var corStatus = { atrasada:'#E24B4A', hoje:'#EF9F27', pendente:'#1E88E5', feita:'#1D9E75' }[t._status];
+    var bgStatus = { atrasada:'#FFF5F5', hoje:'#FFF8EE', pendente:'#F0F8FF', feita:'#F4F9EE' }[t._status];
+    var lblStatus = { atrasada:'⚠️ Atrasada', hoje:'📅 Pra hoje', pendente:'⏳ Pendente', feita:'✅ Feita' }[t._status];
+    var prazoFmt = '';
+    if(t.prazo){
+      try { var pz = t.prazo.split('-'); prazoFmt = pz[2]+'/'+pz[1]; } catch(e){ prazoFmt = t.prazo; }
+    }
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-left:4px solid '+corStatus+';border-radius:10px;background:'+bgStatus+';margin-bottom:8px">'
+      + _avatarHTML(p)
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">'+(t.texto||'')+'</div>'
+        +'<div style="font-size:11px;color:var(--text2)">📨 Para <strong>'+(p.nome||t.pessoa_id).split(' ').slice(0,2).join(' ')+'</strong>'+(prazoFmt?' · ⏰ '+prazoFmt:'')+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+'</div>'
+        +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px">"'+t.mensagem_delegacao+'"</div>':'')
+      +'</div>'
+      +'<span style="font-size:10px;padding:4px 8px;border-radius:6px;background:'+corStatus+';color:white;font-weight:600;flex-shrink:0">'+lblStatus+'</span>'
+    +'</div>';
+  }).join('');
 }
 
 /* ============================================================ */
@@ -17036,18 +17383,19 @@ function marketingAba(aba){
 function tfIniciarDiario(){
   var el=document.getElementById('tf-data-hoje');
   if(el) el.textContent=tfDataHoje();
+  // Setup de tabs/categorias conforme permissão
+  try { if(typeof tfSetupAbasConformePermissao === 'function') tfSetupAbasConformePermissao(); } catch(e){}
   // Load foco
   var foco=localStorage.getItem('gami_tf_foco_'+new Date().toISOString().split('T')[0])||'';
   var fi=document.getElementById('tf-foco-input'); if(fi) fi.value=foco;
-  // Load notas
-  var notas=localStorage.getItem('gami_tf_notas_'+new Date().toISOString().split('T')[0])||'';
-  var ni=document.getElementById('tf-notas-input'); if(ni) ni.value=notas;
-  // Load humor
-  var humor=localStorage.getItem('gami_tf_humor_'+new Date().toISOString().split('T')[0])||'';
-  if(humor) tfSetHumorSilent(humor);
   tfRenderDiario();
   tfAtualizarMetricas();
   tfRenderConquistas();
+  // Novos cards
+  try { if(typeof tfRenderXpCard==='function') tfRenderXpCard(); } catch(e){}
+  try { if(typeof tfRenderProximosDias==='function') tfRenderProximosDias(); } catch(e){}
+  try { if(typeof tfRenderConquistasReais==='function') tfRenderConquistasReais(); } catch(e){}
+  try { if(typeof tfRenderBannerAtrasadas==='function') tfRenderBannerAtrasadas(); } catch(e){}
 }
 
 function tfRenderDiario(){
@@ -17079,17 +17427,51 @@ function tfRenderDiario(){
     });
   }
 
+  // Atualiza banner de atrasadas + cards laterais
+  try { if(typeof tfRenderBannerAtrasadas==='function') tfRenderBannerAtrasadas(); } catch(e){}
+  try { if(typeof tfRenderXpCard==='function') tfRenderXpCard(); } catch(e){}
+  try { if(typeof tfRenderProximosDias==='function') tfRenderProximosDias(); } catch(e){}
+  try { if(typeof tfRenderConquistasReais==='function') tfRenderConquistasReais(); } catch(e){}
+
   var el=document.getElementById('tf-diario-list'); if(!el) return;
-  var filtradas=lista;
-  if(_tfFiltroAtual==='pendente') filtradas=lista.filter(function(t){return !t.feito;});
-  if(_tfFiltroAtual==='feito') filtradas=lista.filter(function(t){return t.feito;});
-  
+  var hojeStr = new Date().toISOString().split('T')[0];
+
+  // === FILTROS COMPLETOS (busca + cat + prio + status) ===
+  var fBusca = (_tfFiltrosState && _tfFiltrosState.busca || '').toLowerCase().trim();
+  var fCat = (_tfFiltrosState && _tfFiltrosState.cat) || '';
+  var fPrio = (_tfFiltrosState && _tfFiltrosState.prio) || '';
+
+  var filtradas = lista.filter(function(t){
+    // Status
+    if(_tfFiltroAtual==='pendente' && t.feito) return false;
+    if(_tfFiltroAtual==='feito' && !t.feito) return false;
+    if(_tfFiltroAtual==='atrasadas'){
+      if(t.feito || !t.prazo || t.prazo >= hojeStr) return false;
+    }
+    // Busca
+    if(fBusca && (t.texto||'').toLowerCase().indexOf(fBusca) < 0) return false;
+    // Categoria
+    if(fCat && t.cat !== fCat) return false;
+    // Prioridade (não filtra fixas)
+    if(fPrio && !t.fixa && t.prio !== fPrio) return false;
+    return true;
+  });
+
   var prios={alta:{bg:'#FCEBEB',cor:'#A32D2D',dot:'#E24B4A'},media:{bg:'#FAEEDA',cor:'#854F0B',dot:'#EF9F27'},baixa:{bg:'#EAF3DE',cor:'#3B6D11',dot:'#1D9E75'}};
-  var cats={Marketing:'#8B5CF6',Conteudo:'#1E88E5','Conteúdo':'#1E88E5',Campanhas:'#1AB8F0',Cidades:'#EF9F27',Reuniao:'#1D9E75','Reunião':'#1D9E75',Financeiro:'#16A085',Delegada:'#8B5CF6',Outro:'#888'};
+  var cats={
+    'Operação':'#1D9E75','Comercial':'#1E88E5','Pessoas/RH':'#8B5CF6','Financeiro':'#16A085',
+    'Atendimento':'#EF9F27','Marketing':'#8B5CF6','Conteúdo':'#1E88E5','Campanhas':'#1AB8F0',
+    'Reunião':'#1D9E75','Administrativo':'#6A1B9A','Pessoal':'#854F0B','Outro':'#888',
+    'Delegada':'#8B5CF6'
+  };
 
   if(!filtradas.length){
-    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-weight:500">'+(_tfFiltroAtual==='feito'?'Nenhuma tarefa concluída ainda':'Nenhuma tarefa para hoje!')+' </div><div style="font-size:12px;margin-top:4px">Use o campo acima para adicionar</div></div>';
-    tfAtualizarBarra(lista);
+    var msgVazio = 'Nenhuma tarefa pra hoje!';
+    if(_tfFiltroAtual==='feito') msgVazio = 'Nenhuma tarefa concluída ainda';
+    if(_tfFiltroAtual==='atrasadas') msgVazio = '🎉 Nenhuma atrasada! Tá em dia.';
+    if(fBusca || fCat || fPrio) msgVazio = 'Nenhuma tarefa encontrada com esses filtros';
+    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:36px;margin-bottom:8px">'+(_tfFiltroAtual==='atrasadas'?'🎯':'✅')+'</div><div style="font-weight:500">'+msgVazio+'</div><div style="font-size:12px;margin-top:4px">Use o campo acima para adicionar</div></div>';
+    tfAtualizarBarra(lista.filter(function(t){ return !t.fixa; }));
     return;
   }
 
@@ -17156,6 +17538,8 @@ function tfAtualizarBarra(lista){
 
 function tfAtualizarMetricas(){
   var hoje=getTarefas('diario');
+  // Ignora tarefas fixas (não-contáveis no progresso)
+  hoje = hoje.filter(function(t){ return !t.fixa; });
   var hT=hoje.length, hF=hoje.filter(function(t){return t.feito;}).length;
   var mhv=document.getElementById('tf-m-hoje'); if(mhv) mhv.textContent=hF+'/'+hT;
   var mhs=document.getElementById('tf-m-hoje-sub'); if(mhs){mhs.textContent=hF===hT&&hT>0?'✅ Tudo feito!':'concluídas';mhs.style.color=hF===hT&&hT>0?'#1D9E75':'var(--text3)';}
@@ -17172,9 +17556,19 @@ function tfAtualizarMetricas(){
   var mF=mTarefas.filter(function(t){return t.feito;}).length;
   var mmv=document.getElementById('tf-m-mes'); if(mmv) mmv.textContent=mF+'/'+mTarefas.length;
 
-  // Projetos
-  var projs=getTarefas('projetos');
-  var pv=document.getElementById('tf-m-proj'); if(pv) pv.textContent=projs.filter(function(p){return p.status!=='concluido';}).length;
+  // Atrasadas (novo card - substituiu "Projetos")
+  var hojeStr = new Date().toISOString().split('T')[0];
+  var atras = hoje.filter(function(t){ return !t.feito && t.prazo && t.prazo < hojeStr; }).length;
+  var atrasV = document.getElementById('tf-m-atrasadas'); 
+  if(atrasV){ 
+    atrasV.textContent = atras;
+    atrasV.style.color = atras > 0 ? '#E24B4A' : '#1D9E75';
+  }
+  var atrasWrap = document.getElementById('tf-m-atrasadas-wrap');
+  if(atrasWrap){
+    atrasWrap.style.background = atras > 0 ? '#FFF5F5' : 'var(--surface)';
+    atrasWrap.style.borderColor = atras > 0 ? '#E24B4A33' : 'var(--border)';
+  }
 }
 
 function tfToggle(tipo, id, sufixo){
@@ -17227,10 +17621,22 @@ function tfExcluir(tipo, id, sufixo){
 
 function tfFiltrar(btn, filtro){
   _tfFiltroAtual=filtro;
+  // Atualiza botões visuais
   document.querySelectorAll('.tf-filtro').forEach(function(b){
-    b.style.background='var(--surface2)';b.style.color='var(--text2)';b.style.borderColor='var(--border)';
+    var f = b.getAttribute('data-filtro');
+    if(f === filtro){
+      b.style.background='var(--orange)';b.style.color='white';b.style.borderColor='var(--orange)';
+    } else {
+      b.style.background='var(--surface2)';b.style.color='var(--text2)';b.style.borderColor='var(--border)';
+    }
   });
-  btn.style.background='var(--orange)';btn.style.color='white';btn.style.borderColor='var(--orange)';
+  // Se filtro 'atrasadas' (vem do banner) e o botão clicado é nulo, ativa visualmente "Pendentes"
+  if(filtro === 'atrasadas'){
+    var btnPend = document.querySelector('.tf-filtro[data-filtro="pendente"]');
+    if(btnPend){ btnPend.style.background='var(--orange)';btnPend.style.color='white';btnPend.style.borderColor='var(--orange)'; }
+  } else if(btn){
+    btn.style.background='var(--orange)';btn.style.color='white';btn.style.borderColor='var(--orange)';
+  }
   tfRenderDiario();
 }
 
