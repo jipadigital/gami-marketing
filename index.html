@@ -1,4 +1,4 @@
-<!-- v18.3 - Comparativo similares: remove coluna Atencao - 29/05/2026 -->
+<!-- v19.0 - Micro-interacoes: hover lift + toast + skeleton + sino + reactions + humor novo + mural inline - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -438,12 +438,400 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
   border: 2px solid white;
 }
 
+/* ============================================================
+   MICRO-INTERACTIONS — hover lift, toast, skeleton, sino, reactions
+   ============================================================ */
+
+/* Hover lift nos cards (sutil, nao agressivo) */
+.card{ transition: transform .14s ease, box-shadow .14s ease; }
+.card:hover{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(11,37,66,.08); }
+.dash-section.card:hover, .sticky-card:hover, .nav-item:hover{ transform: none; }
+
+/* === Toast === */
+#gami-toast-host{
+  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+.gami-toast{
+  background: white; border-left: 4px solid var(--gami-blue);
+  padding: 11px 14px 11px 12px; border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(11,37,66,.14);
+  min-width: 220px; max-width: 360px;
+  font-size: 12px; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+  pointer-events: auto;
+  animation: gami-toast-in .3s cubic-bezier(.2,.9,.3,1.2);
+}
+.gami-toast.success{ border-left-color: #1D9E75; }
+.gami-toast.error{ border-left-color: #E24B4A; }
+.gami-toast.info{ border-left-color: var(--gami-blue); }
+.gami-toast.warn{ border-left-color: #EF9F27; }
+.gami-toast.removing{ animation: gami-toast-out .25s ease forwards; }
+@keyframes gami-toast-in{
+  from{ transform: translateX(120%); opacity: 0; }
+  to{ transform: translateX(0); opacity: 1; }
+}
+@keyframes gami-toast-out{
+  to{ transform: translateX(120%); opacity: 0; }
+}
+
+/* === Skeleton (loading placeholder) === */
+.gami-skel{
+  background: linear-gradient(90deg, #EAEEF3 25%, #F5F7FA 50%, #EAEEF3 75%);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  animation: gami-skel-pulse 1.4s ease-in-out infinite;
+}
+@keyframes gami-skel-pulse{
+  0%{ background-position: 200% 0; }
+  100%{ background-position: -200% 0; }
+}
+
+/* === Sino de notificacoes === */
+.gami-bell-wrap{
+  position: fixed; top: 12px; right: 14px; z-index: 200;
+}
+.gami-bell-btn{
+  position: relative; width: 38px; height: 38px;
+  border: none; border-radius: 50%;
+  background: white; color: var(--text);
+  font-size: 18px; cursor: pointer;
+  box-shadow: 0 3px 10px rgba(11,37,66,.10);
+  transition: transform .15s ease;
+}
+.gami-bell-btn:hover{ transform: scale(1.06); }
+.gami-bell-badge{
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: #E24B4A; color: white;
+  font-size: 10px; font-weight: 700;
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid white;
+}
+.gami-bell-panel{
+  position: absolute; top: 46px; right: 0;
+  width: 340px; max-height: 480px; overflow-y: auto;
+  background: white; border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(11,37,66,.20);
+  display: none;
+}
+.gami-bell-panel.open{ display: block; animation: gami-toast-in .2s ease; }
+.gami-notif-head{
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; background: white; z-index: 1;
+}
+.gami-notif-item{
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background .12s ease;
+  display: flex; gap: 9px; align-items: flex-start;
+}
+.gami-notif-item:hover{ background: var(--surface2); }
+.gami-notif-item.unread{ background: #FFFBE6; }
+.gami-notif-icon{ font-size: 16px; flex-shrink: 0; }
+.gami-notif-body{ flex: 1; min-width: 0; }
+.gami-notif-title{ font-size: 12px; font-weight: 600; color: var(--text); }
+.gami-notif-sub{ font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+/* === Reactions === */
+.gami-reactions{
+  display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  margin-top: 6px;
+}
+.gami-react-btn{
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 2px 9px; background: white;
+  font-size: 11px; cursor: pointer; font-family: inherit;
+  display: flex; align-items: center; gap: 3px;
+  transition: transform .1s ease, background .1s ease;
+}
+.gami-react-btn:hover{ transform: scale(1.08); background: var(--surface2); }
+.gami-react-btn.active{ background: #E6F6FE; border-color: var(--gami-blue); }
+.gami-react-count{ font-size: 10px; color: var(--text2); font-weight: 600; }
+
 </style>
 </head>
 <body>
 
+<!-- Toast container (notificacoes flutuantes) -->
+<div id="gami-toast-host" aria-live="polite"></div>
+
+<!-- Sino de notificacoes (top right - aparece quando logado) -->
+<div class="gami-bell-wrap" id="gami-bell-wrap" style="display:none">
+  <button class="gami-bell-btn" onclick="toggleNotifPanel()" title="Notificações" id="gami-bell-btn">
+    🔔
+    <span class="gami-bell-badge" id="gami-bell-badge" style="display:none">0</span>
+  </button>
+  <div class="gami-bell-panel" id="gami-bell-panel">
+    <div class="gami-notif-head">
+      <strong style="font-size:13px">🔔 Notificações</strong>
+      <button onclick="marcarTodasNotifLidas()" style="background:none;border:none;color:var(--gami-blue);font-size:11px;cursor:pointer;font-family:inherit">Marcar todas lidas</button>
+    </div>
+    <div id="gami-notif-list"></div>
+  </div>
+</div>
+
 <!-- Spinner inicial — fica visível enquanto verifica sessão. Removido quando login OU dashboard aparece. -->
 <div id="boot-spinner"><div class="ring"></div></div>
+
+<script>
+/* ====================================================================
+   MICRO-INTERACTIONS — funcoes globais (toast, skeleton, notif, react)
+   ==================================================================== */
+
+/* === TOAST === */
+function toast(msg, tipo){
+  tipo = tipo || 'info';
+  var host = document.getElementById('gami-toast-host');
+  if(!host) return;
+  var icones = {success:'✓', error:'⚠', info:'ℹ', warn:'⚠'};
+  var div = document.createElement('div');
+  div.className = 'gami-toast ' + tipo;
+  div.innerHTML = '<span style="font-size:14px;font-weight:700">'+(icones[tipo]||'')+'</span><span>'+msg+'</span>';
+  host.appendChild(div);
+  setTimeout(function(){
+    div.classList.add('removing');
+    setTimeout(function(){ if(div.parentNode) div.parentNode.removeChild(div); }, 260);
+  }, 3000);
+}
+window.toast = toast; // global
+
+/* === SKELETON === */
+function skeleton(linhas, alturaPx){
+  linhas = linhas || 3;
+  alturaPx = alturaPx || 14;
+  var html = '<div style="padding:6px 0">';
+  for(var i=0; i<linhas; i++){
+    var w = (60 + Math.floor(Math.random()*35)) + '%';
+    html += '<div class="gami-skel" style="height:'+alturaPx+'px;width:'+w+';margin-bottom:8px"></div>';
+  }
+  html += '</div>';
+  return html;
+}
+window.skeleton = skeleton;
+
+/* === SINO DE NOTIFICACOES === */
+function _notifKey(){ return 'gami_notif_lidas_v1'; }
+function _notifLidas(){
+  try{ return JSON.parse(localStorage.getItem(_notifKey()) || '{}'); }catch(e){ return {}; }
+}
+function _notifSalvarLidas(map){
+  try{ localStorage.setItem(_notifKey(), JSON.stringify(map)); }catch(e){}
+}
+function marcarNotifLida(id){
+  var m = _notifLidas(); m[id] = Date.now(); _notifSalvarLidas(m);
+  renderNotificacoes();
+}
+function marcarTodasNotifLidas(){
+  var notifs = coletarNotificacoes();
+  var m = _notifLidas();
+  notifs.forEach(function(n){ m[n.id] = Date.now(); });
+  _notifSalvarLidas(m);
+  renderNotificacoes();
+}
+function toggleNotifPanel(){
+  var panel = document.getElementById('gami-bell-panel');
+  if(!panel) return;
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')) renderNotificacoes();
+}
+
+/* Coleta de notificacoes — agrega varias fontes do dashboard
+   NAO usa dados da Machine (motoboys/empresas sumidos) por decisao do produto */
+function coletarNotificacoes(){
+  var notifs = [];
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+
+  try{
+    // 1) Tarefas atrasadas (do localStorage gami_tarefas_v1 ou similar)
+    var keys = ['gami_tarefas_v1','gami_tarefas','tarefas_gami'];
+    var tarefas = null;
+    for(var k=0;k<keys.length;k++){
+      try{ var raw = localStorage.getItem(keys[k]); if(raw){ tarefas = JSON.parse(raw); break; } }catch(e){}
+    }
+    if(Array.isArray(tarefas)){
+      var atrasadas = tarefas.filter(function(t){
+        if(t && t.concluida) return false;
+        if(!t || !t.data) return false;
+        try{ return new Date(t.data) < hoje; }catch(e){ return false; }
+      });
+      if(atrasadas.length){
+        notifs.push({
+          id:'task-atrasadas-'+hoje.toISOString().slice(0,10),
+          icon:'🔴', titulo:atrasadas.length+' tarefa'+(atrasadas.length>1?'s':'')+' atrasada'+(atrasadas.length>1?'s':''),
+          sub:'Veja na aba Tarefas', linkAba:'tarefas', ts:Date.now()
+        });
+      }
+      // Tarefas atribuidas a mim (se tem atributo "atribuida_a" = usuario logado)
+      var meuNome = (window.usuarioLogado && window.usuarioLogado.nome) || '';
+      if(meuNome){
+        var atribuidasMim = tarefas.filter(function(t){
+          return t && !t.concluida && t.atribuida_a && t.atribuida_a.toLowerCase().indexOf(meuNome.toLowerCase())>=0;
+        });
+        if(atribuidasMim.length){
+          notifs.push({
+            id:'task-atribuidas-'+meuNome+'-'+atribuidasMim.length,
+            icon:'📋', titulo:atribuidasMim.length+' tarefa'+(atribuidasMim.length>1?'s':'')+' atribuída'+(atribuidasMim.length>1?'s':'')+' a você',
+            sub:'Veja na aba Tarefas', linkAba:'tarefas', ts:Date.now()
+          });
+        }
+      }
+    }
+  }catch(e){ console.warn('notif tarefas:', e); }
+
+  try{
+    // 2) Recados novos no mural (dos ultimos 24h)
+    var recados = JSON.parse(localStorage.getItem('gami_recados_v1') || '[]');
+    var meuNome2 = (window.usuarioLogado && window.usuarioLogado.nome) || '';
+    var ultDia = Date.now() - 86400000;
+    var novosRecados = recados.filter(function(r){
+      var t = r && r.data ? new Date(r.data).getTime() : 0;
+      var autor = r && r.autor ? r.autor : '';
+      return t >= ultDia && autor !== meuNome2; // nao notifica o proprio autor
+    });
+    if(novosRecados.length){
+      notifs.push({
+        id:'recados-novos-'+novosRecados.length+'-'+novosRecados[0].id,
+        icon:'📌', titulo:novosRecados.length+' recado'+(novosRecados.length>1?'s':'')+' novo'+(novosRecados.length>1?'s':'')+' no mural',
+        sub:'Veja no Dashboard', linkAba:'dashboard', ts:Date.now()
+      });
+    }
+
+    // 3) Mencoes em recados (autor mencionou meuNome com @)
+    if(meuNome2){
+      var mencoesAlvo = recados.filter(function(r){
+        if(!r || !r.texto) return false;
+        return r.texto.toLowerCase().indexOf('@'+meuNome2.toLowerCase()) >= 0;
+      });
+      mencoesAlvo.forEach(function(r){
+        notifs.push({
+          id:'mencao-'+r.id,
+          icon:'💬', titulo:(r.autor||'Alguém')+' mencionou você',
+          sub:'"'+(r.texto||'').slice(0,60)+'"', linkAba:'dashboard', ts: r.data ? new Date(r.data).getTime() : Date.now()
+        });
+      });
+    }
+  }catch(e){ console.warn('notif recados:', e); }
+
+  try{
+    // 4) Pontuacao — alguma conquista nova?
+    var pontuacaoKey = 'gami_pontuacao_'+(window.usuarioLogado && window.usuarioLogado.id || '');
+    var pontos = JSON.parse(localStorage.getItem(pontuacaoKey) || 'null');
+    if(pontos && pontos.ultima_conquista){
+      notifs.push({
+        id:'conquista-'+pontos.ultima_conquista_id,
+        icon:'🏆', titulo:'Nova conquista: '+pontos.ultima_conquista,
+        sub:'Você desbloqueou um marco!', linkAba:'equipe', ts:Date.now()
+      });
+    }
+  }catch(e){}
+
+  // Ordena pelo mais recente
+  return notifs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
+}
+
+function renderNotificacoes(){
+  var list = document.getElementById('gami-notif-list');
+  var badge = document.getElementById('gami-bell-badge');
+  if(!list || !badge) return;
+
+  var notifs = coletarNotificacoes();
+  var lidas = _notifLidas();
+  var naoLidas = notifs.filter(function(n){ return !lidas[n.id]; });
+
+  if(naoLidas.length){
+    badge.style.display = 'flex';
+    badge.textContent = naoLidas.length > 9 ? '9+' : naoLidas.length;
+  } else {
+    badge.style.display = 'none';
+  }
+
+  if(!notifs.length){
+    list.innerHTML = '<div style="padding:30px 14px;text-align:center;color:var(--text3);font-size:11px">🌱 Nenhuma notificação. Tá tudo em paz!</div>';
+    return;
+  }
+
+  list.innerHTML = notifs.map(function(n){
+    var unread = !lidas[n.id];
+    return '<div class="gami-notif-item'+(unread?' unread':'')+'" onclick="marcarNotifLida(\''+n.id+'\')'+(n.linkAba?';nav(null,\''+n.linkAba+'\')':'')+'">'
+      + '<div class="gami-notif-icon">'+n.icon+'</div>'
+      + '<div class="gami-notif-body">'
+        + '<div class="gami-notif-title">'+n.titulo+'</div>'
+        + '<div class="gami-notif-sub">'+(n.sub||'')+'</div>'
+      + '</div>'
+      + (unread?'<span style="width:8px;height:8px;border-radius:50%;background:var(--gami-blue);flex-shrink:0;margin-top:4px"></span>':'')
+    + '</div>';
+  }).join('');
+}
+
+/* Atualiza o badge a cada 30s e ao carregar */
+setInterval(function(){ try{ renderNotificacoes(); }catch(e){} }, 30000);
+
+/* Mostra/esconde o sino baseado em login */
+function _atualizarVisibilidadeSino(){
+  var wrap = document.getElementById('gami-bell-wrap');
+  if(!wrap) return;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(u) window.usuarioLogado = u; // sincroniza global
+  var logado = !!(u && u.nome) || !!(window.usuarioLogado && window.usuarioLogado.nome);
+  wrap.style.display = logado ? 'block' : 'none';
+  if(logado) renderNotificacoes();
+}
+window._atualizarVisibilidadeSino = _atualizarVisibilidadeSino;
+
+/* Fecha sino ao clicar fora */
+document.addEventListener('click', function(e){
+  var panel = document.getElementById('gami-bell-panel');
+  var btn = document.getElementById('gami-bell-btn');
+  if(!panel || !btn) return;
+  if(panel.contains(e.target) || btn.contains(e.target)) return;
+  panel.classList.remove('open');
+});
+
+/* === REACTIONS === */
+function _reactKey(){ return 'gami_reactions_v1'; }
+function _getReactions(){
+  try{ return JSON.parse(localStorage.getItem(_reactKey()) || '{}'); }catch(e){ return {}; }
+}
+function _saveReactions(r){ try{ localStorage.setItem(_reactKey(), JSON.stringify(r)); }catch(e){} }
+
+/* targetId: id unico (ex: "recado-r123"). React: emoji ('👍', '❤️', '✅') */
+function toggleReaction(targetId, emoji){
+  var all = _getReactions();
+  if(!all[targetId]) all[targetId] = {};
+  if(!all[targetId][emoji]) all[targetId][emoji] = [];
+  var meuNome = (window.usuarioLogado && window.usuarioLogado.nome) || 'Anônimo';
+  var idx = all[targetId][emoji].indexOf(meuNome);
+  if(idx >= 0){ all[targetId][emoji].splice(idx, 1); }
+  else { all[targetId][emoji].push(meuNome); }
+  if(!all[targetId][emoji].length) delete all[targetId][emoji];
+  _saveReactions(all);
+  // Re-renderiza qualquer container que esteja mostrando reactions desse target
+  var containers = document.querySelectorAll('[data-react-target="'+targetId+'"]');
+  containers.forEach(function(c){ c.innerHTML = renderReactionsHTML(targetId); });
+}
+window.toggleReaction = toggleReaction;
+
+function renderReactionsHTML(targetId){
+  var all = _getReactions();
+  var thisOne = all[targetId] || {};
+  var meuNome = (window.usuarioLogado && window.usuarioLogado.nome) || 'Anônimo';
+  var emojis = ['👍','❤️','✅'];
+  return emojis.map(function(e){
+    var users = thisOne[e] || [];
+    var n = users.length;
+    var ativo = users.indexOf(meuNome) >= 0;
+    var tooltip = n ? users.join(', ') : 'Seja o primeiro a reagir';
+    return '<button class="gami-react-btn'+(ativo?' active':'')+'" onclick="event.stopPropagation();toggleReaction(\''+targetId+'\',\''+e+'\')" title="'+tooltip+'">'
+      + '<span>'+e+'</span>'
+      + (n>0 ? '<span class="gami-react-count">'+n+'</span>' : '')
+    + '</button>';
+  }).join('');
+}
+window.renderReactionsHTML = renderReactionsHTML;
+
+</script>
 
 <script>
 /* RODA NO INÍCIO DO BODY — sincroniza body class com sessão já verificada no <head> */
@@ -1222,7 +1610,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div class="card dash-section" data-mf-keep="true" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="card-title" style="margin:0">📌 Mural de recados</div>
-      <button onclick="adicionarRecado()" style="font-size:11px;padding:5px 12px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600">+ Adicionar recado</button>
+      <span style="font-size:10px;color:var(--text3);font-style:italic">Compartilhe agradecimentos, ideias e parabéns com o time</span>
     </div>
     <div id="dash-recados" style="max-height:320px;overflow-y:auto"></div>
   </div>
@@ -5711,6 +6099,8 @@ async function tpSalvar(){
 /* ============================================================== */
 function atualizarSidebarUsuario(){
   var u = getUsuarioLogado();
+  // Atualiza visibilidade do sino de notificacoes
+  if(typeof _atualizarVisibilidadeSino === 'function') _atualizarVisibilidadeSino();
   var elNome = document.getElementById('sb-user-nome');
   var elInfo = document.getElementById('sb-user-info');
   var elAv = document.getElementById('sb-avatar');
@@ -8488,8 +8878,9 @@ async function mbCarregarPainel(opts){
 }
 
 /* Card helper (mesma assinatura do vgCard) */
-function mbCard(icone, label, valor, sublabel, cor){
-  return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px">'
+function mbCard(icone, label, valor, sublabel, cor, tooltip){
+  var titleAttr = tooltip ? ' title="'+tooltip.replace(/"/g,'&quot;')+'"' : '';
+  return '<div'+titleAttr+' style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px'+(tooltip?';cursor:help':'')+'">'
     + '<div style="font-size:18px">'+icone+'</div>'
     + '<div style="font-size:22px;font-weight:700;color:'+cor+';margin:4px 0">'+valor+'</div>'
     + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">'+label+'</div>'
@@ -8641,8 +9032,9 @@ async function empCarregarPainel(opts){
 }
 
 /* Card helper (mesma assinatura do vgCard/mbCard) */
-function empCard(icone, label, valor, sublabel, cor){
-  return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px">'
+function empCard(icone, label, valor, sublabel, cor, tooltip){
+  var titleAttr = tooltip ? ' title="'+tooltip.replace(/"/g,'&quot;')+'"' : '';
+  return '<div'+titleAttr+' style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px'+(tooltip?';cursor:help':'')+'">'
     + '<div style="font-size:18px">'+icone+'</div>'
     + '<div style="font-size:22px;font-weight:700;color:'+cor+';margin:4px 0">'+valor+'</div>'
     + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">'+label+'</div>'
@@ -8715,14 +9107,14 @@ function empRenderCards(corridasDia, corridasMes, empresasGeral, cidadeNome){
       labelTotal = '⚠️ '+total+'+ (limite atingido) · '+ativas+' ativas';
     }
   }catch(e){}
-  html += empCard('🏪', 'Total cadastradas', total, labelTotal, corTotal);
-  html += empCard('⚡', 'Pediram hoje', pediramHoje, total>0 ? Math.round(pediramHoje/total*100)+'% do total' : '', '#1D9E75');
-  html += empCard('🛵', 'Pedidos hoje', corridasHoje, finalizadas.length+' finalizados', '#EF9F27');
+  html += empCard('🏪', 'Total cadastradas', total, labelTotal, corTotal, 'Quantidade total de empresas cadastradas na Machine para esta cidade (todos os status: ativas, suspensas, aguardando ativação).');
+  html += empCard('⚡', 'Pediram hoje', pediramHoje, total>0 ? Math.round(pediramHoje/total*100)+'% do total' : '', '#1D9E75', 'Empresas únicas (sem repetir) que fizeram pelo menos 1 pedido hoje.');
+  html += empCard('🛵', 'Pedidos hoje', corridasHoje, finalizadas.length+' finalizados', '#EF9F27', 'Total de corridas solicitadas hoje (inclui finalizadas, canceladas, em andamento).');
   if(verFin){
-    html += empCard('💰', 'Faturamento hoje', fmt(somaValor), finalizadas.length+' corridas', '#16A085');
+    html += empCard('💰', 'Faturamento hoje', fmt(somaValor), finalizadas.length+' corridas', '#16A085', 'Soma do valor das corridas FINALIZADAS hoje (exclui canceladas e em andamento). Apenas para gestores+.');
   }
-  html += empCard('📈', 'Ativas no mês', ativasMes, 'pediram pelo menos 1 vez', '#8B5CF6');
-  html += empCard('⏳', 'Aguardando ativação', aguardando, aguardando>3 ? 'gargalo no onboarding' : 'fluxo normal', aguardando>3?'#E24B4A':'#888');
+  html += empCard('📈', 'Ativas no mês', ativasMes, 'pediram pelo menos 1 vez', '#8B5CF6', 'Empresas únicas que fizeram pelo menos 1 pedido em qualquer dia do mês atual.');
+  html += empCard('⏳', 'Aguardando ativação', aguardando, aguardando>3 ? 'gargalo no onboarding' : 'fluxo normal', aguardando>3?'#E24B4A':'#888', 'Empresas com status G (aguardando ativação) na Machine. Se >3 indica gargalo no fluxo de onboarding.');
 
   host.innerHTML = html;
 }
@@ -8845,7 +9237,7 @@ function empRenderTopEmpresas(corridasDia, corridas45d, corridasMes, empresasGer
 function empVerEmpresa(nomeEncoded){
   var nome = decodeURIComponent(nomeEncoded);
   var c = window.__cidadeAtual; if(!c) return;
-  if(!_vgCache[c.id]){ alert('Carregue os dados da Machine primeiro.'); return; }
+  if(!_vgCache[c.id]){ toast('Carregue os dados da Machine primeiro','warn'); return; }
   var d = _vgCache[c.id].dados;
 
   // Procura empresa cadastrada (Machine /empresa) pelo nome
@@ -10082,7 +10474,7 @@ function empRenderOperacao(corridasMes, empresasGeral, hojeStr){
 /* ============================================================== */
 function empExportarCSV(){
   var c = window.__cidadeAtual; if(!c) return;
-  if(!_vgCache[c.id]){ alert('Carregue os dados primeiro.'); return; }
+  if(!_vgCache[c.id]){ toast('Carregue os dados primeiro','warn'); return; }
   var d = _vgCache[c.id].dados;
   var empresasCidade = _empFiltrarPorCidade(d.empresas || [], c.nome);
   var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
@@ -10132,7 +10524,7 @@ function empExportarCSV(){
     return true;
   });
 
-  if(!filtrada.length){ alert('Nenhuma empresa pra exportar com os filtros atuais.'); return; }
+  if(!filtrada.length){ toast('Nenhuma empresa pra exportar com os filtros atuais','warn'); return; }
 
   // Monta CSV
   var statusLbl = {A:'Ativa', S:'Suspensa', G:'Aguardando', D:'Deletada'};
@@ -10629,7 +11021,7 @@ function mbAtualizarLista(){
 /* ============================================================== */
 function mbVerMotoboy(idCondutor){
   var c = window.__cidadeAtual; if(!c) return;
-  if(!_vgCache[c.id]){ alert('Carregue os dados da Machine primeiro.'); return; }
+  if(!_vgCache[c.id]){ toast('Carregue os dados da Machine primeiro','warn'); return; }
   var d = _vgCache[c.id].dados;
   var cond = (d.condutores||[]).find(function(x){ return String(x.id) === String(idCondutor); });
 
@@ -19160,11 +19552,11 @@ function renderPulse(){
   var countHost = document.getElementById('pulse-count');
   if(!host) return;
   var emojis = [
-    {e:'🔥', label:'Em chamas'},
-    {e:'😊', label:'Bem'},
-    {e:'😐', label:'Normal'},
-    {e:'😩', label:'Cansado'},
+    {e:'😢', label:'Triste'},
+    {e:'😊', label:'Feliz'},
+    {e:'🙏', label:'Abençoado'},
     {e:'💪', label:'Determinado'},
+    {e:'😴', label:'Cansado'},
   ];
   var p = getPulseHoje();
   var total = Object.values(p).reduce(function(a,b){return a+b;},0);
@@ -19191,41 +19583,88 @@ function getRecados(){
   try { return JSON.parse(localStorage.getItem('gami_recados_v1') || '[]'); } catch(e) { return []; }
 }
 function saveRecados(list){ try{ localStorage.setItem('gami_recados_v1', JSON.stringify(list)); }catch(e){} }
+
 function adicionarRecado(){
-  var texto = prompt('Escreva um recado para o time (até 140 caracteres):');
-  if(!texto || !texto.trim()) return;
-  texto = texto.trim().slice(0,140);
+  // Comportamento antigo de prompt foi substituido por input inline (ver renderRecados).
+  // Mantida pra compatibilidade. Foca no campo inline se existir.
+  var input = document.getElementById('mural-input');
+  if(input){ input.focus(); }
+}
+
+function salvarRecadoInline(){
+  var input = document.getElementById('mural-input');
+  if(!input) return;
+  var texto = (input.value||'').trim();
+  if(!texto){ toast('Escreva algo antes de enviar', 'warn'); return; }
+  if(texto.length > 140) texto = texto.slice(0, 140);
+  var autor = (window.usuarioLogado && window.usuarioLogado.nome) || 'Anônimo';
   var lista = getRecados();
-  lista.unshift({id:'r'+Date.now(), texto:texto, data:new Date().toISOString()});
+  lista.unshift({id:'r'+Date.now(), texto:texto, data:new Date().toISOString(), autor:autor});
   if(lista.length > 8) lista = lista.slice(0,8);
   saveRecados(lista);
+  input.value = '';
+  var counter = document.getElementById('mural-counter');
+  if(counter) counter.textContent = '0 / 140';
   renderRecados();
+  toast('Recado publicado no mural!', 'success');
 }
+
 function removerRecado(id){
   if(!confirm('Remover este recado?')) return;
   saveRecados(getRecados().filter(function(r){return r.id!==id;}));
   renderRecados();
+  toast('Recado removido', 'info');
 }
+
 function renderRecados(){
   var host = document.getElementById('dash-recados');
   if(!host) return;
   var recados = getRecados();
+  var meuNome = (window.usuarioLogado && window.usuarioLogado.nome) || 'Anônimo';
+
+  // Campo inline pra criar recado (sempre presente)
+  var html = '<div style="background:linear-gradient(135deg,#FFFEF7,#FFFCEC);border:1px solid #FFD93D55;border-radius:10px;padding:12px;margin-bottom:12px">'
+    + '<div style="font-size:11px;font-weight:600;color:#854F0B;margin-bottom:6px">📝 Deixar um recado para o time</div>'
+    + '<textarea id="mural-input" maxlength="140" placeholder="Parabéns, agradecimento, ideia rápida... use @nome para mencionar alguém" '
+      + 'oninput="document.getElementById(\'mural-counter\').textContent=this.value.length+\' / 140\'" '
+      + 'onkeydown="if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarRecadoInline();}" '
+      + 'style="width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;background:white"></textarea>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">'
+      + '<span id="mural-counter" style="font-size:10px;color:var(--text3)">0 / 140</span>'
+      + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar (Ctrl+Enter)</button>'
+    + '</div>'
+  + '</div>';
+
   if(recados.length === 0){
-    host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:11px;background:var(--surface2);border:1px dashed var(--border);border-radius:8px">Nenhum recado ainda. Clique em + Adicionar para deixar uma mensagem para o time.</div>';
+    html += '<div style="padding:18px;text-align:center;color:var(--text3);font-size:11px;background:var(--surface2);border:1px dashed var(--border);border-radius:8px">Nenhum recado ainda. Escreva acima pra deixar a primeira mensagem!</div>';
+    host.innerHTML = html;
     return;
   }
-  var cores = ['#E6F6FE','#E6F1FB','#EAF3DE','#F3E5F5','#FFF8E1'];
-  host.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto">' + recados.map(function(r,i){
-    var d = new Date(r.data);
-    var dataStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-    return '<div style="padding:8px 10px;background:'+cores[i%cores.length]+';border-radius:7px;display:flex;align-items:flex-start;gap:8px">'+
-      '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:11px;color:var(--text);line-height:1.4">'+r.texto+'</div>'+
-        '<div style="font-size:9px;color:var(--text3);margin-top:3px">'+dataStr+'</div>'+
-      '</div>'+
-      '<button onclick="removerRecado(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:0 2px" title="Remover">×</button>'+
-    '</div>';
-  }).join('') + '</div>';
+
+  recados.forEach(function(r){
+    var quando = '';
+    try{
+      var dt = new Date(r.data);
+      var diff = Date.now() - dt.getTime();
+      var min = Math.floor(diff/60000);
+      if(min < 1) quando = 'agora';
+      else if(min < 60) quando = 'há '+min+' min';
+      else if(min < 1440) quando = 'há '+Math.floor(min/60)+'h';
+      else quando = dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+    }catch(e){}
+    var ehMeu = r.autor === meuNome;
+    var textoFmt = (r.texto||'').replace(/@(\w+)/g, '<strong style="color:var(--gami-blue)">@$1</strong>');
+    html += '<div style="background:#FFFEF7;border-left:3px solid #FFD93D;border-radius:8px;padding:10px 12px;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px">'
+        + '<div style="font-size:10px;color:#854F0B;font-weight:600">'+(r.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
+        + (ehMeu ? '<button onclick="removerRecado(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1" title="Remover">×</button>' : '')
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>'
+      + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+renderReactionsHTML('recado-'+r.id)+'</div>'
+    + '</div>';
+  });
+
+  host.innerHTML = html;
 }
 
 /* ===================== DASHBOARD: TOP 3 CIDADES ===================== */
