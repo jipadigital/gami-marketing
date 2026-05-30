@@ -1,4 +1,4 @@
-<!-- v23.7 - Marketing Visao Geral completa: 8 blocos estrategicos + graficos SVG - 30/05/2026 -->
+<!-- v23.10 - Editar tarefa + busca delegacao + corrige bug delegacao - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1311,9 +1311,10 @@ window.nav = function(el, page){
         'pessoas':         function(){ if(typeof renderPessoas==='function') renderPessoas(); },
         'inbox':           function(){
                               if(typeof renderInboxLista==='function') renderInboxLista();
-                              // Auto-sincroniza com o Meta na primeira abertura desta sessão
-                              if(typeof sincronizarInbox==='function' && !window._inboxSyncedOnce){
-                                window._inboxSyncedOnce = true;
+                              // Sincroniza com o Meta toda vez que abre (cache curto de 30s p/ evitar spam)
+                              var agora = Date.now();
+                              if(typeof sincronizarInbox==='function' && (!window._inboxLastSync || (agora - window._inboxLastSync) > 30000)){
+                                window._inboxLastSync = agora;
                                 sincronizarInbox();
                               }
                             },
@@ -1567,6 +1568,50 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <!-- (Frase do dia removida — frase motivacional já aparece no hero) -->
   <div id="dash-frase-texto" style="display:none"></div>
   <div id="dash-frase-autor" style="display:none"></div>
+
+  <!-- ====== 2b. SUA PONTUAÇÃO GÂMI ====== -->
+  <div class="dash-section" style="margin-bottom:14px;padding:16px 20px;background:linear-gradient(135deg,#FFF8EE,#FAEEDA);border:1.5px solid #EF9F2733;border-radius:12px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-20px;right:-15px;font-size:90px;opacity:.08;pointer-events:none">🏆</div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <!-- Badge do nível -->
+      <div id="dash-pontuacao-badge" style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#EF9F27,#F4B942);color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 12px rgba(239,159,39,.35);font-family:'Syne',sans-serif">
+        <div style="font-size:9px;font-weight:600;opacity:.85;letter-spacing:.5px;text-transform:uppercase;line-height:1">Nível</div>
+        <div id="dash-pontuacao-nivel" style="font-size:22px;font-weight:800;line-height:1.1">1</div>
+      </div>
+      <!-- Info principal -->
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#854F0B;text-transform:uppercase;margin-bottom:3px">🏆 Sua pontuação Gâmi</div>
+        <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#854F0B;line-height:1.1"><span id="dash-pontuacao-xp">0</span> <span style="font-size:13px;font-weight:600;opacity:.7">XP</span></div>
+        <div id="dash-pontuacao-status" style="font-size:11px;color:#854F0B;opacity:.85;margin-top:3px"></div>
+      </div>
+      <!-- Streak -->
+      <div id="dash-pontuacao-streak-card" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:white;border:1.5px solid #FFD93D;border-radius:10px;flex-shrink:0">
+        <span style="font-size:22px" id="dash-pontuacao-streak-emoji">🔥</span>
+        <div>
+          <div style="font-size:9px;font-weight:700;color:#854F0B;letter-spacing:.5px;text-transform:uppercase;line-height:1">Streak</div>
+          <div style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:#854F0B;line-height:1.1"><span id="dash-pontuacao-streak-num">0</span> <span style="font-size:10px;font-weight:600;opacity:.7">dias</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- Barra de progresso -->
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#854F0B;margin-bottom:4px">
+        <span><span id="dash-pontuacao-xp-nivel">0</span> / 100 XP pro próximo nível</span>
+        <span id="dash-pontuacao-pct" style="font-weight:700">0%</span>
+      </div>
+      <div style="height:8px;background:rgba(239,159,39,.15);border-radius:4px;overflow:hidden">
+        <div id="dash-pontuacao-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#EF9F27,#F4B942);border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1);box-shadow:0 0 8px rgba(239,159,39,.3)"></div>
+      </div>
+    </div>
+    <!-- Conquistas + Nota de em construção -->
+    <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div id="dash-pontuacao-badges" style="display:flex;gap:5px;flex-wrap:wrap"></div>
+      <div style="font-size:9px;color:#854F0B;opacity:.7;font-style:italic;display:flex;align-items:center;gap:4px">
+        <span>🛠️</span>
+        <span>Em construção · regras de pontuação Gâmi serão definidas em breve</span>
+      </div>
+    </div>
+  </div>
 
   <!-- ====== 3. CLIMA DAS 10 CIDADES (afeta entrega) ====== -->
   <div class="card dash-section" style="margin-bottom:14px">
@@ -3573,7 +3618,8 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       <div class="page-title">Inbox Instagram</div>
       <div class="page-sub">Mensagens unificadas das 10 cidades</div>
     </div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="abrirDiagnosticoInbox()" title="Ver status detalhado por conta IG">📊 Diagnóstico</button>
       <button class="btn btn-ghost" onclick="sincronizarInbox()">↻ Sincronizar</button>
       <button class="btn btn-primary" onclick="openAI('Gere 5 respostas rápidas profissionais para mensagens comuns no Instagram de uma empresa de delivery (dúvidas sobre entrega, parceria com restaurante, cadastro de motoboy). Tom: amigável e profissional.')">Respostas rápidas IA ↗</button>
     </div>
@@ -14811,6 +14857,8 @@ function initDashboard(){
   carregarVersiculo();
   carregarFrase();
   atualizarClima();
+  // Pontuação Gâmi do usuário (abaixo do versículo)
+  try { if(typeof renderPontuacaoGami === 'function') renderPontuacaoGami(); } catch(e){ console.warn('renderPontuacaoGami:', e); }
   // Foco do dia (sincronizado com Tarefas)
   try { if(typeof renderFocoDoDia === 'function') renderFocoDoDia(); } catch(e){}
   // Gera tarefas recorrentes do dia (1x por dia, lazy)
@@ -14834,6 +14882,94 @@ function initDashboard(){
 /* ============================================================== */
 /* DASHBOARD — NOVAS FUNÇÕES DO REDESIGN                          */
 /* ============================================================== */
+
+/* ============================================================ */
+/* DASHBOARD — SUA PONTUAÇÃO GÂMI (abaixo do versículo)         */
+/* Lê do localStorage (mesma fonte do card "Sua jornada")        */
+/* TODO: integrar com sistema definitivo de pontos da Gâmi       */
+/* ============================================================ */
+function renderPontuacaoGami(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return;
+  var uid = u.id;
+  // Lê dados (mesma origem do card Sua jornada)
+  var xp = 0, level = 1, streak = 0;
+  try {
+    xp = parseInt(localStorage.getItem('gami_xp_'+uid) || '0', 10);
+    level = parseInt(localStorage.getItem('gami_level_'+uid) || '1', 10);
+    streak = parseInt(localStorage.getItem('gami_streak_'+uid) || '0', 10);
+  } catch(e){}
+  
+  // Atualiza elementos
+  var elNivel = document.getElementById('dash-pontuacao-nivel');
+  if(elNivel) elNivel.textContent = level;
+  var elXp = document.getElementById('dash-pontuacao-xp');
+  if(elXp) elXp.textContent = xp;
+  
+  // Barra de progresso
+  var xpNoNivel = xp % 100;
+  var pct = Math.min(100, xpNoNivel);
+  var elBar = document.getElementById('dash-pontuacao-bar');
+  if(elBar) setTimeout(function(){ elBar.style.width = pct + '%'; }, 100); // anima
+  var elXpNivel = document.getElementById('dash-pontuacao-xp-nivel');
+  if(elXpNivel) elXpNivel.textContent = xpNoNivel;
+  var elPct = document.getElementById('dash-pontuacao-pct');
+  if(elPct) elPct.textContent = pct + '%';
+  
+  // Streak (esconde se 0)
+  var streakCard = document.getElementById('dash-pontuacao-streak-card');
+  var elStreakNum = document.getElementById('dash-pontuacao-streak-num');
+  var elStreakEmoji = document.getElementById('dash-pontuacao-streak-emoji');
+  if(streakCard){
+    if(streak > 0){
+      streakCard.style.display = 'flex';
+      if(elStreakNum) elStreakNum.textContent = streak;
+      if(elStreakEmoji) elStreakEmoji.textContent = streak >= 30 ? '🔥💎' : (streak >= 7 ? '🔥🔥' : '🔥');
+    } else {
+      streakCard.style.opacity = '.6';
+      if(elStreakNum) elStreakNum.textContent = '0';
+      if(elStreakEmoji) elStreakEmoji.textContent = '⏳';
+    }
+  }
+  
+  // Status motivacional
+  var elStatus = document.getElementById('dash-pontuacao-status');
+  if(elStatus){
+    var msg = '';
+    if(xp === 0){
+      msg = 'Comece concluindo tarefas pra ganhar XP!';
+    } else if(streak >= 7){
+      msg = 'Você está com tudo! '+streak+' dias seguidos 💪';
+    } else if(streak > 0){
+      msg = 'Mantenha o ritmo! Não perca a sequência.';
+    } else {
+      msg = 'Conclua uma tarefa hoje pra reiniciar a streak.';
+    }
+    elStatus.textContent = msg;
+  }
+  
+  // Badges de conquistas (até 3 mais recentes)
+  var elBadges = document.getElementById('dash-pontuacao-badges');
+  if(elBadges){
+    var conquistas = [];
+    try {
+      var listaT = JSON.parse(localStorage.getItem('gami_tarefas_diario_v2')||'[]');
+      var feitas = listaT.filter(function(t){ return t.pessoa_id === uid && t.feito; }).length;
+      if(feitas >= 100) conquistas.push({i:'💎',l:'100 tarefas'});
+      else if(feitas >= 50) conquistas.push({i:'⚡',l:'50 tarefas'});
+      else if(feitas >= 10) conquistas.push({i:'🎯',l:'10 tarefas'});
+      else if(feitas >= 1) conquistas.push({i:'🌱',l:'1ª tarefa'});
+      if(streak >= 30) conquistas.push({i:'🔥💎',l:'30d streak'});
+      else if(streak >= 7) conquistas.push({i:'🔥🔥',l:'1 semana'});
+      else if(streak >= 3) conquistas.push({i:'🔥',l:'3 dias'});
+      if(xp >= 500) conquistas.push({i:'🌟',l:'500 XP'});
+      else if(xp >= 100) conquistas.push({i:'⭐',l:'100 XP'});
+    } catch(e){}
+    elBadges.innerHTML = conquistas.slice(0,3).map(function(c){
+      return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:white;border:1px solid #EF9F2755;font-size:10px;font-weight:600;color:#854F0B" title="'+c.l+'"><span>'+c.i+'</span><span>'+c.l+'</span></span>';
+    }).join('') || '<span style="font-size:10px;color:#854F0B;opacity:.6;font-style:italic">Sem conquistas ainda — comece marcando tarefas!</span>';
+  }
+}
 
 /* ===== Frase motivacional rotativa ===== */
 var FRASES_MOTIVACIONAIS = [
@@ -16351,23 +16487,37 @@ function _hhmm(iso){
 
 async function sincronizarInbox(){
   _setInboxStatus('🔄 Conectando ao Meta Business…','#EF9F27');
+  // Limpa o diagnóstico anterior
+  _inboxDiagnostico = { contas:[], erros:[], iniciado:new Date().toISOString() };
 
-  // 1) Lista todas as contas IG conectadas (já cachado pela aba Cidades, mas re-fetch é barato)
+  // 1) Lista todas as contas IG conectadas
   var contas = [];
   try{
     var r = await fetch('/.netlify/functions/instagram?action=list_accounts');
     var data = await r.json();
+    console.log('[Inbox] list_accounts:', data);
     if(data.error){
-      _setInboxStatus('❌ '+(data.error)+' — '+(data.tip||'verifique META_USER_TOKEN'),'#E24B4A');
+      _inboxDiagnostico.erros.push({etapa:'list_accounts', erro:data.error, tip:data.tip||''});
+      _setInboxStatus(
+        '❌ <strong>'+(data.error)+'</strong> · '+(data.tip||'Token Meta provavelmente expirou')+' · <a href="#" onclick="event.preventDefault();abrirDiagnosticoInbox()" style="color:#0E7AB8;text-decoration:underline">Ver diagnóstico</a>',
+        '#E24B4A'
+      );
+      _renderInboxDiagnosticoCard();
       return;
     }
     contas = data.contas || [];
   }catch(e){
-    _setInboxStatus('❌ Erro de rede: '+e.message,'#E24B4A');
+    _inboxDiagnostico.erros.push({etapa:'list_accounts', erro:'Rede: '+e.message});
+    _setInboxStatus(
+      '❌ Erro de rede: '+e.message+' · <a href="#" onclick="event.preventDefault();abrirDiagnosticoInbox()" style="color:#0E7AB8;text-decoration:underline">Ver diagnóstico</a>',
+      '#E24B4A'
+    );
+    _renderInboxDiagnosticoCard();
     return;
   }
   if(!contas.length){
     _setInboxStatus('⚠️ Nenhuma conta IG retornada. Conecte os perfis no Meta Business.','#EF9F27');
+    _renderInboxDiagnosticoCard();
     return;
   }
 
@@ -16387,7 +16537,7 @@ async function sincronizarInbox(){
 
   _setInboxStatus('🔄 Buscando conversas de '+contas.length+' contas…','#EF9F27');
 
-  // 3) Busca conversas por conta em paralelo
+  // 3) Busca conversas por conta em paralelo + GUARDA DIAGNÓSTICO INDIVIDUAL
   var convs = [];
   var promises = contas.map(function(c){
     return fetch('/.netlify/functions/instagram?action=conversations&ig_id='+encodeURIComponent(c.ig_id))
@@ -16395,6 +16545,21 @@ async function sincronizarInbox(){
       .then(function(d){
         var cidade = cidadeByIg[c.ig_id] || ('@'+c.ig_username);
         var lista = (d && d.data) ? d.data : [];
+        // Guarda diagnóstico da conta
+        _inboxDiagnostico.contas.push({
+          username: c.ig_username,
+          ig_id: c.ig_id,
+          cidade: cidade,
+          status: d.error ? 'erro' : (lista.length ? 'ok' : 'sem_msg'),
+          totalConversas: lista.length,
+          erro: d.error || null,
+          tip: d.tip || null
+        });
+        if(d.error){
+          console.warn('[Inbox] erro em '+c.ig_username+':', d.error);
+          _inboxDiagnostico.erros.push({etapa:'conversations '+c.ig_username, erro:d.error, tip:d.tip||''});
+          return;
+        }
         lista.forEach(function(conv){
           var msgs = (conv.messages && conv.messages.data) ? conv.messages.data.slice().reverse() : [];
           var ultima = msgs.length ? msgs[msgs.length-1] : null;
@@ -16418,7 +16583,14 @@ async function sincronizarInbox(){
           });
         });
       })
-      .catch(function(e){ console.warn('inbox '+c.ig_username+':', e.message); });
+      .catch(function(e){
+        console.warn('[Inbox] '+c.ig_username+':', e.message);
+        _inboxDiagnostico.contas.push({
+          username: c.ig_username, ig_id: c.ig_id, cidade: cidadeByIg[c.ig_id]||'?',
+          status: 'erro_rede', totalConversas: 0, erro: e.message
+        });
+        _inboxDiagnostico.erros.push({etapa:'fetch '+c.ig_username, erro:e.message});
+      });
   });
 
   await Promise.all(promises);
@@ -16430,6 +16602,9 @@ async function sincronizarInbox(){
   var notice = document.getElementById('inbox-demo-notice');
   if(notice) notice.style.display = 'none';
 
+  // Sempre renderiza o card de diagnóstico (escondido por default, expansível)
+  _renderInboxDiagnosticoCard();
+
   if(!convs.length){
     // Limpa demos pra evitar mostrar dados falsos enquanto bar diz "Conectado"
     _inboxDados = [];
@@ -16437,17 +16612,24 @@ async function sincronizarInbox(){
     if(typeof renderInboxLista==='function') renderInboxLista();
     var listaEl = document.getElementById('inbox-lista');
     if(listaEl){
-      listaEl.innerHTML = '<div style="padding:30px 20px;text-align:center;font-size:12px;color:var(--text3);line-height:1.6">'+
+      listaEl.innerHTML = '<div style="padding:24px 16px;text-align:center;font-size:12px;color:var(--text3);line-height:1.6">'+
         '<div style="font-size:32px;margin-bottom:8px">📭</div>'+
-        '<div><strong>Nenhuma DM nas últimas 24h.</strong></div>'+
-        '<div style="margin-top:6px;opacity:.85">Quando alguém mandar uma mensagem em qualquer das 10 contas IG, aparece aqui. Clique em ↻ Sincronizar pra atualizar.</div>'+
+        '<div style="font-weight:600;color:var(--text)">Nenhuma DM recente</div>'+
+        '<div style="margin-top:6px;opacity:.85;font-size:11px">A API do Meta só retorna mensagens das <strong>últimas 24h</strong> por padrão. Se ninguém mandou DM neste período, fica vazio mesmo conectado.</div>'+
+        '<button onclick="abrirDiagnosticoInbox()" style="margin-top:10px;padding:6px 12px;border:1px solid var(--gami-blue);border-radius:6px;background:white;color:var(--gami-blue);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📊 Ver diagnóstico das '+contas.length+' contas</button>'+
         '</div>';
     }
     var conv = document.getElementById('inbox-mensagens');
     if(conv){
       conv.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:32px;margin-bottom:8px">💬</div><div style="font-size:13px">Sem conversas pra exibir</div></div>';
     }
-    _setInboxStatus('✅ Conectado · 10 contas IG monitoradas · sem DMs nas últimas 24h.','#1D9E75');
+    var temErro = _inboxDiagnostico.erros.length > 0;
+    _setInboxStatus(
+      temErro
+        ? '⚠️ '+contas.length+' contas conectadas, mas '+_inboxDiagnostico.erros.length+' deram erro · <a href="#" onclick="event.preventDefault();abrirDiagnosticoInbox()" style="color:#0E7AB8;text-decoration:underline">Ver detalhes</a>'
+        : '✅ Conectado · '+contas.length+' contas IG monitoradas · sem DMs nas últimas 24h · <a href="#" onclick="event.preventDefault();abrirDiagnosticoInbox()" style="color:#0E7AB8;text-decoration:underline">Ver contas</a>',
+      temErro ? '#EF9F27' : '#1D9E75'
+    );
     return;
   }
 
@@ -16455,7 +16637,108 @@ async function sincronizarInbox(){
   _inboxAtual = null;
   if(typeof renderInboxLista==='function') renderInboxLista();
 
-  _setInboxStatus('✅ '+convs.length+' conversas carregadas de '+contas.length+' contas IG.','#1D9E75');
+  _setInboxStatus(
+    '✅ '+convs.length+' conversas de '+contas.length+' contas IG · '+_hhmm(new Date().toISOString())+' · <a href="#" onclick="event.preventDefault();abrirDiagnosticoInbox()" style="color:#0E7AB8;text-decoration:underline">Detalhes</a>',
+    '#1D9E75'
+  );
+}
+
+/* ============================================================ */
+/* INBOX — DIAGNÓSTICO DETALHADO POR CONTA                       */
+/* ============================================================ */
+var _inboxDiagnostico = { contas:[], erros:[], iniciado:null };
+
+function _renderInboxDiagnosticoCard(){
+  // Cria/atualiza o card de diagnóstico que fica ESCONDIDO por padrão
+  var existente = document.getElementById('inbox-diag-card');
+  if(existente) existente.remove();
+  if(!_inboxDiagnostico.iniciado) return;
+  var card = document.createElement('div');
+  card.id = 'inbox-diag-card';
+  card.style.cssText = 'display:none;margin-bottom:14px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface);';
+  
+  var statusBadge = function(s){
+    if(s==='ok') return '<span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#1D9E7522;color:#3B6D11;font-weight:700">✓ OK</span>';
+    if(s==='sem_msg') return '<span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#1AB8F022;color:#0E7AB8;font-weight:700">○ vazio</span>';
+    if(s==='erro') return '<span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#E24B4A22;color:#A32D2D;font-weight:700">✗ erro</span>';
+    if(s==='erro_rede') return '<span style="font-size:9px;padding:2px 7px;border-radius:5px;background:#EF9F2722;color:#854F0B;font-weight:700">⚠ rede</span>';
+    return s;
+  };
+  var totalConvs = _inboxDiagnostico.contas.reduce(function(s,c){return s+(c.totalConversas||0);},0);
+  var qtdOk = _inboxDiagnostico.contas.filter(function(c){return c.status==='ok';}).length;
+  var qtdSemMsg = _inboxDiagnostico.contas.filter(function(c){return c.status==='sem_msg';}).length;
+  var qtdErro = _inboxDiagnostico.contas.filter(function(c){return c.status==='erro' || c.status==='erro_rede';}).length;
+  
+  card.innerHTML = ''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">'
+      +'<div>'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text)">📊 Diagnóstico do Inbox</div>'
+        +'<div style="font-size:10px;color:var(--text3)">Última sincronização: '+_hhmm(_inboxDiagnostico.iniciado)+' · '+_inboxDiagnostico.contas.length+' contas testadas</div>'
+      +'</div>'
+      +'<button onclick="document.getElementById(\'inbox-diag-card\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:13px">×</button>'
+    +'</div>'
+    // Resumo
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">'
+      +'<div class="mv-kpi" style="padding:10px"><div class="mv-kpi-label">Total</div><div class="mv-kpi-val" style="font-size:18px">'+_inboxDiagnostico.contas.length+'</div></div>'
+      +'<div class="mv-kpi" style="padding:10px;background:#F4F9EE"><div class="mv-kpi-label" style="color:#3B6D11">Com msgs</div><div class="mv-kpi-val" style="font-size:18px;color:#1D9E75">'+qtdOk+'</div></div>'
+      +'<div class="mv-kpi" style="padding:10px;background:#E6F6FE"><div class="mv-kpi-label" style="color:#0E7AB8">Sem DM 24h</div><div class="mv-kpi-val" style="font-size:18px;color:#0E7AB8">'+qtdSemMsg+'</div></div>'
+      +'<div class="mv-kpi" style="padding:10px;background:'+(qtdErro?'#FFF5F5':'var(--surface2)')+'"><div class="mv-kpi-label" style="color:'+(qtdErro?'#A32D2D':'var(--text3)')+'">Com erro</div><div class="mv-kpi-val" style="font-size:18px;color:'+(qtdErro?'#E24B4A':'var(--text)')+'">'+qtdErro+'</div></div>'
+    +'</div>'
+    // Total de conversas
+    +(totalConvs ? '<div style="padding:8px 10px;background:#F4F9EE;border:1px solid #1D9E7533;border-radius:8px;font-size:11px;color:#3B6D11;margin-bottom:12px"><strong>'+totalConvs+'</strong> conversa(s) carregada(s) das contas com DMs.</div>' : '')
+    // Lista de contas
+    +'<div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">Status por conta:</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;max-height:280px;overflow-y:auto">'
+      + _inboxDiagnostico.contas.map(function(c){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:11px">'
+          +'<div style="font-size:14px">📷</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-weight:600;color:var(--text)">@'+c.username+'</div>'
+            +'<div style="font-size:10px;color:var(--text3)">'+c.cidade+' · ig_id: '+(c.ig_id||'').slice(-8)+'</div>'
+            +(c.erro ? '<div style="font-size:10px;color:#A32D2D;margin-top:3px"><strong>Erro:</strong> '+c.erro+(c.tip?' — '+c.tip:'')+'</div>' : '')
+          +'</div>'
+          +'<div style="text-align:right;flex-shrink:0">'
+            + statusBadge(c.status)
+            +'<div style="font-size:9px;color:var(--text3);margin-top:3px">'+(c.totalConversas||0)+' conv.</div>'
+          +'</div>'
+        +'</div>';
+      }).join('')
+    +'</div>'
+    // Erros gerais
+    +(_inboxDiagnostico.erros.length
+      ? '<div style="margin-top:12px;padding:10px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px"><div style="font-size:11px;font-weight:700;color:#A32D2D;margin-bottom:6px">⚠️ Erros encontrados ('+_inboxDiagnostico.erros.length+')</div>'
+        + _inboxDiagnostico.erros.map(function(er){
+          return '<div style="font-size:10px;color:#A32D2D;padding:3px 0;line-height:1.4"><strong>'+er.etapa+':</strong> '+er.erro+(er.tip?' — '+er.tip:'')+'</div>';
+        }).join('')
+      +'</div>'
+      : '')
+    // Dicas
+    +'<div style="margin-top:12px;padding:10px;background:#E6F6FE;border:1px dashed #1AB8F0;border-radius:8px;font-size:10.5px;color:#0E7AB8;line-height:1.5">'
+      +'💡 <strong>Por que pode estar vazio mesmo conectado:</strong>'
+      +'<ul style="margin:4px 0 0 16px;padding:0">'
+        +'<li>A Meta API só retorna DMs das <strong>últimas 24h</strong></li>'
+        +'<li>O token <code>META_USER_TOKEN</code> expira a cada 60 dias (precisa renovar)</li>'
+        +'<li>A permissão <code>instagram_manage_messages</code> precisa estar ativa no app Meta</li>'
+        +'<li>Mensagens só aparecem se a conta estiver vinculada a uma <strong>Página do Facebook</strong></li>'
+      +'</ul>'
+      +'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'
+        +'<a href="https://business.facebook.com/settings/instagram-accounts" target="_blank" style="padding:4px 9px;border:1px solid #0E7AB8;border-radius:5px;background:white;color:#0E7AB8;text-decoration:none;font-size:10px;font-weight:600">Meta Business →</a>'
+        +'<a href="https://developers.facebook.com/tools/explorer" target="_blank" style="padding:4px 9px;border:1px solid #0E7AB8;border-radius:5px;background:white;color:#0E7AB8;text-decoration:none;font-size:10px;font-weight:600">Renovar Token →</a>'
+        +'<a href="https://app.netlify.com/sites/gami-marketing/configuration/env" target="_blank" style="padding:4px 9px;border:1px solid #0E7AB8;border-radius:5px;background:white;color:#0E7AB8;text-decoration:none;font-size:10px;font-weight:600">Env Vars Netlify →</a>'
+      +'</div>'
+    +'</div>';
+
+  // Insere após o status-bar
+  var statusBar = document.getElementById('inbox-status-bar');
+  if(statusBar && statusBar.parentNode){
+    statusBar.parentNode.insertBefore(card, statusBar.nextSibling);
+  }
+}
+
+function abrirDiagnosticoInbox(){
+  var card = document.getElementById('inbox-diag-card');
+  if(card){ card.style.display = card.style.display === 'none' ? 'block' : 'none'; }
+  else if(typeof sincronizarInbox === 'function'){ sincronizarInbox(); }
 }
 
 
@@ -18607,7 +18890,8 @@ function tfRenderDiario(){
       +(t.cat?'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:'+catCor+'22;color:'+catCor+'">'+t.cat+'</span>':'')
       +(t.prazo?'<span style="font-size:10px;color:'+(vencida?'#E24B4A':'var(--text3)')+';font-weight:'+(vencida?'700':'400')+'">⏰ '+t.prazo+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+(vencida?' (vencida)':'')+'</span>':'')
       +'</div></div>'
-      +'<button onclick="tfExcluir(\'diario\',\''+t.id+'\')" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:12px;color:var(--text3);flex-shrink:0">×</button>'
+      +'<button onclick="tfEditarTarefa(\'diario\',\''+t.id+'\')" title="Editar tarefa" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:11px;color:var(--text3);flex-shrink:0;margin-right:4px">✏️</button>'
+      +'<button onclick="tfExcluir(\'diario\',\''+t.id+'\')" title="Excluir tarefa" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:12px;color:var(--text3);flex-shrink:0">×</button>'
       +'</div>';
   }).join('');
   // Atualiza barra de progresso considerando apenas tarefas NÃO-fixas
@@ -18707,6 +18991,67 @@ function tfExcluir(tipo, id, sufixo){
   if(typeof renderMinhaAgenda === 'function'){
     try { renderMinhaAgenda(); } catch(e){}
   }
+}
+
+/* ============================================================ */
+/* TAREFAS — EDITAR TAREFA (abre modal pre-preenchido)          */
+/* ============================================================ */
+function tfEditarTarefa(tipo, id, sufixo){
+  var lista = getTarefas(tipo, sufixo);
+  var t = lista.find(function(x){return x.id===id;});
+  if(!t){ if(typeof toast==='function') toast('Tarefa não encontrada','error'); return; }
+  // Tarefas fixas não podem ser editadas pelo usuário
+  if(t.fixa){ if(typeof toast==='function') toast('Tarefas fixas Gâmi não podem ser editadas','warn'); return; }
+  // Abre o modal de Nova Tarefa
+  if(typeof abrirModalNovaTarefa !== 'function'){
+    alert('Modal de tarefa indisponível'); return;
+  }
+  abrirModalNovaTarefa(tipo);
+  // Pre-preenche depois que o modal renderizou
+  setTimeout(function(){
+    var elTexto = document.getElementById('tf-m-texto'); if(elTexto) elTexto.value = t.texto || '';
+    var elPrio = document.getElementById('tf-m-prio'); if(elPrio) elPrio.value = t.prio || 'media';
+    var elCat = document.getElementById('tf-m-cat'); if(elCat) elCat.value = t.cat || 'Outro';
+    var elPrazo = document.getElementById('tf-m-prazo'); if(elPrazo && t.prazo) elPrazo.value = t.prazo;
+    var elHora = document.getElementById('tf-m-hora-limite'); if(elHora && t.hora_limite) elHora.value = t.hora_limite;
+    var elObs = document.getElementById('tf-m-obs'); if(elObs && t.obs) elObs.value = t.obs;
+    var elCtx = document.getElementById('tf-m-ctx'); if(elCtx && tipo) elCtx.value = tipo;
+    
+    // Adiciona hidden input com id da tarefa sendo editada
+    var modal = document.getElementById('modal-campanha');
+    if(modal){
+      var existing = modal.querySelector('#tf-m-editar-id');
+      if(!existing){
+        var hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.id = 'tf-m-editar-id';
+        hidden.value = id;
+        hidden.dataset.tipo = tipo;
+        hidden.dataset.sufixo = sufixo || '';
+        modal.querySelector('.modal-box').appendChild(hidden);
+      } else {
+        existing.value = id;
+        existing.dataset.tipo = tipo;
+        existing.dataset.sufixo = sufixo || '';
+      }
+      // Adiciona aviso visual de modo edição
+      var aviso = modal.querySelector('#tf-m-editar-aviso');
+      if(!aviso){
+        var av = document.createElement('div');
+        av.id = 'tf-m-editar-aviso';
+        av.style.cssText = 'padding:8px 12px;background:#FFF8EE;border:1px solid #EF9F2733;border-radius:8px;font-size:11px;color:#854F0B;margin-bottom:10px;display:flex;align-items:center;gap:6px';
+        av.innerHTML = '✏️ <strong>Editando tarefa</strong> · As alterações vão substituir a tarefa atual';
+        var modalBox = modal.querySelector('.modal-box');
+        var titulo = modalBox.querySelector('div');
+        if(titulo && titulo.nextSibling) modalBox.insertBefore(av, titulo.nextSibling);
+        else modalBox.appendChild(av);
+      }
+      // Muda o texto do botão pra "Salvar alterações"
+      var btnSalvar = modal.querySelector('button[onclick="tfSalvarModal()"]');
+      if(btnSalvar) btnSalvar.innerHTML = '💾 Salvar alterações';
+    }
+    if(elTexto) elTexto.focus();
+  }, 150);
 }
 
 function tfFiltrar(btn, filtro){
@@ -19882,7 +20227,7 @@ function tfMontarDelegacao(){
 
   // Cards selecionáveis - foto + nome (sem cidade) — MULTI-SELECT
   var cardsHtml = disponiveis.map(function(p){
-    return '<div onclick="_tfToggleDelegado(\''+p.id+'\',\''+(p.nome||'').replace(/\'/g,"\\'")+'\')" data-pessoa-id="'+p.id+'" class="tf-deleg-card" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:2px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:all .15s;position:relative">'
+    return '<div onclick="_tfToggleDelegado(\''+p.id+'\',\''+(p.nome||'').replace(/\'/g,"\\'")+'\')" data-pessoa-id="'+p.id+'" data-nome-lower="'+((p.nome||'').toLowerCase().replace(/"/g,''))+'" class="tf-deleg-card" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:2px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:all .15s;position:relative">'
       + _delegAvatar(p)
       + '<span style="font-size:12px;color:var(--text);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.nome||p.id)+'</span>'
       + '<span class="tf-deleg-check" style="display:none;width:18px;height:18px;border-radius:50%;background:#8B5CF6;color:white;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">✓</span>'
@@ -19898,7 +20243,9 @@ function tfMontarDelegacao(){
     + '<div id="tf-m-deleg-cfg" style="display:none">'
       + '<input type="hidden" id="tf-m-deleg-pessoas" value="">' // JSON array
       + '<div class="field-label" style="font-size:10px;display:flex;align-items:center;justify-content:space-between"><span>Escolha uma ou mais pessoas:</span><span id="tf-m-deleg-count" style="color:#6A1B9A;font-weight:700">0 selecionada(s)</span></div>'
-      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;max-height:220px;overflow-y:auto;padding:4px">'+cardsHtml+'</div>'
+      + '<input id="tf-m-deleg-busca" oninput="_tfFiltrarPessoasDelegacao(this.value)" placeholder="🔍 Buscar por nome..." style="width:100%;padding:7px 11px;border:1px solid #8B5CF655;border-radius:7px;background:white;color:var(--text);font-size:12px;font-family:inherit;margin-bottom:6px;box-sizing:border-box"/>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;max-height:220px;overflow-y:auto;padding:4px" id="tf-m-deleg-grid">'+cardsHtml+'</div>'
+      + '<div id="tf-m-deleg-vazio" style="display:none;padding:14px;text-align:center;color:#6A1B9A;opacity:.7;font-size:11px;font-style:italic">Nenhuma pessoa encontrada</div>'
       + '<div class="g2" style="margin-top:8px">'
         + '<div><div class="field-label" style="font-size:10px">Prioridade</div>'
           + '<select id="tf-m-deleg-prio" class="sel"><option value="urgente">🔴 Urgente</option><option value="importante">🟡 Importante</option><option value="normal" selected>🟢 Normal</option></select></div>'
@@ -19908,6 +20255,21 @@ function tfMontarDelegacao(){
       + '<div style="font-size:9px;color:#6A1B9A;margin-top:6px;font-style:italic">A tarefa cai na aba de cada pessoa selecionada, com seu nome e uma notificação. Você pode acompanhar todas na aba "📥 Delegadas por mim".</div>'
     + '</div>'
     + '</div>';
+}
+
+/* Filtra cards de pessoas pela busca por nome */
+function _tfFiltrarPessoasDelegacao(q){
+  var query = (q||'').toLowerCase().trim();
+  var cards = document.querySelectorAll('.tf-deleg-card');
+  var visiveis = 0;
+  cards.forEach(function(card){
+    var nome = card.getAttribute('data-nome-lower') || '';
+    var visivel = !query || nome.indexOf(query) >= 0;
+    card.style.display = visivel ? '' : 'none';
+    if(visivel) visiveis++;
+  });
+  var vazio = document.getElementById('tf-m-deleg-vazio');
+  if(vazio) vazio.style.display = (visiveis === 0 && query) ? 'block' : 'none';
 }
 
 /* Multi-select: toggle pessoa (clica pra adicionar/remover) */
@@ -19978,13 +20340,20 @@ function tfSalvarModal(){
     var btnD = event && event.target ? event.target : null;
     if(btnD){ btnD.disabled=true; btnD.innerHTML='Delegando...'; }
     
-    // Delega pra cada pessoa selecionada (em paralelo)
+    // Delega pra cada pessoa selecionada (em paralelo) — com .catch individual
     Promise.all(destinatarios.map(function(d){
-      return tfDelegar(d.id, d.nome, texto, prioDeleg, prazoDeleg, horaDeleg, msgDeleg);
+      return tfDelegar(d.id, d.nome, texto, prioDeleg, prazoDeleg, horaDeleg, msgDeleg)
+        .catch(function(e){
+          console.error('[Delegar] Exceção em '+d.nome+':', e);
+          return { ok:false, erro:'Exceção: '+(e && e.message ? e.message : e), pessoa:d.nome };
+        });
     })).then(function(resultados){
-      var sucessos = resultados.filter(function(r){return r;}).length;
+      var sucessos = resultados.filter(function(r){ return r && r.ok; }).length;
+      var falhas = resultados.filter(function(r){ return r && !r.ok; });
       var total = resultados.length;
+      
       if(sucessos === total){
+        // Todas deram certo
         closeModal('modal-campanha');
         if(typeof toast === 'function'){
           if(sucessos === 1){
@@ -19993,9 +20362,27 @@ function tfSalvarModal(){
             toast('Tarefa delegada para '+sucessos+' pessoas!', 'success');
           }
         }
+      } else if(sucessos > 0){
+        // Parcial: algumas deram certo, outras não
+        closeModal('modal-campanha');
+        if(typeof toast === 'function'){
+          toast('Delegou pra '+sucessos+'/'+total+' pessoas. Veja console pra erros.', 'warn');
+        }
+        console.warn('[Delegar] Falhas parciais:', falhas);
       } else {
+        // Todas falharam — mostra erro real
         if(btnD){ btnD.disabled=false; btnD.innerHTML='+ Adicionar'; }
-        alert('Delegou pra '+sucessos+' de '+total+' pessoas. Algumas falharam. Tente de novo.');
+        var msgErro = falhas.length && falhas[0].erro ? falhas[0].erro : 'Erro desconhecido';
+        alert(
+          '❌ Não consegui delegar.\n\n'
+          +'Erro: '+msgErro+'\n\n'
+          +'Possíveis causas:\n'
+          +'• Sem conexão com Supabase\n'
+          +'• Sessão expirada (faça logout/login)\n'
+          +'• Permissão insuficiente\n\n'
+          +'Veja o console (F12) pra detalhes técnicos.'
+        );
+        console.error('[Delegar] TODAS as delegações falharam:', falhas);
       }
     });
     return;
@@ -20055,6 +20442,44 @@ function tfSalvarModal(){
   // Não recorrente — comportamento original (com pessoa_id)
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var hora_limite = (document.getElementById('tf-m-hora-limite')||{}).value||null;
+
+  // === MODO EDIÇÃO: se tem hidden 'tf-m-editar-id', atualiza ===
+  var editarIdEl = document.getElementById('tf-m-editar-id');
+  if(editarIdEl && editarIdEl.value){
+    var editId = editarIdEl.value;
+    var editTipo = editarIdEl.dataset.tipo || 'diario';
+    var editSufixo = editarIdEl.dataset.sufixo || null;
+    var listaEd = getTarefasRaw(editTipo, editSufixo);
+    var idx = listaEd.findIndex(function(x){return x.id===editId;});
+    if(idx >= 0){
+      listaEd[idx].texto = texto.trim();
+      listaEd[idx].prio = prio;
+      listaEd[idx].cat = cat;
+      listaEd[idx].prazo = prazo;
+      listaEd[idx].obs = obs;
+      listaEd[idx].hora_limite = hora_limite;
+      listaEd[idx].editadoEm = new Date().toISOString();
+      saveTarefas(editTipo, editSufixo, listaEd);
+      // Sincroniza com Supabase
+      if(typeof supaUpsert==='function'){
+        supaUpsert('tarefas', {
+          id: editId, texto: texto.trim(), prio: prio, cat: cat,
+          prazo: prazo, obs: obs, hora_limite: hora_limite,
+          editado_em: listaEd[idx].editadoEm
+        });
+      }
+      if(typeof auditLog==='function') auditLog('tarefa_editada', editId, (texto||'').slice(0,60));
+      if(typeof toast === 'function') toast('Tarefa atualizada!', 'success');
+      closeModal('modal-campanha');
+      if(editTipo==='diario') tfRenderDiario();
+      if(editTipo==='semana') tfRenderSemana();
+      if(editTipo==='mes') tfRenderMes();
+      tfAtualizarMetricas();
+      if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda();
+      return;
+    }
+  }
+
   var nova={
     id:'tf'+Date.now(),
     texto:texto.trim(),
@@ -20243,13 +20668,13 @@ async function tfBuscarDelegadasParaMim(){
 /* DELEGAÇÃO: cria tarefa direto pra outra pessoa (cai na aba dela) */
 async function tfDelegar(destinoPessoaId, destinoNome, texto, prioridadeDeleg, dataLimite, horaLimite, mensagem){
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
-  if(!u) { alert('Sessão expirada. Faça login novamente.'); return false; }
+  if(!u) { alert('Sessão expirada. Faça login novamente.'); return { ok:false, erro:'Sessão expirada' }; }
 
-  // Só quem pode delegar: diretoria, gerencia, gestor, marketing/super_admin
+  // Permissão: super_admin, diretoria, gerencia, gestor, marketing
   var nivel = (u.nivel||'').toLowerCase();
   var ehSuper = u.email && u.email.toLowerCase()==='jipadigital@gmail.com';
   var podeDelegar = ehSuper || ['diretoria','gerencia','gestor','marketing','super_admin'].indexOf(nivel)>=0;
-  if(!podeDelegar){ alert('Seu perfil não pode delegar tarefas.'); return false; }
+  if(!podeDelegar){ alert('Seu perfil não pode delegar tarefas.'); return { ok:false, erro:'Sem permissão' }; }
 
   var tarefa = {
     id: 'tf'+Date.now()+Math.random().toString(36).slice(2,5),
@@ -20269,15 +20694,45 @@ async function tfDelegar(destinoPessoaId, destinoNome, texto, prioridadeDeleg, d
     vista_em: null
   };
 
-  var ok = await tfSupaSalvar(tarefa, 'diario', null);
-  if(ok){
-    await criarNotificacao(destinoPessoaId, 'tarefa_nova',
-      'Nova tarefa de '+(u.nome||u.email),
-      texto.trim(), 'tarefas');
-    await auditLog('tarefa_delegada', tarefa.id,
-      (u.nome||u.email)+' → '+destinoNome+': '+texto.trim().slice(0,60));
+  console.log('[Delegar] Salvando tarefa:', tarefa);
+  var resp = await tfSupaSalvar(tarefa, 'diario', null);
+  console.log('[Delegar] Resposta Supabase:', resp);
+  
+  // Compat: tfSupaSalvar pode retornar boolean (antiga) ou objeto (nova)
+  var ok = false, erroDetalhe = '';
+  if(typeof resp === 'object' && resp !== null){
+    ok = resp.ok;
+    erroDetalhe = resp.erro || '';
+  } else {
+    ok = !!resp;
   }
-  return ok;
+
+  // Fallback: guarda na cache local mesmo assim, pra não perder a delegação
+  if(!ok){
+    try {
+      var pendentes = JSON.parse(localStorage.getItem('gami_delegacoes_pendentes')||'[]');
+      pendentes.push({ tarefa:tarefa, falhou_em:new Date().toISOString(), erro:erroDetalhe });
+      localStorage.setItem('gami_delegacoes_pendentes', JSON.stringify(pendentes));
+      console.warn('[Delegar] Falha — guardado em delegacoes_pendentes:', erroDetalhe);
+    } catch(e){}
+    return { ok:false, erro: erroDetalhe || 'Erro desconhecido ao salvar no Supabase', tarefa:tarefa };
+  }
+
+  // Notificação e audit — em try/catch pra não quebrar a delegação se falhar
+  try {
+    if(typeof criarNotificacao === 'function'){
+      await criarNotificacao(destinoPessoaId, 'tarefa_nova',
+        'Nova tarefa de '+(u.nome||u.email),
+        texto.trim(), 'tarefas');
+    }
+  } catch(e){ console.warn('[Delegar] criarNotificacao falhou (não bloqueia):', e); }
+  try {
+    if(typeof auditLog === 'function'){
+      await auditLog('tarefa_delegada', tarefa.id,
+        (u.nome||u.email)+' → '+destinoNome+': '+texto.trim().slice(0,60));
+    }
+  } catch(e){ console.warn('[Delegar] auditLog falhou (não bloqueia):', e); }
+  return { ok:true, tarefa:tarefa };
 }
 
 /* Sincroniza tarefas do Supabase pro cache local (chamado ao abrir aba) */
