@@ -1,4 +1,4 @@
-<!-- v20.0 - Calendario com texto no grid + botao salvar anotacao - 29/05/2026 -->
+<!-- v20.2 - Multiplas anotacoes por dia - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4271,51 +4271,96 @@ window.addEventListener('storage', function(ev){
 });
 
 /* Anotações pessoais do calendário (texto livre por dia) — também privado */
-function salvarNotaCalendario(dataKey, texto){
-  try { localStorage.setItem(_calNotasKey(dataKey), texto||''); } catch(e){}
-}
+/* ===== ANOTAÇÕES DO CALENDÁRIO (multiplas por dia) ===== */
 
-/* Salva com feedback visual + toast + re-render do calendario */
-function salvarNotaCalendarioComFeedback(dataKey){
-  var ta = document.getElementById('cal-notas-'+dataKey);
-  var st = document.getElementById('cal-nota-status-'+dataKey);
-  if(!ta) return;
-  salvarNotaCalendario(dataKey, ta.value);
-  if(st){
-    st.textContent = '✓ Salvo!';
-    st.style.color = '#1D9E75';
-    setTimeout(function(){
-      var st2 = document.getElementById('cal-nota-status-'+dataKey);
-      if(st2){ st2.textContent = 'privado'; st2.style.color = 'var(--text3)'; }
-    }, 2500);
-  }
-  if(typeof toast === 'function') toast('Anotação salva', 'success');
-  // Re-renderiza o calendario pra atualizar o indicador no grid
-  if(typeof renderCalendar === 'function') renderCalendar();
-}
-
-/* Limpa a anotacao do dia (re-seleciona o dia pra atualizar UI) */
-function limparNotaCalendario(dataKey, d, m, y){
-  if(!confirm('Limpar a anotação deste dia?')) return;
-  try { localStorage.removeItem(_calNotasKey(dataKey)); } catch(e){}
-  if(typeof toast === 'function') toast('Anotação removida', 'info');
-  if(typeof selectDay === 'function') selectDay(d, m, y);
-}
-function getNotaCalendario(dataKey){
-  try { 
-    var nova = localStorage.getItem(_calNotasKey(dataKey));
-    if(nova) return nova;
-    // Migração: se for Cleyton e ainda existe nota legada, importa
-    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-    if(u && u.id === 'pe016'){
-      var legada = localStorage.getItem('gami_cal_notas_'+dataKey);
-      if(legada){
-        localStorage.setItem(_calNotasKey(dataKey), legada);
-        return legada;
+/* Le anotacoes como ARRAY. Converte automaticamente formato legado (string) */
+function getNotasCalendario(dataKey){
+  try {
+    var raw = localStorage.getItem(_calNotasKey(dataKey));
+    // Migração legada (Cleyton tinha notas em chave antiga)
+    if(!raw){
+      var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+      if(u && u.id === 'pe016'){
+        var legada = localStorage.getItem('gami_cal_notas_'+dataKey);
+        if(legada){
+          raw = legada;
+        }
       }
     }
-    return '';
-  } catch(e){ return ''; }
+    if(!raw) return [];
+    // Se for string antiga (não JSON array), converte
+    if(raw[0] !== '['){
+      var arr = [{id:'leg-'+Date.now(), texto: raw, data: new Date().toISOString()}];
+      try { localStorage.setItem(_calNotasKey(dataKey), JSON.stringify(arr)); } catch(e){}
+      return arr;
+    }
+    return JSON.parse(raw) || [];
+  } catch(e){ return []; }
+}
+
+/* Salva array completo (uso interno) */
+function _salvarNotasArray(dataKey, arr){
+  try { localStorage.setItem(_calNotasKey(dataKey), JSON.stringify(arr||[])); } catch(e){}
+}
+
+/* Adiciona uma nova nota (uso principal) */
+function adicionarNotaCalendario(dataKey, texto){
+  texto = (texto||'').trim();
+  if(!texto) return false;
+  var notas = getNotasCalendario(dataKey);
+  notas.unshift({id:'n'+Date.now(), texto:texto, data:new Date().toISOString()});
+  if(notas.length > 20) notas = notas.slice(0, 20);
+  _salvarNotasArray(dataKey, notas);
+  return true;
+}
+
+/* Remove uma nota especifica */
+function removerNotaCalendario(dataKey, notaId, d, m, y){
+  var notas = getNotasCalendario(dataKey).filter(function(n){ return n.id !== notaId; });
+  _salvarNotasArray(dataKey, notas);
+  if(typeof toast === 'function') toast('Anotação removida', 'info');
+  if(typeof selectDay === 'function' && d !== undefined) selectDay(d, m, y);
+}
+
+/* Funcao antiga preservada pra compat (concatena tudo) */
+function getNotaCalendario(dataKey){
+  var notas = getNotasCalendario(dataKey);
+  if(!notas.length) return '';
+  return notas.map(function(n){ return n.texto; }).join('\n---\n');
+}
+
+function salvarNotaCalendario(dataKey, texto){
+  // Compat: cria como nota unica substituindo tudo
+  if(!texto || !texto.trim()){ _salvarNotasArray(dataKey, []); return; }
+  _salvarNotasArray(dataKey, [{id:'n'+Date.now(), texto:texto.trim(), data:new Date().toISOString()}]);
+}
+
+/* Salva com feedback visual + toast + re-render */
+function salvarNotaCalendarioComFeedback(dataKey, d, m, y){
+  var ta = document.getElementById('cal-notas-'+dataKey);
+  if(!ta) return;
+  var texto = (ta.value||'').trim();
+  if(!texto){
+    if(typeof toast === 'function') toast('Escreva algo antes de salvar', 'warn');
+    return;
+  }
+  adicionarNotaCalendario(dataKey, texto);
+  if(typeof toast === 'function') toast('Anotação salva', 'success');
+  // Re-seleciona o dia pra atualizar UI (campo limpa, lista atualiza)
+  if(typeof selectDay === 'function' && d !== undefined){
+    selectDay(d, m, y);
+  } else {
+    ta.value = '';
+    if(typeof renderCalendar === 'function') renderCalendar();
+  }
+}
+
+/* Limpa TODAS anotacoes do dia */
+function limparNotaCalendario(dataKey, d, m, y){
+  if(!confirm('Remover TODAS as anotações deste dia?')) return;
+  try { localStorage.removeItem(_calNotasKey(dataKey)); } catch(e){}
+  if(typeof toast === 'function') toast('Anotações removidas', 'info');
+  if(typeof selectDay === 'function') selectDay(d, m, y);
 }
 
 var calYear = new Date().getFullYear(), calMonth = new Date().getMonth(); // Dynamic current month
@@ -4493,12 +4538,13 @@ function renderCalendar(){
       }
     } catch(e){}
 
-    // Anotação (mostra primeira linha truncada)
+    // Anotação (mostra primeira linha truncada + contador se >1)
     try {
-      var notaTxt = getNotaCalendario(key);
-      if(notaTxt && notaTxt.trim()){
-        var resumoNota = notaTxt.split('\n')[0].slice(0, 22);
-        itensTexto.push({tipo:'note', texto:'📝 '+resumoNota});
+      var notasDia = (typeof getNotasCalendario === 'function') ? getNotasCalendario(key) : [];
+      if(notasDia.length){
+        var primeiraNota = (notasDia[0].texto || '').split('\n')[0].slice(0, 20);
+        var sufNotas = notasDia.length > 1 ? ' +'+(notasDia.length-1) : '';
+        itensTexto.push({tipo:'note', texto:'📝 '+primeiraNota+sufNotas});
       }
     } catch(e){}
 
@@ -4696,12 +4742,6 @@ function selectDay(d, m, y){
     }
   } catch(e){}
   
-  // Anotações pessoais — PRIVADAS por usuário (FASE 2)
-  var anotacoes = '';
-  try { 
-    anotacoes = (typeof getNotaCalendario === 'function') ? getNotaCalendario(key) : (localStorage.getItem('gami_cal_notas_'+key) || '');
-  } catch(e){}
-  
   html += '<div style="margin-bottom:12px;padding-top:10px;border-top:1px solid var(--border)">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">📋 Minhas tarefas neste dia ('+tarefasDoDia.length+')</div>'
@@ -4725,20 +4765,54 @@ function selectDay(d, m, y){
   }
   html += '</div>';
   
-  /* === NOVO: ANOTAÇÕES PESSOAIS DO DIA === */
+  // Anotações pessoais — PRIVADAS por usuário — agora array de notas
+  var notasArr = [];
+  try { 
+    notasArr = (typeof getNotasCalendario === 'function') ? getNotasCalendario(key) : [];
+  } catch(e){}
+  
+  /* === ANOTAÇÕES PESSOAIS DO DIA (múltiplas) === */
   html += '<div style="margin-bottom:12px;padding-top:10px;border-top:1px solid var(--border)">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-      +'<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">📝 Minhas anotações</div>'
+      +'<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">📝 Minhas anotações ('+notasArr.length+')</div>'
       +'<span id="cal-nota-status-'+key+'" style="font-size:9px;color:var(--text3);font-style:italic">privado</span>'
-    +'</div>'
-    +'<textarea id="cal-notas-'+key+'" '
-      +'oninput="document.getElementById(\'cal-nota-status-'+key+'\').textContent=\'● Mudanças não salvas\';document.getElementById(\'cal-nota-status-'+key+'\').style.color=\'#EF9F27\';" '
-      +'onkeydown="if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarNotaCalendarioComFeedback(\''+key+'\');}" '
-      +'style="width:100%;min-height:80px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:11px;font-family:inherit;color:var(--text);resize:vertical;line-height:1.4;box-sizing:border-box" '
-      +'placeholder="Lembretes pessoais, observações ou anotações para este dia...">'+ (anotacoes||'') +'</textarea>'
+    +'</div>';
+
+  // Lista de anotações JÁ salvas
+  if(notasArr.length){
+    html += '<div style="max-height:240px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:6px">';
+    notasArr.forEach(function(n){
+      var quando = '';
+      try {
+        var dt = new Date(n.data);
+        var diff = Date.now() - dt.getTime();
+        var min = Math.floor(diff/60000);
+        if(min < 1) quando = 'agora';
+        else if(min < 60) quando = 'há '+min+' min';
+        else if(min < 1440) quando = 'há '+Math.floor(min/60)+'h';
+        else quando = dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      } catch(e){}
+      var textoEsc = (n.texto||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+      html += '<div style="background:#FAEEDA;border-left:3px solid #EF9F27;border-radius:6px;padding:8px 10px">'
+        +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">'
+          +'<span style="font-size:9px;color:#854F0B;font-weight:600">'+quando+'</span>'
+          +'<button onclick="removerNotaCalendario(\''+key+'\',\''+n.id+'\','+d+','+m+','+y+')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0;line-height:1" title="Remover esta anotação">×</button>'
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--text);line-height:1.45">'+textoEsc+'</div>'
+      +'</div>';
+    });
+    html += '</div>';
+  }
+
+  // Campo SEMPRE vazio pra criar nova nota
+  html += '<textarea id="cal-notas-'+key+'" '
+      +'oninput="var s=document.getElementById(\'cal-nota-status-'+key+'\');if(s){s.textContent=this.value?\'● Não salvo\':\'privado\';s.style.color=this.value?\'#EF9F27\':\'var(--text3)\';}" '
+      +'onkeydown="if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarNotaCalendarioComFeedback(\''+key+'\','+d+','+m+','+y+');}" '
+      +'style="width:100%;min-height:60px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:11px;font-family:inherit;color:var(--text);resize:vertical;line-height:1.4;box-sizing:border-box" '
+      +'placeholder="'+(notasArr.length ? 'Adicionar outra anotação...' : 'Lembretes pessoais, observações ou anotações...')+'"></textarea>'
     +'<div style="display:flex;gap:6px;margin-top:6px">'
-      +'<button onclick="salvarNotaCalendarioComFeedback(\''+key+'\')" style="flex:1;padding:7px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar anotação</button>'
-      +(anotacoes ? '<button onclick="limparNotaCalendario(\''+key+'\','+d+','+m+','+y+')" title="Limpar anotação" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:white;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑️</button>' : '')
+      +'<button onclick="salvarNotaCalendarioComFeedback(\''+key+'\','+d+','+m+','+y+')" style="flex:1;padding:7px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar anotação (Ctrl+Enter)</button>'
+      +(notasArr.length ? '<button onclick="limparNotaCalendario(\''+key+'\','+d+','+m+','+y+')" title="Apagar todas anotações do dia" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:white;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑️ Tudo</button>' : '')
     +'</div>'
     +'</div>';
 
@@ -17738,21 +17812,27 @@ function renderProximosBdays(){
     var bday=new Date(hoje.getFullYear(),mes-1,dia);
     if(bday<hoje) bday=new Date(hoje.getFullYear()+1,mes-1,dia);
     var diff=Math.ceil((bday-hoje)/(864e5));
-    bdays.push({nome:p.nome,cidade:p.cidade||'',diff:diff,age:bday.getFullYear()-ano,mes:mes,dia:dia});
+    bdays.push({nome:p.nome,cidade:p.cidade||'',diff:diff,age:bday.getFullYear()-ano,mes:mes,dia:dia, foto: p.foto_url || p.foto || ''});
   });
   bdays.sort(function(a,b){return a.diff-b.diff;});
   var hoje_l=bdays.filter(function(b){return b.diff===0;});
   var semana_l=bdays.filter(function(b){return b.diff>0&&b.diff<=7;});
   var mes_l=bdays.filter(function(b){return b.diff>7&&b.diff<=30;});
   var prox_l=bdays.filter(function(b){return b.diff>30&&b.diff<=60;});
+  function mkAv(b){
+    if(b.foto){
+      return '<img src="'+b.foto+'" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,.08)" alt="'+b.nome+'">';
+    }
+    var ini=b.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+    return '<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#F3E5F5,#E1BEE7);color:#6A1B9A;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,.08)">'+ini+'</div>';
+  }
   function mkS(titulo,cor,list){
     if(!list.length)return'';
     var h='<div style="margin-bottom:8px"><div style="font-size:10px;font-weight:700;color:'+cor+';text-transform:uppercase;margin-bottom:5px;padding:2px 8px;border-radius:5px;background:'+cor+'22;display:inline-block">'+titulo+' ('+list.length+')</div>';
     list.forEach(function(b){
-      var ini=b.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
       var lbl=b.diff===0?'🎉 Hoje!':b.diff===1?'Amanhã':b.diff+'d';
       h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:var(--surface2);margin-bottom:3px">'
-        +'<div style="width:28px;height:28px;border-radius:50%;background:#F3E5F5;color:#8B5CF6;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+ini+'</div>'
+        +mkAv(b)
         +'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+b.nome.split(' ').slice(0,2).join(' ')+'</div>'
         +'<div style="font-size:10px;color:var(--text3)">'+String(b.dia).padStart(2,'0')+'/'+String(b.mes).padStart(2,'0')+' · '+b.cidade+'</div></div>'
         +'<div style="text-align:right;flex-shrink:0"><div style="font-size:10px;font-weight:700;color:'+cor+'">'+lbl+'</div><div style="font-size:9px;color:var(--text3)">'+b.age+' anos</div></div>'
