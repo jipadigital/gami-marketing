@@ -1,4 +1,4 @@
-<!-- v21.8 - Fix calIrParaDia mantem vista atual - 30/05/2026 -->
+<!-- v22.2 - Devocional Gami: sem checkbox e sem cadeado (so informativo) - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4643,6 +4643,16 @@ function renderCalendar(){
     // ===== TEXTO RESUMIDO DAS TAREFAS, NOTAS, EVENTOS E ANIVERSARIOS =====
     var itensTexto = []; // array de {tipo, texto, done?}
 
+    // Tarefas FIXAS GÂMI (devocional segunda-feira etc) — todos os usuários
+    try {
+      if(typeof getTarefasFixasNoDia === 'function'){
+        var fixasDia = getTarefasFixasNoDia(new Date(calYear, calMonth, d));
+        fixasDia.forEach(function(f){
+          itensTexto.push({tipo:'task', texto:f.icone+' '+f.textoSimples, done:f.feito});
+        });
+      }
+    } catch(e){}
+
     // Tarefas
     try {
       if(typeof getTarefas === 'function'){
@@ -4830,6 +4840,13 @@ function renderCal7Dias(){
 
     var tarefas = [];
     try { if(verT && typeof getTarefas === 'function') tarefas = getTarefas('diario').filter(function(t){return t.prazo === key;}); } catch(e){}
+    // Adiciona tarefas fixas (devocional segunda etc) — se filtro Tarefas ativo
+    try {
+      if(verT && typeof getTarefasFixasNoDia === 'function'){
+        var fixasD = getTarefasFixasNoDia(d);
+        tarefas = fixasD.concat(tarefas);
+      }
+    } catch(e){}
     var notas = [];
     try { if(verN && typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
     var evento = (verE && typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
@@ -5076,6 +5093,13 @@ function renderCalSemana(){
 
     var tarefas = [];
     try { if(typeof getTarefas === 'function') tarefas = getTarefas('diario').filter(function(t){return t.prazo === key;}); } catch(e){}
+    // Tarefas FIXAS Gâmi
+    try {
+      if(typeof getTarefasFixasNoDia === 'function'){
+        var fxs = getTarefasFixasNoDia(d);
+        tarefas = fxs.concat(tarefas);
+      }
+    } catch(e){}
     var notas = [];
     try { if(typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
     var evento = (typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
@@ -5131,6 +5155,13 @@ function renderCalLista(){
 
     var tarefas = [];
     try { if(typeof getTarefas === 'function') tarefas = getTarefas('diario').filter(function(t){return t.prazo === key;}); } catch(e){}
+    // Tarefas FIXAS Gâmi
+    try {
+      if(typeof getTarefasFixasNoDia === 'function'){
+        var fxsL = getTarefasFixasNoDia(d);
+        tarefas = fxsL.concat(tarefas);
+      }
+    } catch(e){}
     var notas = [];
     try { if(typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
     var evento = (typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
@@ -5149,8 +5180,10 @@ function renderCalLista(){
 
     var lbl = i===0?'Hoje':i===1?'Amanhã':(['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]);
     var isToday = i===0;
-    var totalTarefas = tarefas.length;
-    var feitas = tarefas.filter(function(t){return t.feito;}).length;
+    // Progresso ignora tarefas FIXAS (que não têm checkbox)
+    var tarefasContaveis = tarefas.filter(function(t){return !t.fixa;});
+    var totalTarefas = tarefasContaveis.length;
+    var feitas = tarefasContaveis.filter(function(t){return t.feito;}).length;
     var progressoStr = totalTarefas > 0 ? feitas+'/'+totalTarefas : '';
 
     html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border);'+(isToday?'background:#FFF8EE':'')+'">'
@@ -5167,8 +5200,19 @@ function renderCalLista(){
 
     tarefas.forEach(function(t){
       var corPrio = t.prio === 'alta' ? '#E24B4A' : t.prio === 'media' ? '#EF9F27' : '#1D9E75';
+      // Tarefa FIXA: só informativa (sem checkbox)
+      if(t.fixa){
+        html += '<div class="flt-task" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#F8F2FC;border:1.5px solid #D0BCE6;border-left:3px solid #6A1B9A">'
+          +'<div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px">'+(t.icone||'🙏')+'</div>'
+          +'<span style="flex:1;font-size:13px;color:var(--text);font-weight:500;line-height:1.3">'+t.texto+'</span>'
+          +'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:#F3E5F5;color:#6A1B9A;font-weight:600;flex-shrink:0">Cultura Gâmi</span>'
+        +'</div>';
+        return;
+      }
+      // Tarefa normal: com checkbox
+      var onClickToggle = "event.stopPropagation();calToggleTarefa('"+t.id+"',"+d.getDate()+","+(d.getMonth())+","+yy+")";
       html += '<div class="flt-task" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);'+(t.feito?'opacity:.55':'')+'">'
-        + '<div onclick="event.stopPropagation();calToggleTarefa(\''+t.id+'\','+d.getDate()+','+(d.getMonth())+','+yy+')" style="width:20px;height:20px;border-radius:5px;border:2px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
+        + '<div onclick="'+onClickToggle+'" style="width:20px;height:20px;border-radius:5px;border:2px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
         + (t.feito?'<svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5L4 7.5L11 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')
         + '</div>'
         + '<span style="flex:1;font-size:13px;color:var(--text);'+(t.feito?'text-decoration:line-through':'')+';line-height:1.3">'+t.texto+'</span>'
@@ -5400,13 +5444,6 @@ function selectDay(d, m, y){
             }</div>
           </div>
         </div>
-        <div style="font-size:11px;color:var(--text);line-height:1.5;padding:8px;background:rgba(255,255,255,.6);border-radius:6px;margin-top:4px">
-          💡 <strong>Sugestão de campanha:</strong> ${evento.sugestao}
-        </div>
-        <button onclick="openAI('Crie uma campanha completa de marketing para a Gâmi Delivery para ${evento.nome}. ${evento.sugestao} Inclua: copy para post, story, legenda e sugestão de anúncio no Meta Ads.')"
-          style="margin-top:8px;width:100%;padding:7px;border:none;border-radius:6px;background:var(--orange);color:white;font-size:11px;cursor:pointer;font-family:inherit;font-weight:500">
-          ⚡ Criar campanha para ${evento.nome} ↗
-        </button>
       </div>`:''}
     </div>`;
 
@@ -5425,6 +5462,13 @@ function selectDay(d, m, y){
         }
       });
     }
+    // Tarefas FIXAS Gâmi neste dia
+    if(typeof getTarefasFixasNoDia === 'function'){
+      var dtSel = new Date(y, m, d);
+      getTarefasFixasNoDia(dtSel).forEach(function(f){
+        tarefasDoDia.unshift({fonte:'fixa', t:f}); // unshift = primeiro da lista
+      });
+    }
   } catch(e){}
   
   html += '<div style="margin-bottom:12px;padding-top:10px;border-top:1px solid var(--border)">'
@@ -5439,6 +5483,16 @@ function selectDay(d, m, y){
     tarefasDoDia.forEach(function(item){
       var t = item.t;
       var corPrio = t.prio === 'alta' ? '#E24B4A' : t.prio === 'media' ? '#EF9F27' : '#1D9E75';
+      // Tarefa FIXA: só informativa, sem checkbox interativo
+      if(t.fixa){
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;background:#F8F2FC;border-left:3px solid #6A1B9A;margin-bottom:3px">'
+          +'<div style="width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">'+(t.icone||'🙏')+'</div>'
+          +'<span style="flex:1;font-size:11px;color:var(--text);font-weight:500">'+t.texto+'</span>'
+          +'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#F3E5F5;color:#6A1B9A;font-weight:600">Cultura Gâmi</span>'
+        +'</div>';
+        return;
+      }
+      // Tarefa normal: com checkbox
       html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);'+(t.feito?'opacity:.5;':'')+'">'
         +'<div onclick="calToggleTarefa(\''+t.id+'\','+d+','+m+','+y+')" style="width:15px;height:15px;border-radius:4px;border:1.5px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
         +(t.feito?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')
@@ -16659,7 +16713,43 @@ var TF_PRIO = {
   media:   { bg:'#FAEEDA', color:'#854F0B', dot:'#EF9F27', label:'Média',   order:2 },
   baixa:   { bg:'#EAF3DE', color:'#3B6D11', dot:'#1D9E75', label:'Baixa',   order:3 },
 };
-var TF_CAT_ICO = { Marketing:'📣', Conteudo:'📸', Trafego:'💰', Gestao:'⚙️', Reuniao:'🤝', Financeiro:'💵', Outro:'📌' };
+var TF_CAT_ICO = { 
+  'Operação':'🏍️', 
+  'Comercial':'🤝', 
+  'Pessoas/RH':'👥',
+  'Financeiro':'💵',
+  'Atendimento':'📞',
+  'Marketing':'📣',
+  'Conteúdo':'📸',
+  'Campanhas':'🎯',
+  'Reunião':'🤝',
+  'Administrativo':'📝',
+  'Pessoal':'📌',
+  'Outro':'📌'
+};
+
+/* Retorna as categorias visíveis pro usuário logado (controle por permissão) */
+function tfGetCategoriasPermitidas(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var ehSuperAdmin = nivel === 'super_admin';
+  var ehDiretoriaOuGestor = ['super_admin','diretoria','gerencia','gestor'].indexOf(nivel) >= 0;
+  
+  // Lista base disponível pra todos
+  var cats = ['Operação','Comercial','Financeiro','Atendimento','Reunião','Administrativo','Pessoal','Outro'];
+  
+  // Pessoas/RH só pra diretoria + gestores (e super)
+  if(ehDiretoriaOuGestor){
+    cats.splice(2, 0, 'Pessoas/RH'); // entre Comercial e Financeiro
+  }
+  
+  // Marketing/Conteúdo/Campanhas só pro super admin (Cleyton)
+  if(ehSuperAdmin){
+    cats.splice(cats.length - 3, 0, 'Marketing', 'Conteúdo', 'Campanhas');
+  }
+  
+  return cats;
+}
 var TF_PROJ_STATUS = {
   planejamento: { bg:'#E3F2FD', color:'#1565C0', label:'Planejamento' },
   andamento:    { bg:'#FAEEDA', color:'#854F0B', label:'Em andamento' },
@@ -16686,12 +16776,85 @@ function tfKey(tipo, sufixo){
   return TF_KEY_PREFIX+tipo;
 }
 
+/* ============================================================== */
+/* TAREFAS FIXAS GÂMI (não editáveis, recorrentes pra todos)       */
+/* ============================================================== */
+/* Aparecem automaticamente em todo calendário/aba tarefas pra TODOS
+   os usuários. NÃO podem ser editadas/removidas, mas podem ser
+   marcadas como feitas (localStorage por usuário/data). */
+var TAREFAS_FIXAS_GAMI = [
+  {
+    id: 'fix_devocional',
+    texto: 'Devocional Gâmi',
+    diaSemana: 1, // 0=dom, 1=seg, 2=ter, 3=qua, 4=qui, 5=sex, 6=sab
+    horario: '09:15',
+    icone: '🙏',
+    cor: '#6A1B9A'
+  }
+];
+
+/* Helper: gera as tarefas fixas pra um dia específico (objeto Date) */
+function getTarefasFixasNoDia(date){
+  if(!date) return [];
+  var dia = date.getDay();
+  var key = date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0');
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var uid = (u && u.id) ? u.id : 'anon';
+  return TAREFAS_FIXAS_GAMI.filter(function(t){ return t.diaSemana === dia; }).map(function(t){
+    var feita = false;
+    try { feita = !!localStorage.getItem('gami_tf_fixa_feita_'+uid+'_'+t.id+'_'+key); } catch(e){}
+    return {
+      id: 'fixa_'+t.id+'_'+key,
+      idBase: t.id,
+      texto: t.icone+' '+t.texto+(t.horario?' · '+t.horario:''),
+      textoSimples: t.texto,
+      icone: t.icone,
+      cor: t.cor,
+      horario: t.horario,
+      prazo: key,
+      feito: feita,
+      fixa: true, // marca como fixa (não editável)
+      prio: 'media',
+      cat: 'Reunião',
+      pessoa_id: uid
+    };
+  });
+}
+
+/* Toggle marca/desmarca tarefa fixa pra este usuário/dia */
+function toggleTarefaFixa(idFixa){
+  // idFixa = 'fixa_fix_devocional_2026-06-02'
+  var partes = idFixa.replace(/^fixa_/, '').split('_');
+  var dataKey = partes.pop();
+  var idBase = partes.join('_');
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var uid = (u && u.id) ? u.id : 'anon';
+  var lsKey = 'gami_tf_fixa_feita_'+uid+'_'+idBase+'_'+dataKey;
+  var jaFeito = !!localStorage.getItem(lsKey);
+  if(jaFeito){
+    localStorage.removeItem(lsKey);
+    if(typeof toast === 'function') toast('Tarefa reaberta', 'info');
+  } else {
+    localStorage.setItem(lsKey, '1');
+    if(typeof toast === 'function') toast('✓ Tarefa concluída!', 'success');
+  }
+  // Re-renderiza vista do calendário ativa
+  try {
+    if(typeof calVista !== 'undefined'){
+      if(calVista === 'mes' && typeof renderCalendar === 'function') renderCalendar();
+      else if(calVista === 'lista' && typeof renderCalLista === 'function') renderCalLista();
+      else if(calVista === 'semana' && typeof renderCalSemana === 'function') renderCalSemana();
+    }
+    if(typeof tfRenderDiario === 'function') tfRenderDiario();
+  } catch(e){}
+}
+
 function getTarefas(tipo, sufixo){
   try{ 
     var lista = JSON.parse(localStorage.getItem(tfKey(tipo,sufixo))||'[]');
     // Filtra por permissão (Super admin vê tudo, demais só as suas)
     if(typeof filtrarTarefasPorPermissao === 'function'){
-      return filtrarTarefasPorPermissao(lista);
+      lista = filtrarTarefasPorPermissao(lista);
     }
     return lista;
   }catch(e){ return []; }
@@ -16890,6 +17053,15 @@ function tfIniciarDiario(){
 function tfRenderDiario(){
   var lista=getTarefas('diario');
 
+  // Injeta tarefas FIXAS Gâmi (devocional segunda etc) pra hoje
+  try {
+    if(typeof getTarefasFixasNoDia === 'function'){
+      var fixasHoje = getTarefasFixasNoDia(new Date());
+      // Coloca no INÍCIO da lista
+      lista = fixasHoje.concat(lista);
+    }
+  } catch(e){}
+
   // Mescla tarefas DELEGADAS pra mim (vindas do Supabase cache)
   if(window._tfSupaCache && Array.isArray(window._tfSupaCache)){
     var idsLocais = {}; lista.forEach(function(t){ if(t&&t.id) idsLocais[t.id]=true; });
@@ -16939,6 +17111,19 @@ function tfRenderDiario(){
     var vencida = (!t.feito && t.prazo && t.prazo < hojeStr);
     var borderCor = vencida ? '#E24B4A' : p.dot;
     var bgCard = t.feito ? 'var(--surface2)' : (vencida ? '#FFF5F5' : 'var(--surface)');
+    // Tarefas FIXAS: estilo especial - só informativo (sem checkbox, sem botão excluir)
+    if(t.fixa){
+      borderCor = '#6A1B9A';
+      bgCard = '#F8F2FC';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #D0BCE6;border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px">'
+        +'<div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px">'+(t.icone||'🙏')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</div>'
+        +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">'
+          +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600">Cultura Gâmi</span>'
+        +'</div></div>'
+      +'</div>';
+    }
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid '+(vencida?'#E24B4A55':'var(--border)')+';border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
       +'<div onclick="tfToggle(\'diario\',\''+t.id+'\')" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':borderCor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
       +'<div style="flex:1;min-width:0">'
@@ -16953,7 +17138,8 @@ function tfRenderDiario(){
       +'<button onclick="tfExcluir(\'diario\',\''+t.id+'\')" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:12px;color:var(--text3);flex-shrink:0">×</button>'
       +'</div>';
   }).join('');
-  tfAtualizarBarra(lista);
+  // Atualiza barra de progresso considerando apenas tarefas NÃO-fixas
+  tfAtualizarBarra(lista.filter(function(t){ return !t.fixa; }));
 }
 
 function tfAtualizarBarra(lista){
@@ -17849,7 +18035,12 @@ function abrirModalNovaTarefa(contexto){
     +'<div style="display:flex;flex-direction:column;gap:10px">'
     +'<div><div class="field-label">Tarefa *</div><input id="tf-m-texto" class="inp" placeholder="O que precisa ser feito?"/></div>'
     +'<div class="g2"><div><div class="field-label">Prioridade</div><select id="tf-m-prio" class="sel"><option value="alta">🔴 Alta</option><option value="media" selected>🟡 Média</option><option value="baixa">🟢 Baixa</option></select></div>'
-    +'<div><div class="field-label">Categoria</div><select id="tf-m-cat" class="sel"><option>Marketing</option><option>Conteúdo</option><option>Campanhas</option><option>Cidades</option><option>Reunião</option><option>Financeiro</option><option>Outro</option></select></div></div>'
+    +'<div><div class="field-label">Categoria</div><select id="tf-m-cat" class="sel">'+
+      (typeof tfGetCategoriasPermitidas === 'function' ? tfGetCategoriasPermitidas() : ['Operação','Comercial','Financeiro','Atendimento','Reunião','Administrativo','Pessoal','Outro']).map(function(c){
+        var ico = (TF_CAT_ICO && TF_CAT_ICO[c]) ? TF_CAT_ICO[c]+' ' : '';
+        return '<option value="'+c+'">'+ico+c+'</option>';
+      }).join('')+
+    '</select></div></div>'
     +'<div class="g2"><div><div class="field-label">Quando</div><select id="tf-m-ctx" class="sel"><option value="diario">Hoje</option><option value="semana">Esta semana</option><option value="mes">Este mês</option></select></div>'
     +'<div><div class="field-label">Prazo</div><input id="tf-m-prazo" class="inp" type="date" value="'+hoje+'"/></div></div>'
     /* === NOVO: RECORRÊNCIA === */
@@ -17903,10 +18094,27 @@ function tfMontarDelegacao(){
   if(!podeDelegar){ wrap.innerHTML=''; return; }
 
   var pessoas = (typeof getPessoas==='function') ? getPessoas() : [];
-  var opcoes = pessoas
-    .filter(function(p){ return p && p.id && p.id!==u.id; })
-    .map(function(p){ return '<option value="'+p.id+'" data-nome="'+(p.nome||'')+'">'+(p.nome||p.id)+(p.cidade?' · '+(Array.isArray(p.cidade)?p.cidade.join('/'):p.cidade):'')+'</option>'; })
-    .join('');
+  var disponiveis = pessoas
+    .filter(function(p){ return p && p.id && p.id !== u.id; })
+    .sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||''); });
+
+  // Helper avatar (foto ou iniciais)
+  function _delegAvatar(p){
+    var foto = p.foto_url || p.foto || '';
+    if(foto){
+      return '<img src="'+foto+'" style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,.08);flex-shrink:0" alt="'+(p.nome||'')+'">';
+    }
+    var ini = (p.nome||'?').split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+    return '<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,.08)">'+ini+'</div>';
+  }
+
+  // Cards selecionáveis - só foto + nome (sem cidade)
+  var cardsHtml = disponiveis.map(function(p){
+    return '<div onclick="_tfSelecionarDelegado(\''+p.id+'\',\''+(p.nome||'').replace(/\'/g,"\\'")+'\')" data-pessoa-id="'+p.id+'" class="tf-deleg-card" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:2px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer;transition:all .15s">'
+      + _delegAvatar(p)
+      + '<span style="font-size:12px;color:var(--text);font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(p.nome||p.id)+'</span>'
+    + '</div>';
+  }).join('');
 
   wrap.innerHTML =
     '<div style="padding:10px;border:1.5px dashed #8B5CF6;border-radius:8px;background:#F3E5F5;margin-top:2px">'
@@ -17915,8 +18123,9 @@ function tfMontarDelegacao(){
       + '<label for="tf-m-deleg-on" style="font-size:12px;font-weight:600;color:#6A1B9A;cursor:pointer">📥 Delegar para outra pessoa</label>'
     + '</div>'
     + '<div id="tf-m-deleg-cfg" style="display:none">'
-      + '<div class="field-label" style="font-size:10px">Para quem:</div>'
-      + '<select id="tf-m-deleg-pessoa" class="sel">'+opcoes+'</select>'
+      + '<input type="hidden" id="tf-m-deleg-pessoa" value="">'
+      + '<div class="field-label" style="font-size:10px">Escolha alguém:</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;max-height:220px;overflow-y:auto;padding:4px">'+cardsHtml+'</div>'
       + '<div class="g2" style="margin-top:8px">'
         + '<div><div class="field-label" style="font-size:10px">Prioridade</div>'
           + '<select id="tf-m-deleg-prio" class="sel"><option value="urgente">🔴 Urgente</option><option value="importante">🟡 Importante</option><option value="normal" selected>🟢 Normal</option></select></div>'
@@ -17926,6 +18135,22 @@ function tfMontarDelegacao(){
       + '<div style="font-size:9px;color:#6A1B9A;margin-top:6px;font-style:italic">A tarefa cai direto na aba de quem recebe, com seu nome e uma notificação. O prazo usa a data definida em "Prazo" acima.</div>'
     + '</div>'
     + '</div>';
+}
+
+/* Seleciona pessoa pra delegar (visual feedback + grava no hidden) */
+function _tfSelecionarDelegado(pessoaId, nome){
+  var hidden = document.getElementById('tf-m-deleg-pessoa');
+  if(hidden){ hidden.value = pessoaId; hidden.dataset.nome = nome; }
+  // Atualiza visual: todos voltam ao normal, o clicado fica destacado
+  document.querySelectorAll('.tf-deleg-card').forEach(function(card){
+    if(card.getAttribute('data-pessoa-id') === pessoaId){
+      card.style.borderColor = '#8B5CF6';
+      card.style.background = 'linear-gradient(135deg,#F3E5F5,#E1BEE7)';
+    } else {
+      card.style.borderColor = 'var(--border)';
+      card.style.background = 'var(--surface)';
+    }
+  });
 }
 
 function tfMostrarConfigRecorrencia(){
@@ -17943,10 +18168,10 @@ function tfSalvarModal(){
   // === DELEGAÇÃO: se marcado, cai direto na aba de outra pessoa ===
   var delegOn = (document.getElementById('tf-m-deleg-on')||{}).checked || false;
   if(delegOn){
-    var sel = document.getElementById('tf-m-deleg-pessoa');
-    if(!sel || !sel.value){ alert('Escolha para quem delegar.'); return; }
-    var destinoId = sel.value;
-    var destinoNome = sel.options[sel.selectedIndex] ? (sel.options[sel.selectedIndex].getAttribute('data-nome')||sel.value) : sel.value;
+    var hidden = document.getElementById('tf-m-deleg-pessoa');
+    if(!hidden || !hidden.value){ alert('Escolha pra quem delegar (clique no card da pessoa).'); return; }
+    var destinoId = hidden.value;
+    var destinoNome = hidden.dataset.nome || destinoId;
     var prioDeleg = (document.getElementById('tf-m-deleg-prio')||{}).value||'normal';
     var horaDeleg = (document.getElementById('tf-m-deleg-hora')||{}).value||null;
     var prazoDeleg = (document.getElementById('tf-m-prazo')||{}).value||null;
@@ -17956,7 +18181,8 @@ function tfSalvarModal(){
     tfDelegar(destinoId, destinoNome, texto, prioDeleg, prazoDeleg, horaDeleg, msgDeleg).then(function(ok){
       if(ok){
         closeModal('modal-campanha');
-        alert('✓ Tarefa delegada para '+destinoNome+'! Ela vai aparecer na aba de tarefas dele(a) com uma notificação.');
+        if(typeof toast === 'function') toast('Tarefa delegada para '+destinoNome.split(' ')[0]+'!', 'success');
+        else alert('✓ Tarefa delegada para '+destinoNome+'!');
       } else {
         if(btnD){ btnD.disabled=false; btnD.innerHTML='+ Adicionar'; }
         alert('Não consegui delegar agora. Verifique a conexão e tente de novo.');
