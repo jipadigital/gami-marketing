@@ -1,4 +1,4 @@
-<!-- v20.3 - Calendario sem marketing/planejado + check tarefa com toast - 30/05/2026 -->
+<!-- v21.0 - Calendario MEGA: vistas + 7 dias + busca + filtros + trazer atrasadas + recorrentes + heatmap + stickies coloridos + anexo + campanhas - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -321,6 +321,12 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 .cal-day .cal-day-item.note{background:#FAEEDA;color:#854F0B}
 .cal-day .cal-day-item.bday{background:#F3E5F5;color:#6A1B9A}
 .cal-day .cal-day-item.event{background:#FCEBEB;color:#A32D2D}
+.cal-day .cal-day-item.campaign{background:#EEEDFE;color:#534AB7}
+
+/* Stickies: botão de cor ativo */
+.nota-cor-btn{transition:transform .12s}
+.nota-cor-btn:hover{transform:scale(1.15)}
+.nota-cor-btn.active{outline:2px solid var(--gami-blue);outline-offset:1px}
 .cal-day .cal-day-more{font-size:8px;color:var(--text3);padding-left:2px;font-weight:600;margin-top:1px}
 .cal-day:hover{background:var(--surface2)}
 .cal-day.today{background:var(--orange);color:#fff;font-weight:600;border-color:var(--orange)}
@@ -1693,15 +1699,43 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
   <div class="page-header">
     <div>
-      <div class="page-title">📅 Calendário de Marketing</div>
-      <div class="page-sub">Suas tarefas, aniversários, datas sazonais e lembretes</div>
+      <div class="page-title">📅 Calendário</div>
+      <div class="page-sub">Suas tarefas, anotações, aniversários e datas sazonais</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="calHoje()" style="font-size:12px">📍 Hoje</button>
+      <button class="btn btn-ghost" onclick="calTrazerAtrasadas()" id="btn-trazer-atrasadas" style="font-size:12px" title="Move tarefas vencidas pra hoje">📥 Trazer atrasadas</button>
       <button class="btn btn-ghost" onclick="calMostrarAniversarios()" style="font-size:12px">🎂 Aniversários</button>
-      <button class="btn btn-primary" onclick="openAI('Crie um plano de conteúdo para a semana '+calGetSemanaAtual()+' da Gâmi Delivery com posts para cada cidade')" style="font-size:12px">🤖 Planejar semana</button>
     </div>
   </div>
+
+  <!-- BARRA DE CONTROLE: vistas + busca + filtros -->
+  <div class="cal-section" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+    <!-- Alternador de vista -->
+    <div id="cal-view-switcher" style="display:flex;gap:2px;background:var(--surface2);padding:3px;border-radius:8px">
+      <button data-view="mes" onclick="calMudarVista('mes')" style="padding:6px 12px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📅 Mês</button>
+      <button data-view="semana" onclick="calMudarVista('semana')" style="padding:6px 12px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📆 Semana</button>
+      <button data-view="lista" onclick="calMudarVista('lista')" style="padding:6px 12px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋 Lista</button>
+      <button data-view="ano" onclick="calMudarVista('ano')" style="padding:6px 12px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🗓️ Ano</button>
+    </div>
+    <!-- Busca global -->
+    <div style="flex:1;min-width:220px;position:relative">
+      <input id="cal-busca" type="text" placeholder="🔍 Buscar em tarefas e anotações..." 
+        oninput="calBuscar(this.value)" onfocus="calBuscar(this.value)"
+        style="width:100%;padding:7px 30px 7px 11px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface2);box-sizing:border-box">
+      <div id="cal-busca-resultados" style="display:none;position:absolute;top:38px;left:0;right:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(11,37,66,.15);max-height:300px;overflow-y:auto;z-index:100"></div>
+    </div>
+    <!-- Filtros visuais -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px">
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#E6F1FB;border-radius:6px;color:#185FA5;font-weight:500"><input type="checkbox" id="cal-flt-tarefas" checked onchange="calAplicarFiltros()" style="cursor:pointer">📋 Tarefas</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#FAEEDA;border-radius:6px;color:#854F0B;font-weight:500"><input type="checkbox" id="cal-flt-notas" checked onchange="calAplicarFiltros()" style="cursor:pointer">📝 Anotações</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#F3E5F5;border-radius:6px;color:#6A1B9A;font-weight:500"><input type="checkbox" id="cal-flt-bdays" checked onchange="calAplicarFiltros()" style="cursor:pointer">🎂 Aniversários</label>
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#FCEBEB;border-radius:6px;color:#A32D2D;font-weight:500"><input type="checkbox" id="cal-flt-eventos" checked onchange="calAplicarFiltros()" style="cursor:pointer">🎉 Eventos</label>
+    </div>
+  </div>
+
+  <!-- BANNER PRÓXIMOS 7 DIAS -->
+  <div id="cal-proximos-7d" class="cal-section" style="margin-bottom:14px"></div>
 
   <!-- HERO + Frase do dia -->
   <div class="cal-section" style="margin-bottom:14px;padding:18px 22px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border-radius:14px;color:white;position:relative;overflow:hidden">
@@ -1746,9 +1780,10 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
   <div id="cal-layout-grid" style="display:grid;grid-template-columns:1fr 320px;gap:14px">
 
-    <!-- CALENDÁRIO PRINCIPAL -->
-    <div>
-      <div class="card" style="padding:0;overflow:hidden">
+    <!-- CALENDÁRIO PRINCIPAL (vistas alternativas) -->
+    <div id="cal-views-host">
+      <!-- VISTA MÊS -->
+      <div id="cal-view-mes" class="card" style="padding:0;overflow:hidden">
         <!-- Header mês -->
         <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
           <button onclick="calNavMes(-1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">‹</button>
@@ -1769,6 +1804,31 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         </div>
         <!-- Grid dias -->
         <div id="cal-grid-render" style="padding:8px"></div>
+        <!-- Heatmap de produtividade -->
+        <div id="cal-heatmap" style="padding:14px 16px;border-top:1px solid var(--border);background:var(--surface2)"></div>
+      </div>
+      <!-- VISTA SEMANA -->
+      <div id="cal-view-semana" class="card" style="padding:0;overflow:hidden;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
+          <button onclick="calNavSemana(-1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">‹</button>
+          <div id="cal-semana-label" style="font-size:15px;font-weight:800;font-family:'Syne',sans-serif;color:var(--text);text-align:center"></div>
+          <button onclick="calNavSemana(1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">›</button>
+        </div>
+        <div id="cal-semana-grid" style="padding:10px"></div>
+      </div>
+      <!-- VISTA LISTA -->
+      <div id="cal-view-lista" class="card" style="padding:0;overflow:hidden;display:none">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:13px;font-weight:700;color:var(--text);font-family:'Syne',sans-serif">📋 Próximos 30 dias</div>
+        <div id="cal-lista-render" style="max-height:680px;overflow-y:auto"></div>
+      </div>
+      <!-- VISTA ANO -->
+      <div id="cal-view-ano" class="card" style="padding:0;overflow:hidden;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
+          <button onclick="calNavAno(-1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">‹</button>
+          <div id="cal-ano-label" style="font-size:17px;font-weight:800;font-family:'Syne',sans-serif;color:var(--text);text-align:center"></div>
+          <button onclick="calNavAno(1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">›</button>
+        </div>
+        <div id="cal-ano-grid" style="padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px"></div>
       </div>
     </div>
 
@@ -4303,12 +4363,18 @@ function _salvarNotasArray(dataKey, arr){
   try { localStorage.setItem(_calNotasKey(dataKey), JSON.stringify(arr||[])); } catch(e){}
 }
 
-/* Adiciona uma nova nota (uso principal) */
-function adicionarNotaCalendario(dataKey, texto){
+/* Adiciona uma nova nota com cor e anexo opcional */
+function adicionarNotaCalendario(dataKey, texto, cor, anexo){
   texto = (texto||'').trim();
-  if(!texto) return false;
+  if(!texto && !anexo) return false;
   var notas = getNotasCalendario(dataKey);
-  notas.unshift({id:'n'+Date.now(), texto:texto, data:new Date().toISOString()});
+  notas.unshift({
+    id:'n'+Date.now(),
+    texto:texto,
+    data:new Date().toISOString(),
+    cor: cor || 'amarelo',
+    anexo: anexo || null
+  });
   if(notas.length > 20) notas = notas.slice(0, 20);
   _salvarNotasArray(dataKey, notas);
   return true;
@@ -4360,19 +4426,53 @@ function salvarNotaCalendarioComFeedback(dataKey, d, m, y){
   var ta = document.getElementById('cal-notas-'+dataKey);
   if(!ta) return;
   var texto = (ta.value||'').trim();
-  if(!texto){
-    if(typeof toast === 'function') toast('Escreva algo antes de salvar', 'warn');
+  // Pega cor selecionada (default amarelo)
+  var corBtn = document.querySelector('#cal-cores-'+dataKey+' .nota-cor-btn.active');
+  var cor = corBtn ? corBtn.getAttribute('data-cor') : 'amarelo';
+  // Pega anexo (se houver)
+  var anexoEl = document.getElementById('cal-anexo-'+dataKey);
+  var anexo = anexoEl && anexoEl.dataset.anexo ? anexoEl.dataset.anexo : null;
+  if(!texto && !anexo){
+    if(typeof toast === 'function') toast('Escreva algo ou anexe uma imagem', 'warn');
     return;
   }
-  adicionarNotaCalendario(dataKey, texto);
+  adicionarNotaCalendario(dataKey, texto, cor, anexo);
   if(typeof toast === 'function') toast('Anotação salva', 'success');
-  // Re-seleciona o dia pra atualizar UI (campo limpa, lista atualiza)
   if(typeof selectDay === 'function' && d !== undefined){
     selectDay(d, m, y);
   } else {
     ta.value = '';
     if(typeof renderCalendar === 'function') renderCalendar();
   }
+}
+
+/* Helper: seleciona cor da nota */
+function _calSelecionarCor(dataKey, cor){
+  var box = document.getElementById('cal-cores-'+dataKey);
+  if(!box) return;
+  box.querySelectorAll('.nota-cor-btn').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-cor') === cor);
+  });
+}
+
+/* Helper: handle upload de imagem como anexo */
+function _calHandleAnexo(ev, dataKey){
+  var file = ev.target.files && ev.target.files[0];
+  if(!file){ return; }
+  if(file.size > 2*1024*1024){
+    if(typeof toast === 'function') toast('Imagem muito grande (máx 2MB)', 'error');
+    ev.target.value = '';
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var preview = document.getElementById('cal-anexo-'+dataKey);
+    if(preview){
+      preview.dataset.anexo = e.target.result;
+      preview.innerHTML = '<div style="position:relative;display:inline-block;margin-top:5px"><img src="'+e.target.result+'" style="max-width:120px;max-height:80px;border-radius:6px;border:1px solid var(--border)"><button onclick="document.getElementById(\'cal-anexo-'+dataKey+'\').dataset.anexo=\'\';document.getElementById(\'cal-anexo-'+dataKey+'\').innerHTML=\'\';" style="position:absolute;top:-6px;right:-6px;background:#E24B4A;color:white;border:none;width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:11px;line-height:1;padding:0">×</button></div>';
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
 /* Limpa TODAS anotacoes do dia */
@@ -4540,7 +4640,11 @@ function renderCalendar(){
       }
     } catch(e){}
 
-    var bdayTitle = hasBday ? ' title="🎂 '+bdayMap[d].join(', ')+'"' : '';
+    // ===== TOOLTIP HOVER COMPLETO =====
+    var tooltipParts = [];
+    if(hasBday) tooltipParts.push('🎂 '+bdayMap[d].join(', '));
+    if(eventoDay) tooltipParts.push((eventoDay.emoji||'🎉')+' '+eventoDay.nome);
+    var bdayTitle = tooltipParts.length ? ' title="'+tooltipParts.join(' · ').replace(/"/g,'&quot;')+'"' : '';
 
     // ===== TEXTO RESUMIDO DAS TAREFAS, NOTAS, EVENTOS E ANIVERSARIOS =====
     var itensTexto = []; // array de {tipo, texto, done?}
@@ -4555,6 +4659,47 @@ function renderCalendar(){
         if(diariasNoDia.length > 2){
           itensTexto.push({tipo:'more', texto:'+'+(diariasNoDia.length-2)+' tarefa'+(diariasNoDia.length-2>1?'s':'')});
         }
+      }
+    } catch(e){}
+
+    // Tarefas recorrentes (projetadas no futuro - so se este dia >= hoje)
+    try {
+      if(typeof getTarefasRecorrentes === 'function'){
+        var dDate = new Date(calYear, calMonth, d);
+        var hojeRec = new Date(); hojeRec.setHours(0,0,0,0);
+        if(dDate >= hojeRec){
+          var recs = getTarefasRecorrentes().filter(function(r){
+            if(!r || r.ativa === false) return false;
+            var rec = r.recorrencia || r;
+            if(!rec || !rec.frequencia) return false;
+            if(rec.frequencia === 'diaria') return true;
+            if(rec.frequencia === 'semanal') return dDate.getDay() === rec.diaSemana;
+            if(rec.frequencia === 'mensal') return d === rec.diaMes;
+            return false;
+          });
+          recs.slice(0,1).forEach(function(r){
+            itensTexto.push({tipo:'task', texto:'🔄 '+(r.texto||r.nome||'Recorrente')});
+          });
+        }
+      }
+    } catch(e){}
+
+    // Campanhas neste dia (integração)
+    try {
+      var campsKeys = ['gami_campanhas','gami_campanhas_v1','campanhas'];
+      for(var ck=0; ck<campsKeys.length; ck++){
+        var rawC = localStorage.getItem(campsKeys[ck]);
+        if(!rawC) continue;
+        var camps = JSON.parse(rawC);
+        if(!Array.isArray(camps)) break;
+        camps.filter(function(c){
+          var dataC = c && (c.data || c.data_inicio || c.dataInicio || c.dia);
+          if(!dataC) return false;
+          return String(dataC).indexOf(key) === 0;
+        }).slice(0,1).forEach(function(c){
+          itensTexto.push({tipo:'campaign', texto:'📣 '+((c.nome||c.titulo||'Campanha').slice(0,15))});
+        });
+        break;
       }
     } catch(e){}
 
@@ -4596,7 +4741,20 @@ function renderCalendar(){
       itensHtml += '</div>';
     }
 
-    html += '<div class="'+cls+'" style="position:relative" onclick="selectDay('+d+','+calMonth+','+calYear+')"'+bdayTitle+'>'
+    // Tooltip enriquecido com TUDO
+    var ttParts = [];
+    if(hasBday) ttParts.push('🎂 '+bdayMap[d].join(', '));
+    if(eventoDay) ttParts.push((eventoDay.emoji||'🎉')+' '+eventoDay.nome);
+    var nTarefas = 0, nNotas = 0;
+    itensTexto.forEach(function(it){
+      if(it.tipo==='task') nTarefas++;
+      if(it.tipo==='note') nNotas++;
+    });
+    if(nTarefas) ttParts.push(nTarefas+' tarefa'+(nTarefas>1?'s':''));
+    if(nNotas) ttParts.push(nNotas+' anotaç'+(nNotas>1?'ões':'ão'));
+    var tooltipFinal = ttParts.length ? ' title="'+ttParts.join(' · ').replace(/"/g,'&quot;')+'"' : '';
+
+    html += '<div class="'+cls+'" style="position:relative" onclick="selectDay('+d+','+calMonth+','+calYear+')"'+tooltipFinal+'>'
       + '<div class="cal-day-num">'+d+'</div>'
       + itensHtml
       + dots
@@ -4608,6 +4766,476 @@ function renderCalendar(){
   // Update sidebar with month events
   renderCalSidebar();
   renderProximosBdays();
+  // Atualiza heatmap + banner 7 dias + filtros aplicados
+  if(typeof renderCalHeatmap === 'function') renderCalHeatmap();
+  if(typeof renderCal7Dias === 'function') renderCal7Dias();
+  if(typeof calAplicarFiltros === 'function') calAplicarFiltros();
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: ALTERNADOR DE VISTAS (Mês / Semana / Lista / Ano)   */
+/* ============================================================== */
+var calVista = 'mes';
+var calSemanaRef = new Date(); // referencia da semana (segunda)
+var calAnoRef = new Date().getFullYear();
+
+function calMudarVista(v){
+  calVista = v;
+  // Atualiza botoes
+  document.querySelectorAll('#cal-view-switcher button').forEach(function(b){
+    var ativo = b.getAttribute('data-view') === v;
+    b.style.background = ativo ? 'var(--gami-blue)' : 'transparent';
+    b.style.color = ativo ? 'white' : 'var(--text2)';
+  });
+  // Mostra/esconde containers
+  ['mes','semana','lista','ano'].forEach(function(view){
+    var el = document.getElementById('cal-view-'+view);
+    if(el) el.style.display = (view === v) ? 'block' : 'none';
+  });
+  // Renderiza a vista
+  if(v === 'mes') renderCalendar();
+  else if(v === 'semana') renderCalSemana();
+  else if(v === 'lista') renderCalLista();
+  else if(v === 'ano') renderCalAno();
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: BANNER PRÓXIMOS 7 DIAS                              */
+/* ============================================================== */
+function renderCal7Dias(){
+  var host = document.getElementById('cal-proximos-7d');
+  if(!host) return;
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(95px,1fr));gap:6px">';
+  for(var i=0; i<7; i++){
+    var d = new Date(hoje); d.setDate(hoje.getDate()+i);
+    var yy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    var key = yy+'-'+mm+'-'+dd;
+    var keyShort = mm+'-'+dd;
+    var isToday = i === 0;
+
+    // Conta itens
+    var tarefas = [];
+    try { if(typeof getTarefas === 'function') tarefas = getTarefas('diario').filter(function(t){return t.prazo === key;}); } catch(e){}
+    var notas = [];
+    try { if(typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
+    var evento = (typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
+    // Aniversarios
+    var bdays = [];
+    try {
+      var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+      pessoas.forEach(function(p){
+        if(!p.nascimento) return;
+        var parts = p.nascimento.split('-');
+        if(parts.length<3) return;
+        if(parts[1]===mm && parts[2]===dd) bdays.push(p.nome.split(' ')[0]);
+      });
+    } catch(e){}
+
+    var lbl = isToday ? 'Hoje' : i===1 ? 'Amanhã' : (['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]);
+    var resumo = [];
+    if(tarefas.length) resumo.push('📋 '+tarefas.length);
+    if(notas.length) resumo.push('📝 '+notas.length);
+    if(bdays.length) resumo.push('🎂');
+    if(evento) resumo.push('🎉');
+
+    var bg = isToday ? 'linear-gradient(135deg,#1AB8F0,#0E7AB8)' : 'var(--surface)';
+    var cor = isToday ? 'white' : 'var(--text)';
+    var corSub = isToday ? 'rgba(255,255,255,.8)' : 'var(--text3)';
+    var borda = isToday ? '2px solid #0E7AB8' : '1px solid var(--border)';
+
+    html += '<div onclick="calIrParaDia('+yy+','+(d.getMonth())+','+d.getDate()+')" style="background:'+bg+';border:'+borda+';border-radius:9px;padding:8px 8px 7px;cursor:pointer;transition:transform .15s;text-align:center" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'translateY(0)\'">'
+      + '<div style="font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:'+corSub+'">'+lbl+'</div>'
+      + '<div style="font-size:20px;font-weight:800;color:'+cor+';line-height:1.1;margin:2px 0;font-family:\'Syne\',sans-serif">'+d.getDate()+'</div>'
+      + '<div style="font-size:9px;color:'+corSub+';margin-bottom:2px">'+(MESES_PT?MESES_PT[d.getMonth()].slice(0,3):'')+'</div>'
+      + (resumo.length ? '<div style="font-size:10px;color:'+cor+';font-weight:600">'+resumo.join(' · ')+'</div>' : '<div style="font-size:9px;color:'+corSub+';font-style:italic">vazio</div>')
+    + '</div>';
+  }
+  html += '</div>';
+  host.innerHTML = html;
+}
+
+function calIrParaDia(y, m, d){
+  calYear = y; calMonth = m;
+  if(calVista !== 'mes'){ calMudarVista('mes'); }
+  else { renderCalendar(); }
+  setTimeout(function(){ selectDay(d, m, y); }, 50);
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: BUSCA GLOBAL                                        */
+/* ============================================================== */
+function calBuscar(q){
+  var box = document.getElementById('cal-busca-resultados');
+  if(!box) return;
+  q = (q||'').trim().toLowerCase();
+  if(q.length < 2){ box.style.display='none'; box.innerHTML=''; return; }
+
+  var resultados = [];
+  // Tarefas
+  try {
+    if(typeof getTarefas === 'function'){
+      var todasTarefas = getTarefas('diario');
+      todasTarefas.forEach(function(t){
+        if(t && t.texto && t.texto.toLowerCase().indexOf(q) >= 0){
+          resultados.push({tipo:'task', texto:t.texto, data:t.prazo||'sem data', feito:!!t.feito});
+        }
+      });
+    }
+  } catch(e){}
+  // Anotações - itera por todas as chaves do localStorage
+  try {
+    for(var i=0; i<localStorage.length; i++){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf('gami_cal_notas_') !== 0) continue;
+      // Extrai a data da chave: gami_cal_notas_<userid>_YYYY-MM-DD
+      var dataM = k.match(/_(\d{4}-\d{2}-\d{2})$/);
+      if(!dataM) continue;
+      var dataKey = dataM[1];
+      var raw = localStorage.getItem(k);
+      if(!raw) continue;
+      var notas = [];
+      try {
+        if(raw[0] === '['){ notas = JSON.parse(raw); }
+        else { notas = [{id:'leg', texto:raw, data: dataKey}]; }
+      } catch(e){ continue; }
+      notas.forEach(function(n){
+        if(n && n.texto && n.texto.toLowerCase().indexOf(q) >= 0){
+          resultados.push({tipo:'note', texto:n.texto, data:dataKey});
+        }
+      });
+    }
+  } catch(e){}
+
+  resultados = resultados.slice(0, 15);
+  if(!resultados.length){
+    box.innerHTML = '<div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">Nenhum resultado pra "<strong>'+q+'</strong>"</div>';
+    box.style.display='block';
+    return;
+  }
+
+  box.innerHTML = '<div style="padding:8px 12px;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)">'+resultados.length+' resultado'+(resultados.length>1?'s':'')+'</div>' +
+    resultados.map(function(r){
+      var corTipo = r.tipo === 'task' ? '#185FA5' : '#854F0B';
+      var bgTipo = r.tipo === 'task' ? '#E6F1FB' : '#FAEEDA';
+      var iconeTipo = r.tipo === 'task' ? '📋' : '📝';
+      var dataFmt = '';
+      try {
+        if(r.data && r.data.indexOf('-')>0){
+          var p = r.data.split('-');
+          dataFmt = p[2]+'/'+p[1]+'/'+p[0];
+        } else dataFmt = r.data || '';
+      } catch(e){}
+      var dataKey = r.data;
+      var p2 = dataKey ? dataKey.split('-') : null;
+      var goCall = p2 ? 'calIrParaDia('+p2[0]+','+(parseInt(p2[1])-1)+','+parseInt(p2[2])+')' : '';
+      return '<div onclick="'+goCall+';document.getElementById(\'cal-busca-resultados\').style.display=\'none\';document.getElementById(\'cal-busca\').value=\'\'" style="padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">'
+          + '<span style="font-size:9px;background:'+bgTipo+';color:'+corTipo+';padding:2px 6px;border-radius:4px;font-weight:600">'+iconeTipo+' '+(r.tipo==='task'?'Tarefa':'Nota')+'</span>'
+          + '<span style="font-size:10px;color:var(--text3)">'+dataFmt+'</span>'
+          + (r.feito ? '<span style="font-size:9px;color:#3B6D11;font-weight:600">✓ Concluída</span>' : '')
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text);'+(r.feito?'text-decoration:line-through;opacity:.6':'')+'">'+r.texto.slice(0,100)+(r.texto.length>100?'...':'')+'</div>'
+      + '</div>';
+    }).join('');
+  box.style.display='block';
+}
+
+/* Fecha resultados ao clicar fora */
+document.addEventListener('click', function(ev){
+  var box = document.getElementById('cal-busca-resultados');
+  var inp = document.getElementById('cal-busca');
+  if(box && inp && !inp.contains(ev.target) && !box.contains(ev.target)){
+    box.style.display = 'none';
+  }
+});
+
+/* ============================================================== */
+/* CALENDÁRIO: FILTROS VISUAIS                                     */
+/* ============================================================== */
+function calAplicarFiltros(){
+  var fT = document.getElementById('cal-flt-tarefas');
+  var fN = document.getElementById('cal-flt-notas');
+  var fB = document.getElementById('cal-flt-bdays');
+  var fE = document.getElementById('cal-flt-eventos');
+  // Aplica CSS pra esconder os items dos tipos desmarcados
+  var style = document.getElementById('cal-filtros-css');
+  if(!style){
+    style = document.createElement('style');
+    style.id = 'cal-filtros-css';
+    document.head.appendChild(style);
+  }
+  var css = '';
+  if(fT && !fT.checked) css += '.cal-day-item.task{display:none!important}';
+  if(fN && !fN.checked) css += '.cal-day-item.note{display:none!important}';
+  if(fB && !fB.checked) css += '.cal-day-item.bday{display:none!important}';
+  if(fE && !fE.checked) css += '.cal-day-item.event,.cal-day-item.campaign{display:none!important}';
+  style.textContent = css;
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: TRAZER TAREFAS ATRASADAS PRA HOJE                   */
+/* ============================================================== */
+function calTrazerAtrasadas(){
+  if(typeof getTarefasRaw !== 'function'){ toast('Sistema de tarefas não disponível', 'error'); return; }
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var hojeStr = hoje.toISOString().split('T')[0];
+  var lista = getTarefasRaw('diario');
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var ehSuperAdmin = u && u.email && u.email.toLowerCase() === 'jipadigital@gmail.com';
+  var meuId = u ? u.id : null;
+  var atualizadas = 0;
+  lista.forEach(function(t){
+    if(!t || t.feito || !t.prazo) return;
+    try {
+      var pz = new Date(t.prazo+'T00:00:00');
+      if(pz < hoje){
+        // Só atualiza se for minha ou se sou super admin
+        if(ehSuperAdmin || (t.pessoa_id && t.pessoa_id === meuId)){
+          t.prazo = hojeStr;
+          atualizadas++;
+        }
+      }
+    } catch(e){}
+  });
+  if(!atualizadas){ toast('Nenhuma tarefa atrasada pra mover', 'info'); return; }
+  // Salva
+  try { localStorage.setItem('gami_tarefas_diario_v2', JSON.stringify(lista)); } catch(e){}
+  toast(atualizadas+' tarefa'+(atualizadas>1?'s':'')+' movida'+(atualizadas>1?'s':'')+' pra hoje!', 'success');
+  if(typeof renderCalendar==='function') renderCalendar();
+  if(typeof tfRenderDiario==='function') tfRenderDiario();
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: VISTA SEMANA                                        */
+/* ============================================================== */
+function calInicioSemana(d){
+  var x = new Date(d);
+  var dia = x.getDay(); // 0=dom, 1=seg, ...
+  var diff = (dia === 0) ? -6 : 1 - dia; // segunda como início
+  x.setDate(x.getDate() + diff);
+  x.setHours(0,0,0,0);
+  return x;
+}
+function calNavSemana(delta){
+  calSemanaRef = calSemanaRef || new Date();
+  calSemanaRef.setDate(calSemanaRef.getDate() + 7*delta);
+  renderCalSemana();
+}
+function renderCalSemana(){
+  var inicio = calInicioSemana(calSemanaRef || new Date());
+  var lbl = document.getElementById('cal-semana-label');
+  var grid = document.getElementById('cal-semana-grid');
+  if(!grid || !lbl) return;
+  var fim = new Date(inicio); fim.setDate(inicio.getDate()+6);
+  lbl.textContent = inicio.getDate()+'/'+(inicio.getMonth()+1)+' a '+fim.getDate()+'/'+(fim.getMonth()+1)+'/'+fim.getFullYear();
+
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px">';
+  for(var i=0; i<7; i++){
+    var d = new Date(inicio); d.setDate(inicio.getDate()+i);
+    var yy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    var key = yy+'-'+mm+'-'+dd;
+    var keyShort = mm+'-'+dd;
+    var isToday = d.getTime() === hoje.getTime();
+
+    var tarefas = [];
+    try { if(typeof getTarefas === 'function') tarefas = getTarefas('diario').filter(function(t){return t.prazo === key;}); } catch(e){}
+    var notas = [];
+    try { if(typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
+    var evento = (typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
+
+    var diaSemanaLbl = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.getDay()];
+    var bg = isToday ? 'linear-gradient(180deg,#FFEEDD,#FFF8EE)' : 'var(--surface)';
+    var borda = isToday ? '2px solid var(--orange)' : '1px solid var(--border)';
+
+    html += '<div onclick="calIrParaDia('+yy+','+(d.getMonth())+','+d.getDate()+')" style="background:'+bg+';border:'+borda+';border-radius:10px;padding:10px;cursor:pointer;min-height:170px;display:flex;flex-direction:column">'
+      + '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">'
+        + '<div><div style="font-size:9px;font-weight:600;text-transform:uppercase;color:var(--text3);letter-spacing:.5px">'+diaSemanaLbl+'</div>'
+        + '<div style="font-size:22px;font-weight:800;color:var(--text);font-family:\'Syne\',sans-serif;line-height:1">'+d.getDate()+'</div></div>'
+        + (isToday ? '<span style="font-size:9px;background:var(--orange);color:white;padding:2px 7px;border-radius:5px;font-weight:700">HOJE</span>' : '')
+      + '</div>'
+      + '<div style="font-size:10px;color:var(--text2);line-height:1.5;flex:1">';
+
+    if(evento) html += '<div style="margin-bottom:4px;color:#A32D2D">🎉 '+evento.nome+'</div>';
+    if(tarefas.length){
+      tarefas.slice(0,5).forEach(function(t){
+        var ehFeito = !!t.feito;
+        html += '<div style="display:flex;align-items:center;gap:5px;padding:2px 0;'+(ehFeito?'opacity:.55;text-decoration:line-through':'')+'"><span style="color:#185FA5">'+(ehFeito?'☑':'☐')+'</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</span></div>';
+      });
+      if(tarefas.length > 5) html += '<div style="font-size:9px;color:var(--text3);font-weight:600">+'+(tarefas.length-5)+' tarefas</div>';
+    }
+    if(notas.length){
+      notas.slice(0,2).forEach(function(n){
+        html += '<div style="background:#FAEEDA;color:#854F0B;padding:3px 5px;border-radius:4px;margin-top:3px;font-size:10px;line-height:1.3"><span style="font-weight:600">📝</span> '+(n.texto||'').slice(0,40)+((n.texto||'').length>40?'...':'')+'</div>';
+      });
+      if(notas.length > 2) html += '<div style="font-size:9px;color:#854F0B;font-weight:600;margin-top:2px">+'+(notas.length-2)+' anotações</div>';
+    }
+    if(!tarefas.length && !notas.length && !evento){
+      html += '<div style="font-style:italic;color:var(--text3)">Vazio</div>';
+    }
+    html += '</div></div>';
+  }
+  html += '</div>';
+  grid.innerHTML = html;
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: VISTA LISTA (próximos 30 dias)                      */
+/* ============================================================== */
+function renderCalLista(){
+  var host = document.getElementById('cal-lista-render');
+  if(!host) return;
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var html = '';
+  for(var i=0; i<30; i++){
+    var d = new Date(hoje); d.setDate(hoje.getDate()+i);
+    var yy = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    var key = yy+'-'+mm+'-'+dd;
+    var keyShort = mm+'-'+dd;
+
+    var tarefas = [];
+    try { if(typeof getTarefas === 'function') tarefas = getTarefas('diario').filter(function(t){return t.prazo === key;}); } catch(e){}
+    var notas = [];
+    try { if(typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
+    var evento = (typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
+
+    // Aniversários
+    var bdays = [];
+    try {
+      (getPessoas?getPessoas():[]).forEach(function(p){
+        if(!p.nascimento) return;
+        var parts = p.nascimento.split('-');
+        if(parts.length<3) return;
+        if(parts[1]===mm && parts[2]===dd) bdays.push(p.nome.split(' ')[0]);
+      });
+    } catch(e){}
+
+    if(!tarefas.length && !notas.length && !evento && !bdays.length) continue;
+
+    var lbl = i===0?'Hoje':i===1?'Amanhã':(['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]);
+    var isToday = i===0;
+    html += '<div onclick="calIrParaDia('+yy+','+(d.getMonth())+','+d.getDate()+')" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;'+(isToday?'background:#FFF8EE':'')+'" onmouseover="if(!'+isToday+')this.style.background=\'var(--surface2)\'" onmouseout="if(!'+isToday+')this.style.background=\'transparent\'">'
+      + '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">'
+        + '<div style="font-size:18px;font-weight:800;color:var(--text);font-family:\'Syne\',sans-serif">'+dd+'/'+mm+'</div>'
+        + '<div style="font-size:10px;font-weight:600;text-transform:uppercase;color:'+(isToday?'var(--orange)':'var(--text3)')+';letter-spacing:.5px">'+lbl+'</div>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text2);line-height:1.5;display:flex;flex-direction:column;gap:3px">';
+    if(evento) html += '<div><span style="background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px">🎉 '+evento.nome+'</span></div>';
+    if(bdays.length) html += '<div><span style="background:#F3E5F5;color:#6A1B9A;padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px">🎂 '+bdays.join(', ')+'</span></div>';
+    tarefas.forEach(function(t){
+      html += '<div style="display:flex;gap:5px;'+(t.feito?'opacity:.5;text-decoration:line-through':'')+'"><span style="color:#185FA5">📋</span><span>'+t.texto+'</span></div>';
+    });
+    notas.slice(0,3).forEach(function(n){
+      html += '<div style="display:flex;gap:5px"><span style="color:#854F0B">📝</span><span>'+(n.texto||'').slice(0,80)+((n.texto||'').length>80?'...':'')+'</span></div>';
+    });
+    if(notas.length>3) html += '<div style="font-size:9px;color:var(--text3);font-weight:600">+'+(notas.length-3)+' anotações</div>';
+    html += '</div></div>';
+  }
+  if(!html) html = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhum item nos próximos 30 dias</div>';
+  host.innerHTML = html;
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: VISTA ANO (12 mini-meses)                           */
+/* ============================================================== */
+function calNavAno(delta){
+  calAnoRef = calAnoRef + delta;
+  renderCalAno();
+}
+function renderCalAno(){
+  var grid = document.getElementById('cal-ano-grid');
+  var lbl = document.getElementById('cal-ano-label');
+  if(!grid || !lbl) return;
+  lbl.textContent = calAnoRef;
+  var hoje = new Date();
+  var hojeY = hoje.getFullYear(), hojeM = hoje.getMonth(), hojeD = hoje.getDate();
+  var html = '';
+  for(var m=0; m<12; m++){
+    var first = new Date(calAnoRef, m, 1).getDay();
+    var dim = new Date(calAnoRef, m+1, 0).getDate();
+    var mm = String(m+1).padStart(2,'0');
+    var ehMesAtual = (calAnoRef === hojeY && m === hojeM);
+
+    var diasHtml = '';
+    for(var s=0; s<first; s++) diasHtml += '<div></div>';
+    for(var dia=1; dia<=dim; dia++){
+      var key = calAnoRef+'-'+mm+'-'+String(dia).padStart(2,'0');
+      var temItem = false;
+      try {
+        if(typeof getTarefas === 'function' && getTarefas('diario').some(function(t){return t.prazo===key;})) temItem = true;
+        if(!temItem && typeof getNotasCalendario === 'function' && getNotasCalendario(key).length) temItem = true;
+      } catch(e){}
+      var ehHoje = (calAnoRef===hojeY && m===hojeM && dia===hojeD);
+      var bg = ehHoje ? 'var(--orange)' : (temItem ? 'var(--gami-blue)' : 'transparent');
+      var cor = (ehHoje || temItem) ? 'white' : 'var(--text3)';
+      diasHtml += '<div onclick="event.stopPropagation();calIrParaDia('+calAnoRef+','+m+','+dia+')" style="text-align:center;font-size:9px;padding:2px 0;cursor:pointer;border-radius:3px;background:'+bg+';color:'+cor+';font-weight:'+(ehHoje?'700':'500')+'" title="'+dia+'/'+mm+'/'+calAnoRef+'">'+dia+'</div>';
+    }
+    html += '<div onclick="calAnoRef='+calAnoRef+';calMonth='+m+';calYear='+calAnoRef+';calMudarVista(\'mes\')" style="background:var(--surface);border:'+(ehMesAtual?'2px':'1px')+' solid '+(ehMesAtual?'var(--orange)':'var(--border)')+';border-radius:8px;padding:8px;cursor:pointer">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:5px;text-align:center;font-family:\'Syne\',sans-serif">'+(typeof MESES_PT!=='undefined'?MESES_PT[m]:m+1)+'</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;font-size:8px;color:var(--text3);margin-bottom:2px">'
+        + '<div style="text-align:center">D</div><div style="text-align:center">S</div><div style="text-align:center">T</div><div style="text-align:center">Q</div><div style="text-align:center">Q</div><div style="text-align:center">S</div><div style="text-align:center">S</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px">'+diasHtml+'</div>'
+    + '</div>';
+  }
+  grid.innerHTML = html;
+}
+
+/* ============================================================== */
+/* CALENDÁRIO: HEATMAP DE PRODUTIVIDADE (últimos 90 dias)          */
+/* ============================================================== */
+function renderCalHeatmap(){
+  var host = document.getElementById('cal-heatmap');
+  if(!host) return;
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var inicio = new Date(hoje); inicio.setDate(hoje.getDate() - 89);
+
+  // Coleta dados de tarefas concluidas por dia
+  var dados = {};
+  try {
+    if(typeof getTarefas === 'function'){
+      getTarefas('diario').forEach(function(t){
+        if(!t || !t.feito || !t.feitaEm) return;
+        var d = t.feitaEm.split('T')[0];
+        dados[d] = (dados[d]||0) + 1;
+      });
+    }
+  } catch(e){}
+
+  var max = Math.max.apply(null, Object.values(dados).concat([1]));
+  function corPorIntensidade(n){
+    if(!n) return '#EAEEF3';
+    var ratio = n / max;
+    if(ratio < 0.25) return '#C8E6C9';
+    if(ratio < 0.5) return '#81C784';
+    if(ratio < 0.75) return '#4CAF50';
+    return '#2E7D32';
+  }
+
+  // Constroi grid: 13 semanas x 7 dias
+  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    + '<div style="font-size:11px;font-weight:700;color:var(--text);font-family:\'Syne\',sans-serif">📊 Produtividade (últimos 90 dias)</div>'
+    + '<div style="font-size:9px;color:var(--text3);display:flex;align-items:center;gap:4px">menos <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#EAEEF3"></span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#C8E6C9"></span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#81C784"></span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#4CAF50"></span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#2E7D32"></span> mais</div>'
+  + '</div>'
+  + '<div style="display:flex;gap:2px">';
+
+  for(var sem=0; sem<13; sem++){
+    html += '<div style="display:flex;flex-direction:column;gap:2px">';
+    for(var dia=0; dia<7; dia++){
+      var d = new Date(inicio); d.setDate(inicio.getDate() + sem*7 + dia);
+      if(d > hoje){ html += '<div style="width:11px;height:11px"></div>'; continue; }
+      var key = d.toISOString().split('T')[0];
+      var n = dados[key] || 0;
+      html += '<div title="'+d.toLocaleDateString('pt-BR')+': '+n+' tarefa'+(n===1?'':'s')+' concluída'+(n===1?'':'s')+'" style="width:11px;height:11px;border-radius:2px;background:'+corPorIntensidade(n)+';cursor:pointer" onclick="calIrParaDia('+d.getFullYear()+','+d.getMonth()+','+d.getDate()+')"></div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  var total = Object.values(dados).reduce(function(a,b){return a+b;}, 0);
+  html += '<div style="font-size:10px;color:var(--text3);margin-top:6px"><strong style="color:var(--text)">'+total+'</strong> tarefas concluídas nos últimos 90 dias</div>';
+  host.innerHTML = html;
 }
 
 function renderCalSidebar(){
@@ -4775,7 +5403,7 @@ function selectDay(d, m, y){
 
   // Lista de anotações JÁ salvas
   if(notasArr.length){
-    html += '<div style="max-height:240px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:6px">';
+    html += '<div style="max-height:280px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:6px">';
     notasArr.forEach(function(n){
       var quando = '';
       try {
@@ -4788,12 +5416,22 @@ function selectDay(d, m, y){
         else quando = dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
       } catch(e){}
       var textoEsc = (n.texto||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
-      html += '<div style="background:#FAEEDA;border-left:3px solid #EF9F27;border-radius:6px;padding:8px 10px">'
+      // Cores dos stickies
+      var coresMap = {
+        amarelo: {bg:'#FAEEDA', borda:'#EF9F27', texto:'#854F0B'},
+        verde:   {bg:'#EAF3DE', borda:'#1D9E75', texto:'#3B6D11'},
+        vermelho:{bg:'#FCEBEB', borda:'#E24B4A', texto:'#A32D2D'},
+        azul:    {bg:'#E6F1FB', borda:'#1E88E5', texto:'#185FA5'}
+      };
+      var c = coresMap[n.cor] || coresMap.amarelo;
+      var anexoHTML = n.anexo ? '<div style="margin-top:5px"><img src="'+n.anexo+'" style="max-width:100%;max-height:140px;border-radius:5px;cursor:pointer;border:1px solid var(--border)" onclick="window.open(this.src,\'_blank\')"></div>' : '';
+      html += '<div style="background:'+c.bg+';border-left:3px solid '+c.borda+';border-radius:6px;padding:8px 10px">'
         +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">'
-          +'<span style="font-size:9px;color:#854F0B;font-weight:600">'+quando+'</span>'
+          +'<span style="font-size:9px;color:'+c.texto+';font-weight:600">'+quando+'</span>'
           +'<button onclick="removerNotaCalendario(\''+key+'\',\''+n.id+'\','+d+','+m+','+y+')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0;line-height:1" title="Remover esta anotação">×</button>'
         +'</div>'
-        +'<div style="font-size:11px;color:var(--text);line-height:1.45">'+textoEsc+'</div>'
+        +(textoEsc ? '<div style="font-size:11px;color:var(--text);line-height:1.45">'+textoEsc+'</div>' : '')
+        +anexoHTML
       +'</div>';
     });
     html += '</div>';
@@ -4805,6 +5443,19 @@ function selectDay(d, m, y){
       +'onkeydown="if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarNotaCalendarioComFeedback(\''+key+'\','+d+','+m+','+y+');}" '
       +'style="width:100%;min-height:60px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:11px;font-family:inherit;color:var(--text);resize:vertical;line-height:1.4;box-sizing:border-box" '
       +'placeholder="'+(notasArr.length ? 'Adicionar outra anotação...' : 'Lembretes pessoais, observações ou anotações...')+'"></textarea>'
+    // Seletor de cor + anexo
+    +'<div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">'
+      +'<div id="cal-cores-'+key+'" style="display:flex;gap:4px">'
+        +'<button class="nota-cor-btn active" data-cor="amarelo" onclick="_calSelecionarCor(\''+key+'\',\'amarelo\')" title="Amarelo (padrão)" style="width:22px;height:22px;border:2px solid #854F0B;border-radius:5px;background:#FAEEDA;cursor:pointer;padding:0"></button>'
+        +'<button class="nota-cor-btn" data-cor="verde" onclick="_calSelecionarCor(\''+key+'\',\'verde\')" title="Verde (positivo/ideias)" style="width:22px;height:22px;border:1px solid var(--border);border-radius:5px;background:#EAF3DE;cursor:pointer;padding:0"></button>'
+        +'<button class="nota-cor-btn" data-cor="vermelho" onclick="_calSelecionarCor(\''+key+'\',\'vermelho\')" title="Vermelho (urgente)" style="width:22px;height:22px;border:1px solid var(--border);border-radius:5px;background:#FCEBEB;cursor:pointer;padding:0"></button>'
+        +'<button class="nota-cor-btn" data-cor="azul" onclick="_calSelecionarCor(\''+key+'\',\'azul\')" title="Azul (referência)" style="width:22px;height:22px;border:1px solid var(--border);border-radius:5px;background:#E6F1FB;cursor:pointer;padding:0"></button>'
+      +'</div>'
+      +'<label style="font-size:10px;color:var(--text2);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2)" title="Anexar imagem (máx 2MB)">📷 Foto'
+        +'<input type="file" accept="image/*" onchange="_calHandleAnexo(event,\''+key+'\')" style="display:none">'
+      +'</label>'
+    +'</div>'
+    +'<div id="cal-anexo-'+key+'"></div>'
     +'<div style="display:flex;gap:6px;margin-top:6px">'
       +'<button onclick="salvarNotaCalendarioComFeedback(\''+key+'\','+d+','+m+','+y+')" style="flex:1;padding:7px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar anotação (Ctrl+Enter)</button>'
       +(notasArr.length ? '<button onclick="limparNotaCalendario(\''+key+'\','+d+','+m+','+y+')" title="Apagar todas anotações do dia" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:white;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑️ Tudo</button>' : '')
