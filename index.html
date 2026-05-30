@@ -1,4 +1,4 @@
-<!-- v21.6 - Hero em primeiro plano - 30/05/2026 -->
+<!-- v21.8 - Fix calIrParaDia mantem vista atual - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4404,9 +4404,15 @@ function calToggleTarefa(id, d, m, y){
   if(typeof toast === 'function'){
     toast(estadoAntes ? 'Tarefa reaberta' : '✓ Tarefa concluída!', estadoAntes ? 'info' : 'success');
   }
-  // Re-renderiza grid + painel do dia
-  if(typeof renderCalendar === 'function') renderCalendar();
-  if(typeof selectDay === 'function' && d !== undefined) setTimeout(function(){ selectDay(d, m, y); }, 30);
+  // Re-renderiza vista ativa
+  if(calVista === 'mes' && typeof renderCalendar === 'function') renderCalendar();
+  else if(calVista === 'lista' && typeof renderCalLista === 'function') renderCalLista();
+  else if(calVista === 'semana' && typeof renderCalSemana === 'function') renderCalSemana();
+  else if(typeof renderCalendar === 'function') renderCalendar();
+  // Atualiza banner 7d sempre
+  if(typeof renderCal7Dias === 'function') renderCal7Dias();
+  // Re-renderiza painel do dia se aberto
+  if(typeof selectDay === 'function' && d !== undefined && selectedDay) setTimeout(function(){ selectDay(d, m, y); }, 30);
 }
 
 /* Salva nota com feedback visual + toast + re-render */
@@ -4866,9 +4872,19 @@ function renderCal7Dias(){
 
 function calIrParaDia(y, m, d){
   calYear = y; calMonth = m;
-  if(calVista !== 'mes'){ calMudarVista('mes'); }
-  else { renderCalendar(); }
-  setTimeout(function(){ selectDay(d, m, y); }, 50);
+  // Mantém a vista atual - só re-renderiza
+  if(calVista === 'mes' && typeof renderCalendar === 'function') renderCalendar();
+  else if(calVista === 'semana' && typeof renderCalSemana === 'function'){
+    // Se data estiver fora da semana atual, atualiza referência
+    if(typeof calSemanaRef !== 'undefined'){
+      calSemanaRef = new Date(y, m, d);
+    }
+    renderCalSemana();
+  }
+  else if(calVista === 'lista' && typeof renderCalLista === 'function') renderCalLista();
+  else if(calVista === 'ano' && typeof renderCalAno === 'function') renderCalAno();
+  // Abre o painel do dia
+  setTimeout(function(){ if(typeof selectDay === 'function') selectDay(d, m, y); }, 50);
 }
 
 /* ============================================================== */
@@ -5100,7 +5116,7 @@ function renderCalSemana(){
 }
 
 /* ============================================================== */
-/* CALENDÁRIO: VISTA LISTA (próximos 30 dias)                      */
+/* CALENDÁRIO: VISTA LISTA (checklist por dia)                     */
 /* ============================================================== */
 function renderCalLista(){
   var host = document.getElementById('cal-lista-render');
@@ -5118,7 +5134,6 @@ function renderCalLista(){
     var notas = [];
     try { if(typeof getNotasCalendario === 'function') notas = getNotasCalendario(key); } catch(e){}
     var evento = (typeof DATAS_ESPECIAIS !== 'undefined') ? DATAS_ESPECIAIS[keyShort] : null;
-
     // Aniversários
     var bdays = [];
     try {
@@ -5134,24 +5149,52 @@ function renderCalLista(){
 
     var lbl = i===0?'Hoje':i===1?'Amanhã':(['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][d.getDay()]);
     var isToday = i===0;
-    html += '<div onclick="calIrParaDia('+yy+','+(d.getMonth())+','+d.getDate()+')" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;'+(isToday?'background:#FFF8EE':'')+'" onmouseover="if(!'+isToday+')this.style.background=\'var(--surface2)\'" onmouseout="if(!'+isToday+')this.style.background=\'transparent\'">'
-      + '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">'
-        + '<div style="font-size:18px;font-weight:800;color:var(--text);font-family:\'Syne\',sans-serif">'+dd+'/'+mm+'</div>'
-        + '<div style="font-size:10px;font-weight:600;text-transform:uppercase;color:'+(isToday?'var(--orange)':'var(--text3)')+';letter-spacing:.5px">'+lbl+'</div>'
+    var totalTarefas = tarefas.length;
+    var feitas = tarefas.filter(function(t){return t.feito;}).length;
+    var progressoStr = totalTarefas > 0 ? feitas+'/'+totalTarefas : '';
+
+    html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border);'+(isToday?'background:#FFF8EE':'')+'">'
+      // Cabeçalho do dia
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;cursor:pointer" onclick="calIrParaDia('+yy+','+(d.getMonth())+','+d.getDate()+')">'
+        + '<div style="display:flex;align-items:baseline;gap:10px">'
+          + '<div style="font-size:18px;font-weight:800;color:var(--text);font-family:\'Syne\',sans-serif">'+dd+'/'+mm+'</div>'
+          + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;color:'+(isToday?'var(--orange)':'var(--text3)')+';letter-spacing:.5px">'+lbl+'</div>'
+        + '</div>'
+        + (progressoStr ? '<span style="font-size:10px;padding:3px 8px;border-radius:6px;background:'+(feitas===totalTarefas?'#EAF3DE':'var(--surface2)')+';color:'+(feitas===totalTarefas?'#3B6D11':'var(--text2)')+';font-weight:600">'+(feitas===totalTarefas?'✓ ':'📋 ')+progressoStr+' tarefas</span>' : '')
       + '</div>'
-      + '<div style="font-size:11px;color:var(--text2);line-height:1.5;display:flex;flex-direction:column;gap:3px">';
-    if(evento) html += '<div class="flt-event"><span style="background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px">🎉 '+evento.nome+'</span></div>';
-    if(bdays.length) html += '<div class="flt-bday"><span style="background:#F3E5F5;color:#6A1B9A;padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px">🎂 '+bdays.join(', ')+'</span></div>';
+      // Checklist de tarefas (clicáveis)
+      + (tarefas.length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:'+(notas.length||evento||bdays.length?'10':'0')+'px">' : '');
+
     tarefas.forEach(function(t){
-      html += '<div class="flt-task" style="display:flex;gap:5px;'+(t.feito?'opacity:.5;text-decoration:line-through':'')+'"><span style="color:#185FA5">📋</span><span>'+t.texto+'</span></div>';
+      var corPrio = t.prio === 'alta' ? '#E24B4A' : t.prio === 'media' ? '#EF9F27' : '#1D9E75';
+      html += '<div class="flt-task" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);'+(t.feito?'opacity:.55':'')+'">'
+        + '<div onclick="event.stopPropagation();calToggleTarefa(\''+t.id+'\','+d.getDate()+','+(d.getMonth())+','+yy+')" style="width:20px;height:20px;border-radius:5px;border:2px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
+        + (t.feito?'<svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5L4 7.5L11 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')
+        + '</div>'
+        + '<span style="flex:1;font-size:13px;color:var(--text);'+(t.feito?'text-decoration:line-through':'')+';line-height:1.3">'+t.texto+'</span>'
+        + '<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:'+corPrio+'22;color:'+corPrio+';font-weight:600;flex-shrink:0">'+(t.prio||'media')+'</span>'
+      + '</div>';
     });
-    notas.slice(0,3).forEach(function(n){
-      html += '<div class="flt-note" style="display:flex;gap:5px"><span style="color:#854F0B">📝</span><span>'+(n.texto||'').slice(0,80)+((n.texto||'').length>80?'...':'')+'</span></div>';
-    });
-    if(notas.length>3) html += '<div class="flt-note" style="font-size:9px;color:var(--text3);font-weight:600">+'+(notas.length-3)+' anotações</div>';
-    html += '</div></div>';
+
+    if(tarefas.length) html += '</div>';
+
+    // Itens informativos (eventos, aniversários, anotações) abaixo das tarefas
+    if(evento || bdays.length || notas.length){
+      html += '<div style="display:flex;flex-direction:column;gap:4px;padding-left:4px">';
+      if(evento) html += '<div class="flt-event" style="font-size:11px;color:var(--text2)"><span style="background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px;margin-right:4px">🎉 '+evento.nome+'</span></div>';
+      if(bdays.length) html += '<div class="flt-bday" style="font-size:11px;color:var(--text2)"><span style="background:#F3E5F5;color:#6A1B9A;padding:2px 7px;border-radius:4px;font-weight:600;font-size:10px">🎂 '+bdays.join(', ')+'</span></div>';
+      notas.slice(0,3).forEach(function(n){
+        var coresMap = {amarelo:'#EF9F27',verde:'#1D9E75',vermelho:'#E24B4A',azul:'#1E88E5'};
+        var corBorda = coresMap[n.cor] || coresMap.amarelo;
+        html += '<div class="flt-note" style="font-size:11px;color:var(--text2);padding:4px 8px;border-left:3px solid '+corBorda+';background:var(--surface2);border-radius:0 5px 5px 0"><span style="font-weight:600;margin-right:4px">📝</span>'+(n.texto||'').slice(0,100)+((n.texto||'').length>100?'...':'')+'</div>';
+      });
+      if(notas.length > 3) html += '<div class="flt-note" style="font-size:9px;color:var(--text3);font-weight:600;padding-left:8px">+'+(notas.length-3)+' anotações</div>';
+      html += '</div>';
+    }
+
+    html += '</div>';
   }
-  if(!html) html = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhum item nos próximos 30 dias</div>';
+  if(!html) html = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">🌱 Nenhum item nos próximos 30 dias. Tá tudo em paz!</div>';
   host.innerHTML = html;
 }
 
