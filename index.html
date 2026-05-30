@@ -1,4 +1,4 @@
-<!-- v23.0 - Refatoracao aba Tarefas: categorias por permissao + Delegadas por mim + busca/filtros + XP card + sem humor/notas duplicados - 30/05/2026 -->
+<!-- v23.1 - Projetos integra com Hoje + Nova delegacao + Assistente IA + sem Rotina marketing - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1900,7 +1900,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <button id="tft-mes"      onclick="tarefaAba('mes')"      style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🗓️ Mês</button>
     <button id="tft-projetos" onclick="tarefaAba('projetos')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🚀 Projetos</button>
     <button id="tft-delegadas" onclick="tarefaAba('delegadas')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:none">📥 Delegadas por mim</button>
-    <button id="tft-rotina"   onclick="tarefaAba('rotina')"   style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:none">⚡ Rotina marketing</button>
+    <button id="tft-ia" onclick="tarefaAba('ia')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🤖 Assistente</button>
     <button id="tft-recorrentes" onclick="tarefaAba('recorrentes')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🔁 Recorrentes</button>
   </div>
 
@@ -2093,13 +2093,14 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div style="font-size:13px;font-weight:700">📥 Tarefas que você delegou</div>
         <div style="font-size:11px;color:var(--text3)">Acompanhe o status das tarefas que você passou pra outras pessoas</div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <select id="tf-deleg-filtro" onchange="renderDelegadasPorMim()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer">
           <option value="todas">Todas</option>
           <option value="pendente">Pendentes</option>
           <option value="atrasada">Atrasadas</option>
           <option value="feita">Feitas</option>
         </select>
+        <button onclick="abrirModalNovaDelegacao()" class="btn btn-primary" style="font-size:12px">+ Nova delegação</button>
       </div>
     </div>
     <!-- Contadores -->
@@ -2108,22 +2109,54 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="tf-delegadas-list"></div>
   </div>
 
-  <!-- TAB ROTINA -->
-  <div id="tf-tab-rotina" style="display:none">
+  <!-- TAB ASSISTENTE IA -->
+  <div id="tf-tab-ia" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:13px;font-weight:700">⚡ Rotina diária Gâmi</div>
-        <div style="font-size:11px;color:var(--text3)">10 hábitos que movem o marketing todos os dias</div>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <div id="tf-rotina-prog" style="font-size:12px;font-weight:700;color:var(--orange)">0/10</div>
-        <button onclick="resetRotina()" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;cursor:pointer;font-family:inherit;color:var(--text3)">↺ Resetar</button>
+        <div style="font-size:13px;font-weight:700">🤖 Assistente de tarefas</div>
+        <div style="font-size:11px;color:var(--text3)">Descreva seu trabalho e a IA sugere tarefas. Você escolhe quais quer adicionar.</div>
       </div>
     </div>
-    <div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-bottom:14px">
-      <div id="tf-rotina-bar" style="height:100%;width:0%;background:var(--orange);border-radius:3px;transition:width .4s"></div>
+
+    <!-- Formulário de contexto -->
+    <div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border-color:#8B5CF633">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <div class="field-label">Seu cargo / função</div>
+          <input id="ia-cargo" class="inp" placeholder="Ex: Gestor da cidade, Atendente, Financeiro..." style="font-size:12px"/>
+        </div>
+        <div>
+          <div class="field-label">Área principal</div>
+          <select id="ia-area" class="sel" style="font-size:12px">
+            <option value="">Selecione...</option>
+            <option value="operacao">🏍️ Operação</option>
+            <option value="comercial">🤝 Comercial / Captação</option>
+            <option value="financeiro">💵 Financeiro</option>
+            <option value="atendimento">📞 Atendimento</option>
+            <option value="marketing">📣 Marketing</option>
+            <option value="conteudo">📸 Conteúdo</option>
+            <option value="rh">👥 Pessoas / RH</option>
+            <option value="diretoria">🎯 Diretoria / Estratégia</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <div class="field-label">O que você quer melhorar ou focar esta semana?</div>
+        <textarea id="ia-objetivo" class="inp" style="min-height:60px;font-size:12px;resize:vertical" placeholder="Ex: aumentar captação de motoboys em Recife, melhorar tempo de resposta no inbox, organizar planilha de comissões..."></textarea>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="iaGerarSugestoes()" class="btn btn-primary" style="flex:1;min-width:140px;font-size:12px">✨ Gerar sugestões</button>
+        <button onclick="iaAbrirClaudeExterno()" style="padding:8px 14px;border:none;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🚀 Mais ideias com Claude</button>
+      </div>
     </div>
-    <div id="tf-rotina-list" style="display:flex;flex-direction:column;gap:6px"></div>
+
+    <!-- Resultado das sugestões -->
+    <div id="ia-resultado"></div>
+
+    <!-- Dicas -->
+    <div style="margin-top:14px;padding:12px;background:#F0F8FF;border:1px dashed var(--gami-blue);border-radius:8px;font-size:11px;color:#0E7AB8;line-height:1.5">
+      💡 <strong>Como funciona:</strong> Preencha o formulário com seu contexto e clique em "Gerar sugestões". A IA vai te dar uma lista de tarefas adequadas ao seu cargo. Clique em "+ Adicionar" em cada tarefa que faz sentido pra você — ela vai pra sua aba "📋 Hoje" automaticamente.
+    </div>
   </div>
 
   <!-- TAB RECORRENTES -->
@@ -16971,7 +17004,7 @@ async function tfAtualizarBadgeDelegadas(){
 }
 
 function tarefaAba(aba){
-  ['diario','semana','mes','projetos','delegadas','rotina','recorrentes'].forEach(function(t){
+  ['diario','semana','mes','projetos','delegadas','ia','recorrentes'].forEach(function(t){
     var el=document.getElementById('tf-tab-'+t);
     var btn=document.getElementById('tft-'+t);
     if(el) el.style.display=t===aba?'block':'none';
@@ -16986,13 +17019,258 @@ function tarefaAba(aba){
   if(aba==='mes') tfRenderMes();
   if(aba==='projetos') tfRenderProjetos();
   if(aba==='delegadas' && typeof renderDelegadasPorMim==='function') renderDelegadasPorMim();
+  if(aba==='ia' && typeof iaInicializar==='function') iaInicializar();
   if(aba==='recorrentes') renderTarefasRecorrentes();
-  if(aba==='rotina'){
-    var rList=document.getElementById('tf-rotina-list');
-    if(rList&&typeof renderRotina==='function') renderRotina();
-    tfAtualizarRotinaBar();
-  }
   tfAtualizarMetricas();
+}
+
+/* ============================================================ */
+/* TAREFAS — Nova delegação direta da aba Delegadas              */
+/* ============================================================ */
+function abrirModalNovaDelegacao(){
+  if(typeof abrirModalNovaTarefa !== 'function') return;
+  abrirModalNovaTarefa('diario');
+  // Marca o checkbox de delegação automaticamente
+  setTimeout(function(){
+    var cb = document.getElementById('tf-m-deleg-on');
+    if(cb){
+      cb.checked = true;
+      cb.dispatchEvent(new Event('change'));
+      // Foca o campo de texto pra digitar logo
+      var inp = document.getElementById('tf-m-texto');
+      if(inp) inp.focus();
+    }
+  }, 200);
+}
+
+/* ============================================================ */
+/* TAREFAS — ASSISTENTE IA (sugestões locais por cargo/área)     */
+/* ============================================================ */
+
+/* Templates de tarefas por área da Gâmi - usadas como sugestões */
+var IA_TEMPLATES_POR_AREA = {
+  operacao: [
+    { t:'Conferir bot de stories automáticos (9 cidades)', cat:'Operação', prio:'media' },
+    { t:'Acompanhar fila de motoboys na Machine', cat:'Operação', prio:'media' },
+    { t:'Reunião rápida com a equipe operacional', cat:'Reunião', prio:'alta' },
+    { t:'Verificar relatório diário de corridas', cat:'Operação', prio:'media' },
+    { t:'Atualizar lista de motoboys ativos no Supabase', cat:'Operação', prio:'baixa' },
+    { t:'Conferir ocorrências da semana anterior', cat:'Operação', prio:'media' },
+    { t:'Validar status de novos cadastros de motoboys', cat:'Operação', prio:'baixa' },
+    { t:'Acompanhar tempo médio de aceite/entrega', cat:'Operação', prio:'alta' }
+  ],
+  comercial: [
+    { t:'Visitar 3 lojas potenciais na minha cidade', cat:'Comercial', prio:'alta' },
+    { t:'Ligar pros 5 últimos parceiros cadastrados (feedback)', cat:'Comercial', prio:'media' },
+    { t:'Atualizar planilha de captação', cat:'Comercial', prio:'media' },
+    { t:'Preparar material/apresentação pra próximo prospect', cat:'Comercial', prio:'alta' },
+    { t:'Mapear concorrência local (preços, taxas)', cat:'Comercial', prio:'baixa' },
+    { t:'Follow-up com lojas que pararam de pedir', cat:'Comercial', prio:'alta' },
+    { t:'Agendar visita técnica em parceiro grande', cat:'Comercial', prio:'media' },
+    { t:'Renovar contrato com [nome do parceiro]', cat:'Comercial', prio:'media' }
+  ],
+  financeiro: [
+    { t:'Conciliação bancária do dia', cat:'Financeiro', prio:'alta' },
+    { t:'Conferir repasses dos motoboys', cat:'Financeiro', prio:'alta' },
+    { t:'Atualizar fluxo de caixa', cat:'Financeiro', prio:'media' },
+    { t:'Emitir notas fiscais pendentes', cat:'Financeiro', prio:'alta' },
+    { t:'Acompanhar contas a receber atrasadas', cat:'Financeiro', prio:'media' },
+    { t:'Conferir comissões da semana', cat:'Financeiro', prio:'media' },
+    { t:'Preparar relatório financeiro mensal', cat:'Financeiro', prio:'baixa' },
+    { t:'Reunião com contador sobre impostos', cat:'Reunião', prio:'media' }
+  ],
+  atendimento: [
+    { t:'Responder mensagens pendentes no inbox Instagram', cat:'Atendimento', prio:'alta' },
+    { t:'Triagem do WhatsApp da empresa (1h)', cat:'Atendimento', prio:'alta' },
+    { t:'Follow-up com cliente que reclamou ontem', cat:'Atendimento', prio:'alta' },
+    { t:'Resolver chamado #[número] pendente', cat:'Atendimento', prio:'media' },
+    { t:'Documentar caso recorrente no FAQ', cat:'Administrativo', prio:'baixa' },
+    { t:'NPS: enviar pesquisa pra parceiros últimos 30d', cat:'Atendimento', prio:'media' },
+    { t:'Análise de reclamações da semana', cat:'Atendimento', prio:'media' }
+  ],
+  marketing: [
+    { t:'Criar story para Instagram da cidade X', cat:'Conteúdo', prio:'media' },
+    { t:'Planejar próxima campanha do mês', cat:'Campanhas', prio:'alta' },
+    { t:'Analisar performance da última campanha (Meta Ads)', cat:'Marketing', prio:'media' },
+    { t:'Editar post de aniversário do parceiro Y', cat:'Conteúdo', prio:'baixa' },
+    { t:'Briefing pra fotógrafo da próxima sessão', cat:'Conteúdo', prio:'media' },
+    { t:'Atualizar bio do Instagram com promoção atual', cat:'Marketing', prio:'baixa' },
+    { t:'Reels: gravar 3 ideias do banco', cat:'Conteúdo', prio:'media' },
+    { t:'Reunião de alinhamento com diretoria', cat:'Reunião', prio:'media' }
+  ],
+  conteudo: [
+    { t:'Criar 3 reels esta semana', cat:'Conteúdo', prio:'media' },
+    { t:'Planejar calendário editorial do próximo mês', cat:'Conteúdo', prio:'alta' },
+    { t:'Sessão de fotos com motoboys de [cidade]', cat:'Conteúdo', prio:'media' },
+    { t:'Editar vídeo do parceiro destaque', cat:'Conteúdo', prio:'media' },
+    { t:'Pesquisar tendências de conteúdo no nicho', cat:'Conteúdo', prio:'baixa' },
+    { t:'Atualizar banco de ideias com 5 novos posts', cat:'Conteúdo', prio:'baixa' },
+    { t:'Revisar copy de carrossel pendente', cat:'Conteúdo', prio:'media' }
+  ],
+  rh: [
+    { t:'Aniversariante: organizar comemoração de [nome]', cat:'Pessoas/RH', prio:'media' },
+    { t:'1x1 com membro da equipe', cat:'Reunião', prio:'alta' },
+    { t:'Atualizar lista de aniversariantes do mês', cat:'Pessoas/RH', prio:'baixa' },
+    { t:'Onboarding novo colaborador', cat:'Pessoas/RH', prio:'alta' },
+    { t:'Pesquisa de clima organizacional', cat:'Pessoas/RH', prio:'media' },
+    { t:'Reunião de cultura semanal', cat:'Reunião', prio:'media' },
+    { t:'Acompanhar feedback do time da semana', cat:'Pessoas/RH', prio:'media' },
+    { t:'Revisar metas/OKRs dos gestores', cat:'Pessoas/RH', prio:'alta' }
+  ],
+  diretoria: [
+    { t:'Reunião de diretoria semanal', cat:'Reunião', prio:'alta' },
+    { t:'Revisar KPIs do mês', cat:'Administrativo', prio:'alta' },
+    { t:'Análise estratégica: top 3 oportunidades do mês', cat:'Administrativo', prio:'media' },
+    { t:'Planejamento trimestral próximo ciclo', cat:'Administrativo', prio:'alta' },
+    { t:'1x1 com gestores das cidades', cat:'Reunião', prio:'media' },
+    { t:'Conferir dashboard de cidades', cat:'Administrativo', prio:'media' },
+    { t:'Definir foco estratégico da semana', cat:'Administrativo', prio:'alta' },
+    { t:'Comunicação ao time sobre próximos passos', cat:'Comercial', prio:'media' }
+  ]
+};
+
+function iaInicializar(){
+  // Tenta pré-preencher com dados do usuário
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(u && u.cargo){
+    var cargoInp = document.getElementById('ia-cargo');
+    if(cargoInp && !cargoInp.value) cargoInp.value = u.cargo;
+  }
+}
+
+function iaGerarSugestoes(){
+  var cargo = (document.getElementById('ia-cargo')||{}).value || '';
+  var area = (document.getElementById('ia-area')||{}).value || '';
+  var objetivo = (document.getElementById('ia-objetivo')||{}).value || '';
+  var el = document.getElementById('ia-resultado');
+  if(!el) return;
+
+  if(!cargo && !area && !objetivo){
+    if(typeof toast === 'function') toast('Preencha pelo menos uma informação acima', 'warn');
+    return;
+  }
+
+  // Pega sugestões por área se selecionada, senão mistura algumas
+  var sugestoes = [];
+  if(area && IA_TEMPLATES_POR_AREA[area]){
+    sugestoes = IA_TEMPLATES_POR_AREA[area].slice();
+  } else {
+    // Sem área específica: pega 2 de cada área
+    Object.keys(IA_TEMPLATES_POR_AREA).forEach(function(k){
+      sugestoes = sugestoes.concat(IA_TEMPLATES_POR_AREA[k].slice(0, 2));
+    });
+  }
+
+  // Tenta filtrar baseado em palavras-chave do objetivo
+  if(objetivo){
+    var palavras = objetivo.toLowerCase().split(/\s+/).filter(function(w){return w.length>3;});
+    if(palavras.length){
+      var comScore = sugestoes.map(function(s){
+        var score = 0;
+        var txtLower = s.t.toLowerCase();
+        palavras.forEach(function(p){ if(txtLower.indexOf(p)>=0) score++; });
+        return {s:s, score:score};
+      });
+      // Ordena: as que tem match com objetivo primeiro
+      comScore.sort(function(a,b){return b.score - a.score;});
+      sugestoes = comScore.map(function(x){return x.s;});
+    }
+  }
+
+  // Limita a 8 sugestões
+  sugestoes = sugestoes.slice(0, 8);
+
+  if(!sugestoes.length){
+    el.innerHTML = '<div class="card" style="padding:20px;text-align:center;color:var(--text3)"><div style="font-size:30px;margin-bottom:6px">🤔</div><div>Não consegui gerar sugestões. Tenta selecionar uma área específica.</div></div>';
+    return;
+  }
+
+  var coresPrio = { alta:'#E24B4A', media:'#EF9F27', baixa:'#1D9E75' };
+  var ico = (typeof TF_CAT_ICO !== 'undefined') ? TF_CAT_ICO : {};
+
+  el.innerHTML = '<div class="card" style="padding:14px;margin-bottom:0">'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
+      +'<span style="font-size:20px">💡</span>'
+      +'<div>'
+        +'<div style="font-size:13px;font-weight:700">Sugestões personalizadas</div>'
+        +'<div style="font-size:10px;color:var(--text3)">Clique em "+ Adicionar" pra mandar pra sua aba "Hoje"</div>'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:6px">'
+    + sugestoes.map(function(s, i){
+        var cor = coresPrio[s.prio] || coresPrio.media;
+        var emoji = ico[s.cat] || '📌';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:8px;background:var(--surface2)">'
+          +'<span style="font-size:16px;flex-shrink:0">'+emoji+'</span>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-size:12px;font-weight:500;color:var(--text)">'+s.t+'</div>'
+            +'<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">'
+              +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+cor+'22;color:'+cor+';font-weight:600">'+s.prio+'</span>'
+              +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:var(--border);color:var(--text2)">'+s.cat+'</span>'
+            +'</div>'
+          +'</div>'
+          +'<button onclick="iaAdicionarSugestao('+i+')" id="ia-sug-btn-'+i+'" style="padding:6px 11px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">+ Adicionar</button>'
+        +'</div>';
+      }).join('')
+    +'</div>'
+  +'</div>';
+
+  // Guarda as sugestões em memória pra adicionar depois
+  window._iaSugestoesAtuais = sugestoes;
+
+  if(typeof toast === 'function') toast(sugestoes.length+' sugestões geradas', 'success');
+}
+
+function iaAdicionarSugestao(idx){
+  var s = window._iaSugestoesAtuais && window._iaSugestoesAtuais[idx];
+  if(!s) return;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id){
+    if(typeof toast === 'function') toast('Faça login pra adicionar tarefas', 'error');
+    return;
+  }
+  var lista = (typeof getTarefasRaw === 'function') ? getTarefasRaw('diario') : [];
+  var nova = {
+    id:'tf'+Date.now()+'_'+idx,
+    texto:s.t,
+    prio:s.prio||'media',
+    cat:s.cat||'Outro',
+    feito:false,
+    criadoEm:new Date().toISOString(),
+    pessoa_id:u.id,
+    origem:'ia'
+  };
+  lista.push(nova);
+  if(typeof saveTarefas === 'function') saveTarefas('diario', null, lista);
+  if(typeof tfSupaSalvar === 'function') tfSupaSalvar(nova, 'diario', null);
+  if(typeof auditLog === 'function') auditLog('tarefa_criada_ia', nova.id, (nova.texto||'').slice(0,60));
+  // Visual feedback no botão
+  var btn = document.getElementById('ia-sug-btn-'+idx);
+  if(btn){
+    btn.innerHTML = '✓ Adicionada';
+    btn.style.background = '#1D9E75';
+    btn.disabled = true;
+    btn.style.opacity = '.7';
+  }
+  if(typeof toast === 'function') toast('Tarefa adicionada à aba Hoje', 'success');
+}
+
+function iaAbrirClaudeExterno(){
+  var cargo = (document.getElementById('ia-cargo')||{}).value || '';
+  var area = (document.getElementById('ia-area')||{}).value || '';
+  var objetivo = (document.getElementById('ia-objetivo')||{}).value || '';
+  var prompt = 'Sou da equipe Gâmi Delivery (empresa de delivery em 11 cidades do nordeste). ';
+  if(cargo) prompt += 'Meu cargo é: '+cargo+'. ';
+  if(area) prompt += 'Área principal: '+area+'. ';
+  if(objetivo) prompt += 'Esta semana quero focar em: '+objetivo+'. ';
+  prompt += '\n\nMe sugira 10 tarefas específicas e práticas que eu poderia fazer hoje pra avançar nesses objetivos. Cada tarefa precisa ser acionável (verbo + objeto). Liste no formato:\n\n1. [Tarefa] - prioridade (alta/média/baixa) - categoria';
+  if(typeof openAI === 'function'){
+    openAI(prompt);
+  } else {
+    // Fallback: abre claude.ai externo
+    var url = 'https://claude.ai/new?q='+encodeURIComponent(prompt);
+    window.open(url, '_blank');
+  }
 }
 
 /* ============================================================ */
@@ -17007,10 +17285,6 @@ function tfSetupAbasConformePermissao(){
   // Mostra aba "Delegadas por mim" só pra quem pode delegar
   var btnDeleg = document.getElementById('tft-delegadas');
   if(btnDeleg) btnDeleg.style.display = podeDelegar ? '' : 'none';
-
-  // Mostra "Rotina Marketing" só pro super_admin (Cleyton)
-  var btnRot = document.getElementById('tft-rotina');
-  if(btnRot) btnRot.style.display = ehSuperAdmin ? '' : 'none';
 
   // Popula o select de categorias do "Adicionar rápido"
   var selAddCat = document.getElementById('tf-add-cat');
@@ -17410,6 +17684,14 @@ function tfRenderDiario(){
     }
   } catch(e){}
 
+  // Injeta tarefas DE PROJETOS (aparecem com ícone 🚀)
+  try {
+    if(typeof getTarefasDeProjetos === 'function'){
+      var tarefasProj = getTarefasDeProjetos();
+      lista = lista.concat(tarefasProj);
+    }
+  } catch(e){}
+
   // Mescla tarefas DELEGADAS pra mim (vindas do Supabase cache)
   if(window._tfSupaCache && Array.isArray(window._tfSupaCache)){
     var idsLocais = {}; lista.forEach(function(t){ if(t&&t.id) idsLocais[t.id]=true; });
@@ -17504,6 +17786,21 @@ function tfRenderDiario(){
         +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">'
           +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600">Cultura Gâmi</span>'
         +'</div></div>'
+      +'</div>';
+    }
+    // Tarefas de PROJETOS: estilo com ícone de foguete
+    if(t.projeto_origem){
+      borderCor = t.feito ? '#1D9E75' : '#1AB8F0';
+      bgCard = t.feito ? '#F4F9EE' : '#E6F6FE';
+      var onClickCheckProj = 'toggleTarefaProjeto(\''+t.id+'\')';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #1AB8F033;border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
+        +'<div onclick="'+onClickCheckProj+'" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':borderCor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</div>'
+        +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:center">'
+          +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#1AB8F022;color:#0E7AB8;font-weight:600;display:inline-flex;align-items:center;gap:3px">🚀 '+(t.projeto_nome||'Projeto')+'</span>'
+        +'</div></div>'
+        +'<button onclick="tarefaAba(\'projetos\')" title="Ver projeto" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:11px;color:var(--text3);flex-shrink:0">→</button>'
       +'</div>';
     }
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid '+(vencida?'#E24B4A55':'var(--border)')+';border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
@@ -18308,35 +18605,74 @@ function tfRenderProjetos(){
   var el=document.getElementById('tf-projetos-list'); if(!el) return;
   var projetos=getTarefas('projetos');
   if(!projetos.length){
-    el.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:12px"><div style="font-size:36px;margin-bottom:8px">🚀</div>Nenhum projeto ainda.<br>Crie o primeiro!</div>';
+    el.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);font-size:12px"><div style="font-size:36px;margin-bottom:8px">🚀</div>Nenhum projeto ainda.<br>Clique em "+ Novo projeto" pra começar!<br><br><div style="font-size:11px;color:var(--text2)">Projetos agrupam tarefas relacionadas. As tarefas que você criar dentro de cada projeto aparecem também na sua aba "📋 Hoje" com o ícone 🚀.</div></div>';
     return;
   }
-  var status={ativo:{bg:'#EAF3DE',cor:'#3B6D11',dot:'#1D9E75'},pausado:{bg:'#FAEEDA',cor:'#854F0B',dot:'#EF9F27'},concluido:{bg:'#E3F2FD',cor:'#1565C0',dot:'#1E88E5'}};
+  // Status com cores melhoradas
+  var status={
+    ativo:{bg:'#EAF3DE',cor:'#3B6D11',borda:'#1D9E75',emoji:'🟢',label:'Em andamento'},
+    pausado:{bg:'#FAEEDA',cor:'#854F0B',borda:'#EF9F27',emoji:'⏸️',label:'Pausado'},
+    concluido:{bg:'#E3F2FD',cor:'#1565C0',borda:'#1E88E5',emoji:'✅',label:'Concluído'},
+    planejamento:{bg:'#F3E5F5',cor:'#6A1B9A',borda:'#8B5CF6',emoji:'📋',label:'Planejamento'}
+  };
   el.innerHTML=projetos.map(function(p){
     var sm=status[p.status]||status.ativo;
     var feitas=(p.tarefas||[]).filter(function(t){return t.feito;}).length;
     var total=(p.tarefas||[]).length;
     var pct=total>0?Math.round((feitas/total)*100):0;
     var cor=pct===100?'#1D9E75':pct>50?'#EF9F27':'var(--orange)';
-    return '<div style="border:1px solid var(--border);border-top:3px solid '+(p.cor||'var(--orange)')+';border-radius:10px;padding:14px;background:var(--surface)">'
-      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">'
-      +'<div><div style="font-size:14px;font-weight:700">'+p.nome+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+p.descricao+'</div></div>'
-      +'<span style="font-size:10px;padding:2px 8px;border-radius:6px;background:'+sm.bg+';color:'+sm.cor+';flex-shrink:0">'+sm.dot+' '+(p.status.charAt(0).toUpperCase()+p.status.slice(1))+'</span>'
+    // Calcula se está atrasado
+    var atrasado = p.prazo && p.prazo < new Date().toISOString().split('T')[0] && p.status !== 'concluido';
+    return '<div style="border:1px solid var(--border);border-left:4px solid '+sm.borda+';border-radius:10px;padding:14px;background:var(--surface);transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">'
+      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:16px">🚀</span><div style="font-size:14px;font-weight:700;color:var(--text)">'+(p.nome||'Sem nome')+'</div></div>'
+          +(p.descricao?'<div style="font-size:11px;color:var(--text3);line-height:1.4">'+p.descricao+'</div>':'')
+        +'</div>'
+        +'<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:'+sm.bg+';color:'+sm.cor+';flex-shrink:0;font-weight:600">'+sm.emoji+' '+sm.label+'</span>'
       +'</div>'
-      +(total>0?'<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>'+feitas+'/'+total+' tarefas</span><span style="font-weight:700;color:'+cor+'">'+pct+'%</span></div><div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+cor+';border-radius:3px"></div></div></div>':'')
-      +(p.prazo?'<div style="font-size:11px;color:var(--text3);margin-bottom:8px">📅 Prazo: '+p.prazo.split('-').reverse().join('/')+'</div>':'')
-      +'<div id="proj-tarefas-'+p.id+'" style="margin-bottom:8px">'
-      +(p.tarefas||[]).slice(0,3).map(function(t){return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border)'+'"><div onclick="tfToggleProjTarefa(\''+p.id+'\',\''+t.id+'\')" style="width:14px;height:14px;border-radius:4px;border:1.5px solid '+(t.feito?'#1D9E75':'var(--border)')+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+(t.feito?'<span style="color:white;font-size:9px">✓</span>':'')+'</div><span style="font-size:11px;flex:1;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">' +t.texto+'</span></div>';}).join('')
-      +(total>3?'<div style="font-size:10px;color:var(--text3);margin-top:4px">...e mais '+(total-3)+' tarefas</div>':'')
+      +(total>0?'<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px"><span>'+feitas+'/'+total+' tarefas</span><span style="font-weight:700;color:'+cor+'">'+pct+'%</span></div><div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+cor+';border-radius:3px;transition:width .3s"></div></div></div>':'')
+      +(p.prazo?'<div style="font-size:11px;color:'+(atrasado?'#E24B4A':'var(--text3)')+';font-weight:'+(atrasado?'700':'400')+';margin-bottom:8px">📅 Prazo: '+p.prazo.split('-').reverse().join('/')+(atrasado?' ⚠️ atrasado':'')+'</div>':'')
+      +'<div id="proj-tarefas-'+p.id+'" style="margin-bottom:8px;max-height:160px;overflow-y:auto">'
+      +(p.tarefas||[]).slice(0,5).map(function(t){return '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)"><div onclick="tfToggleProjTarefa(\''+p.id+'\',\''+t.id+'\')" style="width:14px;height:14px;border-radius:4px;border:1.5px solid '+(t.feito?'#1D9E75':'var(--border)')+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">'+(t.feito?'<span style="color:white;font-size:9px">✓</span>':'')+'</div><span style="font-size:11px;flex:1;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">'+t.texto+'</span></div>';}).join('')
+      +(total>5?'<div style="font-size:10px;color:var(--text3);margin-top:4px;text-align:center;font-style:italic">+ '+(total-5)+' tarefas...</div>':'')
+      +(total===0?'<div style="font-size:11px;color:var(--text3);font-style:italic;padding:8px 0">Sem tarefas ainda</div>':'')
       +'</div>'
-      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-      +'<input placeholder="+ Nova tarefa" style="flex:1;min-width:100px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;font-family:inherit" id="ptf-'+p.id+'" onkeydown="if(event.key===\'Enter\')tfAddTarefaProjeto(\''+p.id+'\')">'
-      +'<button onclick="tfAddTarefaProjeto(\''+p.id+'\')" style="padding:5px 10px;border:none;border-radius:6px;background:var(--orange);color:white;font-size:11px;cursor:pointer;font-family:inherit">+</button>'
-      +'<button onclick="tfEditarProjeto(\''+p.id+'\')" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;cursor:pointer;font-family:inherit">✏️</button>'
-      +'<button onclick="tfExcluirProjeto(\''+p.id+'\')" style="padding:5px 10px;border:1px solid #f5b5b5;border-radius:6px;background:#FCEBEB;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+        +'<input placeholder="+ Adicionar tarefa..." style="flex:1;min-width:120px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;font-family:inherit" id="ptf-'+p.id+'" onkeydown="if(event.key===\'Enter\')tfAddTarefaProjeto(\''+p.id+'\')">'
+        +'<button onclick="tfAddTarefaProjeto(\''+p.id+'\')" title="Adicionar tarefa (vai também pra aba Hoje)" style="padding:6px 10px;border:none;border-radius:6px;background:var(--orange);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+</button>'
+        +'<button onclick="tfEditarProjeto(\''+p.id+'\')" title="Editar projeto" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);font-size:11px;cursor:pointer;font-family:inherit">✏️</button>'
+        +'<button onclick="tfExcluirProjeto(\''+p.id+'\')" title="Excluir projeto" style="padding:6px 10px;border:1px solid #f5b5b5;border-radius:6px;background:#FCEBEB;font-size:11px;cursor:pointer;font-family:inherit">🗑</button>'
       +'</div>'
-      +'</div>';
+    +'</div>';
   }).join('');
+}
+
+/* Helper: retorna todas tarefas de projetos como se fossem tarefas diárias */
+function getTarefasDeProjetos(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return [];
+  var projetos = (typeof getTarefas === 'function') ? getTarefas('projetos') : [];
+  var todas = [];
+  projetos.forEach(function(p){
+    (p.tarefas||[]).forEach(function(t){
+      todas.push({
+        id: 'proj_' + p.id + '_' + t.id,
+        idProjeto: p.id,
+        idTarefaProj: t.id,
+        texto: t.texto,
+        feito: !!t.feito,
+        prio: t.prio || 'media',
+        cat: 'Outro',
+        prazo: t.prazo || p.prazo || null,
+        projeto_nome: p.nome,
+        projeto_origem: true,
+        pessoa_id: t.pessoa_id || u.id
+      });
+    });
+  });
+  // Filtra só as do usuário
+  return todas.filter(function(t){ return t.pessoa_id === u.id; });
 }
 
 function tfToggleProjTarefa(projId, tarefaId){
@@ -18344,23 +18680,51 @@ function tfToggleProjTarefa(projId, tarefaId){
   var p=projs.find(function(x){return x.id===projId;});
   if(!p) return;
   var t=(p.tarefas||[]).find(function(x){return x.id===tarefaId;});
-  if(t) t.feito=!t.feito;
+  if(t){
+    t.feito=!t.feito;
+    if(t.feito) t.feitaEm = new Date().toISOString();
+    else t.feitaEm = null;
+  }
   saveTarefas('projetos',null,projs);
+  if(typeof toast === 'function') toast(t.feito?'✓ Tarefa do projeto concluída':'Tarefa do projeto reaberta', t.feito?'success':'info');
   tfRenderProjetos();
+  // Re-renderiza diário se estiver aberto
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
   tfAtualizarMetricas();
+}
+
+/* Toggle de tarefa de projeto vinda da aba Hoje */
+function toggleTarefaProjeto(idCompleto){
+  // idCompleto = 'proj_<projId>_<tarefaId>'
+  var sem = idCompleto.replace(/^proj_/, '');
+  var idx = sem.lastIndexOf('_');
+  var projId = sem.slice(0, idx);
+  var tarefaId = sem.slice(idx+1);
+  tfToggleProjTarefa(projId, tarefaId);
 }
 
 function tfAddTarefaProjeto(projId){
   var inp=document.getElementById('ptf-'+projId);
   if(!inp||!inp.value.trim()) return;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var projs=getTarefas('projetos');
   var p=projs.find(function(x){return x.id===projId;});
   if(!p) return;
   if(!p.tarefas) p.tarefas=[];
-  p.tarefas.push({id:'pt'+Date.now(),texto:inp.value.trim(),feito:false});
+  p.tarefas.push({
+    id:'pt'+Date.now(),
+    texto:inp.value.trim(),
+    feito:false,
+    prio:'media',
+    criadoEm: new Date().toISOString(),
+    pessoa_id: u ? u.id : null
+  });
   inp.value='';
   saveTarefas('projetos',null,projs);
+  if(typeof toast === 'function') toast('Tarefa adicionada ao projeto (também aparece em Hoje)', 'success');
   tfRenderProjetos();
+  // Re-renderiza diário se aberto pra mostrar a nova
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
   tfAtualizarMetricas();
 }
 
