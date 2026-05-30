@@ -1,4 +1,4 @@
-<!-- v19.3 - Mural: avatar redondo + permissao admin/autor + @mencao autocomplete - 29/05/2026 -->
+<!-- v20.0 - Calendario com texto no grid + botao salvar anotacao - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -312,9 +312,20 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 /* CALENDAR */
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:10px}
 .cal-head{text-align:center;font-size:10px;color:var(--text3);padding:4px 0;font-weight:500}
-.cal-day{text-align:center;padding:6px 3px;border-radius:6px;font-size:12px;color:var(--text2);cursor:pointer;border:1px solid transparent}
+.cal-day{text-align:left;padding:5px 5px 4px;border-radius:6px;font-size:12px;color:var(--text2);cursor:pointer;border:1px solid transparent;min-height:62px;display:flex;flex-direction:column;overflow:hidden}
+.cal-day .cal-day-num{font-size:13px;font-weight:600;line-height:1;text-align:left}
+.cal-day .cal-day-items{margin-top:3px;display:flex;flex-direction:column;gap:1px;font-size:9px;line-height:1.2;overflow:hidden}
+.cal-day .cal-day-item{padding:1px 4px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.cal-day .cal-day-item.task{background:#E6F1FB;color:#185FA5}
+.cal-day .cal-day-item.task.done{background:#EAF3DE;color:#3B6D11;opacity:.75}
+.cal-day .cal-day-item.note{background:#FAEEDA;color:#854F0B}
+.cal-day .cal-day-item.bday{background:#F3E5F5;color:#6A1B9A}
+.cal-day .cal-day-item.event{background:#FCEBEB;color:#A32D2D}
+.cal-day .cal-day-more{font-size:8px;color:var(--text3);padding-left:2px;font-weight:600;margin-top:1px}
 .cal-day:hover{background:var(--surface2)}
 .cal-day.today{background:var(--orange);color:#fff;font-weight:600;border-color:var(--orange)}
+.cal-day.today .cal-day-num{color:#fff}
+.cal-day.today .cal-day-item{background:rgba(255,255,255,.85)}
 .cal-day.has-ev{border-color:#1AB8F044;background:var(--orange-l);color:var(--orange-d)}
 .has-ev-nacional{border-color:#1AB8F066;background:#E6F6FE;color:#0E7AB8;font-weight:600}
 .has-ev-regional{border-color:#7F77DD66;background:#EEEDFE;color:#534AB7;font-weight:600}
@@ -4263,6 +4274,33 @@ window.addEventListener('storage', function(ev){
 function salvarNotaCalendario(dataKey, texto){
   try { localStorage.setItem(_calNotasKey(dataKey), texto||''); } catch(e){}
 }
+
+/* Salva com feedback visual + toast + re-render do calendario */
+function salvarNotaCalendarioComFeedback(dataKey){
+  var ta = document.getElementById('cal-notas-'+dataKey);
+  var st = document.getElementById('cal-nota-status-'+dataKey);
+  if(!ta) return;
+  salvarNotaCalendario(dataKey, ta.value);
+  if(st){
+    st.textContent = '✓ Salvo!';
+    st.style.color = '#1D9E75';
+    setTimeout(function(){
+      var st2 = document.getElementById('cal-nota-status-'+dataKey);
+      if(st2){ st2.textContent = 'privado'; st2.style.color = 'var(--text3)'; }
+    }, 2500);
+  }
+  if(typeof toast === 'function') toast('Anotação salva', 'success');
+  // Re-renderiza o calendario pra atualizar o indicador no grid
+  if(typeof renderCalendar === 'function') renderCalendar();
+}
+
+/* Limpa a anotacao do dia (re-seleciona o dia pra atualizar UI) */
+function limparNotaCalendario(dataKey, d, m, y){
+  if(!confirm('Limpar a anotação deste dia?')) return;
+  try { localStorage.removeItem(_calNotasKey(dataKey)); } catch(e){}
+  if(typeof toast === 'function') toast('Anotação removida', 'info');
+  if(typeof selectDay === 'function') selectDay(d, m, y);
+}
 function getNotaCalendario(dataKey){
   try { 
     var nova = localStorage.getItem(_calNotasKey(dataKey));
@@ -4423,31 +4461,80 @@ function renderCalendar(){
     if(isSelected) cls += ' selected';
 
     var dots = '';
-    if(hasPlanned) dots += '<div style="position:absolute;bottom:2px;left:4px;width:4px;height:4px;border-radius:50%;background:'+(donePlanned===calData[key].length?'var(--green)':'var(--orange)')+'"></div>';
-    if(hasBday) dots += '<div style="position:absolute;bottom:2px;right:4px;font-size:7px">🎂</div>';
-    
-    // Indicador de tarefas (do sistema de Tarefas) com prazo neste dia
-    var temTarefas = false;
+    // Indicador de tarefas atrasadas/concluidas - simplificado pois agora temos texto
     try {
       if(typeof getTarefas === 'function'){
         var diariasNoDia = getTarefas('diario').filter(function(t){ return t.prazo === key; });
         if(diariasNoDia.length > 0){
           var pendentes = diariasNoDia.filter(function(t){ return !t.feito; }).length;
-          temTarefas = true;
-          var corDot = pendentes === 0 ? 'var(--green)' : 'var(--gami-blue)';
-          dots += '<div style="position:absolute;top:2px;right:4px;font-size:7px;background:'+corDot+';color:white;border-radius:7px;min-width:13px;height:13px;display:flex;align-items:center;justify-content:center;font-weight:700;padding:0 2px;line-height:1">'+diariasNoDia.length+'</div>';
+          if(pendentes === 0){
+            // Todas concluidas - mostra check verde discreto
+            dots += '<div style="position:absolute;top:3px;right:4px;font-size:9px">✓</div>';
+          }
         }
-      }
-      // Anotações pessoais
-      var nota = getNotaCalendario(key);
-      if(nota && nota.length > 0){
-        dots += '<div style="position:absolute;top:2px;left:4px;font-size:7px">📝</div>';
       }
     } catch(e){}
 
     var bdayTitle = hasBday ? ' title="🎂 '+bdayMap[d].join(', ')+'"' : '';
 
-    html += '<div class="'+cls+'" style="position:relative" onclick="selectDay('+d+','+calMonth+','+calYear+')"'+bdayTitle+'>'+d+dots+'</div>';
+    // ===== TEXTO RESUMIDO DAS TAREFAS, NOTAS, EVENTOS E ANIVERSARIOS =====
+    var itensTexto = []; // array de {tipo, texto, done?}
+
+    // Tarefas
+    try {
+      if(typeof getTarefas === 'function'){
+        var diariasNoDia = getTarefas('diario').filter(function(t){ return t.prazo === key; });
+        diariasNoDia.slice(0,2).forEach(function(t){
+          itensTexto.push({tipo:'task', texto:'✓ '+(t.texto||''), done:!!t.feito});
+        });
+        if(diariasNoDia.length > 2){
+          itensTexto.push({tipo:'more', texto:'+'+(diariasNoDia.length-2)+' tarefa'+(diariasNoDia.length-2>1?'s':'')});
+        }
+      }
+    } catch(e){}
+
+    // Anotação (mostra primeira linha truncada)
+    try {
+      var notaTxt = getNotaCalendario(key);
+      if(notaTxt && notaTxt.trim()){
+        var resumoNota = notaTxt.split('\n')[0].slice(0, 22);
+        itensTexto.push({tipo:'note', texto:'📝 '+resumoNota});
+      }
+    } catch(e){}
+
+    // Aniversário (primeiros nomes)
+    if(hasBday){
+      itensTexto.push({tipo:'bday', texto:'🎂 '+bdayMap[d].slice(0,1).join(', ')+(bdayMap[d].length>1?' +'+(bdayMap[d].length-1):'')});
+    }
+
+    // Evento sazonal
+    if(eventoDay){
+      itensTexto.push({tipo:'event', texto:(eventoDay.emoji||'📅')+' '+eventoDay.nome});
+    }
+
+    // Renderiza itens (limita a 3 visíveis no mobile, 4 no desktop)
+    var maxItens = 3;
+    var itensHtml = '';
+    if(itensTexto.length){
+      itensHtml += '<div class="cal-day-items">';
+      itensTexto.slice(0, maxItens).forEach(function(it){
+        if(it.tipo === 'more'){
+          itensHtml += '<div class="cal-day-more">'+it.texto+'</div>';
+        } else {
+          itensHtml += '<div class="cal-day-item '+it.tipo+(it.done?' done':'')+'" title="'+(it.texto||'').replace(/"/g,'&quot;')+'">'+it.texto+'</div>';
+        }
+      });
+      if(itensTexto.length > maxItens){
+        itensHtml += '<div class="cal-day-more">+'+(itensTexto.length-maxItens)+' mais</div>';
+      }
+      itensHtml += '</div>';
+    }
+
+    html += '<div class="'+cls+'" style="position:relative" onclick="selectDay('+d+','+calMonth+','+calYear+')"'+bdayTitle+'>'
+      + '<div class="cal-day-num">'+d+'</div>'
+      + itensHtml
+      + dots
+    + '</div>';
   }
   html += '</div>';
   grid.innerHTML = html;
@@ -4642,11 +4729,17 @@ function selectDay(d, m, y){
   html += '<div style="margin-bottom:12px;padding-top:10px;border-top:1px solid var(--border)">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
       +'<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">📝 Minhas anotações</div>'
-      +'<span style="font-size:9px;color:var(--text3);font-style:italic">salva automático · privado</span>'
+      +'<span id="cal-nota-status-'+key+'" style="font-size:9px;color:var(--text3);font-style:italic">privado</span>'
     +'</div>'
-    +'<textarea id="cal-notas-'+key+'" onchange="salvarNotaCalendario(\''+key+'\',this.value)" oninput="this.dataset.dirty=1" '
-      +'style="width:100%;min-height:70px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:11px;font-family:inherit;color:var(--text);resize:vertical;line-height:1.4" '
+    +'<textarea id="cal-notas-'+key+'" '
+      +'oninput="document.getElementById(\'cal-nota-status-'+key+'\').textContent=\'● Mudanças não salvas\';document.getElementById(\'cal-nota-status-'+key+'\').style.color=\'#EF9F27\';" '
+      +'onkeydown="if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarNotaCalendarioComFeedback(\''+key+'\');}" '
+      +'style="width:100%;min-height:80px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);font-size:11px;font-family:inherit;color:var(--text);resize:vertical;line-height:1.4;box-sizing:border-box" '
       +'placeholder="Lembretes pessoais, observações ou anotações para este dia...">'+ (anotacoes||'') +'</textarea>'
+    +'<div style="display:flex;gap:6px;margin-top:6px">'
+      +'<button onclick="salvarNotaCalendarioComFeedback(\''+key+'\')" style="flex:1;padding:7px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar anotação</button>'
+      +(anotacoes ? '<button onclick="limparNotaCalendario(\''+key+'\','+d+','+m+','+y+')" title="Limpar anotação" style="padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:white;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑️</button>' : '')
+    +'</div>'
     +'</div>';
 
   // Opções de conteúdo — SÓ CLEYTON (Marketing)
