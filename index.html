@@ -1,4 +1,4 @@
-<!-- v19.2 - Pulse voto definitivo (nao pode trocar nem desfazer) - 29/05/2026 -->
+<!-- v19.3 - Mural: avatar redondo + permissao admin/autor + @mencao autocomplete - 29/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -19637,20 +19637,55 @@ function adicionarRecado(){
   if(input){ input.focus(); }
 }
 
+/* Helper: renderiza avatar redondo (foto ou inicial) */
+function _muralAvatar(autorNome, autorFoto, tamanho){
+  tamanho = tamanho || 36;
+  var style = 'width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.1);flex-shrink:0';
+  if(autorFoto){
+    return '<img src="'+autorFoto+'" style="'+style+';object-fit:cover" alt="'+(autorNome||'')+'">';
+  }
+  var inicial = ((autorNome||'?').trim().charAt(0) || '?').toUpperCase();
+  return '<div style="'+style+';background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));display:flex;align-items:center;justify-content:center;font-size:'+Math.round(tamanho*0.42)+'px;font-weight:700;color:white">'+inicial+'</div>';
+}
+
+/* Verifica se o usuario logado pode remover o recado (autor ou super_admin) */
+function _muralPodeRemover(recado){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return false;
+  // Super admin pode remover qualquer
+  if(typeof detectarNivelPermissao === 'function' && detectarNivelPermissao(u) === 'super_admin') return true;
+  // Autor pode remover o proprio
+  if(recado.autorId && u.id === recado.autorId) return true;
+  // Fallback por nome (compatibilidade com recados antigos)
+  if(!recado.autorId && recado.autor && u.nome === recado.autor) return true;
+  return false;
+}
+
 function salvarRecadoInline(){
   var input = document.getElementById('mural-input');
   if(!input) return;
   var texto = (input.value||'').trim();
   if(!texto){ toast('Escreva algo antes de enviar', 'warn'); return; }
   if(texto.length > 140) texto = texto.slice(0, 140);
-  var autor = (window.usuarioLogado && window.usuarioLogado.nome) || 'Anônimo';
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var autor = u ? u.nome : 'Anônimo';
+  var autorId = u ? u.id : null;
+  var autorFoto = u ? (u.foto_url || u.foto || '') : '';
   var lista = getRecados();
-  lista.unshift({id:'r'+Date.now(), texto:texto, data:new Date().toISOString(), autor:autor});
-  if(lista.length > 8) lista = lista.slice(0,8);
+  lista.unshift({
+    id:'r'+Date.now(),
+    texto:texto,
+    data:new Date().toISOString(),
+    autor:autor,
+    autorId:autorId,
+    autorFoto:autorFoto
+  });
+  if(lista.length > 12) lista = lista.slice(0,12);
   saveRecados(lista);
   input.value = '';
   var counter = document.getElementById('mural-counter');
   if(counter) counter.textContent = '0 / 140';
+  _muralFecharMencao();
   renderRecados();
   toast('Recado publicado no mural!', 'success');
 }
@@ -19662,22 +19697,107 @@ function removerRecado(id){
   toast('Recado removido', 'info');
 }
 
+/* ========== @MENCAO AUTOCOMPLETE ========== */
+var _muralMencaoEstado = {ativa:false, inicioAt:-1, query:''};
+
+function _muralOnInput(ev){
+  var input = ev.target;
+  var counter = document.getElementById('mural-counter');
+  if(counter) counter.textContent = input.value.length + ' / 140';
+
+  // Detecta se cursor esta logo apos um "@" sem espaco depois
+  var pos = input.selectionStart;
+  var antes = input.value.substring(0, pos);
+  var matchAt = antes.match(/@(\w*)$/);
+  if(matchAt){
+    _muralMencaoEstado.ativa = true;
+    _muralMencaoEstado.inicioAt = pos - matchAt[0].length;
+    _muralMencaoEstado.query = matchAt[1] || '';
+    _muralRenderMencaoDropdown();
+  } else {
+    _muralFecharMencao();
+  }
+}
+
+function _muralRenderMencaoDropdown(){
+  var dd = document.getElementById('mural-mencao-dropdown');
+  if(!dd) return;
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var q = _muralMencaoEstado.query.toLowerCase();
+  var filtradas = pessoas.filter(function(p){
+    if(!p || !p.nome) return false;
+    if(!q) return true;
+    return p.nome.toLowerCase().indexOf(q) >= 0;
+  }).slice(0, 8);
+
+  if(!filtradas.length){
+    dd.style.display = 'none';
+    return;
+  }
+
+  dd.innerHTML = filtradas.map(function(p, i){
+    var primeiroNome = (p.nome||'').split(' ')[0];
+    var foto = p.foto_url || p.foto || '';
+    return '<div onclick="_muralSelecionarMencao(\''+primeiroNome.replace(/'/g,"\\'")+'\')" style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'white\'">'
+      + _muralAvatar(p.nome, foto, 24)
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:12px;font-weight:600;color:var(--text)">'+p.nome+'</div>'
+        + '<div style="font-size:10px;color:var(--text3)">'+(p.cargo||p.categoria||'')+'</div>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+  dd.style.display = 'block';
+}
+
+function _muralSelecionarMencao(primeiroNome){
+  var input = document.getElementById('mural-input');
+  if(!input || !_muralMencaoEstado.ativa) return;
+  var inicio = _muralMencaoEstado.inicioAt;
+  var pos = input.selectionStart;
+  var antes = input.value.substring(0, inicio);
+  var depois = input.value.substring(pos);
+  input.value = antes + '@' + primeiroNome + ' ' + depois;
+  var novaPos = (antes + '@' + primeiroNome + ' ').length;
+  input.setSelectionRange(novaPos, novaPos);
+  input.focus();
+  _muralFecharMencao();
+  // Atualiza counter
+  var counter = document.getElementById('mural-counter');
+  if(counter) counter.textContent = input.value.length + ' / 140';
+}
+
+function _muralFecharMencao(){
+  _muralMencaoEstado.ativa = false;
+  _muralMencaoEstado.inicioAt = -1;
+  _muralMencaoEstado.query = '';
+  var dd = document.getElementById('mural-mencao-dropdown');
+  if(dd) dd.style.display = 'none';
+}
+
 function renderRecados(){
   var host = document.getElementById('dash-recados');
   if(!host) return;
   var recados = getRecados();
-  var meuNome = (window.usuarioLogado && window.usuarioLogado.nome) || 'Anônimo';
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var meuNome = u ? u.nome : 'Anônimo';
+  var minhaFoto = u ? (u.foto_url || u.foto || '') : '';
 
-  // Campo inline pra criar recado (sempre presente)
-  var html = '<div style="background:linear-gradient(135deg,#FFFEF7,#FFFCEC);border:1px solid #FFD93D55;border-radius:10px;padding:12px;margin-bottom:12px">'
-    + '<div style="font-size:11px;font-weight:600;color:#854F0B;margin-bottom:6px">📝 Deixar um recado para o time</div>'
-    + '<textarea id="mural-input" maxlength="140" placeholder="Parabéns, agradecimento, ideia rápida... use @nome para mencionar alguém" '
-      + 'oninput="document.getElementById(\'mural-counter\').textContent=this.value.length+\' / 140\'" '
-      + 'onkeydown="if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarRecadoInline();}" '
-      + 'style="width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;background:white"></textarea>'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">'
-      + '<span id="mural-counter" style="font-size:10px;color:var(--text3)">0 / 140</span>'
-      + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar (Ctrl+Enter)</button>'
+  // Campo inline pra criar recado
+  var html = '<div style="background:linear-gradient(135deg,#FFFEF7,#FFFCEC);border:1px solid #FFD93D55;border-radius:10px;padding:12px;margin-bottom:12px;position:relative">'
+    + '<div style="display:flex;align-items:flex-start;gap:10px">'
+      + _muralAvatar(meuNome, minhaFoto, 36)
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:11px;font-weight:600;color:#854F0B;margin-bottom:6px">📝 '+meuNome+' · Deixar um recado para o time</div>'
+        + '<textarea id="mural-input" maxlength="140" placeholder="Parabéns, agradecimento, ideia... use @ pra mencionar alguém" '
+          + 'oninput="_muralOnInput(event)" '
+          + 'onkeydown="if(event.key===\'Escape\'){_muralFecharMencao();}else if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarRecadoInline();}" '
+          + 'style="width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;background:white;box-sizing:border-box"></textarea>'
+        + '<div id="mural-mencao-dropdown" style="display:none;position:absolute;left:58px;right:14px;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(11,37,66,.15);z-index:100;max-height:280px;overflow-y:auto;margin-top:4px"></div>'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">'
+          + '<span id="mural-counter" style="font-size:10px;color:var(--text3)">0 / 140</span>'
+          + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar (Ctrl+Enter)</button>'
+        + '</div>'
+      + '</div>'
     + '</div>'
   + '</div>';
 
@@ -19698,15 +19818,20 @@ function renderRecados(){
       else if(min < 1440) quando = 'há '+Math.floor(min/60)+'h';
       else quando = dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
     }catch(e){}
-    var ehMeu = r.autor === meuNome;
-    var textoFmt = (r.texto||'').replace(/@(\w+)/g, '<strong style="color:var(--gami-blue)">@$1</strong>');
+    var podeRemover = _muralPodeRemover(r);
+    var textoFmt = (r.texto||'').replace(/@(\w+)/g, '<strong style="color:var(--gami-blue);background:rgba(26,184,240,.08);padding:1px 4px;border-radius:4px">@$1</strong>');
     html += '<div style="background:#FFFEF7;border-left:3px solid #FFD93D;border-radius:8px;padding:10px 12px;margin-bottom:8px">'
-      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px">'
-        + '<div style="font-size:10px;color:#854F0B;font-weight:600">'+(r.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
-        + (ehMeu ? '<button onclick="removerRecado(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1" title="Remover">×</button>' : '')
+      + '<div style="display:flex;align-items:flex-start;gap:10px">'
+        + _muralAvatar(r.autor, r.autorFoto, 32)
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px">'
+            + '<div style="font-size:11px;color:#854F0B;font-weight:600">'+(r.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
+            + (podeRemover ? '<button onclick="removerRecado(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1" title="Remover recado">×</button>' : '')
+          + '</div>'
+          + '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>'
+          + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+renderReactionsHTML('recado-'+r.id)+'</div>'
+        + '</div>'
       + '</div>'
-      + '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>'
-      + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+renderReactionsHTML('recado-'+r.id)+'</div>'
     + '</div>';
   });
 
