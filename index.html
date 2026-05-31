@@ -1,4 +1,4 @@
-<!-- v23.23 - Diagnostico individual expandido: 7 secoes + KPIs + Aposta - 30/05/2026 -->
+<!-- v23.25 - Relatorios Mensais com secao dedicada Top 10 Motoboys + nomes nos reconhecimentos - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3252,6 +3252,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div><div class="page-title">Cidades</div><div class="page-sub">Gestão completa por cidade</div></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button onclick="diagnosticoSemanalCidades()" class="btn btn-ia" style="font-size:11px" title="IA analisa as 11 cidades e mostra panorama semanal com alertas e oportunidades">🤖 Diagnóstico IA da semana</button>
+        <button onclick="relatorioMensalCidades()" class="btn btn-ia" style="font-size:11px;background:#1AB8F0" title="IA gera relatório mensal completo das 11 cidades (1x por mês a partir do dia 01)">📅 Relatório Mensal IA</button>
         <button onclick="abrirHistoricoDiagnosticos()" class="btn btn-ghost" style="font-size:11px" title="Vê diagnósticos IA salvos das semanas anteriores">📚 Histórico IA</button>
         <button onclick="sincronizarStatusInstagram()" class="btn btn-ghost" style="font-size:11px" title="Consulta o Meta Business e marca quais Instagrams estão realmente conectados">📸 Sincronizar IG ao vivo</button>
         <button onclick="resetCidadesParaPadrao()" class="btn btn-ghost" style="font-size:11px" title="Atualiza gestores, chaves API e Instagram para os valores oficiais">🔄 Atualizar dados oficiais</button>
@@ -10414,6 +10415,722 @@ function copiarDiagnosticoCidades(){
 }
 
 /* ============================================================ */
+/* RELATÓRIO MENSAL IA — geral + individual (1x por mês, dia 01)*/
+/* ============================================================ */
+
+/* Helper: retorna range do MÊS ANTERIOR fechado */
+function _relRangeMesAnterior(){
+  var hoje = new Date();
+  var inicioAnterior = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+  var fimAnterior = new Date(hoje.getFullYear(), hoje.getMonth(), 0); // último dia do mês passado
+  var meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  return {
+    inicio: inicioAnterior,
+    fim: fimAnterior,
+    label: meses[inicioAnterior.getMonth()] + ' ' + inicioAnterior.getFullYear(),
+    chave: inicioAnterior.getFullYear()+'-'+String(inicioAnterior.getMonth()+1).padStart(2,'0')
+  };
+}
+
+function _relMesAnteriorKey(){
+  return 'gami_rel_mensal_'+_relRangeMesAnterior().chave;
+}
+
+function _relCidadeMesKey(cidadeId){
+  return 'gami_rel_mensal_cidade_'+cidadeId+'_'+_relRangeMesAnterior().chave;
+}
+
+/* Helper: coleta métricas Machine do MÊS ANTERIOR (precisa de cache 45d ou mais) */
+function _coletarMetricasMachineMensal(cidadeId){
+  if(typeof _vgCache === 'undefined' || !_vgCache[cidadeId] || !_vgCache[cidadeId].dados) return null;
+  var d = _vgCache[cidadeId].dados;
+  
+  var range = _relRangeMesAnterior();
+  var inicioMes = range.inicio.toISOString().split('T')[0];
+  var fimMes = range.fim.toISOString().split('T')[0];
+  
+  // Mês retrasado pra comparativo
+  var retrasado = new Date(range.inicio.getFullYear(), range.inicio.getMonth()-1, 1);
+  var fimRetrasado = new Date(range.inicio.getFullYear(), range.inicio.getMonth(), 0);
+  var inicioRet = retrasado.toISOString().split('T')[0];
+  var fimRet = fimRetrasado.toISOString().split('T')[0];
+  
+  var todas = d.corridas45d || [];
+  var corrMes = todas.filter(function(x){
+    var dt = (x.data_hora_solicitacao||'').slice(0,10);
+    return dt >= inicioMes && dt <= fimMes;
+  });
+  var corrRetrasado = todas.filter(function(x){
+    var dt = (x.data_hora_solicitacao||'').slice(0,10);
+    return dt >= inicioRet && dt <= fimRet;
+  });
+  
+  if(corrMes.length === 0 && corrRetrasado.length === 0) return null; // sem dados do período
+  
+  var fin = corrMes.filter(function(x){return x.status_solicitacao==='F';});
+  var can = corrMes.filter(function(x){return x.status_solicitacao==='C';});
+  var taxaConcl = (fin.length+can.length)>0 ? Math.round(fin.length/(fin.length+can.length)*100) : null;
+  
+  var somaVal=0; fin.forEach(function(x){somaVal+=parseFloat(x.valor_corrida||0);});
+  var ticket = fin.length>0 ? (somaVal/fin.length) : 0;
+  var receita = somaVal;
+  
+  var finRet = corrRetrasado.filter(function(x){return x.status_solicitacao==='F';});
+  var receitaRet=0; finRet.forEach(function(x){receitaRet+=parseFloat(x.valor_corrida||0);});
+  var crescReceitaPct = receitaRet > 0 ? Math.round(((receita - receitaRet)/receitaRet)*100) : null;
+  var crescCorridasPct = corrRetrasado.length > 0 ? Math.round(((corrMes.length - corrRetrasado.length)/corrRetrasado.length)*100) : null;
+  
+  // Motoboys e empresas únicos do mês
+  var motoboysAtivos = {};
+  corrMes.forEach(function(x){
+    var id = x.condutor_id || x.taxista_id;
+    if(id) motoboysAtivos[id] = (motoboysAtivos[id]||0) + 1;
+  });
+  
+  // Cruza com lista de condutores pra pegar NOMES
+  var nomesCondutores = {};
+  (d.condutores||[]).forEach(function(cond){
+    if(cond && cond.id) nomesCondutores[String(cond.id)] = cond.nome || ('Motoboy '+cond.id);
+  });
+  
+  var empCount = {};
+  corrMes.forEach(function(x){
+    var nome = (x.nome_passageiro||'').trim();
+    if(!nome) return;
+    if(!empCount[nome]) empCount[nome] = { nome: nome, corridas: 0, valor: 0 };
+    empCount[nome].corridas++;
+    empCount[nome].valor += parseFloat(x.valor_corrida||0);
+  });
+  var empArr = Object.values(empCount).sort(function(a,b){return b.corridas - a.corridas;});
+  var top5Empresas = empArr.slice(0, 5);
+  var top5Corridas = top5Empresas.reduce(function(s,e){return s+e.corridas;}, 0);
+  var pctTop5 = corrMes.length > 0 ? Math.round((top5Corridas/corrMes.length)*100) : 0;
+  
+  // Top 10 motoboys do mês COM NOMES
+  var motoboysArr = Object.entries(motoboysAtivos).sort(function(a,b){return b[1]-a[1];});
+  var top10MotoboysComNome = motoboysArr.slice(0, 10).map(function(item){
+    var id = item[0];
+    var corridas = item[1];
+    return {
+      id: id,
+      nome: nomesCondutores[String(id)] || ('Motoboy ID '+id),
+      corridas: corridas
+    };
+  });
+  
+  // Distribuição de motoboys por faixa
+  var distribuicao = { ate5:0, de5a20:0, de20a50:0, mais50:0 };
+  motoboysArr.forEach(function(item){
+    var n = item[1];
+    if(n <= 5) distribuicao.ate5++;
+    else if(n <= 20) distribuicao.de5a20++;
+    else if(n <= 50) distribuicao.de20a50++;
+    else distribuicao.mais50++;
+  });
+  
+  // Picos por dia da semana
+  var corridasPorDiaSemana = [0,0,0,0,0,0,0]; // dom-sab
+  corrMes.forEach(function(x){
+    var dt = new Date((x.data_hora_solicitacao||'').slice(0,10)+'T00:00:00');
+    if(!isNaN(dt)) corridasPorDiaSemana[dt.getDay()]++;
+  });
+  
+  var motoboysCadastrados = (d.condutores||[]).filter(function(x){return x.status==='A';}).length;
+  var empresasCadastradas = (d.empresas||[]).filter(function(x){return x.status_empresa==='A';}).length;
+  
+  return {
+    mesLabel: range.label,
+    mesInicio: inicioMes,
+    mesFim: fimMes,
+    corridasMes: corrMes.length,
+    corridasMesAnt: corrRetrasado.length,
+    crescCorridasPct: crescCorridasPct,
+    finalizadas: fin.length,
+    canceladas: can.length,
+    taxaConclusao: taxaConcl,
+    ticketMedio: ticket,
+    receita: receita,
+    receitaAnt: receitaRet,
+    crescReceitaPct: crescReceitaPct,
+    motoboysAtivosCount: Object.keys(motoboysAtivos).length,
+    motoboysCadastrados: motoboysCadastrados,
+    top10MotoboysComNome: top10MotoboysComNome,
+    distribuicaoMotoboys: distribuicao,
+    empresasComPedido: Object.keys(empCount).length,
+    empresasCadastradas: empresasCadastradas,
+    top5Empresas: top5Empresas,
+    pctConcentracaoTop5: pctTop5,
+    corridasPorDiaSemana: corridasPorDiaSemana
+  };
+}
+
+/* Relatório Mensal GERAL — todas as cidades (super_admin/diretoria/gerência) */
+async function relatorioMensalCidades(forceNew){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  if(!cidades.length){ alert('Carregue as cidades primeiro'); return; }
+  
+  var cidadesPermitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : cidades;
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  
+  if(nivel === 'colaborador'){
+    if(typeof toast==='function') toast('Você não tem permissão pra gerar relatórios.', 'warn');
+    return;
+  }
+  if(!cidadesPermitidas.length){ if(typeof toast==='function') toast('Nenhuma cidade vinculada.', 'warn'); return; }
+  
+  // GESTOR → delega pra individual da cidade dele
+  if(nivel === 'gestor' || cidadesPermitidas.length === 1){
+    var cidadeUnica = cidadesPermitidas[0];
+    if(typeof toast==='function') toast('Gerando relatório mensal de '+cidadeUnica.nome+'...', 'info');
+    return relatorioMensalCidade(cidadeUnica.id, forceNew);
+  }
+  
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  
+  // Verifica se hoje é a partir do dia 01 (sempre é, mas validamos por segurança)
+  var hoje = new Date();
+  if(hoje.getDate() < 1){
+    if(typeof toast==='function') toast('Relatório mensal só a partir do dia 01.', 'warn');
+    return;
+  }
+  
+  // Cache do mês passado
+  var cacheKey = _relMesAnteriorKey();
+  var cached = null;
+  if(!forceNew){
+    try { 
+      var raw = localStorage.getItem(cacheKey);
+      if(raw) cached = JSON.parse(raw);
+    } catch(e){}
+  }
+  
+  if(cached && cached.texto){
+    _renderRelatorioMensal(cached, true);
+    if(typeof toast==='function') toast('Relatório mensal já gerado em '+new Date(cached.gerado_em).toLocaleString('pt-BR'), 'info');
+    return;
+  }
+  
+  // Coleta métricas mensais (requer cache 45d ou mais — vamos forçar prefetch de 60d se faltar)
+  var range = _relRangeMesAnterior();
+  
+  // Verifica quais cidades têm dados do mês passado
+  var comDados = [];
+  var semDados = [];
+  cidadesPermitidas.forEach(function(c){
+    var m = _coletarMetricasMachineMensal(c.id);
+    if(m && m.corridasMes > 0){
+      comDados.push({ cidade:c, metricas:m });
+    } else {
+      semDados.push(c);
+    }
+  });
+  
+  // Se faltar dados, pre-fetch com 60 dias
+  if(semDados.length){
+    painel.style.display = 'block';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:12px';
+    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📡</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Carregando dados Machine de '+semDados.length+' cidade(s) (60 dias)...</div><div id="cid-prefetch-status" style="font-size:11px;color:var(--text3);margin-top:3px">Iniciando...</div><div style="margin-top:8px;height:6px;background:#E0E0E0;border-radius:3px;overflow:hidden"><div id="cid-prefetch-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#1AB8F0,#5DC5F0);border-radius:3px;transition:width .3s"></div></div></div></div>';
+    
+    await _prefetchMachineParaDiagnostico(semDados, function(carregadas, total, nome){
+      var pct = Math.round((carregadas/total)*100);
+      var statusEl = document.getElementById('cid-prefetch-status');
+      var fillEl = document.getElementById('cid-prefetch-fill');
+      if(statusEl) statusEl.innerHTML = carregadas+'/'+total+' carregadas · '+nome;
+      if(fillEl) fillEl.style.width = pct+'%';
+    }, 60);
+    
+    // Recoleta
+    comDados = [];
+    var aindaSem = [];
+    cidadesPermitidas.forEach(function(c){
+      var m = _coletarMetricasMachineMensal(c.id);
+      if(m && m.corridasMes > 0){
+        comDados.push({ cidade:c, metricas:m });
+      } else {
+        aindaSem.push(c);
+      }
+    });
+    semDados = aindaSem;
+  }
+  
+  if(!comDados.length){
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-left:4px solid #E24B4A;border-radius:12px';
+    painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:22px">⚠️</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:#A32D2D">Sem dados do mês '+range.label+'</div><div style="font-size:11px;color:var(--text2);margin-top:4px">As corridas do mês passado podem não estar no cache. Tente abrir cada cidade pra forçar carregar mais dias, ou veja console (F12) pra detalhes.</div></div><button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button></div>';
+    return;
+  }
+  
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:12px;animation:mv-fadeup .4s ease both';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📅</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando relatório mensal de '+range.label+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Analisando '+comDados.length+' cidade(s) · 25-40 segundos</div></div></div>';
+  
+  // Monta dados consolidados pra IA
+  var totalCorridas = comDados.reduce(function(s,x){return s+x.metricas.corridasMes;}, 0);
+  var totalReceita = comDados.reduce(function(s,x){return s+(x.metricas.receita||0);}, 0);
+  var totalReceitaAnt = comDados.reduce(function(s,x){return s+(x.metricas.receitaAnt||0);}, 0);
+  var crescGeralPct = totalReceitaAnt > 0 ? Math.round(((totalReceita - totalReceitaAnt)/totalReceitaAnt)*100) : null;
+  
+  var dadosLinhas = comDados.map(function(item){
+    var c = item.cidade;
+    var m = item.metricas;
+    var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
+    var crescTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : 'sem comparativo';
+    var top3Txt = (m.top5Empresas||[]).slice(0,3).map(function(e){return e.nome+'('+e.corridas+')';}).join(', ') || 'sem dados';
+    var top3MotoTxt = (m.top10MotoboysComNome||[]).slice(0,3).map(function(mb){return mb.nome+'('+mb.corridas+')';}).join(', ') || 'sem dados';
+    var distMoto = m.distribuicaoMotoboys || {};
+    return '- '+c.nome+'/'+c.uf+': '
+      + m.corridasMes+' corridas ('+crescTxt+' vs mês retrasado) · '
+      + 'receita R$ '+(m.receita||0).toFixed(2)+' · '
+      + (m.taxaConclusao !== null ? m.taxaConclusao+'%' : '?')+' conclusão · '
+      + 'ticket '+ticketFmt+' · '
+      + m.motoboysAtivosCount+'/'+m.motoboysCadastrados+' motoboys ativos · '
+      + 'top motoboys: '+top3MotoTxt+' · '
+      + 'distrib: '+(distMoto.ate5||0)+' até 5/'+(distMoto.de5a20||0)+' 5-20/'+(distMoto.de20a50||0)+' 20-50/'+(distMoto.mais50||0)+' 50+ · '
+      + m.empresasComPedido+'/'+m.empresasCadastradas+' empresas pediram · '
+      + 'top3 empresas: '+top3Txt+' (top5 = '+m.pctConcentracaoTop5+'% conc.) · '
+      + 'gestor '+(c.gestor||'?');
+  }).join('\n');
+  
+  // Top 10 motoboys de TODA a rede (consolidado)
+  var todosMotoboys = [];
+  comDados.forEach(function(item){
+    (item.metricas.top10MotoboysComNome||[]).forEach(function(mb){
+      todosMotoboys.push({ nome: mb.nome, corridas: mb.corridas, cidade: item.cidade.nome });
+    });
+  });
+  todosMotoboys.sort(function(a,b){return b.corridas - a.corridas;});
+  var top10RedeMoto = todosMotoboys.slice(0, 10);
+  var top10RedeTxt = top10RedeMoto.map(function(mb,i){
+    return '  '+(i+1)+'. '+mb.nome+' ('+mb.cidade+') — '+mb.corridas+' corridas';
+  }).join('\n') || '  (sem dados)';
+  
+  var prompt = 'Você é consultor sênior de operação da Gâmi Delivery. '
+    +'Gere um RELATÓRIO EXECUTIVO MENSAL DETALHADO referente a '+range.label+' pra apresentar na reunião da diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte) e gerência (Leomara, Thiago). '
+    +'É um relatório de FECHAMENTO DE MÊS, mais profundo que o semanal. '
+    +'NÃO mencione marketing, campanhas, posts ou redes sociais — esses dados não estão disponíveis ainda. '
+    +'Foque em OPERAÇÃO, RECEITA, PESSOAS, RISCOS, ESTRATÉGIA.\n\n'
+    +'TOTAIS CONSOLIDADOS do mês:\n'
+    +'- Total de corridas: '+totalCorridas+'\n'
+    +'- Receita estimada: R$ '+totalReceita.toFixed(2)+(crescGeralPct !== null ? ' ('+(crescGeralPct>=0?'+':'')+crescGeralPct+'% vs mês retrasado)' : '')+'\n'
+    +'- Cidades analisadas: '+comDados.length+'\n\n'
+    +'TOP 10 MOTOBOYS DA REDE GÂMI (consolidado das 11 cidades):\n'+top10RedeTxt+'\n\n'
+    +'Dados detalhados por cidade:\n'+dadosLinhas+'\n\n'
+    + (semDados.length ? '⚠️ Cidades sem dados (não analisar): '+semDados.map(function(c){return c.nome;}).join(', ')+'\n\n' : '')
+    +'GERE O RELATÓRIO COM EXATAMENTE ESTAS 11 SEÇÕES (texto corrido, SEM markdown, SEM ## ou **):\n\n'
+    +'RESUMO EXECUTIVO DO MÊS\n'
+    +'(3-5 bullets com os números-chave e veredito geral do mês)\n\n'
+    +'RESUMO FINANCEIRO\n'
+    +'• Receita total e variação\n'
+    +'• Top 3 cidades por receita\n'
+    +'• Ticket médio geral e por cidade destaque\n'
+    +'• Oportunidades de receita não capturada\n\n'
+    +'EVOLUÇÃO E TENDÊNCIAS\n'
+    +'(comparativo mês a mês — cidades acelerando vs desacelerando, padrões interessantes)\n\n'
+    +'RANKING DE CIDADES\n'
+    +'• Top 5 por volume\n'
+    +'• Top 5 por crescimento %\n'
+    +'• Cidades estáveis vs em queda\n\n'
+    +'PONTOS DE ATENÇÃO E RISCOS\n'
+    +'• Cidades preocupantes (3-5 com diagnóstico)\n'
+    +'• Riscos operacionais detectados\n\n'
+    +'SAÚDE DA REDE OPERACIONAL\n'
+    +'• % médio de motoboys ativos vs cadastrados\n'
+    +'• Cidades com gargalo (poucos motoboys)\n'
+    +'• Cidades com ociosidade (motoboys subutilizados)\n'
+    +'• % empresas cadastradas que efetivamente pediram\n\n'
+    +'MOTOBOYS DA REDE\n'
+    +'• Apresente o TOP 10 motoboys da rede consolidada (citando os NOMES, cidade e corridas dos 5 primeiros como destaques)\n'
+    +'• Análise da distribuição: a rede está concentrada em poucos motoboys elite ou bem distribuída?\n'
+    +'• Cidades com mais motoboys de alta performance (50+ corridas)\n\n'
+    +'CONCENTRAÇÃO E DEPENDÊNCIA\n'
+    +'(cidades com alta concentração nas top 5 empresas — risco de dependência se 1 sair)\n\n'
+    +'RECONHECIMENTOS DO MÊS\n'
+    +'• Cite os NOMES dos top 3 motoboys do mês como destaques explícitos (com cidade e corridas)\n'
+    +'• 2-3 destaques adicionais: cidades, gestores, parcerias que merecem celebração\n\n'
+    +'AÇÕES ESTRATÉGICAS PRO PRÓXIMO MÊS\n'
+    +'• 5-7 ações concretas pra equipe executar, com prioridade e responsável sugerido\n\n'
+    +'APOSTA DO MÊS\n'
+    +'(1 prioridade #1 pra próximo mês em 3-4 frases — onde focar energia da equipe, com justificativa baseada nos dados e meta esperada)\n\n'
+    +'Tom: executivo, profissional, números específicos. Português Brasil. Cada seção separada por linha em branco.';
+  
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 4000 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = _extrairTextoIA(data);
+    if(!texto) throw new Error('Resposta vazia');
+    
+    var cacheObj = {
+      texto: texto,
+      gerado_em: new Date().toISOString(),
+      gerado_por: (u && u.nome) || (u && u.email) || 'usuário',
+      mes_chave: range.chave,
+      mes_label: range.label,
+      cidades_analisadas: comDados.length,
+      cidades_sem_dados: semDados.map(function(c){return c.nome;}),
+      total_corridas: totalCorridas,
+      receita_total: totalReceita,
+      tipo_relatorio: 'mensal_geral'
+    };
+    try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
+    try { localStorage.setItem('gami_lembrete_relmensal_'+range.chave, '1'); } catch(e){}
+    _salvarHistoricoDiagnostico(cacheObj, 'mensal_geral', null);
+    
+    _renderRelatorioMensal(cacheObj, false);
+    if(typeof toast === 'function') toast('Relatório mensal de '+range.label+' gerado!', 'success');
+  } catch(e){
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o relatório:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados.</span></div>';
+    console.error('[relatorioMensalCidades]', e);
+  }
+}
+
+/* Relatório Mensal INDIVIDUAL — 1 cidade */
+async function relatorioMensalCidade(cidadeId, forceNew){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var c = cidades.find(function(x){return x.id===cidadeId;});
+  if(!c){ alert('Cidade não encontrada'); return; }
+  
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var cidadesPermitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : cidades;
+  var temPermissao = cidadesPermitidas.some(function(x){return x.id===cidadeId;});
+  if(!temPermissao){ if(typeof toast==='function') toast('Sem permissão pra '+c.nome, 'warn'); return; }
+  if(nivel === 'colaborador'){ if(typeof toast==='function') toast('Sem permissão pra relatórios.', 'warn'); return; }
+  
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  
+  var cacheKey = _relCidadeMesKey(cidadeId);
+  var cached = null;
+  if(!forceNew){
+    try { 
+      var raw = localStorage.getItem(cacheKey);
+      if(raw) cached = JSON.parse(raw);
+    } catch(e){}
+  }
+  
+  if(cached && cached.texto){
+    _renderRelatorioMensalCidade(c, cached, true);
+    setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+    if(typeof toast==='function') toast('Relatório deste mês já gerado em '+new Date(cached.gerado_em).toLocaleString('pt-BR'), 'info');
+    return;
+  }
+  
+  var range = _relRangeMesAnterior();
+  var m = _coletarMetricasMachineMensal(c.id);
+  
+  // Se não tem dados do mês passado, pre-fetch 60 dias
+  if(!m || m.corridasMes === 0){
+    painel.style.display = 'block';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:10px';
+    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">📡</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Carregando dados Machine de '+c.nome+' (60 dias)...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">15-25 segundos</div></div></div>';
+    setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+    
+    await _prefetchMachineParaDiagnostico([c], null, 60);
+    m = _coletarMetricasMachineMensal(c.id);
+    
+    if(!m || m.corridasMes === 0){
+      painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF8EE;border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:10px';
+      painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:20px">⚠️</span><div style="flex:1"><div style="font-size:12px;font-weight:700;color:#854F0B">Sem corridas no mês '+range.label+' em '+c.nome+'</div><div style="font-size:11px;color:var(--text2);margin-top:3px">Não houve atividade registrada no mês passado nessa cidade.</div></div><button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button></div>';
+      return;
+    }
+  }
+  
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:12px;animation:mv-fadeup .4s ease both';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📅</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando relatório mensal de '+c.nome+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Mês '+range.label+' · 20-30 segundos</div></div></div>';
+  setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+  
+  var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
+  var crescCorrTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : 'sem comparativo';
+  var crescRecTxt = m.crescReceitaPct !== null ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : 'sem comparativo';
+  var top5EmpTxt = (m.top5Empresas||[]).map(function(e,i){
+    return '  '+(i+1)+'. '+e.nome+' — '+e.corridas+' corridas (R$ '+e.valor.toFixed(2)+')';
+  }).join('\n') || '  (sem dados)';
+  var top10MotoTxt = (m.top10MotoboysComNome||[]).map(function(mb,i){
+    return '  '+(i+1)+'. '+mb.nome+' — '+mb.corridas+' corridas';
+  }).join('\n') || '  (sem dados)';
+  var distMoto = m.distribuicaoMotoboys || {};
+  var diasSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var picoDia = m.corridasPorDiaSemana.indexOf(Math.max.apply(null, m.corridasPorDiaSemana));
+  var pctMot = m.motoboysCadastrados > 0 ? Math.round((m.motoboysAtivosCount/m.motoboysCadastrados)*100) : 0;
+  var pctEmp = m.empresasCadastradas > 0 ? Math.round((m.empresasComPedido/m.empresasCadastradas)*100) : 0;
+  
+  var prompt = 'Você é consultor sênior da Gâmi Delivery. '
+    +'Gere um RELATÓRIO MENSAL DETALHADO da cidade '+c.nome+'/'+c.uf+' referente a '+range.label+' pra apresentar pra diretoria e pro gestor '+(c.gestor||'')+'. '
+    +'É um relatório de FECHAMENTO DE MÊS, mais profundo que o semanal. '
+    +'NÃO mencione marketing/campanhas/posts/redes sociais — não disponível. '
+    +'Foque em operação, receita, motoboys, empresas, riscos, estratégia.\n\n'
+    +'DADOS MACHINE DO MÊS '+range.label+':\n'
+    +'- Cidade: '+c.nome+'/'+c.uf+'\n'
+    +'- Gestor: '+(c.gestor||'?')+'\n'
+    +'- Corridas no mês: '+m.corridasMes+' ('+crescCorrTxt+' vs '+m.corridasMesAnt+' do mês retrasado)\n'
+    +'- Finalizadas: '+m.finalizadas+'\n'
+    +'- Canceladas: '+m.canceladas+'\n'
+    +'- Taxa de conclusão: '+(m.taxaConclusao !== null ? m.taxaConclusao+'%' : 'sem dados')+'\n'
+    +'- Ticket médio: '+ticketFmt+'\n'
+    +'- Receita: R$ '+m.receita.toFixed(2)+' ('+crescRecTxt+' vs R$ '+m.receitaAnt.toFixed(2)+' do mês retrasado)\n'
+    +'- Motoboys ativos no mês: '+m.motoboysAtivosCount+' de '+m.motoboysCadastrados+' cadastrados ('+pctMot+'% engajados)\n'
+    +'- Empresas que pediram: '+m.empresasComPedido+' de '+m.empresasCadastradas+' cadastradas ('+pctEmp+'% ativadas)\n'
+    +'- Dia da semana com mais corridas: '+diasSem[picoDia]+'\n'
+    +'- Top 5 empresas (concentração: '+m.pctConcentracaoTop5+'% do total):\n'+top5EmpTxt+'\n'
+    +'- TOP 10 MOTOBOYS DO MÊS (por volume de corridas):\n'+top10MotoTxt+'\n'
+    +'- Distribuição de motoboys por faixa de corridas:\n'
+    +'  • Até 5 corridas: '+(distMoto.ate5||0)+' motoboys\n'
+    +'  • 5 a 20 corridas: '+(distMoto.de5a20||0)+' motoboys\n'
+    +'  • 20 a 50 corridas: '+(distMoto.de20a50||0)+' motoboys\n'
+    +'  • Mais de 50 corridas: '+(distMoto.mais50||0)+' motoboys\n\n'
+    +'GERE O RELATÓRIO COM EXATAMENTE ESTAS 9 SEÇÕES (texto corrido, SEM markdown, SEM ## ou **):\n\n'
+    +'RESUMO EXECUTIVO DO MÊS\n'
+    +'(3-4 bullets com os principais números e veredito geral do mês pra '+c.nome+')\n\n'
+    +'RESUMO FINANCEIRO\n'
+    +'• Receita e variação\n'
+    +'• Ticket médio e o que ele diz sobre o perfil dos pedidos\n'
+    +'• Receita potencial não capturada (empresas que não pediram)\n\n'
+    +'PERFORMANCE OPERACIONAL\n'
+    +'(volume, conclusão, cancelamentos, dia de pico — análise do que rolou no mês)\n\n'
+    +'SAÚDE DA REDE\n'
+    +'• Engajamento de motoboys: '+pctMot+'% ativos — preocupante, saudável ou excelente?\n'
+    +'• Ativação de empresas: '+pctEmp+'% — o que isso indica?\n'
+    +'• Riscos operacionais identificados\n\n'
+    +'MOTOBOYS DA CIDADE\n'
+    +'• Apresente o TOP 10 motoboys do mês citando os 5 primeiros NOMES e suas corridas como destaque\n'
+    +'• Comente a distribuição: quantos rodaram pouco (até 5), médio (5-20), alto (20-50), elite (50+)\n'
+    +'• Análise: a rede tá concentrada em poucos motoboys ou bem distribuída? Há motoboys elite (50+) carregando a cidade?\n\n'
+    +'CONCENTRAÇÃO E DEPENDÊNCIA\n'
+    +'(análise das top 5 empresas — '+m.pctConcentracaoTop5+'% concentrado nelas é saudável? Risco de dependência? Empresas a vigiar)\n\n'
+    +'RECONHECIMENTOS DO MÊS\n'
+    +'• Cite NOMES dos motoboys destaque do mês (top 3 do ranking acima merecem reconhecimento explícito)\n'
+    +'• 1-2 destaques adicionais pra celebrar com a equipe (parcerias que se destacaram, conquistas operacionais)\n\n'
+    +'AÇÕES PRO PRÓXIMO MÊS\n'
+    +'• 5-7 ações concretas pra '+(c.gestor||'o gestor')+' executar, com impacto esperado\n\n'
+    +'META PRINCIPAL DO MÊS\n'
+    +'(1 meta específica e mensurável pra '+c.nome+' no próximo mês — 3-4 frases com justificativa e KPI claro)\n\n'
+    +'Tom: executivo, profissional, números específicos. Português Brasil.';
+  
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 2500 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = _extrairTextoIA(data);
+    if(!texto) throw new Error('Resposta vazia');
+    
+    var cacheObj = {
+      texto: texto,
+      gerado_em: new Date().toISOString(),
+      gerado_por: (u && u.nome) || (u && u.email) || 'usuário',
+      cidade_nome: c.nome,
+      cidade_uf: c.uf,
+      mes_chave: range.chave,
+      mes_label: range.label,
+      corridas_mes: m.corridasMes,
+      receita_total: m.receita,
+      motoboys_ativos: m.motoboysAtivosCount,
+      motoboys_cadastrados: m.motoboysCadastrados,
+      empresas_pediram: m.empresasComPedido,
+      ticket_medio: m.ticketMedio,
+      tipo_relatorio: 'mensal_cidade'
+    };
+    try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
+    _salvarHistoricoDiagnostico(cacheObj, 'mensal_cidade', c.id);
+    
+    _renderRelatorioMensalCidade(c, cacheObj, false);
+    if(typeof toast === 'function') toast('Relatório mensal de '+c.nome+' pronto!', 'success');
+  } catch(e){
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar:</strong> '+e.message+'</div>';
+    console.error('[relatorioMensalCidade]', e);
+  }
+}
+
+/* Render do relatório mensal GERAL */
+function _renderRelatorioMensal(diagObj, fromCache){
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  diagObj.tipo = 'mensal_geral';
+  window._cidDiagAtual = diagObj;
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:12px;animation:mv-fadeup .4s ease both';
+  
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var podeForcar = nivel === 'super_admin';
+  
+  var geradoEm = new Date(diagObj.gerado_em);
+  var dataFmt = geradoEm.toLocaleDateString('pt-BR') + ' às ' + geradoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  
+  var textoCompleto = diagObj.texto || '';
+  var apostaMatch = textoCompleto.match(/APOSTA DO M[ÊE]S\s*\n([\s\S]+?)$/i);
+  var textoSemAposta = textoCompleto;
+  var textoAposta = '';
+  if(apostaMatch){
+    textoAposta = apostaMatch[1].trim();
+    textoSemAposta = textoCompleto.replace(apostaMatch[0], '').trim();
+  }
+  
+  var receitaFmt = diagObj.receita_total ? 'R$ '+Math.round(diagObj.receita_total).toLocaleString('pt-BR') : '—';
+  var kpisHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">'
+    +'<div style="padding:10px 12px;background:white;border:1px solid #1AB8F033;border-left:3px solid #1AB8F0;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#0E7AB8;letter-spacing:.5px;text-transform:uppercase">Corridas no mês</div><div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1.1">'+(diagObj.total_corridas||'—')+'</div></div>'
+    +'<div style="padding:10px 12px;background:white;border:1px solid #1D9E7533;border-left:3px solid #1D9E75;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#1D9E75;letter-spacing:.5px;text-transform:uppercase">Receita do mês</div><div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:var(--text);line-height:1.1">'+receitaFmt+'</div></div>'
+    +'<div style="padding:10px 12px;background:white;border:1px solid #8B5CF633;border-left:3px solid #8B5CF6;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#6A1B9A;letter-spacing:.5px;text-transform:uppercase">Cidades</div><div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1.1">'+(diagObj.cidades_analisadas||'—')+'</div></div>'
+  +'</div>';
+  
+  var apostaHtml = textoAposta ? '<div style="margin-top:12px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
+    +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 APOSTA DO MÊS</div>'
+    +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+textoAposta.replace(/</g,'&lt;')+'</div>'
+  +'</div>' : '';
+  
+  var avisoSemDados = (diagObj.cidades_sem_dados && diagObj.cidades_sem_dados.length) 
+    ? '<div style="padding:8px 11px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:10.5px;color:#854F0B;margin-bottom:10px">⚠️ <strong>'+diagObj.cidades_sem_dados.length+' cidade(s) sem dados</strong>: '+diagObj.cidades_sem_dados.join(', ')+'</div>' 
+    : '';
+  
+  painel.innerHTML = ''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">'
+        +'<span style="font-size:22px">📅</span>'
+        +'<div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--text)">Relatório Mensal · '+(diagObj.mes_label||'?')+'</div>'
+          +'<div style="font-size:10px;color:var(--text3)">'
+            +(fromCache ? '✓ Já gerado em '+dataFmt+' por '+(diagObj.gerado_por||'?') : '🆕 Recém-gerado em '+dataFmt)
+            +' · '+(diagObj.cidades_analisadas||'?')+' cidade(s)'
+          +'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +(podeForcar ? '<button onclick="if(confirm(\'Sobrescrever o relatório mensal atual?\'))relatorioMensalCidades(true)" style="padding:5px 10px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:#0E7AB8;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">↻ Refazer</button>' : '')
+        +'<button onclick="baixarDiagnosticoPDF(window._cidDiagAtual)" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
+        +'<button onclick="copiarDiagnosticoCidades()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
+        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+      +'</div>'
+    +'</div>'
+    +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Relatório deste mês — todos veem o mesmo. Próximo no dia 01 do próximo mês.</div>' : '')
+    +avisoSemDados
+    +kpisHtml
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +apostaHtml;
+  window._cidDiagnosticoTexto = diagObj.texto;
+}
+
+/* Render do relatório mensal INDIVIDUAL */
+function _renderRelatorioMensalCidade(c, diagObj, fromCache){
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  diagObj.tipo = 'mensal_cidade';
+  diagObj.cidade_nome = diagObj.cidade_nome || c.nome;
+  diagObj.cidade_uf = diagObj.cidade_uf || c.uf;
+  window._cidDiagAtual = diagObj;
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:12px;animation:mv-fadeup .4s ease both';
+  
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var podeForcar = nivel === 'super_admin';
+  
+  var geradoEm = new Date(diagObj.gerado_em);
+  var dataFmt = geradoEm.toLocaleDateString('pt-BR') + ' às ' + geradoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  
+  var textoCompleto = diagObj.texto || '';
+  var metaMatch = textoCompleto.match(/META PRINCIPAL DO M[ÊE]S\s*\n([\s\S]+?)$/i);
+  var textoSemMeta = textoCompleto;
+  var textoMeta = '';
+  if(metaMatch){
+    textoMeta = metaMatch[1].trim();
+    textoSemMeta = textoCompleto.replace(metaMatch[0], '').trim();
+  }
+  
+  var receitaFmt = diagObj.receita_total ? 'R$ '+Math.round(diagObj.receita_total).toLocaleString('pt-BR') : '—';
+  var ticketFmt = diagObj.ticket_medio ? 'R$ '+diagObj.ticket_medio.toFixed(2) : '—';
+  var motoboysFmt = diagObj.motoboys_ativos !== undefined ? diagObj.motoboys_ativos+(diagObj.motoboys_cadastrados?'/'+diagObj.motoboys_cadastrados:'') : '—';
+  var kpisHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">'
+    +'<div style="padding:9px 11px;background:white;border:1px solid #1AB8F033;border-left:3px solid #1AB8F0;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#0E7AB8;letter-spacing:.5px;text-transform:uppercase">Corridas mês</div><div style="font-family:\'Syne\',sans-serif;font-size:20px;font-weight:800;color:var(--text);line-height:1.1">'+(diagObj.corridas_mes||0)+'</div></div>'
+    +'<div style="padding:9px 11px;background:white;border:1px solid #1D9E7533;border-left:3px solid #1D9E75;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#1D9E75;letter-spacing:.5px;text-transform:uppercase">Receita</div><div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1.1">'+receitaFmt+'</div></div>'
+    +'<div style="padding:9px 11px;background:white;border:1px solid #EF9F2733;border-left:3px solid #EF9F27;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#854F0B;letter-spacing:.5px;text-transform:uppercase">Ticket</div><div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1.1">'+ticketFmt+'</div></div>'
+    +'<div style="padding:9px 11px;background:white;border:1px solid #8B5CF633;border-left:3px solid #8B5CF6;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#6A1B9A;letter-spacing:.5px;text-transform:uppercase">Motoboys</div><div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:var(--text);line-height:1.1">'+motoboysFmt+'</div></div>'
+  +'</div>';
+  
+  var metaHtml = textoMeta ? '<div style="margin-top:12px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
+    +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 META PRINCIPAL DO MÊS</div>'
+    +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+textoMeta.replace(/</g,'&lt;')+'</div>'
+  +'</div>' : '';
+  
+  painel.innerHTML = ''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">'
+        +'<span style="font-size:22px">📅</span>'
+        +'<div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--text)">Relatório Mensal: '+c.nome+'/'+c.uf+'</div>'
+          +'<div style="font-size:10px;color:var(--text3)">'
+            +(fromCache ? '✓ Gerado em '+dataFmt+' por '+(diagObj.gerado_por||'?') : '🆕 Recém-gerado em '+dataFmt)
+            +' · Mês '+(diagObj.mes_label||'?')
+          +'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +(podeForcar ? '<button onclick="if(confirm(\'Sobrescrever?\'))relatorioMensalCidade(\''+c.id+'\', true)" style="padding:5px 10px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:#0E7AB8;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">↻ Refazer</button>' : '')
+        +'<button onclick="baixarDiagnosticoPDF(window._cidDiagAtual)" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
+        +'<button onclick="copiarDiagnosticoCidades()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
+        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+      +'</div>'
+    +'</div>'
+    +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Relatório deste mês — todos veem o mesmo. Próximo no dia 01.</div>' : '')
+    +kpisHtml
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemMeta.replace(/</g,'&lt;')+'</div>'
+    +metaHtml;
+  window._cidDiagnosticoTexto = diagObj.texto;
+}
+
+/* Lembrete dia 01 de cada mês — sugere gerar relatório mensal */
+function checarLembreteRelatorioMensalDia01(){
+  var hoje = new Date();
+  // Só dispara nos primeiros 5 dias do mês
+  if(hoje.getDate() > 5) return;
+  
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  if(['super_admin','diretoria','gerencia','gestor'].indexOf(nivel) < 0) return;
+  
+  var range = _relRangeMesAnterior();
+  var cacheKey = _relMesAnteriorKey();
+  
+  // Já gerou este mês?
+  var jaGerou = false;
+  try {
+    if(nivel === 'gestor'){
+      var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+      var permitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : [];
+      if(permitidas.length){
+        jaGerou = !!localStorage.getItem(_relCidadeMesKey(permitidas[0].id));
+      }
+    } else {
+      jaGerou = !!localStorage.getItem(cacheKey);
+    }
+  } catch(e){}
+  if(jaGerou) return;
+  
+  // Já mostrou lembrete hoje?
+  var lembreteHojeKey = 'gami_lembrete_relmensal_hoje_'+hoje.toISOString().split('T')[0];
+  try { if(localStorage.getItem(lembreteHojeKey)) return; } catch(e){}
+  try { localStorage.setItem(lembreteHojeKey, '1'); } catch(e){}
+  
+  if(typeof toast === 'function'){
+    setTimeout(function(){
+      toast('📅 Lembrete: Hora do Relatório Mensal IA de '+range.label+'! Vá em Cidades → 📅 Relatório Mensal IA.', 'info', 12000);
+    }, 5000);
+  }
+}
+// Executa no boot
+if(typeof window !== 'undefined'){
+  setTimeout(function(){ try { checarLembreteRelatorioMensalDia01(); } catch(e){} }, 4000);
+}
+
+/* ============================================================ */
 /* LEMBRETE: Toda segunda-feira — gerar diagnóstico semanal     */
 /* ============================================================ */
 function checarLembreteDiagnosticoSemanal(){
@@ -10464,9 +11181,10 @@ if(typeof window !== 'undefined'){
    Usado pra diagnóstico — só busca o essencial (corridas 14d + condutores + empresas).
    Atualiza o _vgCache pra que _coletarMetricasMachine funcione depois.
    onProgress(carregadas, total, nomeAtual) opcional. */
-async function _prefetchMachineParaDiagnostico(cidadesPraCarregar, onProgress){
+async function _prefetchMachineParaDiagnostico(cidadesPraCarregar, onProgress, dias){
   if(!cidadesPraCarregar || !cidadesPraCarregar.length) return { sucesso:[], falhas:[] };
   if(typeof _vgCache === 'undefined') window._vgCache = {};
+  dias = dias || 14;
   
   var sucesso = [];
   var falhas = [];
@@ -10480,36 +11198,36 @@ async function _prefetchMachineParaDiagnostico(cidadesPraCarregar, onProgress){
     var slug = _slugify(c.nome);
     var hoje = new Date();
     var hojeStr = _vgData(hoje);
-    var ha14 = _vgData(new Date(hoje.getTime() - 14*86400000));
+    var haDias = _vgData(new Date(hoje.getTime() - dias*86400000));
     var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
     
     try {
-      var [corridas14, rCond, rEmp] = await Promise.all([
-        _vgBuscarCorridasPeriodo(slug, ha14, hojeStr, false),
+      var [corridasPeriodo, rCond, rEmp] = await Promise.all([
+        _vgBuscarCorridasPeriodo(slug, haDias, hojeStr, false),
         fetch(base+'&recurso=condutor').then(function(r){return r.json();}).catch(function(){return {response:[]};}),
         fetch(base+'&recurso=empresa').then(function(r){return r.json();}).catch(function(){return {response:[]};})
       ]);
       
       // Popula _vgCache no mesmo formato que vgCarregarPainel usa
-      // (só os campos necessários pra _coletarMetricasMachine)
       _vgCache[c.id] = {
         ts: Date.now(),
         dados: {
-          corridasDia: corridas14.filter(function(x){return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr;}),
+          corridasDia: corridasPeriodo.filter(function(x){return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr;}),
           corridasOntem: [],
-          corridasMes: corridas14,
+          corridasMes: corridasPeriodo,
           corridasMesAnt: [],
-          corridas45d: corridas14, // pro _coletarMetricasMachine que filtra 7d e 7d-anterior
+          corridas45d: corridasPeriodo, // ← agora pode ser 14, 30, 60d dependendo do dias
           condutores: (rCond && rCond.response) ? rCond.response : [],
           empresas: (rEmp && rEmp.response) ? rEmp.response : [],
           hojeStr: hojeStr,
           filtroOK: null,
-          _prefetch: true
+          _prefetch: true,
+          _prefetchDias: dias
         }
       };
       
       sucesso.push(c);
-      console.log('[Prefetch Machine]', c.nome, '✓', corridas14.length, 'corridas');
+      console.log('[Prefetch Machine]', c.nome, '✓', corridasPeriodo.length, 'corridas em', dias, 'dias');
     } catch(e){
       falhas.push({ cidade: c, erro: e.message });
       console.warn('[Prefetch Machine]', c.nome, '✗', e.message);
@@ -10519,7 +11237,6 @@ async function _prefetchMachineParaDiagnostico(cidadesPraCarregar, onProgress){
     if(typeof onProgress === 'function') onProgress(totalProcessadas, cidadesPraCarregar.length, c.nome);
   }
   
-  // Processa em batches de LIMITE_PARALELO
   while(fila.length){
     var batch = fila.splice(0, LIMITE_PARALELO);
     await Promise.all(batch.map(carregarUma));
@@ -10648,36 +11365,41 @@ function _renderModalHistoricoDiagnosticos(){
   
   var histFiltrado = hist.filter(function(h){
     if(podeVerTudo) return true;
-    if(h.tipo === 'cidade') return idsPermitidos.indexOf(h.cidade_id) >= 0;
-    return false;
+    // Gestor: vê semanal E mensal da cidade dele
+    if(h.tipo === 'cidade' || h.tipo === 'mensal_cidade') return idsPermitidos.indexOf(h.cidade_id) >= 0;
+    return false; // gestor não vê os gerais
   });
   window._histDiagFiltrado = histFiltrado;
   
-  // Agrupa em pastas
-  var pastas = {}; // chave -> { id, nome, icone, items: [] }
+  // Agrupa em pastas (semanal/mensal × geral/cidade)
+  var pastas = {};
   histFiltrado.forEach(function(h, idx){
     var chave, nome, icone;
-    if(h.tipo === 'geral'){
-      chave = 'geral';
-      nome = 'Diagnóstico Geral';
-      icone = '🌐';
+    var isMensal = h.tipo === 'mensal_geral' || h.tipo === 'mensal_cidade';
+    var sufixo = isMensal ? ' · Mensais' : ' · Semanais';
+    if(h.tipo === 'geral' || h.tipo === 'mensal_geral'){
+      chave = isMensal ? 'mensal_geral' : 'geral';
+      nome = 'Diagnóstico Geral' + sufixo;
+      icone = isMensal ? '📅' : '🌐';
     } else {
-      chave = 'cidade_'+h.cidade_id;
-      nome = h.cidade_nome + (h.cidade_uf ? '/'+h.cidade_uf : '');
-      icone = '🏙️';
+      chave = (isMensal ? 'mensal_cidade_' : 'cidade_') + h.cidade_id;
+      nome = (h.cidade_nome || '?') + (h.cidade_uf ? '/'+h.cidade_uf : '') + sufixo;
+      icone = isMensal ? '📅' : '🏙️';
     }
     if(!pastas[chave]){
-      pastas[chave] = { id: chave, nome: nome, icone: icone, items: [], ultimo: h.gerado_em };
+      pastas[chave] = { id: chave, nome: nome, icone: icone, items: [], ultimo: h.gerado_em, isMensal: isMensal };
     }
     pastas[chave].items.push({ h: h, idx: idx });
-    // Mantém o mais recente como "ultimo" pra ordenar
     if(new Date(h.gerado_em) > new Date(pastas[chave].ultimo)) pastas[chave].ultimo = h.gerado_em;
   });
   
-  // Ordena: Diagnóstico Geral primeiro, depois cidades por data do último
+  // Ordena: Geral semanal → Geral mensal → cidades semanais → cidades mensais (pelo último)
   var listaPastas = Object.values(pastas).sort(function(a,b){
+    // Diagnóstico Geral sempre primeiro (semanal antes do mensal)
     if(a.id === 'geral') return -1;
     if(b.id === 'geral') return 1;
+    if(a.id === 'mensal_geral') return -1;
+    if(b.id === 'mensal_geral') return 1;
     return new Date(b.ultimo) - new Date(a.ultimo);
   });
   window._histDiagPastas = listaPastas;
@@ -10798,15 +11520,19 @@ function verDiagnosticoHistorico(idx){
   var h = hist[idx];
   if(!h) return;
   closeModal('modal-hist-diag');
-  // Mostra no painel da aba Cidades
   setTimeout(function(){
-    if(h.tipo === 'geral'){
-      _renderDiagnosticoSemanal(h, true);
-    } else {
-      // Busca o objeto cidade
+    if(h.tipo === 'mensal_geral'){
+      _renderRelatorioMensal(h, true);
+    } else if(h.tipo === 'mensal_cidade'){
       var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
       var c = cidades.find(function(x){return x.id===h.cidade_id;}) || { id:h.cidade_id, nome:h.cidade_nome, uf:h.cidade_uf };
-      _renderDiagnosticoCidade(c, h, true);
+      _renderRelatorioMensalCidade(c, h, true);
+    } else if(h.tipo === 'geral'){
+      _renderDiagnosticoSemanal(h, true);
+    } else {
+      var cidades2 = (typeof getCidadesData==='function') ? getCidadesData() : [];
+      var c2 = cidades2.find(function(x){return x.id===h.cidade_id;}) || { id:h.cidade_id, nome:h.cidade_nome, uf:h.cidade_uf };
+      _renderDiagnosticoCidade(c2, h, true);
     }
     var painel = document.getElementById('cid-diagnostico-ia');
     if(painel) painel.scrollIntoView({behavior:'smooth', block:'start'});
@@ -11102,8 +11828,9 @@ function renderCidadesGrid(){
         <span>${c.posts_semana} posts/semana</span>
       </div>
       ${temCritico ? `<div style="margin-top:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
-      <div style="margin-top:8px;display:flex;justify-content:flex-end">
-        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:4px 9px;border:none;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600;cursor:pointer;font-family:inherit" title="IA analisa esta cidade e sugere ações">🤖 Analisar com IA</button>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap">
+        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:4px 9px;border:none;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600;cursor:pointer;font-family:inherit" title="Análise IA semanal desta cidade">🤖 Semanal</button>
+        <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="font-size:10px;padding:4px 9px;border:none;border-radius:6px;background:#E6F6FE;color:#0E7AB8;font-weight:600;cursor:pointer;font-family:inherit" title="Relatório mensal IA desta cidade">📅 Mensal</button>
       </div>
     </div>`;
   }).join('');
