@@ -1,4 +1,4 @@
-<!-- v23.21 - Diagnostico expandido: 8 secoes (financeiro, concentracao, reconhecimentos, aposta) - 30/05/2026 -->
+<!-- v23.23 - Diagnostico individual expandido: 7 secoes + KPIs + Aposta - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10620,8 +10620,14 @@ function baixarDiagnosticoPDF(textoOuObj, tituloOpcional){
   w.document.open(); w.document.write(html); w.document.close();
 }
 
-/* Modal com histórico de diagnósticos salvos */
+/* Modal com histórico de diagnósticos salvos — organizado em PASTAS */
 function abrirHistoricoDiagnosticos(){
+  window._histDiagVista = 'pastas';
+  window._histDiagPastaAtual = null;
+  _renderModalHistoricoDiagnosticos();
+}
+
+function _renderModalHistoricoDiagnosticos(){
   var hist = _listarHistoricoDiagnosticos();
   var ov = document.getElementById('modal-hist-diag');
   if(!ov){
@@ -10632,7 +10638,7 @@ function abrirHistoricoDiagnosticos(){
   }
   ov.classList.add('open');
   
-  // Filtra por permissão: gestor só vê os da cidade dele
+  // Filtra por permissão
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
   var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
@@ -10642,38 +10648,82 @@ function abrirHistoricoDiagnosticos(){
   
   var histFiltrado = hist.filter(function(h){
     if(podeVerTudo) return true;
-    // Gestor: só vê os da cidade dele
     if(h.tipo === 'cidade') return idsPermitidos.indexOf(h.cidade_id) >= 0;
-    return false; // gestor não vê os gerais
+    return false;
+  });
+  window._histDiagFiltrado = histFiltrado;
+  
+  // Agrupa em pastas
+  var pastas = {}; // chave -> { id, nome, icone, items: [] }
+  histFiltrado.forEach(function(h, idx){
+    var chave, nome, icone;
+    if(h.tipo === 'geral'){
+      chave = 'geral';
+      nome = 'Diagnóstico Geral';
+      icone = '🌐';
+    } else {
+      chave = 'cidade_'+h.cidade_id;
+      nome = h.cidade_nome + (h.cidade_uf ? '/'+h.cidade_uf : '');
+      icone = '🏙️';
+    }
+    if(!pastas[chave]){
+      pastas[chave] = { id: chave, nome: nome, icone: icone, items: [], ultimo: h.gerado_em };
+    }
+    pastas[chave].items.push({ h: h, idx: idx });
+    // Mantém o mais recente como "ultimo" pra ordenar
+    if(new Date(h.gerado_em) > new Date(pastas[chave].ultimo)) pastas[chave].ultimo = h.gerado_em;
   });
   
-  ov.innerHTML = '<div class="modal-box" style="max-width:760px;max-height:90vh;overflow-y:auto">'
+  // Ordena: Diagnóstico Geral primeiro, depois cidades por data do último
+  var listaPastas = Object.values(pastas).sort(function(a,b){
+    if(a.id === 'geral') return -1;
+    if(b.id === 'geral') return 1;
+    return new Date(b.ultimo) - new Date(a.ultimo);
+  });
+  window._histDiagPastas = listaPastas;
+  
+  // Renderiza conforme a vista
+  var vista = window._histDiagVista || 'pastas';
+  
+  if(vista === 'pastas'){
+    _renderHistVistaPastas(ov, listaPastas, histFiltrado.length, podeVerTudo);
+  } else {
+    var pasta = window._histDiagPastaAtual;
+    if(!pasta){ window._histDiagVista = 'pastas'; _renderModalHistoricoDiagnosticos(); return; }
+    _renderHistVistaDetalhe(ov, pasta);
+  }
+}
+
+/* Vista 1: Lista de pastas */
+function _renderHistVistaPastas(ov, listaPastas, totalAnalises, podeVerTudo){
+  ov.innerHTML = '<div class="modal-box" style="max-width:720px;max-height:90vh;overflow-y:auto">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">'
       +'<div>'
         +'<div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#8B5CF6;text-transform:uppercase">📚 Histórico de diagnósticos IA</div>'
-        +'<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text)">Análises anteriores</div>'
-        +'<div style="font-size:11px;color:var(--text3)">'+histFiltrado.length+' análise(s) salva(s)'+(podeVerTudo?'':' · só da sua cidade')+'</div>'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text)">Pastas</div>'
+        +'<div style="font-size:11px;color:var(--text3)">'+listaPastas.length+' pasta(s) · '+totalAnalises+' análise(s) total'+(podeVerTudo?'':' · só da sua cidade')+'</div>'
       +'</div>'
       +'<button onclick="closeModal(\'modal-hist-diag\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
     +'</div>'
-    + (histFiltrado.length === 0 
+    + (listaPastas.length === 0 
       ? '<div style="padding:30px;text-align:center;background:var(--surface2);border-radius:10px"><div style="font-size:32px;margin-bottom:10px">📭</div><div style="font-size:13px;font-weight:600;color:var(--text)">Nenhum diagnóstico ainda</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Gere o primeiro diagnóstico e ele aparecerá aqui automaticamente.</div></div>'
-      : '<div style="display:flex;flex-direction:column;gap:10px">'
-        + histFiltrado.map(function(h, i){
-          var icone = h.tipo === 'geral' ? '🌐' : '🏙️';
-          var titulo = h.tipo === 'geral' 
-            ? 'Diagnóstico Geral · '+(h.cidades_analisadas||'?')+' cidades'
-            : h.cidade_nome+(h.cidade_uf?'/'+h.cidade_uf:'');
-          var dt = h.gerado_em ? new Date(h.gerado_em).toLocaleString('pt-BR') : '?';
-          return '<div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
-            +'<div style="font-size:22px;flex-shrink:0">'+icone+'</div>'
-            +'<div style="flex:1;min-width:200px">'
-              +'<div style="font-size:13px;font-weight:700;color:var(--text)">'+titulo+'</div>'
-              +'<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 '+(h.semana_label||'?')+' · '+dt+(h.gerado_por?' · '+h.gerado_por:'')+'</div>'
+      : '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">'
+        + listaPastas.map(function(p){
+          var ultimoFmt = p.ultimo ? new Date(p.ultimo).toLocaleDateString('pt-BR') : '?';
+          var isGeral = p.id === 'geral';
+          var corBorda = isGeral ? '#8B5CF6' : '#1AB8F0';
+          var corFundo = isGeral ? '#F8F2FC' : '#F0F8FE';
+          return '<div onclick="abrirPastaHistorico(\''+p.id+'\')" style="padding:14px;background:'+corFundo+';border:1.5px solid '+corBorda+'33;border-left:4px solid '+corBorda+';border-radius:10px;cursor:pointer;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">'
+            +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+              +'<span style="font-size:28px">'+p.icone+'</span>'
+              +'<div style="flex:1;min-width:0">'
+                +'<div style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.nome+'</div>'
+                +'<div style="font-size:10px;color:var(--text3);margin-top:2px">Último: '+ultimoFmt+'</div>'
+              +'</div>'
             +'</div>'
-            +'<div style="display:flex;gap:6px;flex-shrink:0">'
-              +'<button onclick="verDiagnosticoHistorico('+i+')" style="padding:6px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">👁 Ver</button>'
-              +'<button onclick="baixarPDFHistorico('+i+')" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
+            +'<div style="display:flex;align-items:center;justify-content:space-between">'
+              +'<span style="font-size:10px;padding:3px 9px;border-radius:10px;background:white;color:'+corBorda+';font-weight:700;border:1px solid '+corBorda+'33">'+p.items.length+' análise'+(p.items.length!==1?'s':'')+'</span>'
+              +'<span style="font-size:11px;color:'+corBorda+';font-weight:600">Abrir →</span>'
             +'</div>'
           +'</div>';
         }).join('')
@@ -10682,9 +10732,65 @@ function abrirHistoricoDiagnosticos(){
       +'<button onclick="closeModal(\'modal-hist-diag\')" class="btn btn-primary" style="font-size:12px">Fechar</button>'
     +'</div>'
   +'</div>';
-  
-  // Guarda o array filtrado globalmente pra acessar nos botões
-  window._histDiagFiltrado = histFiltrado;
+}
+
+/* Vista 2: Detalhe de uma pasta (análises do tipo/cidade) */
+function _renderHistVistaDetalhe(ov, pasta){
+  ov.innerHTML = '<div class="modal-box" style="max-width:760px;max-height:90vh;overflow-y:auto">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +'<button onclick="voltarParaListaPastas()" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="Voltar pra lista de pastas">'
+          +'<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 5l-7 7 7 7" stroke="var(--text2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        +'</button>'
+        +'<div>'
+          +'<div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#8B5CF6;text-transform:uppercase">📁 Pasta</div>'
+          +'<div style="font-family:\'Syne\',sans-serif;font-size:20px;font-weight:800;color:var(--text)">'+pasta.icone+' '+pasta.nome+'</div>'
+          +'<div style="font-size:11px;color:var(--text3)">'+pasta.items.length+' análise'+(pasta.items.length!==1?'s':'')+' salva'+(pasta.items.length!==1?'s':'')+'</div>'
+        +'</div>'
+      +'</div>'
+      +'<button onclick="closeModal(\'modal-hist-diag\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
+    +'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:10px">'
+      + pasta.items.map(function(item){
+        var h = item.h;
+        var idx = item.idx;
+        var dt = h.gerado_em ? new Date(h.gerado_em).toLocaleString('pt-BR') : '?';
+        var extra = h.tipo === 'geral' && h.cidades_analisadas ? ' · '+h.cidades_analisadas+' cidades' : '';
+        return '<div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+          +'<div style="font-size:18px;flex-shrink:0">📅</div>'
+          +'<div style="flex:1;min-width:200px">'
+            +'<div style="font-size:13px;font-weight:700;color:var(--text)">Semana '+(h.semana_label||'?')+'</div>'
+            +'<div style="font-size:11px;color:var(--text3);margin-top:2px">Gerado em '+dt+(h.gerado_por?' · '+h.gerado_por:'')+extra+'</div>'
+          +'</div>'
+          +'<div style="display:flex;gap:6px;flex-shrink:0">'
+            +'<button onclick="verDiagnosticoHistorico('+idx+')" style="padding:6px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">👁 Ver</button>'
+            +'<button onclick="baixarPDFHistorico('+idx+')" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
+          +'</div>'
+        +'</div>';
+      }).join('')
+    +'</div>'
+    +'<div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">'
+      +'<button onclick="voltarParaListaPastas()" class="btn btn-ghost" style="font-size:12px">← Voltar pras pastas</button>'
+      +'<button onclick="closeModal(\'modal-hist-diag\')" class="btn btn-primary" style="font-size:12px">Fechar</button>'
+    +'</div>'
+  +'</div>';
+}
+
+/* Abre uma pasta específica */
+function abrirPastaHistorico(idPasta){
+  var pastas = window._histDiagPastas || [];
+  var pasta = pastas.find(function(p){return p.id === idPasta;});
+  if(!pasta) return;
+  window._histDiagVista = 'detalhe';
+  window._histDiagPastaAtual = pasta;
+  _renderModalHistoricoDiagnosticos();
+}
+
+/* Volta pra lista de pastas */
+function voltarParaListaPastas(){
+  window._histDiagVista = 'pastas';
+  window._histDiagPastaAtual = null;
+  _renderModalHistoricoDiagnosticos();
 }
 
 function verDiagnosticoHistorico(idx){
@@ -10787,41 +10893,63 @@ async function diagnosticoIACidade(cidadeId, forceNew){
   
   var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
   var crescTxt = m.crescimentoPct !== null ? (m.crescimentoPct>=0?'+':'')+m.crescimentoPct+'%' : 'sem comparativo';
+  var receitaFmt = 'R$ '+(m.receitaEstimada||0).toFixed(2);
+  var crescReceitaTxt = m.crescReceitaPct !== null ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : 'sem comparativo';
+  var top3Linhas = (m.top3Empresas||[]).map(function(e,i){
+    return '  '+(i+1)+'. '+e.nome+' — '+e.corridas+' corridas (R$ '+e.valor.toFixed(2)+')';
+  }).join('\n') || '  (sem dados de empresas)';
   var range = _diagRangeSemanaAnterior();
+  var pctMotoboysAtivos = m.motoboysCadastrados > 0 ? Math.round((m.motoboysAtivos/m.motoboysCadastrados)*100) : 0;
+  var pctEmpresasAtivas = m.empresasCadastradas > 0 ? Math.round((m.empresasComPedido/m.empresasCadastradas)*100) : 0;
   
-  var prompt = 'Analise a OPERAÇÃO REAL da cidade de '+c.nome+'/'+c.uf+' da Gâmi Delivery (semana '+range.label+') e sugira ações pro gestor '+(c.gestor||'')+'. '
+  var prompt = 'Você é consultor sênior de operação da Gâmi Delivery. '
+    +'Gere RELATÓRIO EXECUTIVO DETALHADO da cidade '+c.nome+'/'+c.uf+' na semana '+range.label+' pra apresentar pra diretoria e pro gestor '+(c.gestor||'')+'. '
     +'NÃO mencione marketing/campanhas/posts/redes sociais — esses dados não estão disponíveis ainda. '
-    +'Foque em corridas, motoboys, empresas, cancelamentos.\n\n'
-    +'Dados reais Machine (últimos 7 dias):\n'
-    +'- Corridas: '+m.corridasSemana+' ('+crescTxt+' vs semana anterior)\n'
+    +'Foque em operação, receita, motoboys, empresas, riscos.\n\n'
+    +'DADOS REAIS MACHINE (últimos 7 dias):\n'
+    +'- Cidade: '+c.nome+'/'+c.uf+'\n'
+    +'- Gestor: '+(c.gestor||'?')+'\n'
+    +'- Corridas totais: '+m.corridasSemana+' ('+crescTxt+' vs semana anterior, que teve '+m.corridasSemanaAnt+' corridas)\n'
     +'- Finalizadas: '+m.finalizadas+'\n'
     +'- Canceladas: '+m.canceladas+'\n'
     +'- Taxa de conclusão: '+(m.taxaConclusao !== null ? m.taxaConclusao+'%' : 'sem dados')+'\n'
     +'- Ticket médio: '+ticketFmt+'\n'
-    +'- Motoboys ativos: '+m.motoboysAtivos+' de '+m.motoboysCadastrados+' cadastrados\n'
-    +'- Empresas que pediram: '+m.empresasComPedido+' de '+m.empresasCadastradas+' cadastradas\n'
-    +'- Gestor: '+(c.gestor||'?')+'\n\n'
-    +'Estrutura da resposta (SEM markdown, sem ##, sem **):\n\n'
-    +'DIAGNÓSTICO OPERACIONAL\n'
-    +'(2-3 frases sobre o estado atual da operação, mencionando números relevantes)\n\n'
-    +'O QUE FAZER ESTA SEMANA\n'
-    +'• (3-5 ações operacionais concretas, 1 linha cada)\n\n'
-    +'PONTOS POSITIVOS\n'
-    +'(1 frase sobre o que tá indo bem na operação)\n\n'
-    +'Tom: direto, prático, operacional. Português Brasil.';
+    +'- Receita estimada da semana: '+receitaFmt+' ('+crescReceitaTxt+' vs semana anterior, que rendeu R$ '+(m.receitaSemanaAnt||0).toFixed(2)+')\n'
+    +'- Motoboys ativos: '+m.motoboysAtivos+' de '+m.motoboysCadastrados+' cadastrados ('+pctMotoboysAtivos+'% engajados)\n'
+    +'- Empresas que pediram: '+m.empresasComPedido+' de '+m.empresasCadastradas+' cadastradas ('+pctEmpresasAtivas+'% ativas)\n'
+    +'- Top 3 empresas que mais pediram (concentração: '+m.pctConcentracaoTop3+'%):\n'+top3Linhas+'\n\n'
+    +'GERE O RELATÓRIO COM EXATAMENTE ESTAS 7 SEÇÕES (texto corrido, SEM markdown, SEM ## ou **):\n\n'
+    +'PANORAMA DA CIDADE\n'
+    +'(2-3 frases sobre o estado operacional da '+c.nome+' essa semana, mencionando o volume de corridas, crescimento e impressão geral)\n\n'
+    +'RESUMO FINANCEIRO\n'
+    +'• Receita estimada da semana e variação\n'
+    +'• Ticket médio e o que ele diz sobre o perfil dos pedidos\n'
+    +'• Receita potencial não capturada (empresas cadastradas que não pediram)\n\n'
+    +'DESTAQUES DA SEMANA\n'
+    +'• (2-3 coisas positivas que aconteceram: cidade cresceu? Boa taxa de conclusão? Nova empresa começou a pedir muito? Motoboys mais engajados?)\n\n'
+    +'PONTOS DE ATENÇÃO\n'
+    +'• (2-3 coisas preocupantes: queda nas corridas? Cancelamentos altos? Motoboys ociosos? Empresa importante diminuindo? Concentração de receita?)\n\n'
+    +'CONCENTRAÇÃO E RISCOS\n'
+    +'• Análise da dependência das top 3 empresas (é saudável ou preocupante?)\n'
+    +'• Saúde da malha de motoboys: temos motoboys suficientes pra demanda? Há ociosidade ou gargalo?\n\n'
+    +'AÇÕES OPERACIONAIS DA SEMANA\n'
+    +'• (4-5 ações concretas e específicas pra '+(c.gestor||'o gestor')+' executar essa semana, com impacto esperado)\n\n'
+    +'A APOSTA DA SEMANA\n'
+    +'(1 prioridade #1 pra '+c.nome+' essa semana, em 2-3 frases, com justificativa baseada nos dados e KPI esperado pra medir sucesso)\n\n'
+    +'Tom: executivo, direto, números específicos quando relevante. Português Brasil. Cada seção separada por linha em branco.';
   
   try {
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 1000 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 2000 })
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
     
-    // Salva no cache compartilhado (todos veem a mesma)
+    // Salva no cache compartilhado (todos veem a mesma) com dados extras
     var cacheObj = {
       texto: texto,
       gerado_em: new Date().toISOString(),
@@ -10830,7 +10958,11 @@ async function diagnosticoIACidade(cidadeId, forceNew){
       cidade_uf: c.uf,
       semana_label: range.label,
       corridas_semana: m.corridasSemana,
-      motoboys_ativos: m.motoboysAtivos
+      receita_total: m.receitaEstimada || 0,
+      motoboys_ativos: m.motoboysAtivos,
+      motoboys_cadastrados: m.motoboysCadastrados,
+      empresas_pediram: m.empresasComPedido,
+      ticket_medio: m.ticketMedio
     };
     try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
     _salvarHistoricoDiagnostico(cacheObj, 'cidade', c.id);
@@ -10862,6 +10994,39 @@ function _renderDiagnosticoCidade(c, diagObj, fromCache){
   var geradoEm = new Date(diagObj.gerado_em);
   var dataFmt = geradoEm.toLocaleDateString('pt-BR') + ' às ' + geradoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   
+  // Extrai "A APOSTA DA SEMANA" pra destacar
+  var textoCompleto = diagObj.texto || '';
+  var apostaMatch = textoCompleto.match(/A APOSTA DA SEMANA\s*\n([\s\S]+?)$/i);
+  var textoSemAposta = textoCompleto;
+  var textoAposta = '';
+  if(apostaMatch){
+    textoAposta = apostaMatch[1].trim();
+    textoSemAposta = textoCompleto.replace(apostaMatch[0], '').trim();
+  }
+  
+  // KPIs no topo
+  var kpisHtml = '';
+  if(diagObj.corridas_semana !== undefined){
+    var receitaFmt = diagObj.receita_total ? 'R$ '+Math.round(diagObj.receita_total).toLocaleString('pt-BR') : '—';
+    var ticketFmt = diagObj.ticket_medio ? 'R$ '+diagObj.ticket_medio.toFixed(2) : '—';
+    var motoboysFmt = diagObj.motoboys_ativos !== undefined ? diagObj.motoboys_ativos+(diagObj.motoboys_cadastrados?'/'+diagObj.motoboys_cadastrados:'') : '—';
+    kpisHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">'
+      +'<div style="padding:9px 11px;background:white;border:1px solid #8B5CF633;border-left:3px solid #8B5CF6;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#6A1B9A;letter-spacing:.5px;text-transform:uppercase">Corridas</div><div style="font-family:\'Syne\',sans-serif;font-size:20px;font-weight:800;color:var(--text);line-height:1.1">'+(diagObj.corridas_semana||0)+'</div></div>'
+      +'<div style="padding:9px 11px;background:white;border:1px solid #1D9E7533;border-left:3px solid #1D9E75;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#1D9E75;letter-spacing:.5px;text-transform:uppercase">Receita</div><div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1.1">'+receitaFmt+'</div></div>'
+      +'<div style="padding:9px 11px;background:white;border:1px solid #EF9F2733;border-left:3px solid #EF9F27;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#854F0B;letter-spacing:.5px;text-transform:uppercase">Ticket</div><div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1.1">'+ticketFmt+'</div></div>'
+      +'<div style="padding:9px 11px;background:white;border:1px solid #1AB8F033;border-left:3px solid #1AB8F0;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#0E7AB8;letter-spacing:.5px;text-transform:uppercase">Motoboys</div><div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:var(--text);line-height:1.1">'+motoboysFmt+'</div></div>'
+    +'</div>';
+  }
+  
+  // Aposta destacada
+  var apostaHtml = '';
+  if(textoAposta){
+    apostaHtml = '<div style="margin-top:12px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
+      +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 APOSTA DA SEMANA</div>'
+      +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+textoAposta.replace(/</g,'&lt;')+'</div>'
+    +'</div>';
+  }
+  
   painel.innerHTML = ''
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
       +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">'
@@ -10870,7 +11035,7 @@ function _renderDiagnosticoCidade(c, diagObj, fromCache){
           +'<div style="font-size:13px;font-weight:700;color:var(--text)">Análise IA: '+c.nome+'/'+c.uf+'</div>'
           +'<div style="font-size:10px;color:var(--text3)">'
             +(fromCache ? '✓ Gerada em '+dataFmt+' por '+(diagObj.gerado_por||'?') : '🆕 Recém-gerada em '+dataFmt)
-            +' · Semana '+(diagObj.semana_label||'?')+' · '+(diagObj.corridas_semana||'?')+' corridas analisadas'
+            +' · Semana '+(diagObj.semana_label||'?')
           +'</div>'
         +'</div>'
       +'</div>'
@@ -10882,7 +11047,9 @@ function _renderDiagnosticoCidade(c, diagObj, fromCache){
       +'</div>'
     +'</div>'
     +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Análise desta semana — todos da equipe veem a mesma. Próxima na segunda-feira.</div>' : '')
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+diagObj.texto.replace(/</g,'&lt;')+'</div>';
+    +kpisHtml
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +apostaHtml;
   window._cidDiagnosticoTexto = diagObj.texto;
 }
 
