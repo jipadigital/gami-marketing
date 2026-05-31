@@ -1,4 +1,4 @@
-<!-- v23.41 - Teste de conexao Machine para todas as cidades em 1 click - 30/05/2026 -->
+<!-- v23.42 - Teste Machine robusto: sequencial fallback empresa diagnostico contextualizado - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9783,7 +9783,7 @@ function filtrarCidadeStatus(btn, status){
 }
 
 /* Testa conexão Machine pra TODAS as cidades em paralelo
-   Faz uma chamada leve (recurso=condutor) pra cada uma e reporta resultado */
+   Tenta condutor primeiro; se falhar, tenta empresa. Mostra erro detalhado. */
 async function testarIntegracaoMachineTodas(){
   var host = document.getElementById('integ-teste-resultado');
   if(!host) return;
@@ -9792,46 +9792,64 @@ async function testarIntegracaoMachineTodas(){
   var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
   if(!cidades.length){ host.innerHTML = '<div style="color:#A32D2D">Nenhuma cidade encontrada</div>'; return; }
   
-  host.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">🔍</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Testando conexão Machine das '+cidades.length+' cidades...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Pode levar 20-40 segundos</div><div style="margin-top:8px;height:6px;background:#E0E0E0;border-radius:3px;overflow:hidden"><div id="teste-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1D9E75,#56C597);border-radius:3px;transition:width .3s"></div></div></div></div>';
+  host.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">🔍</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Testando '+cidades.length+' cidades (sequencial)...</div><div id="teste-status" style="font-size:11px;color:var(--text3);margin-top:3px">Iniciando...</div><div style="margin-top:8px;height:6px;background:#E0E0E0;border-radius:3px;overflow:hidden"><div id="teste-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1D9E75,#56C597);border-radius:3px;transition:width .3s"></div></div></div></div>';
   
   var resultados = [];
   var feitas = 0;
-  var LIMITE = 3; // não pode estourar Netlify
-  var fila = cidades.slice();
   
-  async function testarUma(c){
-    var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+  async function testarRecurso(slug, recurso){
     var inicio = Date.now();
-    var resultado = { cidade: c, ok:false, status:0, erro:null, ms:0, qtdRetorno:0 };
-    
     try {
-      // Teste leve: pega condutores (não puxa toda a base de corridas)
-      var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor');
-      resultado.status = r.status;
-      resultado.ms = Date.now() - inicio;
-      
-      if(r.ok){
-        var data = await r.json().catch(function(){return null;});
-        if(data && (Array.isArray(data.response) || data.success)){
-          resultado.ok = true;
-          resultado.qtdRetorno = Array.isArray(data.response) ? data.response.length : 0;
-        } else if(data && data.error){
-          resultado.erro = data.error;
-        } else {
-          resultado.erro = 'Formato de resposta inesperado';
-        }
-      } else {
-        // Tenta extrair msg do erro
-        var errText = await r.text().catch(function(){return '';});
-        if(r.status === 502) resultado.erro = 'Servidor Machine fora do ar';
-        else if(r.status === 401 || r.status === 403) resultado.erro = 'Chave API inválida ou sem permissão';
-        else if(r.status === 404) resultado.erro = 'Cidade não encontrada na função Netlify (sem env var?)';
-        else if(r.status === 504) resultado.erro = 'Timeout — Machine demorou demais';
-        else resultado.erro = 'HTTP '+r.status+(errText?': '+errText.substring(0,80):'');
-      }
+      var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso='+recurso);
+      var data = null;
+      try { data = await r.json(); } catch(e){}
+      return {
+        ok: r.ok && data && (Array.isArray(data.response) || data.success),
+        status: r.status,
+        ms: Date.now() - inicio,
+        data: data,
+        qtd: (data && Array.isArray(data.response)) ? data.response.length : 0
+      };
     } catch(e){
-      resultado.ms = Date.now() - inicio;
-      resultado.erro = e.message || 'Falha de rede';
+      return { ok:false, status:0, ms:Date.now()-inicio, erro: e.message };
+    }
+  }
+  
+  // Sequencial (uma por vez) pra não estourar Netlify/Machine
+  for(var i = 0; i < cidades.length; i++){
+    var c = cidades[i];
+    var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+    var statusEl = document.getElementById('teste-status');
+    if(statusEl) statusEl.textContent = (i+1)+'/'+cidades.length+' · Testando '+c.nome+'...';
+    
+    var r1 = await testarRecurso(slug, 'condutor');
+    var resultado;
+    
+    if(r1.ok){
+      resultado = { cidade:c, ok:true, recurso:'condutor', qtd:r1.qtd, ms:r1.ms, erro:null, raw:null };
+    } else {
+      // Tenta empresa como fallback
+      var r2 = await testarRecurso(slug, 'empresa');
+      if(r2.ok){
+        resultado = { cidade:c, ok:true, recurso:'empresa', qtd:r2.qtd, ms:r2.ms, erro:'(condutor falhou, mas empresa OK)', raw:null };
+      } else {
+        // Ambos falharam — pega o erro mais informativo
+        var d = r1.data || r2.data;
+        var erroMsg;
+        if(d && d.error){
+          erroMsg = d.error;
+          // Anexa detalhe se disponível
+          if(d.detalhe){
+            var det = (typeof d.detalhe === 'string') ? d.detalhe : JSON.stringify(d.detalhe);
+            erroMsg += ' · ' + det.substring(0, 200);
+          }
+        } else if(r1.erro){
+          erroMsg = r1.erro;
+        } else {
+          erroMsg = 'HTTP '+r1.status+' em ambos recursos';
+        }
+        resultado = { cidade:c, ok:false, recurso:null, qtd:0, ms:r1.ms+r2.ms, erro:erroMsg, raw: d };
+      }
     }
     
     resultados.push(resultado);
@@ -9841,19 +9859,19 @@ async function testarIntegracaoMachineTodas(){
     if(bar) bar.style.width = pct+'%';
   }
   
-  while(fila.length){
-    var batch = fila.splice(0, LIMITE);
-    await Promise.all(batch.map(testarUma));
-  }
-  
   // Renderiza resultado
   resultados.sort(function(a,b){
-    if(a.ok !== b.ok) return a.ok ? -1 : 1; // sucessos primeiro
+    if(a.ok !== b.ok) return a.ok ? -1 : 1;
     return a.cidade.nome.localeCompare(b.cidade.nome);
   });
   
   var sucesso = resultados.filter(function(r){return r.ok;}).length;
   var falhas = resultados.length - sucesso;
+  
+  // Agrupa erros similares pra dar diagnóstico contextualizado
+  var temCredencial = resultados.some(function(r){return !r.ok && /[Cc]redenciai|[Nn]ao configurada|[Ss]em credencia/.test(r.erro||'');});
+  var temMachineErro = resultados.some(function(r){return !r.ok && /Machine retornou erro/.test(r.erro||'');});
+  var temErro401 = resultados.some(function(r){return !r.ok && /401|403|[Uu]nauthor/.test(r.erro||'');});
   
   host.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
     +'<div style="display:flex;align-items:center;gap:10px">'
@@ -9868,22 +9886,50 @@ async function testarIntegracaoMachineTodas(){
       +'<button onclick="document.getElementById(\'integ-teste-resultado\').style.display=\'none\'" style="font-size:10px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit">Fechar</button>'
     +'</div>'
   +'</div>'
-  +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">'
+  +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px">'
     + resultados.map(function(r){
       var cor = r.ok ? '#1D9E75' : '#E24B4A';
       var bg = r.ok ? '#EAF3DE' : '#FCEBEB';
       var icone = r.ok ? '✅' : '❌';
-      var status = r.ok ? (r.qtdRetorno+' motoboys · '+r.ms+'ms') : (r.erro || 'Falhou em '+r.ms+'ms');
+      var status;
+      if(r.ok){
+        status = r.qtd+' '+(r.recurso==='condutor'?'motoboys':'empresas')+' · '+r.ms+'ms';
+      } else {
+        status = (r.erro || 'Falhou').substring(0, 200);
+      }
       return '<div style="padding:8px 10px;background:'+bg+';border:1px solid '+cor+'33;border-left:3px solid '+cor+';border-radius:8px">'
         +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
           +'<span style="font-size:13px">'+icone+'</span>'
           +'<span style="font-size:11px;font-weight:700;color:var(--text)">'+r.cidade.nome+'/'+r.cidade.uf+'</span>'
         +'</div>'
-        +'<div style="font-size:10px;color:var(--text2);margin-left:19px;word-wrap:break-word">'+status+'</div>'
+        +'<div style="font-size:10px;color:var(--text2);margin-left:19px;word-wrap:break-word;line-height:1.4">'+status+'</div>'
       +'</div>';
     }).join('')
-  +'</div>'
-  + (falhas > 0 ? '<div style="margin-top:12px;padding:10px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:11px;color:#854F0B"><strong>💡 Dicas pra cidades com problema:</strong><br>• <strong>Chave inválida</strong>: verifique se a chave Machine no Supabase/painel está correta<br>• <strong>404</strong>: configure env var <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_API_KEY_&lt;CIDADE&gt;</code> no Netlify<br>• <strong>502/504</strong>: servidor Machine fora do ar, tente em alguns minutos<br>• <strong>Sem chave</strong>: cidade ainda não tem integração Machine configurada</div>' : '<div style="margin-top:12px;padding:10px;background:#EAF3DE;border:1px solid #1D9E7555;border-radius:6px;font-size:11px;color:#1D5E11"><strong>🎉 Todas as cidades estão funcionando!</strong> Pode gerar diagnósticos e relatórios em qualquer uma.</div>');
+  +'</div>';
+  
+  // Dicas contextualizadas
+  if(falhas > 0){
+    var dicas = '<div style="margin-top:12px;padding:10px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:11px;color:#854F0B;line-height:1.55"><strong>💡 Diagnóstico:</strong><br>';
+    if(temCredencial){
+      dicas += '• Algumas cidades dizem <strong>"Credenciais não configuradas"</strong> — falta env var <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_API_KEY_&lt;NOME&gt;</code> no Netlify pra essa cidade<br>';
+    }
+    if(temMachineErro){
+      dicas += '• A maioria dos erros é <strong>"Machine retornou erro (condutor)"</strong> — significa que a chamada chega na Machine API, mas a Machine devolve erro. Pode ser:<br>'
+        +'&nbsp;&nbsp;a) Chave foi rotacionada/revogada na Machine — verificar no painel da Machine<br>'
+        +'&nbsp;&nbsp;b) Permissão do recurso "condutor" foi removida — verificar perfil da chave<br>'
+        +'&nbsp;&nbsp;c) Rate limit temporário da Machine — esperar 1-2 minutos e testar de novo<br>';
+    }
+    if(temErro401){
+      dicas += '• Erro 401/403 = chave Machine inválida ou sem permissão<br>';
+    }
+    if(sucesso > 0){
+      dicas += '<br><strong>✨ '+resultados.filter(function(r){return r.ok;}).map(function(r){return r.cidade.nome;}).join(', ')+'</strong> tá funcionando — então a função Netlify e o caminho geral estão OK. O problema é específico das chaves/permissões das outras.';
+    }
+    dicas += '</div>';
+    host.innerHTML += dicas;
+  } else {
+    host.innerHTML += '<div style="margin-top:12px;padding:10px;background:#EAF3DE;border:1px solid #1D9E7555;border-radius:6px;font-size:11px;color:#1D5E11"><strong>🎉 Todas as cidades estão funcionando!</strong> Pode gerar diagnósticos e relatórios em qualquer uma.</div>';
+  }
 }
 
 function renderIntegracoesStatus(){
