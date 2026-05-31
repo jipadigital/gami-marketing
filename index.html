@@ -1,4 +1,4 @@
-<!-- v23.14 - Diagnostico IA semanal de cidades (geral + individual) - 30/05/2026 -->
+<!-- v23.15 - Helper _extrairTextoIA robusto pra todas funcoes IA - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9986,6 +9986,30 @@ function _gestorAvatarHTML(nomeGestor, size){
 /* CIDADES — DIAGNÓSTICO COM IA (geral + individual)             */
 /* ============================================================ */
 
+/* Helper robusto: extrai texto da resposta da Netlify function blog-ai
+   (funciona com qualquer formato: content[], content string, text, completion, message, etc) */
+function _extrairTextoIA(data){
+  if(!data) return '';
+  // Array (formato Anthropic SDK): content: [{text:"..."}]
+  if(Array.isArray(data.content)){
+    return data.content.map(function(b){return (b && b.text) || '';}).join('').trim();
+  }
+  // String direta em vários campos comuns
+  if(typeof data.content === 'string') return data.content.trim();
+  if(typeof data.text === 'string') return data.text.trim();
+  if(typeof data.completion === 'string') return data.completion.trim();
+  if(typeof data.message === 'string') return data.message.trim();
+  if(typeof data.response === 'string') return data.response.trim();
+  if(data.body && typeof data.body === 'string') return data.body.trim();
+  if(typeof data === 'string') return data.trim();
+  // OpenAI-style fallback
+  if(data.choices && data.choices[0]){
+    var c = data.choices[0];
+    return (c.text || (c.message && c.message.content) || '').trim();
+  }
+  return '';
+}
+
 /* Diagnóstico geral: IA analisa todas as 11 cidades e gera panorama */
 async function diagnosticoSemanalCidades(){
   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
@@ -10035,7 +10059,7 @@ async function diagnosticoSemanalCidades(){
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
     
     var dataAtual = new Date().toLocaleDateString('pt-BR');
@@ -10110,7 +10134,7 @@ async function diagnosticoIACidade(cidadeId){
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
     
     painel.innerHTML = ''
@@ -17000,7 +17024,7 @@ async function classificarConversasIA(){
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    var texto = _extrairTextoIA(data);
     var jsonMatch = texto.match(/\[[\s\S]*\]/);
     if(!jsonMatch) throw new Error('IA não retornou JSON');
     var classificacoes = JSON.parse(jsonMatch[0]);
@@ -18451,7 +18475,7 @@ async function iaGerarComIA(){
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    var texto = _extrairTextoIA(data);
 
     // Tenta extrair JSON
     var jsonMatch = texto.match(/\[[\s\S]*\]/);
@@ -22482,7 +22506,7 @@ async function gerarRelatorioExecutivoMensal(){
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
-    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
 
     // Renderiza
