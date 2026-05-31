@@ -1,4 +1,4 @@
-<!-- v23.18 - Diagnostico IA: gestor ve cidade dele, cache compartilhado individual - 30/05/2026 -->
+<!-- v23.19 - Pre-fetch automatico Machine para diagnostico IA - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10167,16 +10167,43 @@ async function diagnosticoSemanalCidades(forceNew){
     }
   });
   
+  // PRE-FETCH: se faltar dados, carrega Machine automaticamente
+  if(semDados.length){
+    painel.style.display = 'block';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
+    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📡</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Carregando dados Machine de '+semDados.length+' cidade(s)...</div><div id="cid-prefetch-status" style="font-size:11px;color:var(--text3);margin-top:3px">Iniciando...</div><div id="cid-prefetch-bar" style="margin-top:8px;height:6px;background:#E0E0E0;border-radius:3px;overflow:hidden"><div id="cid-prefetch-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:3px;transition:width .3s"></div></div></div></div>';
+    
+    var resultadoFetch = await _prefetchMachineParaDiagnostico(semDados, function(carregadas, total, nome){
+      var pct = Math.round((carregadas/total)*100);
+      var statusEl = document.getElementById('cid-prefetch-status');
+      var fillEl = document.getElementById('cid-prefetch-fill');
+      if(statusEl) statusEl.innerHTML = carregadas+'/'+total+' carregadas · última: <strong>'+nome+'</strong>';
+      if(fillEl) fillEl.style.width = pct+'%';
+    });
+    
+    // Após pre-fetch, recoleta métricas (agora deve ter dados)
+    comDados = [];
+    var aindaSemDados = [];
+    cidadesPermitidas.forEach(function(c){
+      var m = _coletarMetricasMachine(c.id);
+      if(m){
+        comDados.push({ cidade:c, metricas:m });
+      } else {
+        aindaSemDados.push(c);
+      }
+    });
+    semDados = aindaSemDados;
+  }
+  
   if(!comDados.length){
     painel.style.display = 'block';
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:#FFF8EE;border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:12px';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-left:4px solid #E24B4A;border-radius:12px';
     painel.innerHTML = ''
       +'<div style="display:flex;align-items:flex-start;gap:10px">'
         +'<span style="font-size:22px">⚠️</span>'
         +'<div style="flex:1">'
-          +'<div style="font-size:13px;font-weight:700;color:#854F0B">Nenhuma cidade com dados Machine carregados</div>'
-          +'<div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5">Pra gerar o diagnóstico, você precisa primeiro <strong>abrir cada cidade</strong> e deixar carregar os dados Machine. Volte aqui depois e clique no botão novamente.</div>'
-          +'<div style="font-size:10px;color:var(--text3);margin-top:6px">💡 Dica: abrir 3-4 cidades já é suficiente pra começar.</div>'
+          +'<div style="font-size:13px;font-weight:700;color:#A32D2D">Não consegui carregar dados Machine de nenhuma cidade</div>'
+          +'<div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5">Pode ser problema de conexão com a API Machine ou chaves não configuradas. Veja o console (F12) pra detalhes.</div>'
         +'</div>'
         +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
       +'</div>';
@@ -10347,6 +10374,74 @@ if(typeof window !== 'undefined'){
   setTimeout(function(){ try { checarLembreteDiagnosticoSemanal(); } catch(e){} }, 3000);
 }
 
+/* Helper: Pre-carrega dados Machine de várias cidades em paralelo.
+   Usado pra diagnóstico — só busca o essencial (corridas 14d + condutores + empresas).
+   Atualiza o _vgCache pra que _coletarMetricasMachine funcione depois.
+   onProgress(carregadas, total, nomeAtual) opcional. */
+async function _prefetchMachineParaDiagnostico(cidadesPraCarregar, onProgress){
+  if(!cidadesPraCarregar || !cidadesPraCarregar.length) return { sucesso:[], falhas:[] };
+  if(typeof _vgCache === 'undefined') window._vgCache = {};
+  
+  var sucesso = [];
+  var falhas = [];
+  var totalProcessadas = 0;
+  
+  // Limita concorrência a 4 simultâneas (evita rate limit Machine)
+  var LIMITE_PARALELO = 4;
+  var fila = cidadesPraCarregar.slice();
+  
+  async function carregarUma(c){
+    var slug = _slugify(c.nome);
+    var hoje = new Date();
+    var hojeStr = _vgData(hoje);
+    var ha14 = _vgData(new Date(hoje.getTime() - 14*86400000));
+    var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug);
+    
+    try {
+      var [corridas14, rCond, rEmp] = await Promise.all([
+        _vgBuscarCorridasPeriodo(slug, ha14, hojeStr, false),
+        fetch(base+'&recurso=condutor').then(function(r){return r.json();}).catch(function(){return {response:[]};}),
+        fetch(base+'&recurso=empresa').then(function(r){return r.json();}).catch(function(){return {response:[]};})
+      ]);
+      
+      // Popula _vgCache no mesmo formato que vgCarregarPainel usa
+      // (só os campos necessários pra _coletarMetricasMachine)
+      _vgCache[c.id] = {
+        ts: Date.now(),
+        dados: {
+          corridasDia: corridas14.filter(function(x){return (x.data_hora_solicitacao||'').slice(0,10)===hojeStr;}),
+          corridasOntem: [],
+          corridasMes: corridas14,
+          corridasMesAnt: [],
+          corridas45d: corridas14, // pro _coletarMetricasMachine que filtra 7d e 7d-anterior
+          condutores: (rCond && rCond.response) ? rCond.response : [],
+          empresas: (rEmp && rEmp.response) ? rEmp.response : [],
+          hojeStr: hojeStr,
+          filtroOK: null,
+          _prefetch: true
+        }
+      };
+      
+      sucesso.push(c);
+      console.log('[Prefetch Machine]', c.nome, '✓', corridas14.length, 'corridas');
+    } catch(e){
+      falhas.push({ cidade: c, erro: e.message });
+      console.warn('[Prefetch Machine]', c.nome, '✗', e.message);
+    }
+    
+    totalProcessadas++;
+    if(typeof onProgress === 'function') onProgress(totalProcessadas, cidadesPraCarregar.length, c.nome);
+  }
+  
+  // Processa em batches de LIMITE_PARALELO
+  while(fila.length){
+    var batch = fila.splice(0, LIMITE_PARALELO);
+    await Promise.all(batch.map(carregarUma));
+  }
+  
+  return { sucesso: sucesso, falhas: falhas };
+}
+
 /* Helper: chave de cache da análise individual por cidade+semana */
 function _diagCidadeKey(cidadeId){
   var seg = _diagSegundaSemanaAtual();
@@ -10394,21 +10489,29 @@ async function diagnosticoIACidade(cidadeId, forceNew){
     return;
   }
   
-  // Coleta métricas Machine
+  // Coleta métricas Machine — se não tem cache, pre-carrega automaticamente
   var m = _coletarMetricasMachine(c.id);
   if(!m){
     painel.style.display = 'block';
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF8EE;border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:10px';
-    painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
-      +'<span style="font-size:20px">⚠️</span>'
-      +'<div style="flex:1">'
-        +'<div style="font-size:12px;font-weight:700;color:#854F0B">Dados Machine de '+c.nome+' ainda não carregados</div>'
-        +'<div style="font-size:11px;color:var(--text2);margin-top:3px">Abra a cidade pelo card primeiro pra carregar os dados Machine. Depois volte aqui e clique no botão "🤖 Analisar com IA" novamente.</div>'
-      +'</div>'
-      +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button>'
-    +'</div>';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:10px';
+    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">📡</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Carregando dados Machine de '+c.nome+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">5-10 segundos</div></div></div>';
     setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
-    return;
+    
+    var resultadoFetch = await _prefetchMachineParaDiagnostico([c]);
+    m = _coletarMetricasMachine(c.id);
+    
+    if(!m){
+      painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-left:4px solid #E24B4A;border-radius:10px';
+      painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
+        +'<span style="font-size:20px">⚠️</span>'
+        +'<div style="flex:1">'
+          +'<div style="font-size:12px;font-weight:700;color:#A32D2D">Não consegui carregar dados Machine de '+c.nome+'</div>'
+          +'<div style="font-size:11px;color:var(--text2);margin-top:3px">Problema de conexão ou chave Machine não configurada pra esta cidade. Veja console (F12).</div>'
+        +'</div>'
+        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button>'
+      +'</div>';
+      return;
+    }
   }
   
   painel.style.display = 'block';
