@@ -1,4 +1,4 @@
-<!-- v23.40 - Relatorio mensal cidade: motoboys resumo completo + top 5 empresas e motoboys nos reconhecimentos - 30/05/2026 -->
+<!-- v23.41 - Teste de conexao Machine para todas as cidades em 1 click - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9782,6 +9782,110 @@ function filtrarCidadeStatus(btn, status){
   renderCidadesGrid();
 }
 
+/* Testa conexão Machine pra TODAS as cidades em paralelo
+   Faz uma chamada leve (recurso=condutor) pra cada uma e reporta resultado */
+async function testarIntegracaoMachineTodas(){
+  var host = document.getElementById('integ-teste-resultado');
+  if(!host) return;
+  host.style.display = 'block';
+  
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  if(!cidades.length){ host.innerHTML = '<div style="color:#A32D2D">Nenhuma cidade encontrada</div>'; return; }
+  
+  host.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">🔍</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Testando conexão Machine das '+cidades.length+' cidades...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Pode levar 20-40 segundos</div><div style="margin-top:8px;height:6px;background:#E0E0E0;border-radius:3px;overflow:hidden"><div id="teste-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1D9E75,#56C597);border-radius:3px;transition:width .3s"></div></div></div></div>';
+  
+  var resultados = [];
+  var feitas = 0;
+  var LIMITE = 3; // não pode estourar Netlify
+  var fila = cidades.slice();
+  
+  async function testarUma(c){
+    var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+    var inicio = Date.now();
+    var resultado = { cidade: c, ok:false, status:0, erro:null, ms:0, qtdRetorno:0 };
+    
+    try {
+      // Teste leve: pega condutores (não puxa toda a base de corridas)
+      var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor');
+      resultado.status = r.status;
+      resultado.ms = Date.now() - inicio;
+      
+      if(r.ok){
+        var data = await r.json().catch(function(){return null;});
+        if(data && (Array.isArray(data.response) || data.success)){
+          resultado.ok = true;
+          resultado.qtdRetorno = Array.isArray(data.response) ? data.response.length : 0;
+        } else if(data && data.error){
+          resultado.erro = data.error;
+        } else {
+          resultado.erro = 'Formato de resposta inesperado';
+        }
+      } else {
+        // Tenta extrair msg do erro
+        var errText = await r.text().catch(function(){return '';});
+        if(r.status === 502) resultado.erro = 'Servidor Machine fora do ar';
+        else if(r.status === 401 || r.status === 403) resultado.erro = 'Chave API inválida ou sem permissão';
+        else if(r.status === 404) resultado.erro = 'Cidade não encontrada na função Netlify (sem env var?)';
+        else if(r.status === 504) resultado.erro = 'Timeout — Machine demorou demais';
+        else resultado.erro = 'HTTP '+r.status+(errText?': '+errText.substring(0,80):'');
+      }
+    } catch(e){
+      resultado.ms = Date.now() - inicio;
+      resultado.erro = e.message || 'Falha de rede';
+    }
+    
+    resultados.push(resultado);
+    feitas++;
+    var pct = Math.round((feitas/cidades.length)*100);
+    var bar = document.getElementById('teste-bar');
+    if(bar) bar.style.width = pct+'%';
+  }
+  
+  while(fila.length){
+    var batch = fila.splice(0, LIMITE);
+    await Promise.all(batch.map(testarUma));
+  }
+  
+  // Renderiza resultado
+  resultados.sort(function(a,b){
+    if(a.ok !== b.ok) return a.ok ? -1 : 1; // sucessos primeiro
+    return a.cidade.nome.localeCompare(b.cidade.nome);
+  });
+  
+  var sucesso = resultados.filter(function(r){return r.ok;}).length;
+  var falhas = resultados.length - sucesso;
+  
+  host.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+    +'<div style="display:flex;align-items:center;gap:10px">'
+      +'<span style="font-size:22px">'+(falhas===0?'✅':sucesso===0?'❌':'⚠️')+'</span>'
+      +'<div>'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text)">Teste completo</div>'
+        +'<div style="font-size:11px;color:var(--text3)"><strong style="color:#1D9E75">'+sucesso+' funcionando</strong>'+(falhas?' · <strong style="color:#A32D2D">'+falhas+' com problema</strong>':'')+'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+      +'<button onclick="testarIntegracaoMachineTodas()" style="font-size:10px;padding:4px 10px;border:1px solid #1D9E75;border-radius:6px;background:white;color:#1D9E75;cursor:pointer;font-family:inherit;font-weight:600">↻ Testar novamente</button>'
+      +'<button onclick="document.getElementById(\'integ-teste-resultado\').style.display=\'none\'" style="font-size:10px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit">Fechar</button>'
+    +'</div>'
+  +'</div>'
+  +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">'
+    + resultados.map(function(r){
+      var cor = r.ok ? '#1D9E75' : '#E24B4A';
+      var bg = r.ok ? '#EAF3DE' : '#FCEBEB';
+      var icone = r.ok ? '✅' : '❌';
+      var status = r.ok ? (r.qtdRetorno+' motoboys · '+r.ms+'ms') : (r.erro || 'Falhou em '+r.ms+'ms');
+      return '<div style="padding:8px 10px;background:'+bg+';border:1px solid '+cor+'33;border-left:3px solid '+cor+';border-radius:8px">'
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+          +'<span style="font-size:13px">'+icone+'</span>'
+          +'<span style="font-size:11px;font-weight:700;color:var(--text)">'+r.cidade.nome+'/'+r.cidade.uf+'</span>'
+        +'</div>'
+        +'<div style="font-size:10px;color:var(--text2);margin-left:19px;word-wrap:break-word">'+status+'</div>'
+      +'</div>';
+    }).join('')
+  +'</div>'
+  + (falhas > 0 ? '<div style="margin-top:12px;padding:10px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:11px;color:#854F0B"><strong>💡 Dicas pra cidades com problema:</strong><br>• <strong>Chave inválida</strong>: verifique se a chave Machine no Supabase/painel está correta<br>• <strong>404</strong>: configure env var <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_API_KEY_&lt;CIDADE&gt;</code> no Netlify<br>• <strong>502/504</strong>: servidor Machine fora do ar, tente em alguns minutos<br>• <strong>Sem chave</strong>: cidade ainda não tem integração Machine configurada</div>' : '<div style="margin-top:12px;padding:10px;background:#EAF3DE;border:1px solid #1D9E7555;border-radius:6px;font-size:11px;color:#1D5E11"><strong>🎉 Todas as cidades estão funcionando!</strong> Pode gerar diagnósticos e relatórios em qualquer uma.</div>');
+}
+
 function renderIntegracoesStatus(){
   var host = document.getElementById('cidades-integracoes');
   if(!host) return;
@@ -9814,8 +9918,13 @@ function renderIntegracoesStatus(){
             '<div style="font-size:10px;color:var(--text3);margin-top:1px">Machine API e Instagram conectados por cidade</div>'+
           '</div>'+
         '</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+        '<button onclick="testarIntegracaoMachineTodas()" style="font-size:10px;padding:4px 10px;border:1px solid #1D9E75;border-radius:6px;background:#1D9E75;color:white;cursor:pointer;font-family:inherit;font-weight:600">🔍 Testar conexão Machine</button>'+
         '<button onclick="document.getElementById(\'integ-detalhe\').style.display = document.getElementById(\'integ-detalhe\').style.display===\'none\' ? \'block\' : \'none\'" style="font-size:10px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">Ver detalhes ↓</button>'+
+        '</div>'+
       '</div>'+
+      
+      '<div id="integ-teste-resultado" style="display:none;margin-bottom:12px;padding:12px;background:var(--surface2);border-radius:8px"></div>'+
       
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:4px">'+
         '<div style="border:1px solid var(--border);border-left:3px solid #1D9E75;border-radius:8px;padding:10px 12px;background:var(--surface)">'+
