@@ -1,4 +1,4 @@
-<!-- v23.25 - Relatorios Mensais com secao dedicada Top 10 Motoboys + nomes nos reconhecimentos - 30/05/2026 -->
+<!-- v23.27 - Aba Cidades remodelada: stats topo, aniversarios, mapa Brasil, regiao, hover rico, curiosidades - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2245,6 +2245,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <style>
       .mv-section { margin-bottom:24px; animation: mv-fadeup .4s ease both; }
       @keyframes mv-fadeup { 0%{opacity:0;transform:translateY(8px)} 100%{opacity:1;transform:translateY(0)} }
+      @keyframes cidFadeUp { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
+      @keyframes cidPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
       .mv-section-title { font-size:9px; font-weight:700; letter-spacing:1.2px; color:var(--text3); text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
       .mv-section-title::before { content:''; width:4px; height:14px; background:linear-gradient(180deg,#0D2B5C,#1AB8F0); border-radius:2px; }
       .mv-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px; transition:transform .2s, box-shadow .2s; }
@@ -3254,8 +3256,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <button onclick="diagnosticoSemanalCidades()" class="btn btn-ia" style="font-size:11px" title="IA analisa as 11 cidades e mostra panorama semanal com alertas e oportunidades">🤖 Diagnóstico IA da semana</button>
         <button onclick="relatorioMensalCidades()" class="btn btn-ia" style="font-size:11px;background:#1AB8F0" title="IA gera relatório mensal completo das 11 cidades (1x por mês a partir do dia 01)">📅 Relatório Mensal IA</button>
         <button onclick="abrirHistoricoDiagnosticos()" class="btn btn-ghost" style="font-size:11px" title="Vê diagnósticos IA salvos das semanas anteriores">📚 Histórico IA</button>
-        <button onclick="sincronizarStatusInstagram()" class="btn btn-ghost" style="font-size:11px" title="Consulta o Meta Business e marca quais Instagrams estão realmente conectados">📸 Sincronizar IG ao vivo</button>
-        <button onclick="resetCidadesParaPadrao()" class="btn btn-ghost" style="font-size:11px" title="Atualiza gestores, chaves API e Instagram para os valores oficiais">🔄 Atualizar dados oficiais</button>
       </div>
     </div>
     <div id="ig-sync-status" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
@@ -3263,8 +3263,14 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <!-- PAINEL DE DIAGNÓSTICO IA (escondido por padrão) -->
     <div id="cid-diagnostico-ia" style="display:none;margin-bottom:14px"></div>
 
-    <!-- STATUS DAS INTEGRAÇÕES -->
-    <div id="cidades-integracoes" style="margin-bottom:14px"></div>
+    <!-- MINI-STATS DA REDE -->
+    <div id="cidades-stats-topo" style="margin-bottom:14px"></div>
+
+    <!-- ANIVERSÁRIOS DO MÊS -->
+    <div id="cidades-aniversarios" style="margin-bottom:14px"></div>
+
+    <!-- MAPA DO BRASIL INTERATIVO (colapsável) -->
+    <div id="cidades-mapa-brasil" style="margin-bottom:14px"></div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
       <input id="cidade-busca" oninput="filtrarCidades()" placeholder="Buscar cidade..." style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
@@ -3273,7 +3279,19 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <button onclick="filtrarCidadeStatus(this,'atencao')" class="cf-btn" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🟡 Atenção</button>
       <button onclick="filtrarCidadeStatus(this,'critica')" class="cf-btn" style="font-size:11px;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🔴 Críticas</button>
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <span style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-right:4px">📍 Região:</span>
+      <button onclick="filtrarCidadeRegiao(this,'todas')" class="cf-rgn" style="font-size:10px;padding:4px 11px;border-radius:14px;border:1px solid var(--gami-blue);background:var(--gami-blue);color:white;cursor:pointer;font-family:inherit;font-weight:600">Todas</button>
+      <button onclick="filtrarCidadeRegiao(this,'nordeste')" class="cf-rgn" style="font-size:10px;padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">Nordeste</button>
+      <button onclick="filtrarCidadeRegiao(this,'centro-oeste')" class="cf-rgn" style="font-size:10px;padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">Centro-Oeste</button>
+      <button onclick="filtrarCidadeRegiao(this,'sudeste')" class="cf-rgn" style="font-size:10px;padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">Sudeste</button>
+      <span style="flex:1"></span>
+      <button onclick="toggleMapaBrasil()" id="btn-toggle-mapa" style="font-size:10px;padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🗺️ Mostrar mapa</button>
+    </div>
     <div id="cidades-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px"></div>
+
+    <!-- STATUS DAS INTEGRAÇÕES (só super_admin, no rodapé) -->
+    <div id="cidades-integracoes" style="margin-top:24px"></div>
   </div>
 
   <!-- PAINEL INDIVIDUAL -->
@@ -9769,6 +9787,17 @@ function filtrarCidadeStatus(btn, status){
 function renderIntegracoesStatus(){
   var host = document.getElementById('cidades-integracoes');
   if(!host) return;
+  
+  // Só super_admin vê o status das integrações
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  if(nivel !== 'super_admin'){
+    host.innerHTML = '';
+    host.style.display = 'none';
+    return;
+  }
+  host.style.display = '';
+  
   var cidades = getCidadesData();
   
   var totalCid = cidades.length;
@@ -11779,6 +11808,236 @@ function _renderDiagnosticoCidade(c, diagObj, fromCache){
   window._cidDiagnosticoTexto = diagObj.texto;
 }
 
+/* ============================================================ */
+/* CIDADES — Curiosidades + Stats Topo + Aniversários + Mapa     */
+/* ============================================================ */
+
+/* Curiosidade fixa por cidade (não usa Machine) */
+var CIDADES_CURIOSIDADES = {
+  'Fortaleza': ['Capital do Ceará · 2,7 mi de habitantes · 5ª maior do Brasil', '+300 dias de sol por ano · referência em turismo do nordeste', 'Praia do Futuro famosa pelas barracas de caranguejo'],
+  'Maceió': ['Capital de Alagoas · piscinas naturais de Pajuçara', 'Mar verde-esmeralda · uma das praias mais bonitas do mundo', 'Caju, sururu e o doce de leite alagoano são tradição'],
+  'João Pessoa': ['Capital da Paraíba · onde o sol nasce primeiro nas Américas', '3ª cidade mais antiga do Brasil (fundada em 1585)', 'Ponta do Seixas: ponto mais oriental das Américas'],
+  'Recife': ['Capital de Pernambuco · "Veneza brasileira" pelos rios e pontes', 'Polo médico, tech e cultural do nordeste · Porto Digital', 'Frevo, maracatu e carnaval de tradição centenária'],
+  'Natal': ['Capital do RN · "Cidade do Sol" · 300+ dias de sol/ano', 'Dunas, lagoas e o maior cajueiro do mundo perto', 'Ar mais puro do Brasil segundo a NASA'],
+  'Aracaju': ['Capital de Sergipe · menor capital do nordeste', 'Primeira capital brasileira planejada (1855)', 'Orla com 6 km de extensão · paraíso pra caminhada'],
+  'São Luís': ['Capital do Maranhão · Patrimônio Mundial UNESCO', 'Única capital fundada por franceses no Brasil', 'Reggae é praticamente religião na cidade'],
+  'Cuiabá': ['Capital do MT · centro geodésico da América do Sul', 'Porta de entrada pro Pantanal e Chapada dos Guimarães', 'Uma das cidades mais quentes do Brasil'],
+  'Teresina': ['Capital do Piauí · única capital nordestina fora do litoral', 'Conhecida como "Chapadinha" pela formação geológica', 'Pólo médico do meio-norte brasileiro'],
+  'Vitória': ['Capital do ES · ilha com 39 ilhas e 7 morros', 'Uma das menores capitais do Brasil em território', '3ª melhor qualidade de vida entre capitais brasileiras'],
+  'Campo Grande': ['Capital do MS · "Cidade Morena" pela cor da terra', 'Polo de produção rural · agronegócio forte', 'Cidade mais arborizada do Brasil em proporção']
+};
+
+function getCidadeCuriosidade(nome){
+  var lista = CIDADES_CURIOSIDADES[nome];
+  if(!lista || !lista.length) return '';
+  // Troca semanalmente (mesmo índice durante a semana toda)
+  var hoje = new Date();
+  var inicioAno = new Date(hoje.getFullYear(), 0, 1);
+  var diasNoAno = Math.floor((hoje - inicioAno) / 86400000);
+  var semanaDoAno = Math.floor(diasNoAno / 7);
+  return lista[semanaDoAno % lista.length];
+}
+
+/* Mapeamento UF → região */
+var UF_REGIAO = {
+  'CE':'nordeste','AL':'nordeste','PB':'nordeste','PE':'nordeste','RN':'nordeste','SE':'nordeste','MA':'nordeste','PI':'nordeste','BA':'nordeste',
+  'MT':'centro-oeste','MS':'centro-oeste','GO':'centro-oeste','DF':'centro-oeste',
+  'SP':'sudeste','RJ':'sudeste','MG':'sudeste','ES':'sudeste',
+  'PR':'sul','SC':'sul','RS':'sul',
+  'AM':'norte','PA':'norte','AC':'norte','RR':'norte','RO':'norte','AP':'norte','TO':'norte'
+};
+
+/* Renderiza mini-stats no topo (4 cards) */
+function renderCidadesStatsTopo(){
+  var host = document.getElementById('cidades-stats-topo');
+  if(!host) return;
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  if(typeof filtrarCidadesPorPermissao === 'function') cidades = filtrarCidadesPorPermissao(cidades);
+  if(!cidades.length){ host.innerHTML=''; return; }
+  
+  var totalCidades = cidades.length;
+  
+  // Pessoas no time
+  var pessoas = [];
+  try { pessoas = JSON.parse(localStorage.getItem('gami_pessoas_v2')||'[]'); } catch(e){}
+  var totalPessoas = pessoas.length || 32;
+  
+  // Tempo desde a primeira cidade
+  var inicios = cidades.filter(function(c){return c.inicio;}).map(function(c){return new Date(c.inicio+'T00:00:00');});
+  inicios.sort(function(a,b){return a-b;});
+  var tempoTxt = '—';
+  if(inicios.length){
+    var primeira = inicios[0];
+    var hoje = new Date();
+    var meses = (hoje.getFullYear()-primeira.getFullYear())*12 + (hoje.getMonth()-primeira.getMonth());
+    var anos = Math.floor(meses/12);
+    var mesesResto = meses%12;
+    tempoTxt = anos+' ano'+(anos!==1?'s':'')+(mesesResto?' e '+mesesResto+' mês'+(mesesResto!==1?'es':''):'');
+  }
+  
+  // Próximo aniversário de cidade
+  var proxAniv = null;
+  cidades.forEach(function(c){
+    if(!c.inicio) return;
+    var dIni = new Date(c.inicio+'T00:00:00');
+    var hoje = new Date();
+    var prox = new Date(hoje.getFullYear(), dIni.getMonth(), dIni.getDate());
+    if(prox < hoje) prox.setFullYear(hoje.getFullYear()+1);
+    var diasAte = Math.ceil((prox - hoje)/86400000);
+    var anosFazendo = prox.getFullYear() - dIni.getFullYear();
+    if(!proxAniv || diasAte < proxAniv.dias){
+      proxAniv = { cidade:c, dias:diasAte, anos:anosFazendo };
+    }
+  });
+  var aniTxt = '—', aniSub = '';
+  if(proxAniv){
+    aniTxt = proxAniv.cidade.nome;
+    if(proxAniv.dias === 0) aniSub = '🎉 É hoje! '+proxAniv.anos+(proxAniv.anos!==1?' anos':' ano');
+    else if(proxAniv.dias === 1) aniSub = 'Amanhã · '+proxAniv.anos+(proxAniv.anos!==1?' anos':' ano');
+    else aniSub = 'Em '+proxAniv.dias+' dias · '+proxAniv.anos+(proxAniv.anos!==1?' anos':' ano');
+  }
+  
+  host.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">'
+    +'<div style="padding:12px 14px;background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border:1px solid #EF9F2733;border-left:3px solid #EF9F27;border-radius:10px"><div style="font-size:9px;font-weight:700;color:#854F0B;letter-spacing:.5px;text-transform:uppercase">🏙️ Cidades</div><div style="font-family:\'Syne\',sans-serif;font-size:24px;font-weight:800;color:var(--text);line-height:1.1;margin-top:2px">'+totalCidades+'</div><div style="font-size:10px;color:var(--text3);margin-top:1px">ativas na rede</div></div>'
+    +'<div style="padding:12px 14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:3px solid #1AB8F0;border-radius:10px"><div style="font-size:9px;font-weight:700;color:#0E7AB8;letter-spacing:.5px;text-transform:uppercase">👥 Time Gâmi</div><div style="font-family:\'Syne\',sans-serif;font-size:24px;font-weight:800;color:var(--text);line-height:1.1;margin-top:2px">'+totalPessoas+'</div><div style="font-size:10px;color:var(--text3);margin-top:1px">pessoas registradas</div></div>'
+    +'<div style="padding:12px 14px;background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-left:3px solid #8B5CF6;border-radius:10px"><div style="font-size:9px;font-weight:700;color:#6A1B9A;letter-spacing:.5px;text-transform:uppercase">📅 Trajetória</div><div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1.1;margin-top:2px">'+tempoTxt+'</div><div style="font-size:10px;color:var(--text3);margin-top:1px">desde a 1ª cidade</div></div>'
+    +'<div style="padding:12px 14px;background:linear-gradient(135deg,#EAF3DE,#FFFFFF);border:1px solid #1D9E7533;border-left:3px solid #1D9E75;border-radius:10px"><div style="font-size:9px;font-weight:700;color:#1D9E75;letter-spacing:.5px;text-transform:uppercase">🎂 Próximo aniversário</div><div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1.1;margin-top:2px">'+aniTxt+'</div><div style="font-size:10px;color:var(--text3);margin-top:1px">'+aniSub+'</div></div>'
+  +'</div>';
+}
+
+/* Renderiza card de aniversariantes do mês */
+function renderCidadesAniversarios(){
+  var host = document.getElementById('cidades-aniversarios');
+  if(!host) return;
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  if(typeof filtrarCidadesPorPermissao === 'function') cidades = filtrarCidadesPorPermissao(cidades);
+  
+  var hoje = new Date();
+  var mesAtual = hoje.getMonth();
+  
+  var aniversariantes = cidades.filter(function(c){
+    if(!c.inicio) return false;
+    var dIni = new Date(c.inicio+'T00:00:00');
+    return dIni.getMonth() === mesAtual && dIni.getFullYear() < hoje.getFullYear();
+  }).map(function(c){
+    var dIni = new Date(c.inicio+'T00:00:00');
+    var anosFazendo = hoje.getFullYear() - dIni.getFullYear();
+    var dia = dIni.getDate();
+    var jaPassou = hoje.getDate() > dia;
+    return { cidade:c, anos:anosFazendo, dia:dia, jaPassou:jaPassou };
+  }).sort(function(a,b){ return a.dia - b.dia; });
+  
+  if(!aniversariantes.length){ host.innerHTML = ''; return; }
+  
+  var mesesNomes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  
+  host.innerHTML = '<div style="padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:12px;position:relative">'
+    +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎂 ANIVERSÁRIOS DE '+mesesNomes[mesAtual].toUpperCase()+'</div>'
+    +'<div style="font-size:11px;color:#854F0B;margin-top:4px;margin-bottom:10px;font-weight:600">'+aniversariantes.length+' cidade'+(aniversariantes.length!==1?'s':'')+' faz'+(aniversariantes.length!==1?'em':'')+' aniversário esse mês — bora celebrar! 🎉</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px">'
+      + aniversariantes.map(function(a){
+        var corBg = a.jaPassou ? '#FCEBEB55' : '#FFFFFF';
+        var corBorda = a.jaPassou ? '#E24B4A55' : '#EF9F27';
+        var label = a.jaPassou ? '✓ '+a.dia+'/'+(mesAtual+1) : '📅 '+a.dia+'/'+(mesAtual+1);
+        return '<div onclick="abrirCidade(\''+a.cidade.id+'\')" style="padding:8px 12px;background:'+corBg+';border:1px solid '+corBorda+';border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.04)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+          +'<span style="font-size:18px">'+(a.anos>=5?'🏆':a.anos>=3?'🌟':a.anos>=1?'🎉':'🌱')+'</span>'
+          +'<div>'
+            +'<div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.2">'+a.cidade.nome+'/'+a.cidade.uf+'</div>'
+            +'<div style="font-size:10px;color:var(--text3);margin-top:1px"><strong>'+a.anos+(a.anos!==1?' anos':' ano')+'</strong> · '+label+'</div>'
+          +'</div>'
+        +'</div>';
+      }).join('')
+    +'</div>'
+  +'</div>';
+}
+
+/* Filtro por região */
+var _cidadeFiltroRegiao = 'todas';
+function filtrarCidadeRegiao(btn, regiao){
+  _cidadeFiltroRegiao = regiao;
+  document.querySelectorAll('.cf-rgn').forEach(function(b){
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text2)';
+    b.style.border = '1px solid var(--border)';
+    b.style.fontWeight = '500';
+  });
+  btn.style.background = 'var(--gami-blue)';
+  btn.style.color = 'white';
+  btn.style.border = '1px solid var(--gami-blue)';
+  btn.style.fontWeight = '600';
+  if(typeof renderCidadesGrid === 'function') renderCidadesGrid();
+}
+
+/* Mapa do Brasil — SVG simplificado com 11 cidades */
+function toggleMapaBrasil(){
+  var host = document.getElementById('cidades-mapa-brasil');
+  var btn = document.getElementById('btn-toggle-mapa');
+  if(!host) return;
+  if(host.innerHTML.trim()){
+    host.innerHTML = '';
+    if(btn) btn.innerHTML = '🗺️ Mostrar mapa';
+    return;
+  }
+  if(btn) btn.innerHTML = '🗺️ Ocultar mapa';
+  
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  if(typeof filtrarCidadesPorPermissao === 'function') cidades = filtrarCidadesPorPermissao(cidades);
+  
+  // Coordenadas (lat, lng) pra projeção
+  var coordCidades = {
+    'Fortaleza':[-3.7,-38.5], 'Maceió':[-9.6,-35.7], 'João Pessoa':[-7.1,-34.8],
+    'Recife':[-8.0,-34.9], 'Natal':[-5.7,-35.2], 'Aracaju':[-10.9,-37.1],
+    'São Luís':[-2.5,-44.3], 'Cuiabá':[-15.5,-56.0], 'Teresina':[-5.0,-42.8],
+    'Vitória':[-20.3,-40.3], 'Campo Grande':[-20.4,-54.6]
+  };
+  
+  // BBox do Brasil pra projeção
+  var BR = { lat_max:5.27, lat_min:-33.75, lng_min:-73.99, lng_max:-34.79 };
+  var W = 500, H = 540;
+  function proj(lat, lng){
+    var x = (lng - BR.lng_min) / (BR.lng_max - BR.lng_min) * W;
+    var y = (BR.lat_max - lat) / (BR.lat_max - BR.lat_min) * H;
+    return [x, y];
+  }
+  
+  // Path simplificado do contorno do Brasil
+  var brasilPath = 'M 320,15 L 360,30 L 395,50 L 420,80 L 440,115 L 455,150 L 460,185 L 475,210 L 490,245 L 485,280 L 470,310 L 455,335 L 440,365 L 430,395 L 415,425 L 395,450 L 365,470 L 335,485 L 300,495 L 270,500 L 240,495 L 210,485 L 180,470 L 155,450 L 135,425 L 120,395 L 110,365 L 100,335 L 90,300 L 80,265 L 75,225 L 70,185 L 65,145 L 60,110 L 70,80 L 90,55 L 120,35 L 155,20 L 195,12 L 240,8 L 285,10 Z';
+  
+  var pontos = cidades.map(function(c){
+    var coord = coordCidades[c.nome];
+    if(!coord) return '';
+    var p = proj(coord[0], coord[1]);
+    var s = STATUS_CIDADE[c.status] || STATUS_CIDADE.ativa;
+    var corPonto = s.dot;
+    return '<g onclick="abrirCidade(\''+c.id+'\')" onmouseover="this.querySelector(\'circle\').setAttribute(\'r\',\'12\');this.querySelector(\'.mapa-tip\').style.opacity=\'1\'" onmouseout="this.querySelector(\'circle\').setAttribute(\'r\',\'8\');this.querySelector(\'.mapa-tip\').style.opacity=\'0\'" style="cursor:pointer">'
+      +'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="14" fill="'+corPonto+'" opacity=".2"><animate attributeName="r" values="14;20;14" dur="2s" repeatCount="indefinite"/></circle>'
+      +'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="8" fill="'+corPonto+'" stroke="white" stroke-width="2.5" style="transition:r .15s"/>'
+      +'<g class="mapa-tip" style="opacity:0;transition:opacity .2s;pointer-events:none">'
+        +'<rect x="'+(p[0]+12)+'" y="'+(p[1]-30)+'" width="160" height="56" rx="6" fill="var(--text)" opacity=".95"/>'
+        +'<text x="'+(p[0]+20)+'" y="'+(p[1]-14)+'" fill="white" font-size="12" font-weight="700" font-family="Syne">'+c.nome+'/'+c.uf+'</text>'
+        +'<text x="'+(p[0]+20)+'" y="'+(p[1])+'" fill="rgba(255,255,255,.9)" font-size="10" font-family="DM Sans">👤 '+(c.gestor||'sem gestor')+'</text>'
+        +'<text x="'+(p[0]+20)+'" y="'+(p[1]+14)+'" fill="rgba(255,255,255,.7)" font-size="9" font-family="DM Sans">Click pra abrir →</text>'
+      +'</g>'
+    +'</g>';
+  }).join('');
+  
+  host.innerHTML = '<div style="padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px">'
+    +'<div style="font-size:12px;color:var(--text3);margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<span style="font-weight:700">🗺️ Brasil Gâmi</span>'
+      +'<span>·</span>'
+      +'<span>Passe o mouse e clique pra abrir</span>'
+      +'<span style="flex:1"></span>'
+      +'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px"><span style="width:8px;height:8px;background:#1D9E75;border-radius:50%;display:inline-block"></span>Ativa</span>'
+      +'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px"><span style="width:8px;height:8px;background:#EF9F27;border-radius:50%;display:inline-block"></span>Atenção</span>'
+      +'<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px"><span style="width:8px;height:8px;background:#E24B4A;border-radius:50%;display:inline-block"></span>Crítica</span>'
+    +'</div>'
+    +'<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:500px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">'
+      +'<path d="'+brasilPath+'" fill="rgba(0,0,0,.04)" stroke="rgba(0,0,0,.15)" stroke-width="1.2"/>'
+      +pontos
+    +'</svg>'
+  +'</div>';
+}
+
 function renderCidadesGrid(){
   const grid = document.getElementById('cidades-grid');
   if(!grid) return;
@@ -11789,6 +12048,10 @@ function renderCidadesGrid(){
   const busca = (document.getElementById('cidade-busca')||{}).value||'';
   let cidades = getCidadesData().filter(c=>{
     if(_cidadeFiltroStatus !== 'todos' && c.status !== _cidadeFiltroStatus) return false;
+    if(_cidadeFiltroRegiao && _cidadeFiltroRegiao !== 'todas'){
+      var reg = UF_REGIAO[c.uf] || '';
+      if(reg !== _cidadeFiltroRegiao) return false;
+    }
     if(busca && !c.nome.toLowerCase().includes(busca.toLowerCase())) return false;
     return true;
   });
@@ -11798,42 +12061,54 @@ function renderCidadesGrid(){
     cidades = filtrarCidadesPorPermissao(cidades);
   }
 
-  grid.innerHTML = cidades.map(c=>{
+  grid.innerHTML = cidades.map((c, idx)=>{
     const s = STATUS_CIDADE[c.status] || STATUS_CIDADE.ativa;
-    const score = calcScore(c);
-    const sc = scoreColor(score);
     const alertas = getAlertas(c);
     const temCritico = alertas.some(a=>a.type==='critico');
+    const curiosidade = (typeof getCidadeCuriosidade === 'function') ? getCidadeCuriosidade(c.nome) : '';
+    // Idade da cidade
+    let idadeTxt = '';
+    if(c.inicio){
+      const dIni = new Date(c.inicio+'T00:00:00');
+      const meses = (new Date().getFullYear()-dIni.getFullYear())*12 + (new Date().getMonth()-dIni.getMonth());
+      if(meses < 6) idadeTxt = '🆕 Novo';
+      else if(meses < 12) idadeTxt = meses+' meses';
+      else { const anos = Math.floor(meses/12); idadeTxt = anos+(anos>1?' anos':' ano'); }
+    }
     return `
-    <div onclick="abrirCidade('${c.id}')" style="border:1px solid ${temCritico?'#E24B4A33':'var(--border)'};border-radius:12px;padding:14px;background:var(--surface);cursor:pointer;transition:all .12s;border-left:4px solid ${s.dot}"
-      onmouseover="this.style.borderColor='var(--orange)'" onmouseout="this.style.borderColor='${temCritico?'#E24B4A33':'var(--border)'}'">
+    <div class="cidade-card" data-cidade-id="${c.id}" data-uf="${c.uf}" onclick="abrirCidade('${c.id}')" style="border:1px solid ${temCritico?'#E24B4A33':'var(--border)'};border-radius:12px;padding:14px;background:var(--surface);cursor:pointer;transition:all .2s;border-left:4px solid ${s.dot};animation:cidFadeUp .35s ease both;animation-delay:${idx*45}ms;position:relative;overflow:hidden"
+      onmouseover="this.style.borderColor='var(--orange)';this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 18px rgba(0,0,0,.06)';var p=this.querySelector('.cid-peek');if(p)p.style.maxHeight='200px'" 
+      onmouseout="this.style.borderColor='${temCritico?'#E24B4A33':'var(--border)'}';this.style.transform='translateY(0)';this.style.boxShadow='none';var p=this.querySelector('.cid-peek');if(p)p.style.maxHeight='0'">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;gap:8px">
         <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:0">
           ${_gestorAvatarHTML(c.gestor, 38)}
           <div style="min-width:0">
             <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.nome} <span style="font-size:11px;color:var(--text3);font-family:'DM Sans',sans-serif">${c.uf}</span></div>
-            <div style="font-size:11px;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${c.gestor}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${c.gestor||'—'}</div>
+            ${c.inicio ? `<div style="font-size:10px;color:var(--text3);margin-top:2px;display:flex;align-items:center;gap:4px"><span style="font-size:9px">📅</span> Desde ${(()=>{const d=new Date(c.inicio+'T00:00:00');const mm=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][d.getMonth()];return mm+'/'+d.getFullYear();})()}${idadeTxt?' · <span style="color:var(--gami-blue);font-weight:600">'+idadeTxt+'</span>':''}</div>` : ''}
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-          <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600;white-space:nowrap">${s.label}</span>
-          <span style="font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:${sc.color}">${score}</span>
+        <span style="font-size:10px;padding:2px 8px;border-radius:10px;background:${s.bg};color:${s.color};font-weight:600;white-space:nowrap;flex-shrink:0">${s.label}</span>
+      </div>
+      ${curiosidade ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;line-height:1.4;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:8px">💡 ${curiosidade}</div>` : ''}
+      ${temCritico ? `<div style="margin-top:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
+      <div class="cid-peek" style="max-height:0;overflow:hidden;transition:max-height .25s ease">
+        <div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px;color:var(--text2)">
+          ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600">📱 WhatsApp</a>` : ''}
+          ${c.instagram_conectado ? `<span style="padding:3px 8px;border-radius:6px;background:#FCE4EC;color:#AD1457;font-weight:600">📷 Instagram ativo</span>` : `<span style="padding:3px 8px;border-radius:6px;background:#F5F5F5;color:#666;font-weight:500">📷 IG pendente</span>`}
+          ${c.machine_api ? `<span style="padding:3px 8px;border-radius:6px;background:#E6F6FE;color:#0E7AB8;font-weight:600">⚙️ Machine OK</span>` : ''}
         </div>
       </div>
-      <div style="height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;margin-bottom:10px">
-        <div style="height:100%;width:${score}%;background:${sc.bar};border-radius:2px"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)">
-        <span>${c.campanhas} campanha${c.campanhas!==1?'s':''} ativa${c.campanhas!==1?'s':''}</span>
-        <span>${c.posts_semana} posts/semana</span>
-      </div>
-      ${temCritico ? `<div style="margin-top:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
-      <div style="margin-top:8px;display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap">
-        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:4px 9px;border:none;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600;cursor:pointer;font-family:inherit" title="Análise IA semanal desta cidade">🤖 Semanal</button>
-        <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="font-size:10px;padding:4px 9px;border:none;border-radius:6px;background:#E6F6FE;color:#0E7AB8;font-weight:600;cursor:pointer;font-family:inherit" title="Relatório mensal IA desta cidade">📅 Mensal</button>
+      <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap">
+        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:5px 10px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25)" title="Análise IA semanal desta cidade">🤖 Semanal</button>
+        <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="font-size:10px;padding:5px 10px;border:none;border-radius:6px;background:#1AB8F0;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(26,184,240,.25)" title="Relatório mensal IA desta cidade">📅 Mensal</button>
       </div>
     </div>`;
   }).join('');
+  
+  // Renderiza headers (stats topo + aniversários) sempre que o grid muda
+  if(typeof renderCidadesStatsTopo === 'function') renderCidadesStatsTopo();
+  if(typeof renderCidadesAniversarios === 'function') renderCidadesAniversarios();
 }
 
 function abrirCidade(id){
