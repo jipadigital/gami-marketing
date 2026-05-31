@@ -1,4 +1,4 @@
-<!-- v23.12 - Card patente Gami abaixo do versiculo, antigo removido - 30/05/2026 -->
+<!-- v23.14 - Diagnostico IA semanal de cidades (geral + individual) - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3251,11 +3251,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="page-header">
       <div><div class="page-title">Cidades</div><div class="page-sub">Gestão completa por cidade</div></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button onclick="diagnosticoSemanalCidades()" class="btn btn-ia" style="font-size:11px" title="IA analisa as 11 cidades e mostra panorama semanal com alertas e oportunidades">🤖 Diagnóstico IA da semana</button>
         <button onclick="sincronizarStatusInstagram()" class="btn btn-ghost" style="font-size:11px" title="Consulta o Meta Business e marca quais Instagrams estão realmente conectados">📸 Sincronizar IG ao vivo</button>
         <button onclick="resetCidadesParaPadrao()" class="btn btn-ghost" style="font-size:11px" title="Atualiza gestores, chaves API e Instagram para os valores oficiais">🔄 Atualizar dados oficiais</button>
       </div>
     </div>
     <div id="ig-sync-status" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
+
+    <!-- PAINEL DE DIAGNÓSTICO IA (escondido por padrão) -->
+    <div id="cid-diagnostico-ia" style="display:none;margin-bottom:14px"></div>
 
     <!-- STATUS DAS INTEGRAÇÕES -->
     <div id="cidades-integracoes" style="margin-bottom:14px"></div>
@@ -3618,6 +3622,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="abrirDiagnosticoInbox()" title="Ver status detalhado por conta IG">📊 Diagnóstico</button>
       <button class="btn btn-ghost" onclick="sincronizarInbox()">↻ Sincronizar</button>
+      <button class="btn btn-ia" onclick="classificarConversasIA()" title="IA classifica e prioriza todas as DMs">🤖 Classificar com IA</button>
       <button class="btn btn-primary" onclick="openAI('Gere 5 respostas rápidas profissionais para mensagens comuns no Instagram de uma empresa de delivery (dúvidas sobre entrega, parceria com restaurante, cadastro de motoboy). Tom: amigável e profissional.')">Respostas rápidas IA ↗</button>
     </div>
   </div>
@@ -4334,6 +4339,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="gerarRelatorioCompleto()">🤖 Analisar com IA</button>
+      <button class="btn btn-ia" onclick="gerarRelatorioExecutivoMensal()" title="Relatório executivo do mês — gerado pela IA, formato pra diretoria">📅 Relatório Mensal Executivo</button>
       <button class="btn btn-ghost" onclick="exportarRelatorio()">📤 Exportar</button>
       <button class="btn btn-ghost" onclick="sincronizarMachineGlobal()" id="btn-sync-global">🏍️ Sincronizar Machine</button>
       <button class="btn btn-primary" onclick="atualizarRelatorio()">↻ Atualizar</button>
@@ -9976,6 +9982,159 @@ function _gestorAvatarHTML(nomeGestor, size){
   return '<div style="width:'+s+'px;height:'+s+'px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:'+(s*.42)+'px;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.18);flex-shrink:0">'+inicial+'</div>';
 }
 
+/* ============================================================ */
+/* CIDADES — DIAGNÓSTICO COM IA (geral + individual)             */
+/* ============================================================ */
+
+/* Diagnóstico geral: IA analisa todas as 11 cidades e gera panorama */
+async function diagnosticoSemanalCidades(){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  if(!cidades.length){ alert('Carregue as cidades primeiro'); return; }
+  
+  // Filtra por permissão (gestor vê só a dele — então só mostra geral se for super_admin ou diretoria)
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  if(['gestor','colaborador'].indexOf(nivel) >= 0){
+    if(typeof toast==='function') toast('Diagnóstico geral só pra diretoria. Use o "Analisar com IA" da sua cidade.', 'warn');
+    return;
+  }
+  
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">🤖</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando diagnóstico semanal das '+cidades.length+' cidades...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Pode levar 15-25 segundos</div></div></div>';
+  
+  // Coleta dados de cada cidade
+  var dadosLinhas = cidades.map(function(c){
+    var score = (typeof calcScore === 'function') ? calcScore(c) : '?';
+    var alertas = (typeof getAlertas === 'function') ? getAlertas(c) : [];
+    var alertasTxt = alertas.length ? ' | '+alertas.length+' alerta(s)' : '';
+    return '- '+c.nome+' ('+c.uf+'): score '+score+'/100 · status '+c.status+' · '+(c.campanhas||0)+' campanhas · '+(c.posts_semana||0)+' posts/sem · gestor '+(c.gestor||'?')+alertasTxt;
+  }).join('\n');
+  
+  var prompt = 'Você é consultor de performance da Gâmi Delivery (delivery em 11 cidades do nordeste, atende McDonald\'s, BK, KFC, Domino\'s, Drogasil, Boticário, Subway, Pague Menos). '
+    +'Analise o panorama semanal das cidades abaixo pra diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte).\n\n'
+    +'Dados:\n'+dadosLinhas+'\n\n'
+    +'Gere o diagnóstico EXATAMENTE neste formato (use texto corrido, SEM markdown, SEM ## ou **):\n\n'
+    +'PANORAMA GERAL\n'
+    +'(2 frases sobre o estado geral)\n\n'
+    +'DESTAQUES POSITIVOS\n'
+    +'• (top 3 cidades em destaque, 1 linha cada com motivo)\n\n'
+    +'PONTOS DE ATENÇÃO\n'
+    +'• (até 3 cidades preocupantes, 1 linha cada com motivo)\n\n'
+    +'AÇÕES PRIORITÁRIAS DA SEMANA\n'
+    +'• (3-5 ações concretas pra essa semana, indicando qual cidade)\n\n'
+    +'Tom: direto, executivo, sem rodeios. Português Brasil.';
+  
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 1500 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    if(!texto) throw new Error('Resposta vazia');
+    
+    var dataAtual = new Date().toLocaleDateString('pt-BR');
+    painel.innerHTML = ''
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
+        +'<div style="display:flex;align-items:center;gap:10px">'
+          +'<span style="font-size:22px">🤖</span>'
+          +'<div>'
+            +'<div style="font-size:13px;font-weight:700;color:var(--text)">Diagnóstico IA — Semana atual</div>'
+            +'<div style="font-size:10px;color:var(--text3)">Gerado em '+dataAtual+' · '+cidades.length+' cidades analisadas</div>'
+          +'</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px">'
+          +'<button onclick="diagnosticoSemanalCidades()" style="padding:5px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">↻ Refazer</button>'
+          +'<button onclick="copiarDiagnosticoCidades()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
+          +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+        +'</div>'
+      +'</div>'
+      +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+texto.replace(/</g,'&lt;')+'</div>';
+    window._cidDiagnosticoTexto = texto;
+    if(typeof toast === 'function') toast('Diagnóstico semanal gerado!', 'success');
+  } catch(e){
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o diagnóstico:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados. Veja console (F12) pra detalhes.</span></div>';
+    console.error('[diagnosticoSemanalCidades]', e);
+  }
+}
+
+function copiarDiagnosticoCidades(){
+  if(!window._cidDiagnosticoTexto) return;
+  navigator.clipboard.writeText(window._cidDiagnosticoTexto).then(function(){
+    if(typeof toast==='function') toast('Diagnóstico copiado!', 'success');
+  });
+}
+
+/* Diagnóstico individual: 1 cidade específica */
+async function diagnosticoIACidade(cidadeId){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var c = cidades.find(function(x){return x.id===cidadeId;});
+  if(!c){ alert('Cidade não encontrada'); return; }
+  
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">🤖</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Analisando '+c.nome+' com IA...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Pode levar 10-15 segundos</div></div></div>';
+  // Scroll suave pro painel
+  setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+  
+  var score = (typeof calcScore === 'function') ? calcScore(c) : '?';
+  var alertas = (typeof getAlertas === 'function') ? getAlertas(c) : [];
+  var alertasTxt = alertas.length ? alertas.map(function(a){return '• '+a.type+': '+a.msg;}).join('\n') : 'Nenhum alerta crítico.';
+  
+  var prompt = 'Analise a cidade de '+c.nome+'/'+c.uf+' da Gâmi Delivery e sugira 3-5 ações concretas pro gestor '+(c.gestor||'')+'.\n\n'
+    +'Dados:\n'
+    +'- Status: '+c.status+'\n'
+    +'- Score: '+score+'/100\n'
+    +'- Campanhas ativas: '+(c.campanhas||0)+'\n'
+    +'- Posts/semana: '+(c.posts_semana||0)+'\n'
+    +'- Gestor responsável: '+(c.gestor||'?')+'\n\n'
+    +'Alertas ativos:\n'+alertasTxt+'\n\n'
+    +'Estrutura da resposta (SEM markdown, sem ## ou **):\n\n'
+    +'DIAGNÓSTICO\n(2-3 frases sobre o estado atual da cidade)\n\n'
+    +'O QUE FAZER ESTA SEMANA\n• (3-5 ações concretas, 1 linha cada)\n\n'
+    +'PONTOS POSITIVOS\n(1 frase sobre o que tá indo bem)\n\n'
+    +'Tom: direto, prático, sem rodeios. Português Brasil.';
+  
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 1000 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    if(!texto) throw new Error('Resposta vazia');
+    
+    painel.innerHTML = ''
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
+        +'<div style="display:flex;align-items:center;gap:10px">'
+          +'<span style="font-size:22px">🤖</span>'
+          +'<div>'
+            +'<div style="font-size:13px;font-weight:700;color:var(--text)">Análise IA: '+c.nome+'/'+c.uf+'</div>'
+            +'<div style="font-size:10px;color:var(--text3)">Score atual: '+score+'/100 · Gestor: '+(c.gestor||'?')+'</div>'
+          +'</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px">'
+          +'<button onclick="diagnosticoIACidade(\''+c.id+'\')" style="padding:5px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">↻ Refazer</button>'
+          +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+        +'</div>'
+      +'</div>'
+      +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+texto.replace(/</g,'&lt;')+'</div>';
+    if(typeof toast === 'function') toast('Análise IA da cidade '+c.nome+' pronta!', 'success');
+  } catch(e){
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui analisar '+c.nome+':</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados.</span></div>';
+    console.error('[diagnosticoIACidade]', e);
+  }
+}
+
 function renderCidadesGrid(){
   const grid = document.getElementById('cidades-grid');
   if(!grid) return;
@@ -10025,6 +10184,9 @@ function renderCidadesGrid(){
         <span>${c.posts_semana} posts/semana</span>
       </div>
       ${temCritico ? `<div style="margin-top:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
+      <div style="margin-top:8px;display:flex;justify-content:flex-end">
+        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:4px 9px;border:none;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600;cursor:pointer;font-family:inherit" title="IA analisa esta cidade e sugere ações">🤖 Analisar com IA</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -16363,9 +16525,10 @@ function renderInboxLista(){
                 <span style="font-size:10px;color:var(--text3)">${m.hora}</span>
               </div>
               <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:4px">${m.ultima}</div>
-              <div style="display:flex;gap:5px;align-items:center">
+              <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
                 <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:#E6F1FB;color:#185FA5;font-weight:500">📍 ${m.cidade}</span>
                 <span style="font-size:9px;padding:1px 6px;border-radius:8px;background:${sc.bg};color:${sc.color};font-weight:500">${sc.label}</span>
+                ${m.ia_categoria ? `<span style="font-size:9px;padding:1px 6px;border-radius:8px;background:${({URGENTE:'#FCEBEB',COMERCIAL:'#FFF8EE',CURIOSIDADE:'#EAF3DE',SPAM:'#F3F4F6'})[m.ia_categoria]||'#F3F4F6'};color:${({URGENTE:'#A32D2D',COMERCIAL:'#854F0B',CURIOSIDADE:'#3B6D11',SPAM:'#6B7280'})[m.ia_categoria]||'#6B7280'};font-weight:600">${({URGENTE:'🔴',COMERCIAL:'🟡',CURIOSIDADE:'🟢',SPAM:'⚪'})[m.ia_categoria]||'•'} ${m.ia_categoria}</span>` : ''}
                 ${!m.lida?'<div style="width:7px;height:7px;border-radius:50%;background:#1E88E5;margin-left:auto"></div>':''}
               </div>
             </div>
@@ -16411,6 +16574,23 @@ function abrirConversa(id){
       </div>
     </div>`;
   }).join('');
+  
+  // SUGESTÃO IA — mostra abaixo das mensagens se foi classificada
+  if(conv.ia_categoria && conv.ia_resposta && msgsEl){
+    var corCat = { URGENTE:'#E24B4A', COMERCIAL:'#EF9F27', CURIOSIDADE:'#1D9E75', SPAM:'#9CA3AF' };
+    var iconCat = { URGENTE:'🔴', COMERCIAL:'🟡', CURIOSIDADE:'🟢', SPAM:'⚪' };
+    var cor = corCat[conv.ia_categoria] || '#8B5CF6';
+    var ico = iconCat[conv.ia_categoria] || '🤖';
+    var sugHtml = '<div style="margin-top:14px;padding:12px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1px solid #8B5CF655;border-left:4px solid '+cor+';border-radius:10px">'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+        +'<span style="font-size:14px">🤖</span>'
+        +'<span style="font-size:10px;font-weight:700;color:'+cor+';letter-spacing:.5px">'+ico+' '+conv.ia_categoria+' · sugestão IA</span>'
+      +'</div>'
+      +'<div style="font-size:12px;color:var(--text);line-height:1.6;margin-bottom:8px;font-style:italic">"'+conv.ia_resposta+'"</div>'
+      +'<button onclick="usarSugestaoIA()" style="padding:5px 11px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋 Usar essa resposta</button>'
+    +'</div>';
+    msgsEl.insertAdjacentHTML('beforeend', sugHtml);
+  }
 
   // Scroll to bottom
   setTimeout(()=>{ if(msgsEl) msgsEl.scrollTop=msgsEl.scrollHeight; },50);
@@ -16422,6 +16602,15 @@ function abrirConversa(id){
 
 function filtrarInbox(){
   renderInboxLista();
+}
+
+/* Usa a sugestão da IA: copia o texto pro campo de resposta */
+function usarSugestaoIA(){
+  var conv = _inboxDados.find(function(m){return m.id===_inboxAtual;});
+  if(!conv || !conv.ia_resposta) return;
+  var txtEl = document.getElementById('inbox-reply-txt');
+  if(txtEl){ txtEl.value = conv.ia_resposta; txtEl.focus(); }
+  if(typeof toast==='function') toast('Resposta colada — edite se quiser e envie!', 'success');
 }
 
 function gerarRespostaIA(){
@@ -16763,6 +16952,98 @@ function abrirDiagnosticoInbox(){
   var card = document.getElementById('inbox-diag-card');
   if(card){ card.style.display = card.style.display === 'none' ? 'block' : 'none'; }
   else if(typeof sincronizarInbox === 'function'){ sincronizarInbox(); }
+}
+
+/* ============================================================ */
+/* INBOX — CLASSIFICAÇÃO COM IA (urgente/comercial/curiosidade)  */
+/* ============================================================ */
+async function classificarConversasIA(){
+  if(!_inboxDados || !_inboxDados.length){
+    if(typeof toast==='function') toast('Nenhuma conversa pra classificar. Sincronize primeiro.', 'warn');
+    return;
+  }
+  
+  // Painel de loading
+  var painel = document.getElementById('inbox-ia-painel');
+  if(!painel){
+    painel = document.createElement('div');
+    painel.id = 'inbox-ia-painel';
+    var statusBar = document.getElementById('inbox-status-bar');
+    if(statusBar && statusBar.parentNode){
+      statusBar.parentNode.insertBefore(painel, statusBar.nextSibling);
+    }
+  }
+  painel.style.cssText = 'margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1px solid #8B5CF655;border-radius:10px';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">🤖</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Classificando '+_inboxDados.length+' conversas com IA...</div><div style="font-size:11px;color:var(--text3)">Pode levar 10-20 segundos</div></div></div>';
+
+  // Monta resumo das conversas (texto curto)
+  var resumoConvs = _inboxDados.slice(0, 20).map(function(c, i){
+    var ultima = (c.ultima || '').replace(/\n/g, ' ').slice(0, 150);
+    return (i+1)+'. @'+(c.usuario||'usuario')+' ('+(c.cidade||'?')+'): "'+ultima+'"';
+  }).join('\n');
+
+  var prompt = 'Você é um classificador de DMs do Instagram da Gâmi Delivery (empresa de delivery em 11 cidades do nordeste). '
+    +'Classifique cada conversa em UMA categoria:\n'
+    +'- URGENTE: reclamação, problema, pedido cancelado, atraso, dúvida que precisa resposta rápida\n'
+    +'- COMERCIAL: empresa querendo se cadastrar, parceria, motoboy querendo trabalhar\n'
+    +'- CURIOSIDADE: pergunta geral sobre como funciona, valores, área de atuação\n'
+    +'- SPAM: irrelevante, propaganda, mensagem genérica\n\n'
+    +'Conversas:\n'+resumoConvs+'\n\n'
+    +'Retorne APENAS JSON válido (sem markdown, sem ```), no formato:\n'
+    +'[{"n":1,"cat":"URGENTE","resposta":"sugestão de resposta curta e profissional em 1-2 frases"},...]';
+
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 2000 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    var jsonMatch = texto.match(/\[[\s\S]*\]/);
+    if(!jsonMatch) throw new Error('IA não retornou JSON');
+    var classificacoes = JSON.parse(jsonMatch[0]);
+
+    // Aplica nas conversas
+    classificacoes.forEach(function(cl){
+      var idx = (cl.n || 1) - 1;
+      if(_inboxDados[idx]){
+        _inboxDados[idx].ia_categoria = cl.cat;
+        _inboxDados[idx].ia_resposta = cl.resposta;
+      }
+    });
+
+    // Renderiza resumo
+    var corCat = { URGENTE:'#E24B4A', COMERCIAL:'#EF9F27', CURIOSIDADE:'#1D9E75', SPAM:'#9CA3AF' };
+    var iconCat = { URGENTE:'🔴', COMERCIAL:'🟡', CURIOSIDADE:'🟢', SPAM:'⚪' };
+    var counts = { URGENTE:0, COMERCIAL:0, CURIOSIDADE:0, SPAM:0 };
+    classificacoes.forEach(function(cl){ if(counts[cl.cat]!==undefined) counts[cl.cat]++; });
+
+    painel.innerHTML = ''
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;flex-wrap:wrap">'
+        +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">🤖</span><div><div style="font-size:13px;font-weight:700">Classificação IA concluída</div><div style="font-size:10px;color:var(--text3)">'+classificacoes.length+' conversas analisadas · clique pra ver respostas sugeridas</div></div></div>'
+        +'<button onclick="document.getElementById(\'inbox-ia-painel\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">'
+        + Object.keys(counts).map(function(k){
+          return '<div style="padding:9px;background:white;border:1px solid '+corCat[k]+'33;border-left:3px solid '+corCat[k]+';border-radius:8px;text-align:center">'
+            +'<div style="font-size:18px">'+iconCat[k]+'</div>'
+            +'<div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:'+corCat[k]+'">'+counts[k]+'</div>'
+            +'<div style="font-size:9px;font-weight:700;color:'+corCat[k]+';letter-spacing:.5px">'+k+'</div>'
+          +'</div>';
+        }).join('')
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--text3);padding:8px;background:#F0F8FF;border-radius:6px;border:1px dashed #1AB8F0">'
+        +'💡 Cada conversa agora mostra na lista o status colorido. Click em uma pra ver a resposta sugerida pela IA.'
+      +'</div>';
+
+    if(typeof renderInboxLista==='function') renderInboxLista();
+    if(typeof toast==='function') toast('IA classificou '+classificacoes.length+' conversas!', 'success');
+  } catch(e){
+    painel.innerHTML = '<div style="padding:10px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;font-size:11px;color:#A32D2D"><strong>⚠️ Não consegui classificar:</strong> '+e.message+'<br><span style="font-size:10px;opacity:.8">Pode ser créditos Anthropic esgotados. Veja console (F12) pra detalhes.</span></div>';
+    console.error('[classificarConversasIA]', e);
+  }
 }
 
 
@@ -22130,6 +22411,151 @@ function copiarRelatorio(){
 }
 function exportarRelatorio(){openAI('Formate um relatório diário da Gâmi Delivery em formato de email para enviar à diretoria.');}
 function sincronizarMachineGlobal(){atualizarRelatorio();alert('Dados sincronizados!');}
+
+/* ============================================================ */
+/* RELATÓRIO EXECUTIVO MENSAL (IA gera, formato pra diretoria)   */
+/* ============================================================ */
+async function gerarRelatorioExecutivoMensal(){
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  if(!cidades.length){ alert('Carregue os dados das cidades primeiro.'); return; }
+
+  // Cria modal full-screen pro relatório
+  var ov = document.getElementById('modal-rel-mensal');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'modal-rel-mensal';
+    ov.className = 'modal-overlay';
+    document.body.appendChild(ov);
+  }
+  ov.classList.add('open');
+
+  var hoje = new Date();
+  var meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  // Mês de referência: mês anterior (relatório fechado)
+  var ref = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+  var mesNome = meses[ref.getMonth()];
+  var anoNome = ref.getFullYear();
+
+  ov.innerHTML = '<div class="modal-box" style="max-width:780px;max-height:92vh;overflow-y:auto">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">'
+      +'<div>'
+        +'<div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#8B5CF6;text-transform:uppercase">📅 Relatório executivo mensal</div>'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text)">'+mesNome+' '+anoNome+'</div>'
+        +'<div style="font-size:11px;color:var(--text3)">Gâmi Delivery — '+cidades.length+' cidades</div>'
+      +'</div>'
+      +'<button onclick="closeModal(\'modal-rel-mensal\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
+    +'</div>'
+    +'<div id="rel-mensal-conteudo" style="min-height:200px"></div>'
+    +'<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'
+      +'<button onclick="copiarRelatorioMensal()" id="rel-mensal-btn-copiar" class="btn btn-ghost" style="font-size:12px;display:none">📋 Copiar relatório</button>'
+      +'<button onclick="emailRelatorioMensal()" id="rel-mensal-btn-email" class="btn btn-ghost" style="font-size:12px;display:none">📧 Abrir no email</button>'
+      +'<button onclick="closeModal(\'modal-rel-mensal\')" class="btn btn-primary" style="margin-left:auto;font-size:12px">Fechar</button>'
+    +'</div>'
+  +'</div>';
+
+  var content = document.getElementById('rel-mensal-conteudo');
+  content.innerHTML = '<div style="padding:30px;text-align:center"><div style="font-size:30px;margin-bottom:10px">🤖</div><div style="font-size:13px;font-weight:600;color:var(--text)">Gerando relatório executivo de '+mesNome+'...</div><div style="font-size:11px;color:var(--text3);margin-top:5px">Pode levar 15-30 segundos</div></div>';
+
+  // Coleta dados das cidades pra prompt
+  var dadosCidades = cidades.map(function(c){
+    var score = (typeof calcScore==='function') ? calcScore(c) : '?';
+    return '- '+c.nome+': score '+score+'/100';
+  }).join('\n');
+
+  var prompt = 'Você é o head de marketing da Gâmi Delivery (delivery em 11 cidades do nordeste brasileiro — McDonald\'s, BK, KFC, Domino\'s, Drogasil, Boticário entre os cases). '
+    +'Gere um RELATÓRIO EXECUTIVO MENSAL de '+mesNome+' '+anoNome+' pra apresentar à diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte) e gerência (Leomara, Thiago).\n\n'
+    +'Dados das cidades:\n'+dadosCidades+'\n\n'
+    +'O relatório precisa ter EXATAMENTE essas seções:\n'
+    +'1. RESUMO EXECUTIVO (3 bullets curtos com os destaques do mês)\n'
+    +'2. DESEMPENHO POR CIDADE (top 3 destaques + 2 pontos de atenção)\n'
+    +'3. MARKETING & CAPTAÇÃO (campanhas, leads gerados, ROAS estimado)\n'
+    +'4. OPERAÇÃO & ATENDIMENTO (corridas, motoboys ativos, NPS)\n'
+    +'5. CULTURA GÂMI (devocional, aniversariantes, momentos da equipe)\n'
+    +'6. RECOMENDAÇÕES PRO PRÓXIMO MÊS (3-5 ações prioritárias)\n\n'
+    +'Tom: executivo, direto, profissional. Use bullets. Sem markdown (sem ** ou ###). Use APENAS texto e quebras de linha. Não invente números — se faltar dado, escreva "dado não disponível" ou use estimativas claramente marcadas. Pode usar emojis com moderação (1 por seção no máximo).';
+
+  try {
+    var resp = await fetch('/.netlify/functions/blog-ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ prompt: prompt, max_tokens: 2500 })
+    });
+    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var data = await resp.json();
+    var texto = (data.content||[]).map(function(b){return b.text||'';}).join('').trim();
+    if(!texto) throw new Error('Resposta vazia');
+
+    // Renderiza
+    content.innerHTML = '<div style="padding:16px;background:var(--surface2);border-radius:10px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;font-family:inherit">'+texto.replace(/</g,'&lt;')+'</div>';
+    window._relMensalTexto = texto;
+    window._relMensalAssunto = '[Gâmi] Relatório Executivo — '+mesNome+' '+anoNome;
+
+    document.getElementById('rel-mensal-btn-copiar').style.display = '';
+    document.getElementById('rel-mensal-btn-email').style.display = '';
+
+    // Marca como gerado neste mês (pra lembrete não disparar de novo)
+    try { localStorage.setItem('gami_rel_mensal_gerado_'+ref.getFullYear()+'_'+(ref.getMonth()+1), '1'); } catch(e){}
+  } catch(e){
+    content.innerHTML = '<div style="padding:16px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:10px;color:#A32D2D"><strong>⚠️ Não consegui gerar o relatório:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados. Recarregue e tente de novo.</span></div>';
+    console.error('[RelMensal]', e);
+  }
+}
+
+function copiarRelatorioMensal(){
+  if(!window._relMensalTexto) return;
+  navigator.clipboard.writeText(window._relMensalTexto).then(function(){
+    if(typeof toast==='function') toast('Relatório copiado pra área de transferência!', 'success');
+    else alert('Copiado!');
+  });
+}
+function emailRelatorioMensal(){
+  if(!window._relMensalTexto) return;
+  var emails = 'rafhaelnobrega@example.com,tainara@example.com,joaoduarte@example.com'; // TODO: ajustar emails reais
+  var assunto = encodeURIComponent(window._relMensalAssunto||'Relatório Gâmi');
+  var corpo = encodeURIComponent(window._relMensalTexto);
+  window.location.href = 'mailto:'+emails+'?subject='+assunto+'&body='+corpo;
+}
+
+/* ============================================================ */
+/* LEMBRETE: Primeira sexta do mês — sugerir gerar relatório     */
+/* ============================================================ */
+function checarLembreteRelatorioMensal(){
+  var hoje = new Date();
+  var diaSemana = hoje.getDay(); // 5 = sexta
+  var diaMes = hoje.getDate();
+  // Primeira sexta: dia 1-7 + sexta
+  var ehPrimeiraSexta = (diaSemana === 5 && diaMes >= 1 && diaMes <= 7);
+  if(!ehPrimeiraSexta) return;
+  
+  // Já gerou este mês?
+  var mesAnt = new Date(hoje.getFullYear(), hoje.getMonth()-1, 1);
+  var jaGerou = false;
+  try { jaGerou = !!localStorage.getItem('gami_rel_mensal_gerado_'+mesAnt.getFullYear()+'_'+(mesAnt.getMonth()+1)); } catch(e){}
+  if(jaGerou) return;
+  
+  // Já mostrou lembrete hoje?
+  var lembreteKey = 'gami_lembrete_rel_'+hoje.toISOString().split('T')[0];
+  try { if(localStorage.getItem(lembreteKey)) return; } catch(e){}
+  try { localStorage.setItem(lembreteKey, '1'); } catch(e){}
+  
+  // Só mostra pro super_admin/diretoria/gerencia (quem pode gerar)
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  if(['super_admin','diretoria','gerencia'].indexOf(nivel) < 0) return;
+  
+  // Mostra toast com call-to-action
+  if(typeof toast === 'function'){
+    setTimeout(function(){
+      var meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+      var msg = '📅 Lembrete: É primeira sexta! Hora de gerar o Relatório Executivo de '+meses[mesAnt.getMonth()]+'. Vá em Relatório → 📅 Relatório Mensal Executivo.';
+      toast(msg, 'info', 12000);
+    }, 3000);
+  }
+}
+// Executa no boot
+if(typeof window !== 'undefined'){
+  setTimeout(function(){ try { checarLembreteRelatorioMensal(); } catch(e){} }, 2500);
+}
 
 /* Sincroniza dados da Machine API para a cidade aberta atualmente */
 async function sincronizarMachine(){
