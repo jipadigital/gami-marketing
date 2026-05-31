@@ -1,4 +1,4 @@
-<!-- v23.19 - Pre-fetch automatico Machine para diagnostico IA - 30/05/2026 -->
+<!-- v23.21 - Diagnostico expandido: 8 secoes (financeiro, concentracao, reconhecimentos, aposta) - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3252,6 +3252,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div><div class="page-title">Cidades</div><div class="page-sub">Gestão completa por cidade</div></div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button onclick="diagnosticoSemanalCidades()" class="btn btn-ia" style="font-size:11px" title="IA analisa as 11 cidades e mostra panorama semanal com alertas e oportunidades">🤖 Diagnóstico IA da semana</button>
+        <button onclick="abrirHistoricoDiagnosticos()" class="btn btn-ghost" style="font-size:11px" title="Vê diagnósticos IA salvos das semanas anteriores">📚 Histórico IA</button>
         <button onclick="sincronizarStatusInstagram()" class="btn btn-ghost" style="font-size:11px" title="Consulta o Meta Business e marca quais Instagrams estão realmente conectados">📸 Sincronizar IG ao vivo</button>
         <button onclick="resetCidadesParaPadrao()" class="btn btn-ghost" style="font-size:11px" title="Atualiza gestores, chaves API e Instagram para os valores oficiais">🔄 Atualizar dados oficiais</button>
       </div>
@@ -10071,6 +10072,13 @@ function _coletarMetricasMachine(cidadeId){
   
   var somaVal=0; fin.forEach(function(x){somaVal+=parseFloat(x.valor_corrida||0);});
   var ticket = fin.length>0 ? (somaVal/fin.length) : 0;
+  var receitaEstimada = somaVal; // soma das finalizadas (receita realizada)
+  
+  // Receita semana anterior pra comparativo
+  var finAnt = corr7ant.filter(function(x){return x.status_solicitacao==='F';});
+  var somaValAnt=0; finAnt.forEach(function(x){somaValAnt+=parseFloat(x.valor_corrida||0);});
+  var receitaAnt = somaValAnt;
+  var crescReceitaPct = receitaAnt > 0 ? Math.round(((receitaEstimada - receitaAnt)/receitaAnt)*100) : null;
   
   var motoboysAtivos = {};
   corr7.forEach(function(x){
@@ -10078,11 +10086,19 @@ function _coletarMetricasMachine(cidadeId){
     if(id) motoboysAtivos[id] = true;
   });
   
-  var empresasComPedido = {};
+  // Concentração: empresas por volume de corridas
+  var empCount = {};
   corr7.forEach(function(x){
-    var nome = (x.nome_passageiro||'').trim().toLowerCase();
-    if(nome) empresasComPedido[nome] = true;
+    var nome = (x.nome_passageiro||'').trim();
+    if(!nome) return;
+    if(!empCount[nome]) empCount[nome] = { nome: nome, corridas: 0, valor: 0 };
+    empCount[nome].corridas++;
+    empCount[nome].valor += parseFloat(x.valor_corrida||0);
   });
+  var empArr = Object.values(empCount).sort(function(a,b){return b.corridas - a.corridas;});
+  var top3Empresas = empArr.slice(0, 3);
+  var top3Corridas = top3Empresas.reduce(function(s,e){return s+e.corridas;}, 0);
+  var pctConcentracaoTop3 = corr7.length > 0 ? Math.round((top3Corridas/corr7.length)*100) : 0;
   
   var motoboysCadastrados = (d.condutores||[]).filter(function(x){return x.status==='A';}).length;
   var empresasCadastradas = (d.empresas||[]).filter(function(x){return x.status_empresa==='A';}).length;
@@ -10097,10 +10113,15 @@ function _coletarMetricasMachine(cidadeId){
     canceladas: can.length,
     taxaConclusao: taxaConcl,
     ticketMedio: ticket,
+    receitaEstimada: receitaEstimada,
+    receitaSemanaAnt: receitaAnt,
+    crescReceitaPct: crescReceitaPct,
     motoboysAtivos: Object.keys(motoboysAtivos).length,
     motoboysCadastrados: motoboysCadastrados,
-    empresasComPedido: Object.keys(empresasComPedido).length,
-    empresasCadastradas: empresasCadastradas
+    empresasComPedido: Object.keys(empCount).length,
+    empresasCadastradas: empresasCadastradas,
+    top3Empresas: top3Empresas,
+    pctConcentracaoTop3: pctConcentracaoTop3
   };
 }
 
@@ -10219,38 +10240,64 @@ async function diagnosticoSemanalCidades(forceNew){
     var c = item.cidade;
     var m = item.metricas;
     var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
-    var crescTxt = m.crescimentoPct !== null ? (m.crescimentoPct>=0?'+':'')+m.crescimentoPct+'% vs semana anterior' : 'sem comparativo';
+    var crescTxt = m.crescimentoPct !== null ? (m.crescimentoPct>=0?'+':'')+m.crescimentoPct+'%' : 'sem comparativo';
+    var receitaFmt = 'R$ '+(m.receitaEstimada||0).toFixed(2);
+    var crescReceitaTxt = m.crescReceitaPct !== null ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : 'sem comparativo';
+    var top3Txt = (m.top3Empresas||[]).map(function(e){return e.nome+' ('+e.corridas+')';}).join(', ') || 'sem dados';
     return '- '+c.nome+' ('+c.uf+'): '
-      + m.corridasSemana+' corridas última semana ('+crescTxt+') · '
+      + m.corridasSemana+' corridas ('+crescTxt+') · '
+      + 'receita estimada '+receitaFmt+' ('+crescReceitaTxt+') · '
       + (m.taxaConclusao !== null ? m.taxaConclusao+'% conclusão' : 'sem dados conclusão') + ' · '
-      + 'ticket médio '+ticketFmt+' · '
+      + 'ticket '+ticketFmt+' · '
       + m.motoboysAtivos+'/'+m.motoboysCadastrados+' motoboys ativos · '
       + m.empresasComPedido+'/'+m.empresasCadastradas+' empresas pediram · '
+      + 'top3: '+top3Txt+' (concentração '+m.pctConcentracaoTop3+'%) · '
       + 'gestor '+(c.gestor||'?');
   }).join('\n');
   
-  var prompt = 'Você é consultor de operação da Gâmi Delivery (delivery em 11 cidades do nordeste). '
-    +'Analise OPERAÇÃO REAL da semana '+range.label+' baseado em dados da API Machine. '
+  // Totais consolidados pra IA contextualizar
+  var totalCorridas = comDados.reduce(function(s,x){return s+x.metricas.corridasSemana;}, 0);
+  var totalReceita = comDados.reduce(function(s,x){return s+(x.metricas.receitaEstimada||0);}, 0);
+  var totalReceitaAnt = comDados.reduce(function(s,x){return s+(x.metricas.receitaSemanaAnt||0);}, 0);
+  var crescReceitaGeral = totalReceitaAnt > 0 ? Math.round(((totalReceita - totalReceitaAnt)/totalReceitaAnt)*100) : null;
+  
+  var prompt = 'Você é consultor sênior de operação da Gâmi Delivery (delivery em 11 cidades do nordeste). '
+    +'Gere um RELATÓRIO EXECUTIVO da semana '+range.label+' pra diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte). '
     +'NÃO mencione marketing, campanhas, posts ou redes sociais — esses dados não estão disponíveis ainda. '
-    +'Foque em: corridas, motoboys ativos, empresas pedindo, taxa de conclusão, cancelamentos, crescimento.\n\n'
-    +'Dados reais Machine das cidades:\n'+dadosLinhas+'\n\n'
-    + (semDados.length ? '⚠️ Cidades sem dados carregados (não analisar): '+semDados.map(function(c){return c.nome;}).join(', ')+'\n\n' : '')
-    +'Gere o diagnóstico EXATAMENTE neste formato (texto corrido, SEM markdown):\n\n'
+    +'Foque em OPERAÇÃO e FINANCEIRO: corridas, receita, motoboys, empresas, cancelamentos, crescimento, concentração de risco.\n\n'
+    +'TOTAIS CONSOLIDADOS da semana:\n'
+    +'- Total de corridas: '+totalCorridas+'\n'
+    +'- Receita estimada total: R$ '+totalReceita.toFixed(2)+ (crescReceitaGeral !== null ? ' ('+(crescReceitaGeral>=0?'+':'')+crescReceitaGeral+'% vs semana anterior)' : '')+'\n'
+    +'- Cidades analisadas: '+comDados.length+'\n\n'
+    +'Dados reais Machine de cada cidade:\n'+dadosLinhas+'\n\n'
+    + (semDados.length ? '⚠️ Cidades sem dados (não analisar): '+semDados.map(function(c){return c.nome;}).join(', ')+'\n\n' : '')
+    +'GERE O RELATÓRIO COM EXATAMENTE ESTAS 8 SEÇÕES (texto corrido, SEM markdown, SEM ## ou **):\n\n'
     +'PANORAMA OPERACIONAL\n'
-    +'(2 frases sobre volume de corridas e crescimento geral)\n\n'
-    +'DESTAQUES POSITIVOS\n'
-    +'• (3 cidades que mais cresceram ou tem melhor performance operacional)\n\n'
+    +'(2-3 frases sobre o volume de corridas, crescimento geral, estado da operação)\n\n'
+    +'RESUMO FINANCEIRO ESTIMADO\n'
+    +'• Receita total da semana: R$ X (variação vs semana anterior)\n'
+    +'• Top 3 cidades por receita\n'
+    +'• Oportunidades de receita não explorada (cidades com muitas empresas cadastradas mas poucas pedindo)\n\n'
+    +'DESTAQUES POSITIVOS DAS CIDADES\n'
+    +'• (3 cidades em destaque: maior crescimento, melhor performance, descoberta da semana)\n\n'
     +'PONTOS DE ATENÇÃO\n'
-    +'• (3 cidades preocupantes: queda de corridas, alta cancelamento, poucos motoboys ativos)\n\n'
+    +'• (3 cidades preocupantes: queda de corridas, alta cancelamento, motoboys insuficientes, empresas sumindo)\n\n'
+    +'CONCENTRAÇÃO E RISCOS\n'
+    +'• Dependência de poucos parceiros: quais cidades têm alta concentração (>50% top 3) e quais empresas são críticas\n'
+    +'• Saúde da malha de motoboys: % médio de motoboys ativos vs cadastrados, cidades com gargalo\n\n'
+    +'RECONHECIMENTOS DA SEMANA\n'
+    +'• (2-3 destaques pra celebrar na reunião: cidade que mais cresceu, empresa que voltou a pedir muito, gestor que virou jogo)\n\n'
     +'AÇÕES OPERACIONAIS DA SEMANA\n'
-    +'• (3-5 ações concretas pra gestores, focadas em motoboys/empresas/operação)\n\n'
-    +'Tom: direto, executivo. Português Brasil. Mencione números específicos quando relevante.';
+    +'• (3-5 ações concretas pra gestores, indicando cidade e responsável)\n\n'
+    +'A APOSTA DA SEMANA\n'
+    +'(1 prioridade #1 que diretoria deve focar essa semana, em 2-3 frases, com justificativa e KPI esperado pra medir sucesso)\n\n'
+    +'Tom: executivo, direto, números específicos quando relevante. Português Brasil. Cada seção sem markdown, separadas por linha em branco.';
   
   try {
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 1500 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 2500 })
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
@@ -10265,10 +10312,13 @@ async function diagnosticoSemanalCidades(forceNew){
       semana_fim: range.fim.toISOString().split('T')[0],
       semana_label: range.label,
       cidades_analisadas: comDados.length,
-      cidades_sem_dados: semDados.map(function(c){return c.nome;})
+      cidades_sem_dados: semDados.map(function(c){return c.nome;}),
+      total_corridas: totalCorridas,
+      receita_total: totalReceita
     };
     try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
     try { localStorage.setItem('gami_lembrete_diag_'+cacheKey, '1'); } catch(e){}
+    _salvarHistoricoDiagnostico(cacheObj, 'geral', null);
     
     _renderDiagnosticoSemanal(cacheObj, false);
     if(typeof toast === 'function') toast('Diagnóstico operacional da semana gerado!', 'success');
@@ -10282,6 +10332,9 @@ async function diagnosticoSemanalCidades(forceNew){
 function _renderDiagnosticoSemanal(diagObj, fromCache){
   var painel = document.getElementById('cid-diagnostico-ia');
   if(!painel) return;
+  // Marca tipo e armazena pra botões
+  diagObj.tipo = diagObj.tipo || 'geral';
+  window._cidDiagAtual = diagObj;
   painel.style.display = 'block';
   painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
   
@@ -10294,6 +10347,36 @@ function _renderDiagnosticoSemanal(diagObj, fromCache){
   var avisoSemDados = '';
   if(diagObj.cidades_sem_dados && diagObj.cidades_sem_dados.length){
     avisoSemDados = '<div style="padding:8px 11px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:10.5px;color:#854F0B;margin-bottom:10px">⚠️ <strong>'+diagObj.cidades_sem_dados.length+' cidade(s) sem dados Machine carregados</strong>: '+diagObj.cidades_sem_dados.join(', ')+'. Abra essas cidades pra inclusão na próxima análise.</div>';
+  }
+  
+  // Processa o texto: extrai "A APOSTA DA SEMANA" e destaca separado
+  var textoCompleto = diagObj.texto || '';
+  var apostaMatch = textoCompleto.match(/A APOSTA DA SEMANA\s*\n([\s\S]+?)$/i);
+  var textoSemAposta = textoCompleto;
+  var textoAposta = '';
+  if(apostaMatch){
+    textoAposta = apostaMatch[1].trim();
+    textoSemAposta = textoCompleto.replace(apostaMatch[0], '').trim();
+  }
+  
+  // KPIs do topo (se tem dados consolidados)
+  var kpisHtml = '';
+  if(diagObj.total_corridas || diagObj.receita_total){
+    var receitaFmt = diagObj.receita_total ? 'R$ '+Math.round(diagObj.receita_total).toLocaleString('pt-BR') : '—';
+    kpisHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">'
+      +'<div style="padding:10px 12px;background:white;border:1px solid #8B5CF633;border-left:3px solid #8B5CF6;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#6A1B9A;letter-spacing:.5px;text-transform:uppercase">Corridas</div><div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1.1">'+(diagObj.total_corridas||'—')+'</div></div>'
+      +'<div style="padding:10px 12px;background:white;border:1px solid #1D9E7533;border-left:3px solid #1D9E75;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#1D9E75;letter-spacing:.5px;text-transform:uppercase">Receita estimada</div><div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:var(--text);line-height:1.1">'+receitaFmt+'</div></div>'
+      +'<div style="padding:10px 12px;background:white;border:1px solid #1AB8F033;border-left:3px solid #1AB8F0;border-radius:8px"><div style="font-size:9px;font-weight:700;color:#0E7AB8;letter-spacing:.5px;text-transform:uppercase">Cidades</div><div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1.1">'+(diagObj.cidades_analisadas||'—')+'</div></div>'
+    +'</div>';
+  }
+  
+  // Bloco de aposta destacado
+  var apostaHtml = '';
+  if(textoAposta){
+    apostaHtml = '<div style="margin-top:12px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
+      +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 APOSTA DA SEMANA</div>'
+      +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+textoAposta.replace(/</g,'&lt;')+'</div>'
+    +'</div>';
   }
   
   painel.innerHTML = ''
@@ -10310,13 +10393,16 @@ function _renderDiagnosticoSemanal(diagObj, fromCache){
       +'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
         +(podeForcar ? '<button onclick="if(confirm(\'Tem certeza? Isso vai sobrescrever o diagnóstico atual da semana.\'))diagnosticoSemanalCidades(true)" style="padding:5px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Gera um novo diagnóstico (admin only)">↻ Refazer</button>' : '')
+        +'<button onclick="baixarDiagnosticoPDF(window._cidDiagAtual)" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
         +'<button onclick="copiarDiagnosticoCidades()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
         +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
       +'</div>'
     +'</div>'
     +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Este diagnóstico foi gerado uma vez nesta semana. O próximo será disponibilizado na próxima segunda-feira.</div>' : '')
     +avisoSemDados
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+diagObj.texto.replace(/</g,'&lt;')+'</div>';
+    +kpisHtml
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +apostaHtml;
   window._cidDiagnosticoTexto = diagObj.texto;
 }
 
@@ -10448,6 +10534,186 @@ function _diagCidadeKey(cidadeId){
   return 'gami_diag_cidade_'+cidadeId+'_'+seg.toISOString().split('T')[0];
 }
 
+/* Helper: salva um diagnóstico no HISTÓRICO acumulado (mantém últimos 50) */
+function _salvarHistoricoDiagnostico(diagObj, tipo, cidadeId){
+  try {
+    var histRaw = localStorage.getItem('gami_diag_historico') || '[]';
+    var hist = JSON.parse(histRaw);
+    // ID único pra evitar duplicar quando regerar
+    var seg = _diagSegundaSemanaAtual().toISOString().split('T')[0];
+    var id = tipo === 'cidade' ? ('cidade_'+cidadeId+'_'+seg) : ('geral_'+seg);
+    // Remove versão antiga se existir
+    hist = hist.filter(function(h){return h.id !== id;});
+    // Adiciona novo
+    hist.unshift({
+      id: id,
+      tipo: tipo, // 'geral' ou 'cidade'
+      cidade_id: cidadeId || null,
+      cidade_nome: diagObj.cidade_nome || null,
+      cidade_uf: diagObj.cidade_uf || null,
+      semana_label: diagObj.semana_label || '',
+      semana_inicio: diagObj.semana_inicio || null,
+      semana_fim: diagObj.semana_fim || null,
+      texto: diagObj.texto || '',
+      gerado_em: diagObj.gerado_em,
+      gerado_por: diagObj.gerado_por,
+      cidades_analisadas: diagObj.cidades_analisadas || null,
+      corridas_semana: diagObj.corridas_semana || null
+    });
+    // Limita a 50 mais recentes
+    if(hist.length > 50) hist = hist.slice(0, 50);
+    localStorage.setItem('gami_diag_historico', JSON.stringify(hist));
+  } catch(e){ console.warn('[Histórico Diag] erro:', e); }
+}
+
+/* Helper: lista todos os diagnósticos do histórico */
+function _listarHistoricoDiagnosticos(){
+  try {
+    var raw = localStorage.getItem('gami_diag_historico') || '[]';
+    return JSON.parse(raw);
+  } catch(e){ return []; }
+}
+
+/* Helper: gera PDF (via window.print com layout formatado) */
+function baixarDiagnosticoPDF(textoOuObj, tituloOpcional){
+  var obj = (typeof textoOuObj === 'object' && textoOuObj) ? textoOuObj : { texto: String(textoOuObj||window._cidDiagnosticoTexto||'') };
+  if(!obj.texto){ alert('Nenhum diagnóstico pra baixar'); return; }
+  
+  var titulo = tituloOpcional || (obj.tipo === 'cidade' 
+    ? 'Diagnóstico IA · '+(obj.cidade_nome||'Cidade')+(obj.cidade_uf?'/'+obj.cidade_uf:'')
+    : 'Diagnóstico IA Semanal · Gâmi Delivery');
+  var subtitulo = 'Semana de '+(obj.semana_label||'?');
+  var rodape = (obj.gerado_por ? 'Gerado por: '+obj.gerado_por : '') 
+    + (obj.gerado_em ? ' · '+new Date(obj.gerado_em).toLocaleString('pt-BR') : '');
+  
+  // Abre nova janela com layout de impressão
+  var w = window.open('', '_blank', 'width=800,height=900');
+  if(!w){ alert('Permita popups pra baixar o PDF'); return; }
+  
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+titulo+'</title>'
+    +'<style>'
+      +'@page { size: A4; margin: 18mm 16mm; }'
+      +'body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1a1a1a; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 20px; }'
+      +'.cabecalho { border-bottom: 3px solid #8B5CF6; padding-bottom: 16px; margin-bottom: 22px; }'
+      +'.logo { font-size: 28px; font-weight: 800; color: #0D2B5C; letter-spacing: -0.5px; }'
+      +'.brand { font-size: 11px; color: #6B7280; margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }'
+      +'h1 { font-size: 20px; color: #0D2B5C; margin: 14px 0 4px; font-weight: 700; }'
+      +'.subt { font-size: 12px; color: #6B7280; margin-bottom: 4px; }'
+      +'.bdg { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #F3E8FF; color: #6A1B9A; font-size: 11px; font-weight: 600; margin-bottom: 18px; }'
+      +'.conteudo { font-size: 13px; line-height: 1.75; white-space: pre-line; color: #1a1a1a; }'
+      +'.rodape { margin-top: 32px; padding-top: 14px; border-top: 1px solid #E5E7EB; font-size: 10.5px; color: #6B7280; }'
+      +'@media print { .no-print { display: none !important; } body { padding: 0; } }'
+      +'.btn-print { position: fixed; top: 16px; right: 16px; padding: 10px 18px; background: #8B5CF6; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 2px 8px rgba(139,92,246,.3); font-family: inherit; }'
+    +'</style></head><body>'
+    +'<button class="btn-print no-print" onclick="window.print()">🖨️ Baixar como PDF</button>'
+    +'<div class="cabecalho">'
+      +'<div class="logo">Gâmi Delivery</div>'
+      +'<div class="brand">Dashboard · Diagnóstico IA</div>'
+    +'</div>'
+    +'<div class="bdg">🤖 Análise IA</div>'
+    +'<h1>'+titulo+'</h1>'
+    +'<div class="subt">'+subtitulo+'</div>'
+    +'<div class="conteudo">'+obj.texto.replace(/</g,'&lt;')+'</div>'
+    +'<div class="rodape">'+rodape+(obj.cidades_analisadas?' · '+obj.cidades_analisadas+' cidade(s) analisada(s)':'')+'</div>'
+    +'<scr'+'ipt>setTimeout(function(){window.print();}, 350);</scr'+'ipt>'
+    +'</body></html>';
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+/* Modal com histórico de diagnósticos salvos */
+function abrirHistoricoDiagnosticos(){
+  var hist = _listarHistoricoDiagnosticos();
+  var ov = document.getElementById('modal-hist-diag');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'modal-hist-diag';
+    ov.className = 'modal-overlay';
+    document.body.appendChild(ov);
+  }
+  ov.classList.add('open');
+  
+  // Filtra por permissão: gestor só vê os da cidade dele
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+  var permitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : cidades;
+  var idsPermitidos = permitidas.map(function(c){return c.id;});
+  var podeVerTudo = ['super_admin','diretoria','gerencia'].indexOf(nivel) >= 0;
+  
+  var histFiltrado = hist.filter(function(h){
+    if(podeVerTudo) return true;
+    // Gestor: só vê os da cidade dele
+    if(h.tipo === 'cidade') return idsPermitidos.indexOf(h.cidade_id) >= 0;
+    return false; // gestor não vê os gerais
+  });
+  
+  ov.innerHTML = '<div class="modal-box" style="max-width:760px;max-height:90vh;overflow-y:auto">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap">'
+      +'<div>'
+        +'<div style="font-size:9px;font-weight:700;letter-spacing:1.4px;color:#8B5CF6;text-transform:uppercase">📚 Histórico de diagnósticos IA</div>'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:var(--text)">Análises anteriores</div>'
+        +'<div style="font-size:11px;color:var(--text3)">'+histFiltrado.length+' análise(s) salva(s)'+(podeVerTudo?'':' · só da sua cidade')+'</div>'
+      +'</div>'
+      +'<button onclick="closeModal(\'modal-hist-diag\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
+    +'</div>'
+    + (histFiltrado.length === 0 
+      ? '<div style="padding:30px;text-align:center;background:var(--surface2);border-radius:10px"><div style="font-size:32px;margin-bottom:10px">📭</div><div style="font-size:13px;font-weight:600;color:var(--text)">Nenhum diagnóstico ainda</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Gere o primeiro diagnóstico e ele aparecerá aqui automaticamente.</div></div>'
+      : '<div style="display:flex;flex-direction:column;gap:10px">'
+        + histFiltrado.map(function(h, i){
+          var icone = h.tipo === 'geral' ? '🌐' : '🏙️';
+          var titulo = h.tipo === 'geral' 
+            ? 'Diagnóstico Geral · '+(h.cidades_analisadas||'?')+' cidades'
+            : h.cidade_nome+(h.cidade_uf?'/'+h.cidade_uf:'');
+          var dt = h.gerado_em ? new Date(h.gerado_em).toLocaleString('pt-BR') : '?';
+          return '<div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+            +'<div style="font-size:22px;flex-shrink:0">'+icone+'</div>'
+            +'<div style="flex:1;min-width:200px">'
+              +'<div style="font-size:13px;font-weight:700;color:var(--text)">'+titulo+'</div>'
+              +'<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 '+(h.semana_label||'?')+' · '+dt+(h.gerado_por?' · '+h.gerado_por:'')+'</div>'
+            +'</div>'
+            +'<div style="display:flex;gap:6px;flex-shrink:0">'
+              +'<button onclick="verDiagnosticoHistorico('+i+')" style="padding:6px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">👁 Ver</button>'
+              +'<button onclick="baixarPDFHistorico('+i+')" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
+            +'</div>'
+          +'</div>';
+        }).join('')
+      +'</div>')
+    +'<div style="margin-top:14px;display:flex;justify-content:flex-end">'
+      +'<button onclick="closeModal(\'modal-hist-diag\')" class="btn btn-primary" style="font-size:12px">Fechar</button>'
+    +'</div>'
+  +'</div>';
+  
+  // Guarda o array filtrado globalmente pra acessar nos botões
+  window._histDiagFiltrado = histFiltrado;
+}
+
+function verDiagnosticoHistorico(idx){
+  var hist = window._histDiagFiltrado || [];
+  var h = hist[idx];
+  if(!h) return;
+  closeModal('modal-hist-diag');
+  // Mostra no painel da aba Cidades
+  setTimeout(function(){
+    if(h.tipo === 'geral'){
+      _renderDiagnosticoSemanal(h, true);
+    } else {
+      // Busca o objeto cidade
+      var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
+      var c = cidades.find(function(x){return x.id===h.cidade_id;}) || { id:h.cidade_id, nome:h.cidade_nome, uf:h.cidade_uf };
+      _renderDiagnosticoCidade(c, h, true);
+    }
+    var painel = document.getElementById('cid-diagnostico-ia');
+    if(painel) painel.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 200);
+}
+
+function baixarPDFHistorico(idx){
+  var hist = window._histDiagFiltrado || [];
+  var h = hist[idx];
+  if(!h) return;
+  baixarDiagnosticoPDF(h);
+}
+
 /* Diagnóstico individual: 1 cidade específica — usa dados Machine reais
    Cache compartilhado: 1x por semana por cidade (todos veem a mesma análise) */
 async function diagnosticoIACidade(cidadeId, forceNew){
@@ -10567,6 +10833,7 @@ async function diagnosticoIACidade(cidadeId, forceNew){
       motoboys_ativos: m.motoboysAtivos
     };
     try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
+    _salvarHistoricoDiagnostico(cacheObj, 'cidade', c.id);
     
     _renderDiagnosticoCidade(c, cacheObj, false);
     if(typeof toast === 'function') toast('Análise operacional de '+c.nome+' pronta!', 'success');
@@ -10580,6 +10847,11 @@ async function diagnosticoIACidade(cidadeId, forceNew){
 function _renderDiagnosticoCidade(c, diagObj, fromCache){
   var painel = document.getElementById('cid-diagnostico-ia');
   if(!painel) return;
+  // Marca tipo e armazena pra botões
+  diagObj.tipo = 'cidade';
+  diagObj.cidade_nome = diagObj.cidade_nome || c.nome;
+  diagObj.cidade_uf = diagObj.cidade_uf || c.uf;
+  window._cidDiagAtual = diagObj;
   painel.style.display = 'block';
   painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
   
@@ -10604,6 +10876,7 @@ function _renderDiagnosticoCidade(c, diagObj, fromCache){
       +'</div>'
       +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
         +(podeForcar ? '<button onclick="if(confirm(\'Tem certeza? Isso vai sobrescrever a análise atual.\'))diagnosticoIACidade(\''+c.id+'\', true)" style="padding:5px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Gera nova análise (admin only)">↻ Refazer</button>' : '')
+        +'<button onclick="baixarDiagnosticoPDF(window._cidDiagAtual)" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📥 PDF</button>'
         +'<button onclick="copiarDiagnosticoCidades()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
         +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
       +'</div>'
