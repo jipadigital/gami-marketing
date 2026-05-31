@@ -1,4 +1,4 @@
-<!-- v23.37 - WhatsApp e Instagram com texto - 30/05/2026 -->
+<!-- v23.39 - Card cidade: 4 botoes em grid igual, mesma linha sem quebrar - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12268,15 +12268,11 @@ function renderCidadesGrid(){
       </div>
       ${curiosidade ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;line-height:1.4;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:8px">💡 ${curiosidade}</div>` : ''}
       ${temCritico ? `<div style="margin-bottom:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:5px 9px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600;line-height:1.2">📱 WhatsApp</a>` : ''}
-          ${c.instagram_conectado ? `<span title="Instagram conectado" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:5px 9px;border-radius:6px;background:#FCE4EC;color:#AD1457;font-weight:600;line-height:1.2">📷 Instagram</span>` : `<span title="Instagram pendente" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:5px 9px;border-radius:6px;background:#F5F5F5;color:#888;font-weight:500;line-height:1.2">📷 IG pendente</span>`}
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:6px 10px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25);line-height:1.2" title="Análise IA semanal desta cidade">🤖 Diagnóstico IA da semana</button>
-          <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="font-size:10px;padding:6px 10px;border:none;border-radius:6px;background:#1AB8F0;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(26,184,240,.25);line-height:1.2" title="Relatório mensal IA desta cidade">📅 Relatório Mensal IA</button>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;align-items:stretch">
+        ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📱 WhatsApp</a>` : `<span></span>`}
+        ${c.instagram_conectado ? `<span title="Instagram conectado" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border-radius:6px;background:#FCE4EC;color:#AD1457;font-weight:600;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📷 Instagram</span>` : `<span title="Instagram pendente" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border-radius:6px;background:#F5F5F5;color:#888;font-weight:500;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📷 IG pendente</span>`}
+        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25);line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Análise IA semanal desta cidade">🤖 Diagnóstico IA</button>
+        <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border:none;border-radius:6px;background:#1AB8F0;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(26,184,240,.25);line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Relatório mensal IA desta cidade">📅 Relatório Mensal</button>
       </div>
     </div>`;
   }).join('');
@@ -15085,19 +15081,22 @@ async function mbAnalisarIA(idCondutor){
 
     if(!resp.ok){ throw new Error('HTTP '+resp.status+': '+(data && (data.error||data.message)||'falhou')); }
 
-    var resposta = '';
-    if(data && Array.isArray(data.content)){
-      resposta = data.content.map(function(b){return b.text||'';}).join('').trim();
-    } else if(data && typeof data.text === 'string'){
-      resposta = data.text.trim();
-    } else if(data && typeof data.completion === 'string'){
-      resposta = data.completion.trim();
-    } else if(data && typeof data.message === 'string'){
-      resposta = data.message.trim();
-    } else if(typeof data === 'string'){
-      resposta = data.trim();
+    // Usa helper robusto que cobre todos os formatos + sanitiza MÃO→MÊS
+    var resposta = (typeof _extrairTextoIA === 'function') ? _extrairTextoIA(data) : '';
+    if(!resposta){
+      // Fallback: tenta extrair manual de campos comuns
+      if(data && Array.isArray(data.content)) resposta = data.content.map(function(b){return b.text||'';}).join('').trim();
+      else if(data && typeof data.text === 'string') resposta = data.text.trim();
+      else if(data && typeof data.completion === 'string') resposta = data.completion.trim();
+      else if(data && typeof data.message === 'string') resposta = data.message.trim();
+      else if(data && typeof data.response === 'string') resposta = data.response.trim();
+      else if(data && data.choices && data.choices[0]){
+        var c0 = data.choices[0];
+        resposta = (c0.text || (c0.message && c0.message.content) || '').trim();
+      }
+      else if(typeof data === 'string') resposta = data.trim();
     }
-    texto.textContent = resposta || ('Sem resposta da IA. Veja o console (F12) pra formato bruto.');
+    texto.textContent = resposta || ('Sem resposta da IA. Veja o console (F12) — formato bruto: '+JSON.stringify(data).substring(0,200));
   }catch(e){
     console.error('[mbAnalisarIA] Erro:', e);
     texto.textContent = 'Erro ao chamar a IA: '+e.message;
