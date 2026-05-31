@@ -1,4 +1,4 @@
-<!-- v23.17 - Diagnostico IA baseado em dados Machine reais (sem marketing) - 30/05/2026 -->
+<!-- v23.18 - Diagnostico IA: gestor ve cidade dele, cache compartilhado individual - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10104,24 +10104,42 @@ function _coletarMetricasMachine(cidadeId){
   };
 }
 
-/* Diagnóstico geral: IA analisa todas as cidades e gera panorama
-   Cache de 1x por semana (toda segunda-feira reseta) */
+/* Diagnóstico semanal: gera análise da semana
+   - Super admin / Diretoria / Gerência: analisa TODAS as cidades visíveis
+   - Gestor: analisa SÓ a cidade dele (delega pra diagnosticoIACidade)
+   - Colaborador: bloqueado
+   Cache 1x por semana (toda segunda reseta) */
 async function diagnosticoSemanalCidades(forceNew){
   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
   if(!cidades.length){ alert('Carregue as cidades primeiro'); return; }
   
-  // Filtra por permissão
+  // Filtra cidades pelo perfil (gestor vê só a dele, diretoria/admin vê todas)
+  var cidadesPermitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : cidades;
+  
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
-  if(['gestor','colaborador'].indexOf(nivel) >= 0){
-    if(typeof toast==='function') toast('Diagnóstico geral só pra diretoria. Use o "Analisar com IA" da sua cidade.', 'warn');
+  
+  if(nivel === 'colaborador'){
+    if(typeof toast==='function') toast('Você não tem permissão pra gerar diagnósticos.', 'warn');
     return;
   }
   
+  if(!cidadesPermitidas.length){
+    if(typeof toast==='function') toast('Nenhuma cidade vinculada ao seu perfil.', 'warn');
+    return;
+  }
+  
+  // GESTOR (só 1 cidade): delega pra análise individual (cache compartilhado)
+  if(nivel === 'gestor' || cidadesPermitidas.length === 1){
+    var cidadeUnica = cidadesPermitidas[0];
+    if(typeof toast==='function') toast('Analisando '+cidadeUnica.nome+'...', 'info');
+    return diagnosticoIACidade(cidadeUnica.id, forceNew);
+  }
+  
+  // DIRETORIA / SUPER_ADMIN / GERÊNCIA: análise geral de TODAS as cidades permitidas
   var painel = document.getElementById('cid-diagnostico-ia');
   if(!painel) return;
 
-  // === VERIFICA CACHE — se já tem diagnóstico desta semana, mostra ele ===
   var cacheKey = _diagSemanaKey();
   var cached = null;
   if(!forceNew){
@@ -10137,10 +10155,10 @@ async function diagnosticoSemanalCidades(forceNew){
     return;
   }
   
-  // === COLETA MÉTRICAS REAIS MACHINE DE CADA CIDADE ===
+  // Coleta métricas reais Machine de cada cidade permitida
   var comDados = [];
   var semDados = [];
-  cidades.forEach(function(c){
+  cidadesPermitidas.forEach(function(c){
     var m = _coletarMetricasMachine(c.id);
     if(m){
       comDados.push({ cidade:c, metricas:m });
@@ -10165,13 +10183,11 @@ async function diagnosticoSemanalCidades(forceNew){
     return;
   }
   
-  // Mostra loading
   painel.style.display = 'block';
   painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
   var range = _diagRangeSemanaAnterior();
   painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">🤖</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando diagnóstico da semana '+range.label+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Analisando '+comDados.length+' cidade(s) com dados Machine · 15-25 segundos</div></div></div>';
   
-  // Monta dados pra IA com métricas REAIS
   var dadosLinhas = comDados.map(function(item){
     var c = item.cidade;
     var m = item.metricas;
@@ -10292,14 +10308,27 @@ function checarLembreteDiagnosticoSemanal(){
   // Só roda nas segundas-feiras (1)
   if(hoje.getDay() !== 1) return;
   
-  // Só pra quem pode gerar (super_admin/diretoria/gerencia)
+  // Só pra quem pode gerar (super_admin/diretoria/gerencia/gestor)
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
-  if(['super_admin','diretoria','gerencia'].indexOf(nivel) < 0) return;
+  if(['super_admin','diretoria','gerencia','gestor'].indexOf(nivel) < 0) return;
   
-  // Já gerou esta semana?
-  var cacheKey = _diagSemanaKey();
-  try { if(localStorage.getItem(cacheKey)) return; } catch(e){}
+  // Já gerou esta semana? (geral pra diretoria, ou da cidade pro gestor)
+  var jaGerou = false;
+  try { 
+    if(nivel === 'gestor'){
+      // Gestor: checa se já tem análise da cidade dele
+      var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+      var permitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : [];
+      if(permitidas.length){
+        jaGerou = !!localStorage.getItem(_diagCidadeKey(permitidas[0].id));
+      }
+    } else {
+      // Diretoria/admin: checa o cache geral
+      jaGerou = !!localStorage.getItem(_diagSemanaKey());
+    }
+  } catch(e){}
+  if(jaGerou) return;
   
   // Já mostrou lembrete hoje?
   var lembreteHojeKey = 'gami_lembrete_diag_hoje_'+hoje.toISOString().split('T')[0];
@@ -10318,14 +10347,52 @@ if(typeof window !== 'undefined'){
   setTimeout(function(){ try { checarLembreteDiagnosticoSemanal(); } catch(e){} }, 3000);
 }
 
-/* Diagnóstico individual: 1 cidade específica — usa dados Machine reais */
-async function diagnosticoIACidade(cidadeId){
+/* Helper: chave de cache da análise individual por cidade+semana */
+function _diagCidadeKey(cidadeId){
+  var seg = _diagSegundaSemanaAtual();
+  return 'gami_diag_cidade_'+cidadeId+'_'+seg.toISOString().split('T')[0];
+}
+
+/* Diagnóstico individual: 1 cidade específica — usa dados Machine reais
+   Cache compartilhado: 1x por semana por cidade (todos veem a mesma análise) */
+async function diagnosticoIACidade(cidadeId, forceNew){
   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
   var c = cidades.find(function(x){return x.id===cidadeId;});
   if(!c){ alert('Cidade não encontrada'); return; }
   
+  // Verifica permissão: gestor só vê a cidade dele
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var cidadesPermitidas = (typeof filtrarCidadesPorPermissao === 'function') ? filtrarCidadesPorPermissao(cidades) : cidades;
+  var temPermissao = cidadesPermitidas.some(function(x){return x.id===cidadeId;});
+  if(!temPermissao){
+    if(typeof toast==='function') toast('Você não tem permissão pra analisar '+c.nome+'.', 'warn');
+    return;
+  }
+  if(nivel === 'colaborador'){
+    if(typeof toast==='function') toast('Você não tem permissão pra gerar diagnósticos.', 'warn');
+    return;
+  }
+  
   var painel = document.getElementById('cid-diagnostico-ia');
   if(!painel) return;
+  
+  // === VERIFICA CACHE COMPARTILHADO — mesma análise pra todos da cidade ===
+  var cacheKey = _diagCidadeKey(cidadeId);
+  var cached = null;
+  if(!forceNew){
+    try { 
+      var raw = localStorage.getItem(cacheKey);
+      if(raw) cached = JSON.parse(raw);
+    } catch(e){}
+  }
+  
+  if(cached && cached.texto){
+    _renderDiagnosticoCidade(c, cached, true);
+    setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+    if(typeof toast==='function') toast('Análise desta semana já gerada em '+new Date(cached.gerado_em).toLocaleString('pt-BR'), 'info');
+    return;
+  }
   
   // Coleta métricas Machine
   var m = _coletarMetricasMachine(c.id);
@@ -10351,8 +10418,9 @@ async function diagnosticoIACidade(cidadeId){
   
   var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
   var crescTxt = m.crescimentoPct !== null ? (m.crescimentoPct>=0?'+':'')+m.crescimentoPct+'%' : 'sem comparativo';
+  var range = _diagRangeSemanaAnterior();
   
-  var prompt = 'Analise a OPERAÇÃO REAL da cidade de '+c.nome+'/'+c.uf+' da Gâmi Delivery e sugira ações pro gestor '+(c.gestor||'')+'. '
+  var prompt = 'Analise a OPERAÇÃO REAL da cidade de '+c.nome+'/'+c.uf+' da Gâmi Delivery (semana '+range.label+') e sugira ações pro gestor '+(c.gestor||'')+'. '
     +'NÃO mencione marketing/campanhas/posts/redes sociais — esses dados não estão disponíveis ainda. '
     +'Foque em corridas, motoboys, empresas, cancelamentos.\n\n'
     +'Dados reais Machine (últimos 7 dias):\n'
@@ -10384,26 +10452,62 @@ async function diagnosticoIACidade(cidadeId){
     var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
     
-    painel.innerHTML = ''
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
-        +'<div style="display:flex;align-items:center;gap:10px">'
-          +'<span style="font-size:22px">🤖</span>'
-          +'<div>'
-            +'<div style="font-size:13px;font-weight:700;color:var(--text)">Análise IA: '+c.nome+'/'+c.uf+'</div>'
-            +'<div style="font-size:10px;color:var(--text3)">Baseada em '+m.corridasSemana+' corridas dos últimos 7 dias · Gestor: '+(c.gestor||'?')+'</div>'
-          +'</div>'
-        +'</div>'
-        +'<div style="display:flex;gap:6px">'
-          +'<button onclick="diagnosticoIACidade(\''+c.id+'\')" style="padding:5px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">↻ Refazer</button>'
-          +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
-        +'</div>'
-      +'</div>'
-      +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+texto.replace(/</g,'&lt;')+'</div>';
+    // Salva no cache compartilhado (todos veem a mesma)
+    var cacheObj = {
+      texto: texto,
+      gerado_em: new Date().toISOString(),
+      gerado_por: (u && u.nome) || (u && u.email) || 'usuário',
+      cidade_nome: c.nome,
+      cidade_uf: c.uf,
+      semana_label: range.label,
+      corridas_semana: m.corridasSemana,
+      motoboys_ativos: m.motoboysAtivos
+    };
+    try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
+    
+    _renderDiagnosticoCidade(c, cacheObj, false);
     if(typeof toast === 'function') toast('Análise operacional de '+c.nome+' pronta!', 'success');
   } catch(e){
     painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui analisar '+c.nome+':</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados.</span></div>';
     console.error('[diagnosticoIACidade]', e);
   }
+}
+
+/* Render da análise individual (cache ou recém-gerada) */
+function _renderDiagnosticoCidade(c, diagObj, fromCache){
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
+  
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var podeForcar = nivel === 'super_admin';
+  
+  var geradoEm = new Date(diagObj.gerado_em);
+  var dataFmt = geradoEm.toLocaleDateString('pt-BR') + ' às ' + geradoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  
+  painel.innerHTML = ''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">'
+        +'<span style="font-size:22px">🤖</span>'
+        +'<div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--text)">Análise IA: '+c.nome+'/'+c.uf+'</div>'
+          +'<div style="font-size:10px;color:var(--text3)">'
+            +(fromCache ? '✓ Gerada em '+dataFmt+' por '+(diagObj.gerado_por||'?') : '🆕 Recém-gerada em '+dataFmt)
+            +' · Semana '+(diagObj.semana_label||'?')+' · '+(diagObj.corridas_semana||'?')+' corridas analisadas'
+          +'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +(podeForcar ? '<button onclick="if(confirm(\'Tem certeza? Isso vai sobrescrever a análise atual.\'))diagnosticoIACidade(\''+c.id+'\', true)" style="padding:5px 10px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Gera nova análise (admin only)">↻ Refazer</button>' : '')
+        +'<button onclick="copiarDiagnosticoCidades()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
+        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+      +'</div>'
+    +'</div>'
+    +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Análise desta semana — todos da equipe veem a mesma. Próxima na segunda-feira.</div>' : '')
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+diagObj.texto.replace(/</g,'&lt;')+'</div>';
+  window._cidDiagnosticoTexto = diagObj.texto;
 }
 
 function renderCidadesGrid(){
