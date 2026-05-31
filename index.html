@@ -1,4 +1,4 @@
-<!-- v23.34 - PDF redesigned: capa, KPIs visuais, cores por secao, fix titulo mensal - 30/05/2026 -->
+<!-- v23.36 - Card cidade: WhatsApp IG e botoes IA em UMA linha - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10892,80 +10892,71 @@ async function relatorioMensalCidade(cidadeId, forceNew){
   painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📅</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando relatório mensal de '+c.nome+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Mês '+range.label+' · 20-30 segundos</div></div></div>';
   setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
   
-  var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
-  var crescCorrTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : 'sem comparativo';
-  var crescRecTxt = m.crescReceitaPct !== null ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : 'sem comparativo';
-  var top5EmpTxt = (m.top5Empresas||[]).map(function(e,i){
-    return '  '+(i+1)+'. '+e.nome+' — '+e.corridas+' corridas (R$ '+e.valor.toFixed(2)+')';
-  }).join('\n') || '  (sem dados)';
-  var top10MotoTxt = (m.top10MotoboysComNome||[]).map(function(mb,i){
-    return '  '+(i+1)+'. '+mb.nome+' — '+mb.corridas+' corridas';
-  }).join('\n') || '  (sem dados)';
+  var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : '?';
+  var crescCorrTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : '~';
+  var crescRecTxt = m.crescReceitaPct !== null ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : '~';
+  var top5EmpTxt = (m.top5Empresas||[]).slice(0,5).map(function(e,i){
+    return (i+1)+'.'+e.nome+' ('+e.corridas+')';
+  }).join(' | ') || '—';
+  var top10MotoTxt = (m.top10MotoboysComNome||[]).slice(0,10).map(function(mb,i){
+    return (i+1)+'.'+mb.nome+'('+mb.corridas+')';
+  }).join(' | ') || '—';
   var distMoto = m.distribuicaoMotoboys || {};
   var diasSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
   var picoDia = m.corridasPorDiaSemana.indexOf(Math.max.apply(null, m.corridasPorDiaSemana));
   var pctMot = m.motoboysCadastrados > 0 ? Math.round((m.motoboysAtivosCount/m.motoboysCadastrados)*100) : 0;
   var pctEmp = m.empresasCadastradas > 0 ? Math.round((m.empresasComPedido/m.empresasCadastradas)*100) : 0;
   
-  var prompt = 'Você é consultor sênior da Gâmi Delivery. '
-    +'Gere um RELATÓRIO MENSAL DETALHADO da cidade '+c.nome+'/'+c.uf+' referente a '+range.label+' pra apresentar pra diretoria e pro gestor '+(c.gestor||'')+'. '
-    +'É um relatório de FECHAMENTO DE MÊS, mais profundo que o semanal. '
-    +'NÃO mencione marketing/campanhas/posts/redes sociais — não disponível. '
-    +'Foque em operação, receita, motoboys, empresas, riscos, estratégia.\n\n'
-    +'DADOS MACHINE DO MÊS '+range.label+':\n'
-    +'- Cidade: '+c.nome+'/'+c.uf+'\n'
-    +'- Gestor: '+(c.gestor||'?')+'\n'
-    +'- Corridas no mês: '+m.corridasMes+' ('+crescCorrTxt+' vs '+m.corridasMesAnt+' do mês retrasado)\n'
-    +'- Finalizadas: '+m.finalizadas+'\n'
-    +'- Canceladas: '+m.canceladas+'\n'
-    +'- Taxa de conclusão: '+(m.taxaConclusao !== null ? m.taxaConclusao+'%' : 'sem dados')+'\n'
-    +'- Ticket médio: '+ticketFmt+'\n'
-    +'- Receita: R$ '+m.receita.toFixed(2)+' ('+crescRecTxt+' vs R$ '+m.receitaAnt.toFixed(2)+' do mês retrasado)\n'
-    +'- Motoboys ativos no mês: '+m.motoboysAtivosCount+' de '+m.motoboysCadastrados+' cadastrados ('+pctMot+'% engajados)\n'
-    +'- Empresas que pediram: '+m.empresasComPedido+' de '+m.empresasCadastradas+' cadastradas ('+pctEmp+'% ativadas)\n'
-    +'- Dia da semana com mais corridas: '+diasSem[picoDia]+'\n'
-    +'- Top 5 empresas (concentração: '+m.pctConcentracaoTop5+'% do total):\n'+top5EmpTxt+'\n'
-    +'- TOP 10 MOTOBOYS DO MÊS (por volume de corridas):\n'+top10MotoTxt+'\n'
-    +'- Distribuição de motoboys por faixa de corridas:\n'
-    +'  • Até 5 corridas: '+(distMoto.ate5||0)+' motoboys\n'
-    +'  • 5 a 20 corridas: '+(distMoto.de5a20||0)+' motoboys\n'
-    +'  • 20 a 50 corridas: '+(distMoto.de20a50||0)+' motoboys\n'
-    +'  • Mais de 50 corridas: '+(distMoto.mais50||0)+' motoboys\n\n'
-    +'GERE O RELATÓRIO COM EXATAMENTE ESTAS 9 SEÇÕES (texto corrido, SEM markdown, SEM ## ou **):\n\n'
-    +'RESUMO EXECUTIVO DO MÊS\n'
-    +'(3-4 bullets com os principais números e veredito geral do mês pra '+c.nome+')\n\n'
-    +'RESUMO FINANCEIRO\n'
-    +'• Receita e variação\n'
-    +'• Ticket médio e o que ele diz sobre o perfil dos pedidos\n'
-    +'• Receita potencial não capturada (empresas que não pediram)\n\n'
-    +'PERFORMANCE OPERACIONAL\n'
-    +'(volume, conclusão, cancelamentos, dia de pico — análise do que rolou no mês)\n\n'
-    +'SAÚDE DA REDE\n'
-    +'• Engajamento de motoboys: '+pctMot+'% ativos — preocupante, saudável ou excelente?\n'
-    +'• Ativação de empresas: '+pctEmp+'% — o que isso indica?\n'
-    +'• Riscos operacionais identificados\n\n'
-    +'MOTOBOYS DA CIDADE\n'
-    +'• Apresente o TOP 10 motoboys do mês citando os 5 primeiros NOMES e suas corridas como destaque\n'
-    +'• Comente a distribuição: quantos rodaram pouco (até 5), médio (5-20), alto (20-50), elite (50+)\n'
-    +'• Análise: a rede tá concentrada em poucos motoboys ou bem distribuída? Há motoboys elite (50+) carregando a cidade?\n\n'
-    +'CONCENTRAÇÃO E DEPENDÊNCIA\n'
-    +'(análise das top 5 empresas — '+m.pctConcentracaoTop5+'% concentrado nelas é saudável? Risco de dependência? Empresas a vigiar)\n\n'
-    +'RECONHECIMENTOS DO MÊS\n'
-    +'• Cite NOMES dos motoboys destaque do mês (top 3 do ranking acima merecem reconhecimento explícito)\n'
-    +'• 1-2 destaques adicionais pra celebrar com a equipe (parcerias que se destacaram, conquistas operacionais)\n\n'
-    +'AÇÕES PRO PRÓXIMO MÊS\n'
-    +'• 5-7 ações concretas pra '+(c.gestor||'o gestor')+' executar, com impacto esperado\n\n'
-    +'META PRINCIPAL DO MÊS\n'
-    +'(1 meta específica e mensurável pra '+c.nome+' no próximo mês — 3-4 frases com justificativa e KPI claro)\n\n'
-    +'Tom: executivo, profissional, números específicos. Português Brasil.';
+  var prompt = 'Consultor sênior Gâmi Delivery. Gere RELATÓRIO MENSAL de '+c.nome+'/'+c.uf+' ('+range.label+') pra diretoria e gestor '+(c.gestor||'')+'. '
+    +'NÃO mencione marketing/posts/redes sociais — não disponível. Foco operação, receita, motoboys, empresas, riscos.\n\n'
+    +'DADOS DE '+range.label+':\n'
+    +'• Corridas: '+m.corridasMes+' ('+crescCorrTxt+' vs '+m.corridasMesAnt+' retrasado)\n'
+    +'• Finalizadas '+m.finalizadas+' | Canceladas '+m.canceladas+' | Conclusão '+(m.taxaConclusao !== null ? m.taxaConclusao+'%' : '?')+'\n'
+    +'• Receita R$'+m.receita.toFixed(0)+' ('+crescRecTxt+' vs R$'+m.receitaAnt.toFixed(0)+' retrasado) | Ticket '+ticketFmt+'\n'
+    +'• Motoboys: '+m.motoboysAtivosCount+'/'+m.motoboysCadastrados+' ('+pctMot+'% engajados)\n'
+    +'• Empresas: '+m.empresasComPedido+'/'+m.empresasCadastradas+' ('+pctEmp+'% ativadas)\n'
+    +'• Pico: '+diasSem[picoDia]+'\n'
+    +'• TOP 5 EMPRESAS (concentração '+m.pctConcentracaoTop5+'%): '+top5EmpTxt+'\n'
+    +'• TOP 10 MOTOBOYS: '+top10MotoTxt+'\n'
+    +'• Distribuição motoboys: '+(distMoto.ate5||0)+' até5/'+(distMoto.de5a20||0)+' 5-20/'+(distMoto.de20a50||0)+' 20-50/'+(distMoto.mais50||0)+' 50+\n\n'
+    +'Estrutura OBRIGATÓRIA (9 seções, sem markdown, sem ## ou **):\n\n'
+    +'RESUMO EXECUTIVO DO MÊS\n(3-4 bullets curtos: números-chave + veredito)\n\n'
+    +'RESUMO FINANCEIRO\n• Receita e variação\n• Ticket médio\n• Receita não capturada\n\n'
+    +'PERFORMANCE OPERACIONAL\n(volume, conclusão, cancelamentos, dia de pico — 2-3 frases)\n\n'
+    +'SAÚDE DA REDE\n• Engajamento motoboys ('+pctMot+'%) — saudável ou preocupante?\n• Ativação empresas ('+pctEmp+'%)\n• Riscos identificados\n\n'
+    +'MOTOBOYS DA CIDADE\n• Cite os 5 primeiros NOMES com suas corridas\n• Comente a distribuição (concentração elite ou bem distribuída)\n\n'
+    +'CONCENTRAÇÃO E DEPENDÊNCIA\n('+m.pctConcentracaoTop5+'% nas top 5 — saudável? Risco?)\n\n'
+    +'RECONHECIMENTOS DO MÊS\n• NOMES dos top 3 motoboys como destaques\n• 1-2 destaques adicionais\n\n'
+    +'AÇÕES PRO PRÓXIMO MÊS\n• 5 ações concretas pra '+(c.gestor||'gestor')+'\n\n'
+    +'META PRINCIPAL DO MÊS\n(1 meta mensurável em 3 frases com KPI)\n\n'
+    +'Tom executivo, direto. Português Brasil.';
   
   try {
-    var resp = await fetch('/.netlify/functions/blog-ai', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 2500 })
-    });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var resp = null;
+    var tentativas = 0;
+    var ultimoErro = null;
+    
+    while(tentativas < 2 && !resp){
+      tentativas++;
+      try {
+        var painelMsg = document.getElementById('cid-diagnostico-ia');
+        if(painelMsg && tentativas > 1){
+          painelMsg.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:16px"><span style="font-size:22px">⏳</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Tentativa '+tentativas+' de 2...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">A IA tá demorando · aguarde</div></div></div>';
+        }
+        var r = await fetch('/.netlify/functions/blog-ai', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ prompt: prompt, max_tokens: 1800 })
+        });
+        if(r.ok){ resp = r; break; }
+        ultimoErro = 'HTTP '+r.status;
+        if(r.status !== 504 && r.status !== 502 && r.status !== 408) break;
+      } catch(e){
+        ultimoErro = e.message;
+      }
+    }
+    
+    if(!resp) throw new Error(ultimoErro || 'Sem resposta');
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
@@ -10992,7 +10983,18 @@ async function relatorioMensalCidade(cidadeId, forceNew){
     _renderRelatorioMensalCidade(c, cacheObj, false);
     if(typeof toast === 'function') toast('Relatório mensal de '+c.nome+' pronto!', 'success');
   } catch(e){
-    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar:</strong> '+e.message+'</div>';
+    var msg = e.message || '';
+    var hint = '';
+    if(msg.indexOf('504') >= 0 || msg.indexOf('502') >= 0 || msg.indexOf('408') >= 0){
+      hint = '<br><br><strong>O que aconteceu:</strong> a IA tá demorando além do limite do servidor (26s). Não é problema de créditos.<br><strong>Tente:</strong> clique em "↻ Refazer" novamente em 1-2 minutos.';
+    } else if(msg.indexOf('401') >= 0){
+      hint = '<br><br><strong>O que aconteceu:</strong> chave Anthropic sem créditos ou inválida.';
+    } else if(msg.indexOf('429') >= 0){
+      hint = '<br><br><strong>O que aconteceu:</strong> rate limit. Aguarde 1 minuto.';
+    } else {
+      hint = '<br><br>Veja console (F12) pra detalhes.';
+    }
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar:</strong> '+msg+hint+'</div>';
     console.error('[relatorioMensalCidade]', e);
   }
 }
@@ -12266,13 +12268,15 @@ function renderCidadesGrid(){
       </div>
       ${curiosidade ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;line-height:1.4;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:8px">💡 ${curiosidade}</div>` : ''}
       ${temCritico ? `<div style="margin-bottom:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:4px 9px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600">📱 WhatsApp</a>` : ''}
-        ${c.instagram_conectado ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:4px 9px;border-radius:6px;background:#FCE4EC;color:#AD1457;font-weight:600">📷 Instagram</span>` : `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:4px 9px;border-radius:6px;background:#F5F5F5;color:#888;font-weight:500">📷 IG pendente</span>`}
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap">
-        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:6px 10px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25);line-height:1.2" title="Análise IA semanal desta cidade">🤖 Diagnóstico IA da semana</button>
-        <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="font-size:10px;padding:6px 10px;border:none;border-radius:6px;background:#1AB8F0;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(26,184,240,.25);line-height:1.2" title="Relatório mensal IA desta cidade">📅 Relatório Mensal IA</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between">
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:5px 9px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600;line-height:1">📱</a>` : ''}
+          ${c.instagram_conectado ? `<span title="Instagram conectado" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:5px 9px;border-radius:6px;background:#FCE4EC;color:#AD1457;font-weight:600;line-height:1">📷</span>` : `<span title="Instagram pendente" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:5px 9px;border-radius:6px;background:#F5F5F5;color:#888;font-weight:500;line-height:1">📷</span>`}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="font-size:10px;padding:6px 10px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25);line-height:1.2" title="Análise IA semanal desta cidade">🤖 Diagnóstico IA da semana</button>
+          <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="font-size:10px;padding:6px 10px;border:none;border-radius:6px;background:#1AB8F0;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(26,184,240,.25);line-height:1.2" title="Relatório mensal IA desta cidade">📅 Relatório Mensal IA</button>
+        </div>
       </div>
     </div>`;
   }).join('');
