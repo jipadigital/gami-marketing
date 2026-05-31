@@ -1,4 +1,4 @@
-<!-- v23.30 - Cards sem animacao hover, WhatsApp e IG fixos - 30/05/2026 -->
+<!-- v23.31 - Relatorio mensal: max tokens 3000, prompt compacto, retry automatico, msg de erro melhor - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10700,22 +10700,18 @@ async function relatorioMensalCidades(forceNew){
   var dadosLinhas = comDados.map(function(item){
     var c = item.cidade;
     var m = item.metricas;
-    var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : 'sem dados';
-    var crescTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : 'sem comparativo';
-    var top3Txt = (m.top5Empresas||[]).slice(0,3).map(function(e){return e.nome+'('+e.corridas+')';}).join(', ') || 'sem dados';
-    var top3MotoTxt = (m.top10MotoboysComNome||[]).slice(0,3).map(function(mb){return mb.nome+'('+mb.corridas+')';}).join(', ') || 'sem dados';
-    var distMoto = m.distribuicaoMotoboys || {};
-    return '- '+c.nome+'/'+c.uf+': '
-      + m.corridasMes+' corridas ('+crescTxt+' vs mês retrasado) · '
-      + 'receita R$ '+(m.receita||0).toFixed(2)+' · '
-      + (m.taxaConclusao !== null ? m.taxaConclusao+'%' : '?')+' conclusão · '
-      + 'ticket '+ticketFmt+' · '
-      + m.motoboysAtivosCount+'/'+m.motoboysCadastrados+' motoboys ativos · '
-      + 'top motoboys: '+top3MotoTxt+' · '
-      + 'distrib: '+(distMoto.ate5||0)+' até 5/'+(distMoto.de5a20||0)+' 5-20/'+(distMoto.de20a50||0)+' 20-50/'+(distMoto.mais50||0)+' 50+ · '
-      + m.empresasComPedido+'/'+m.empresasCadastradas+' empresas pediram · '
-      + 'top3 empresas: '+top3Txt+' (top5 = '+m.pctConcentracaoTop5+'% conc.) · '
-      + 'gestor '+(c.gestor||'?');
+    var crescTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : '~';
+    var top2Mot = (m.top10MotoboysComNome||[]).slice(0,2).map(function(mb){return mb.nome;}).join('/') || '—';
+    var top2Emp = (m.top5Empresas||[]).slice(0,2).map(function(e){return e.nome;}).join('/') || '—';
+    var dM = m.distribuicaoMotoboys || {};
+    return '• '+c.nome+'/'+c.uf+': '+m.corridasMes+' corr '+crescTxt
+      +' | R$'+(m.receita||0).toFixed(0)
+      +' | '+(m.taxaConclusao !== null ? m.taxaConclusao+'%conc' : '?')
+      +' | tkt R$'+m.ticketMedio.toFixed(2)
+      +' | '+m.motoboysAtivosCount+'/'+m.motoboysCadastrados+'mb (top:'+top2Mot+')'
+      +' | dist:'+(dM.ate5||0)+'/'+(dM.de5a20||0)+'/'+(dM.de20a50||0)+'/'+(dM.mais50||0)
+      +' | '+m.empresasComPedido+'/'+m.empresasCadastradas+'emp (top:'+top2Emp+', conc'+m.pctConcentracaoTop5+'%)'
+      +' | gestor:'+(c.gestor||'?');
   }).join('\n');
   
   // Top 10 motoboys de TODA a rede (consolidado)
@@ -10731,62 +10727,55 @@ async function relatorioMensalCidades(forceNew){
     return '  '+(i+1)+'. '+mb.nome+' ('+mb.cidade+') — '+mb.corridas+' corridas';
   }).join('\n') || '  (sem dados)';
   
-  var prompt = 'Você é consultor sênior de operação da Gâmi Delivery. '
-    +'Gere um RELATÓRIO EXECUTIVO MENSAL DETALHADO referente a '+range.label+' pra apresentar na reunião da diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte) e gerência (Leomara, Thiago). '
-    +'É um relatório de FECHAMENTO DE MÊS, mais profundo que o semanal. '
-    +'NÃO mencione marketing, campanhas, posts ou redes sociais — esses dados não estão disponíveis ainda. '
-    +'Foque em OPERAÇÃO, RECEITA, PESSOAS, RISCOS, ESTRATÉGIA.\n\n'
-    +'TOTAIS CONSOLIDADOS do mês:\n'
-    +'- Total de corridas: '+totalCorridas+'\n'
-    +'- Receita estimada: R$ '+totalReceita.toFixed(2)+(crescGeralPct !== null ? ' ('+(crescGeralPct>=0?'+':'')+crescGeralPct+'% vs mês retrasado)' : '')+'\n'
-    +'- Cidades analisadas: '+comDados.length+'\n\n'
-    +'TOP 10 MOTOBOYS DA REDE GÂMI (consolidado das 11 cidades):\n'+top10RedeTxt+'\n\n'
-    +'Dados detalhados por cidade:\n'+dadosLinhas+'\n\n'
-    + (semDados.length ? '⚠️ Cidades sem dados (não analisar): '+semDados.map(function(c){return c.nome;}).join(', ')+'\n\n' : '')
-    +'GERE O RELATÓRIO COM EXATAMENTE ESTAS 11 SEÇÕES (texto corrido, SEM markdown, SEM ## ou **):\n\n'
-    +'RESUMO EXECUTIVO DO MÊS\n'
-    +'(3-5 bullets com os números-chave e veredito geral do mês)\n\n'
-    +'RESUMO FINANCEIRO\n'
-    +'• Receita total e variação\n'
-    +'• Top 3 cidades por receita\n'
-    +'• Ticket médio geral e por cidade destaque\n'
-    +'• Oportunidades de receita não capturada\n\n'
-    +'EVOLUÇÃO E TENDÊNCIAS\n'
-    +'(comparativo mês a mês — cidades acelerando vs desacelerando, padrões interessantes)\n\n'
-    +'RANKING DE CIDADES\n'
-    +'• Top 5 por volume\n'
-    +'• Top 5 por crescimento %\n'
-    +'• Cidades estáveis vs em queda\n\n'
-    +'PONTOS DE ATENÇÃO E RISCOS\n'
-    +'• Cidades preocupantes (3-5 com diagnóstico)\n'
-    +'• Riscos operacionais detectados\n\n'
-    +'SAÚDE DA REDE OPERACIONAL\n'
-    +'• % médio de motoboys ativos vs cadastrados\n'
-    +'• Cidades com gargalo (poucos motoboys)\n'
-    +'• Cidades com ociosidade (motoboys subutilizados)\n'
-    +'• % empresas cadastradas que efetivamente pediram\n\n'
-    +'MOTOBOYS DA REDE\n'
-    +'• Apresente o TOP 10 motoboys da rede consolidada (citando os NOMES, cidade e corridas dos 5 primeiros como destaques)\n'
-    +'• Análise da distribuição: a rede está concentrada em poucos motoboys elite ou bem distribuída?\n'
-    +'• Cidades com mais motoboys de alta performance (50+ corridas)\n\n'
-    +'CONCENTRAÇÃO E DEPENDÊNCIA\n'
-    +'(cidades com alta concentração nas top 5 empresas — risco de dependência se 1 sair)\n\n'
-    +'RECONHECIMENTOS DO MÊS\n'
-    +'• Cite os NOMES dos top 3 motoboys do mês como destaques explícitos (com cidade e corridas)\n'
-    +'• 2-3 destaques adicionais: cidades, gestores, parcerias que merecem celebração\n\n'
-    +'AÇÕES ESTRATÉGICAS PRO PRÓXIMO MÊS\n'
-    +'• 5-7 ações concretas pra equipe executar, com prioridade e responsável sugerido\n\n'
-    +'APOSTA DO MÊS\n'
-    +'(1 prioridade #1 pra próximo mês em 3-4 frases — onde focar energia da equipe, com justificativa baseada nos dados e meta esperada)\n\n'
-    +'Tom: executivo, profissional, números específicos. Português Brasil. Cada seção separada por linha em branco.';
+  var prompt = 'Consultor sênior de operação da Gâmi Delivery. '
+    +'Gere RELATÓRIO MENSAL EXECUTIVO de '+range.label+' pra diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte) e gerência (Leomara, Thiago). '
+    +'NÃO mencione marketing/posts/redes sociais — dados não disponíveis ainda. Foco em operação, receita, motoboys, empresas, riscos.\n\n'
+    +'TOTAIS DO MÊS:\n'
+    +'• '+totalCorridas+' corridas · receita R$ '+totalReceita.toFixed(0)+(crescGeralPct !== null ? ' ('+(crescGeralPct>=0?'+':'')+crescGeralPct+'% vs retrasado)' : '')+' · '+comDados.length+' cidades\n\n'
+    +'TOP 10 MOTOBOYS DA REDE:\n'+top10RedeTxt+'\n\n'
+    +'DADOS POR CIDADE:\n'+dadosLinhas+'\n\n'
+    + (semDados.length ? 'Cidades sem dados (ignorar): '+semDados.map(function(c){return c.nome;}).join(', ')+'\n\n' : '')
+    +'Estrutura OBRIGATÓRIA (11 seções, sem markdown, sem ## ou **):\n\n'
+    +'RESUMO EXECUTIVO DO MÊS\n(3-4 bullets curtos: números-chave + veredito)\n\n'
+    +'RESUMO FINANCEIRO\n• Receita total e variação\n• Top 3 cidades por receita\n• Oportunidades de receita não capturada\n\n'
+    +'EVOLUÇÃO E TENDÊNCIAS\n(cidades acelerando vs desacelerando — 2-3 frases)\n\n'
+    +'RANKING DE CIDADES\n• Top 3 por volume\n• Top 3 por crescimento %\n• 1-2 cidades em queda\n\n'
+    +'PONTOS DE ATENÇÃO E RISCOS\n• 3-4 cidades preocupantes com diagnóstico breve\n\n'
+    +'SAÚDE DA REDE OPERACIONAL\n• % médio motoboys ativos/cadastrados\n• Cidades com gargalo ou ociosidade\n• % empresas que efetivamente pediram\n\n'
+    +'MOTOBOYS DA REDE\n• Cite os NOMES dos top 5 motoboys (com cidade e corridas)\n• Análise rápida da distribuição\n\n'
+    +'CONCENTRAÇÃO E DEPENDÊNCIA\n(cidades com alta concentração nas top 5 empresas — risco)\n\n'
+    +'RECONHECIMENTOS DO MÊS\n• NOMES dos top 3 motoboys como destaques (com cidade e corridas)\n• 1-2 destaques: cidades ou gestores que merecem celebração\n\n'
+    +'AÇÕES ESTRATÉGICAS PRO PRÓXIMO MÊS\n• 5 ações concretas (cidade + responsável sugerido)\n\n'
+    +'APOSTA DO MÊS\n(prioridade #1 em 3-4 frases — onde focar + meta esperada)\n\n'
+    +'Tom executivo, direto. Números específicos. Português Brasil. Seções separadas por linha em branco.';
   
   try {
-    var resp = await fetch('/.netlify/functions/blog-ai', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 4000 })
-    });
-    if(!resp.ok) throw new Error('HTTP '+resp.status);
+    var resp = null;
+    var tentativas = 0;
+    var ultimoErro = null;
+    
+    // Retry automático até 2x em caso de timeout
+    while(tentativas < 2 && !resp){
+      tentativas++;
+      try {
+        var painelMsg = document.getElementById('cid-diagnostico-ia');
+        if(painelMsg && tentativas > 1){
+          painelMsg.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:16px"><span style="font-size:22px">⏳</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Tentativa '+tentativas+' de 2...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">A IA tá demorando um pouco mais que o normal · aguarde</div></div></div>';
+        }
+        var r = await fetch('/.netlify/functions/blog-ai', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ prompt: prompt, max_tokens: 3000 })
+        });
+        if(r.ok){ resp = r; break; }
+        ultimoErro = 'HTTP '+r.status;
+        if(r.status !== 504 && r.status !== 502 && r.status !== 408) break; // só retenta em timeout
+      } catch(e){
+        ultimoErro = e.message;
+      }
+    }
+    
+    if(!resp) throw new Error(ultimoErro || 'Sem resposta');
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
     if(!texto) throw new Error('Resposta vazia');
@@ -10810,7 +10799,18 @@ async function relatorioMensalCidades(forceNew){
     _renderRelatorioMensal(cacheObj, false);
     if(typeof toast === 'function') toast('Relatório mensal de '+range.label+' gerado!', 'success');
   } catch(e){
-    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o relatório:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados.</span></div>';
+    var msg = e.message || '';
+    var hint = '';
+    if(msg.indexOf('504') >= 0 || msg.indexOf('502') >= 0 || msg.indexOf('408') >= 0){
+      hint = '<br><br><strong>O que aconteceu:</strong> a IA tá demorando além do limite do servidor (26s). Não é problema de créditos.<br><strong>Tente:</strong> clique em "↻ Refazer" novamente em 1-2 minutos. Costuma resolver na 2ª tentativa.';
+    } else if(msg.indexOf('401') >= 0 || msg.indexOf('credito') >= 0){
+      hint = '<br><br><strong>O que aconteceu:</strong> chave Anthropic sem créditos ou inválida.';
+    } else if(msg.indexOf('429') >= 0){
+      hint = '<br><br><strong>O que aconteceu:</strong> rate limit Anthropic. Aguarde 1 minuto e tente novamente.';
+    } else {
+      hint = '<br><br>Veja console (F12) pra detalhes.';
+    }
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o relatório:</strong> '+msg+hint+'</div>';
     console.error('[relatorioMensalCidades]', e);
   }
 }
