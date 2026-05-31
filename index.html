@@ -1,4 +1,4 @@
-<!-- v23.31 - Relatorio mensal: max tokens 3000, prompt compacto, retry automatico, msg de erro melhor - 30/05/2026 -->
+<!-- v23.34 - PDF redesigned: capa, KPIs visuais, cores por secao, fix titulo mensal - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10019,24 +10019,35 @@ function _gestorAvatarHTML(nomeGestor, size){
    (funciona com qualquer formato: content[], content string, text, completion, message, etc) */
 function _extrairTextoIA(data){
   if(!data) return '';
+  var texto = '';
   // Array (formato Anthropic SDK): content: [{text:"..."}]
   if(Array.isArray(data.content)){
-    return data.content.map(function(b){return (b && b.text) || '';}).join('').trim();
+    texto = data.content.map(function(b){return (b && b.text) || '';}).join('').trim();
   }
   // String direta em vários campos comuns
-  if(typeof data.content === 'string') return data.content.trim();
-  if(typeof data.text === 'string') return data.text.trim();
-  if(typeof data.completion === 'string') return data.completion.trim();
-  if(typeof data.message === 'string') return data.message.trim();
-  if(typeof data.response === 'string') return data.response.trim();
-  if(data.body && typeof data.body === 'string') return data.body.trim();
-  if(typeof data === 'string') return data.trim();
+  else if(typeof data.content === 'string') texto = data.content.trim();
+  else if(typeof data.text === 'string') texto = data.text.trim();
+  else if(typeof data.completion === 'string') texto = data.completion.trim();
+  else if(typeof data.message === 'string') texto = data.message.trim();
+  else if(typeof data.response === 'string') texto = data.response.trim();
+  else if(data.body && typeof data.body === 'string') texto = data.body.trim();
+  else if(typeof data === 'string') texto = data.trim();
   // OpenAI-style fallback
-  if(data.choices && data.choices[0]){
+  else if(data.choices && data.choices[0]){
     var c = data.choices[0];
-    return (c.text || (c.message && c.message.content) || '').trim();
+    texto = (c.text || (c.message && c.message.content) || '').trim();
   }
-  return '';
+  
+  // Sanitiza: corrige interpretações erradas da IA com palavras curtas acentuadas
+  // Só substitui em CAIXA ALTA pra não mexer em "mão" legítimo (parte do corpo)
+  if(texto){
+    texto = texto
+      // "MÊS" virando "MÃO" em caixa alta (bug clássico — palavra curta acentuada)
+      .replace(/\bMÃO\b/g, 'MÊS')
+      .replace(/\bMÃOS\b/g, 'MESES')
+      ;
+  }
+  return texto;
 }
 
 /* Helper: retorna a segunda-feira da semana atual no formato YYYY-MM-DD */
@@ -10507,17 +10518,26 @@ function _coletarMetricasMachineMensal(cidadeId){
   var crescReceitaPct = receitaRet > 0 ? Math.round(((receita - receitaRet)/receitaRet)*100) : null;
   var crescCorridasPct = corrRetrasado.length > 0 ? Math.round(((corrMes.length - corrRetrasado.length)/corrRetrasado.length)*100) : null;
   
-  // Motoboys e empresas únicos do mês
-  var motoboysAtivos = {};
+  // Motoboys e empresas únicos do mês — pega NOME direto da corrida
+  var motoboysAtivos = {}; // id -> count
+  var motoboysNomes = {}; // id -> nome (cruza com condutores depois pra fallback)
   corrMes.forEach(function(x){
     var id = x.condutor_id || x.taxista_id;
-    if(id) motoboysAtivos[id] = (motoboysAtivos[id]||0) + 1;
+    if(!id) return;
+    motoboysAtivos[id] = (motoboysAtivos[id]||0) + 1;
+    // Pega o nome direto da corrida (mais confiável que a lista de condutores)
+    if(!motoboysNomes[id]){
+      var n = (x.nome_condutor || x.nome_taxista || '').trim();
+      if(n) motoboysNomes[id] = n;
+    }
   });
   
-  // Cruza com lista de condutores pra pegar NOMES
-  var nomesCondutores = {};
+  // Fallback: se algum motoboy não pegou nome da corrida, tenta da lista de condutores
   (d.condutores||[]).forEach(function(cond){
-    if(cond && cond.id) nomesCondutores[String(cond.id)] = cond.nome || ('Motoboy '+cond.id);
+    if(cond && cond.id && !motoboysNomes[cond.id]){
+      var n = (cond.nome || cond.nome_condutor || '').trim();
+      if(n) motoboysNomes[cond.id] = n;
+    }
   });
   
   var empCount = {};
@@ -10540,7 +10560,7 @@ function _coletarMetricasMachineMensal(cidadeId){
     var corridas = item[1];
     return {
       id: id,
-      nome: nomesCondutores[String(id)] || ('Motoboy ID '+id),
+      nome: motoboysNomes[id] || ('Motoboy ID '+id),
       corridas: corridas
     };
   });
@@ -11323,43 +11343,178 @@ function baixarDiagnosticoPDF(textoOuObj, tituloOpcional){
   var obj = (typeof textoOuObj === 'object' && textoOuObj) ? textoOuObj : { texto: String(textoOuObj||window._cidDiagnosticoTexto||'') };
   if(!obj.texto){ alert('Nenhum diagnóstico pra baixar'); return; }
   
-  var titulo = tituloOpcional || (obj.tipo === 'cidade' 
-    ? 'Diagnóstico IA · '+(obj.cidade_nome||'Cidade')+(obj.cidade_uf?'/'+obj.cidade_uf:'')
-    : 'Diagnóstico IA Semanal · Gâmi Delivery');
-  var subtitulo = 'Semana de '+(obj.semana_label||'?');
+  // Detecta tipo do relatório
+  var tipo = obj.tipo || (obj.mes_label ? 'mensal_geral' : 'geral');
+  var isMensal = tipo === 'mensal_geral' || tipo === 'mensal_cidade';
+  var isCidade = tipo === 'cidade' || tipo === 'mensal_cidade';
+  
+  // Título correto pra cada tipo
+  var titulo;
+  if(tituloOpcional) titulo = tituloOpcional;
+  else if(tipo === 'mensal_geral') titulo = 'Relatório Mensal de Operação · Gâmi Delivery';
+  else if(tipo === 'mensal_cidade') titulo = 'Relatório Mensal · '+(obj.cidade_nome||'Cidade')+(obj.cidade_uf?'/'+obj.cidade_uf:'');
+  else if(tipo === 'cidade') titulo = 'Diagnóstico Semanal · '+(obj.cidade_nome||'Cidade')+(obj.cidade_uf?'/'+obj.cidade_uf:'');
+  else titulo = 'Diagnóstico Semanal · Gâmi Delivery';
+  
+  var subtitulo = isMensal ? ('Mês: '+(obj.mes_label||'?')) : ('Semana: '+(obj.semana_label||'?'));
+  var corPrincipal = isMensal ? '#1AB8F0' : '#8B5CF6';
+  var corPrincipalDark = isMensal ? '#0E7AB8' : '#6A1B9A';
+  var corPrincipalLight = isMensal ? '#E6F6FE' : '#F3E8FF';
+  var emojiTipo = isMensal ? '📅' : '🤖';
+  var subtitleBadge = isMensal ? 'RELATÓRIO MENSAL DE FECHAMENTO' : 'DIAGNÓSTICO SEMANAL';
+  
+  // KPIs visuais no topo
+  var kpis = [];
+  if(obj.total_corridas) kpis.push({ icone:'🚀', label:'Corridas', valor: obj.total_corridas.toLocaleString('pt-BR'), cor:'#8B5CF6' });
+  if(obj.corridas_mes) kpis.push({ icone:'🚀', label:'Corridas', valor: obj.corridas_mes.toLocaleString('pt-BR'), cor:'#8B5CF6' });
+  if(obj.corridas_semana) kpis.push({ icone:'🚀', label:'Corridas', valor: obj.corridas_semana.toLocaleString('pt-BR'), cor:'#8B5CF6' });
+  if(obj.receita_total) kpis.push({ icone:'💰', label:'Receita', valor: 'R$ '+Math.round(obj.receita_total).toLocaleString('pt-BR'), cor:'#1D9E75' });
+  if(obj.cidades_analisadas) kpis.push({ icone:'🏙️', label:'Cidades', valor: obj.cidades_analisadas, cor:'#1AB8F0' });
+  if(obj.motoboys_ativos) kpis.push({ icone:'🏍️', label:'Motoboys', valor: obj.motoboys_ativos+(obj.motoboys_cadastrados?'/'+obj.motoboys_cadastrados:''), cor:'#EF9F27' });
+  if(obj.ticket_medio) kpis.push({ icone:'🎫', label:'Ticket', valor: 'R$ '+obj.ticket_medio.toFixed(2), cor:'#EF9F27' });
+  
+  var kpisHtml = '';
+  if(kpis.length){
+    kpisHtml = '<div class="kpis-grid">'
+      + kpis.map(function(k){
+        return '<div class="kpi-card" style="border-left:4px solid '+k.cor+'">'
+          +'<div class="kpi-ico" style="background:'+k.cor+'22;color:'+k.cor+'">'+k.icone+'</div>'
+          +'<div><div class="kpi-label">'+k.label+'</div><div class="kpi-val">'+k.valor+'</div></div>'
+        +'</div>';
+      }).join('')
+    +'</div>';
+  }
+  
+  // Processa conteúdo dividindo por seções (linhas em CAIXA ALTA)
+  var texto = obj.texto;
+  // Identifica seções: linha que está em CAIXA ALTA (3+ palavras maiúsculas seguidas)
+  var linhas = texto.split('\n');
+  var paragrafos = [];
+  var atual = { titulo:null, corpo:[] };
+  
+  function isTitle(linha){
+    var t = linha.trim();
+    if(!t) return false;
+    if(t.length < 4 || t.length > 60) return false;
+    // Maioria das letras maiúsculas? (português)
+    var letras = t.replace(/[^a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]/g,'');
+    if(letras.length < 4) return false;
+    var maiusc = letras.replace(/[a-záéíóúâêîôûãõç]/g,'');
+    return maiusc.length / letras.length >= 0.8; // 80% maiúscula
+  }
+  
+  // Ícones e cores por seção
+  var SECAO_META = {
+    'RESUMO EXECUTIVO': { ico:'📋', cor:'#8B5CF6' },
+    'PANORAMA': { ico:'🌐', cor:'#1AB8F0' },
+    'PERFORMANCE': { ico:'📈', cor:'#1AB8F0' },
+    'EVOLUÇÃO': { ico:'📈', cor:'#1AB8F0' },
+    'RESUMO FINANCEIRO': { ico:'💰', cor:'#1D9E75' },
+    'RANKING': { ico:'🏆', cor:'#EF9F27' },
+    'DESTAQUES': { ico:'⭐', cor:'#1D9E75' },
+    'PONTOS DE ATENÇÃO': { ico:'⚠️', cor:'#EF9F27' },
+    'PONTOS POSITIVOS': { ico:'✅', cor:'#1D9E75' },
+    'SAÚDE': { ico:'❤️', cor:'#E24B4A' },
+    'MOTOBOYS': { ico:'🏍️', cor:'#EF9F27' },
+    'CONCENTRAÇÃO': { ico:'🎯', cor:'#E24B4A' },
+    'RECONHECIMENTOS': { ico:'🏆', cor:'#1D9E75' },
+    'AÇÕES': { ico:'🎬', cor:'#8B5CF6' },
+    'O QUE FAZER': { ico:'🎬', cor:'#8B5CF6' },
+    'APOSTA DO M': { ico:'🎯', cor:'#EF9F27', destaque:true },
+    'APOSTA DA SEMANA': { ico:'🎯', cor:'#EF9F27', destaque:true },
+    'META PRINCIPAL': { ico:'🎯', cor:'#EF9F27', destaque:true },
+    'META DO M': { ico:'🎯', cor:'#EF9F27', destaque:true }
+  };
+  function metaSecao(titulo){
+    var up = titulo.toUpperCase();
+    for(var k in SECAO_META){ if(up.indexOf(k) >= 0) return SECAO_META[k]; }
+    return { ico:'📌', cor:corPrincipal };
+  }
+  
+  linhas.forEach(function(linha){
+    if(isTitle(linha)){
+      if(atual.titulo || atual.corpo.length) paragrafos.push(atual);
+      atual = { titulo:linha.trim(), corpo:[] };
+    } else {
+      atual.corpo.push(linha);
+    }
+  });
+  if(atual.titulo || atual.corpo.length) paragrafos.push(atual);
+  
+  var conteudoHtml = paragrafos.map(function(p){
+    if(!p.titulo) return '<div class="conteudo">'+p.corpo.join('\n').replace(/</g,'&lt;')+'</div>';
+    var meta = metaSecao(p.titulo);
+    var corpo = p.corpo.join('\n').replace(/</g,'&lt;');
+    if(meta.destaque){
+      // Box destacado pra Aposta/Meta
+      return '<div class="secao-destaque" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid '+meta.cor+';border-radius:10px;padding:14px 18px;margin:14px 0;position:relative;page-break-inside:avoid">'
+        +'<div style="position:absolute;top:-10px;left:14px;background:'+meta.cor+';color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">'+meta.ico+' '+p.titulo+'</div>'
+        +'<div style="margin-top:8px;font-size:12.5px;line-height:1.75;color:#854F0B;white-space:pre-line">'+corpo+'</div>'
+      +'</div>';
+    }
+    return '<div class="secao" style="border-left:3px solid '+meta.cor+';padding:0 0 0 14px;margin:18px 0 14px;page-break-inside:avoid">'
+      +'<h2 style="font-size:13px;font-weight:700;color:'+meta.cor+';text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px;display:flex;align-items:center;gap:6px">'
+        +'<span style="font-size:14px">'+meta.ico+'</span>'+p.titulo
+      +'</h2>'
+      +'<div class="conteudo" style="margin-left:0">'+corpo+'</div>'
+    +'</div>';
+  }).join('');
+  
   var rodape = (obj.gerado_por ? 'Gerado por: '+obj.gerado_por : '') 
     + (obj.gerado_em ? ' · '+new Date(obj.gerado_em).toLocaleString('pt-BR') : '');
   
-  // Abre nova janela com layout de impressão
   var w = window.open('', '_blank', 'width=800,height=900');
   if(!w){ alert('Permita popups pra baixar o PDF'); return; }
   
   var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+titulo+'</title>'
     +'<style>'
-      +'@page { size: A4; margin: 18mm 16mm; }'
-      +'body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1a1a1a; line-height: 1.6; max-width: 720px; margin: 0 auto; padding: 20px; }'
-      +'.cabecalho { border-bottom: 3px solid #8B5CF6; padding-bottom: 16px; margin-bottom: 22px; }'
-      +'.logo { font-size: 28px; font-weight: 800; color: #0D2B5C; letter-spacing: -0.5px; }'
-      +'.brand { font-size: 11px; color: #6B7280; margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }'
-      +'h1 { font-size: 20px; color: #0D2B5C; margin: 14px 0 4px; font-weight: 700; }'
-      +'.subt { font-size: 12px; color: #6B7280; margin-bottom: 4px; }'
-      +'.bdg { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #F3E8FF; color: #6A1B9A; font-size: 11px; font-weight: 600; margin-bottom: 18px; }'
-      +'.conteudo { font-size: 13px; line-height: 1.75; white-space: pre-line; color: #1a1a1a; }'
-      +'.rodape { margin-top: 32px; padding-top: 14px; border-top: 1px solid #E5E7EB; font-size: 10.5px; color: #6B7280; }'
-      +'@media print { .no-print { display: none !important; } body { padding: 0; } }'
-      +'.btn-print { position: fixed; top: 16px; right: 16px; padding: 10px 18px; background: #8B5CF6; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; box-shadow: 0 2px 8px rgba(139,92,246,.3); font-family: inherit; }'
+      +'@page { size: A4; margin: 16mm 14mm; }'
+      +'* { box-sizing: border-box; }'
+      +'body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #1a1a1a; line-height: 1.6; max-width: 740px; margin: 0 auto; padding: 24px 20px; }'
+      +'.capa { margin-bottom: 28px; }'
+      +'.brand-top { display:flex; align-items:center; justify-content:space-between; padding-bottom:12px; border-bottom:1px solid #E5E7EB; margin-bottom:24px }'
+      +'.logo-wrap { display:flex; align-items:center; gap:10px }'
+      +'.logo-circle { width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg,#EF9F27,#F3B95E); display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; color:white }'
+      +'.logo-txt { font-size:18px; font-weight:800; color:#0D2B5C; letter-spacing:-.3px }'
+      +'.logo-sub { font-size:10px; color:#6B7280; letter-spacing:1px; text-transform:uppercase; margin-top:1px }'
+      +'.data-emissao { font-size:10px; color:#6B7280; text-align:right }'
+      +'.badge-tipo { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:20px; background:'+corPrincipalLight+'; color:'+corPrincipalDark+'; font-size:11px; font-weight:700; letter-spacing:.5px; margin-bottom:12px }'
+      +'h1 { font-size:26px; color:#0D2B5C; margin:0 0 6px; font-weight:800; line-height:1.2; letter-spacing:-.4px }'
+      +'.subt { font-size:14px; color:#6B7280; margin-bottom:18px; font-weight:500 }'
+      +'.kpis-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin:0 0 24px }'
+      +'.kpi-card { padding:11px 12px; background:#FFFFFF; border:1px solid #E5E7EB; border-radius:8px; display:flex; align-items:center; gap:10px }'
+      +'.kpi-ico { width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0 }'
+      +'.kpi-label { font-size:9px; color:#6B7280; font-weight:700; letter-spacing:.5px; text-transform:uppercase }'
+      +'.kpi-val { font-size:18px; color:#0D2B5C; font-weight:800; line-height:1.1; margin-top:2px }'
+      +'.secao { background:#FAFAFB; border-radius:0 6px 6px 0; padding:10px 14px !important }'
+      +'.conteudo { font-size:12px; line-height:1.7; color:#1a1a1a; white-space:pre-line }'
+      +'.rodape { margin-top:36px; padding-top:14px; border-top:2px solid '+corPrincipal+'; font-size:10px; color:#6B7280; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px }'
+      +'.rodape-marca { font-weight:700; color:#0D2B5C }'
+      +'.rodape-conf { padding:3px 8px; background:'+corPrincipalLight+'; color:'+corPrincipalDark+'; border-radius:4px; font-weight:600 }'
+      +'@media print { .no-print { display:none !important; } body { padding:0; } .secao { page-break-inside:avoid; } }'
+      +'.btn-print { position:fixed; top:16px; right:16px; padding:12px 22px; background:'+corPrincipal+'; color:white; border:none; border-radius:10px; cursor:pointer; font-size:14px; font-weight:700; box-shadow:0 4px 14px rgba(0,0,0,.15); font-family:inherit; z-index:9999 }'
+      +'.btn-print:hover { transform:translateY(-1px); box-shadow:0 6px 18px rgba(0,0,0,.2) }'
     +'</style></head><body>'
     +'<button class="btn-print no-print" onclick="window.print()">🖨️ Baixar como PDF</button>'
-    +'<div class="cabecalho">'
-      +'<div class="logo">Gâmi Delivery</div>'
-      +'<div class="brand">Dashboard · Diagnóstico IA</div>'
+    +'<div class="brand-top">'
+      +'<div class="logo-wrap">'
+        +'<div class="logo-circle">G</div>'
+        +'<div><div class="logo-txt">Gâmi Delivery</div><div class="logo-sub">Dashboard Operacional</div></div>'
+      +'</div>'
+      +'<div class="data-emissao">'+new Date().toLocaleDateString('pt-BR')+'</div>'
     +'</div>'
-    +'<div class="bdg">🤖 Análise IA</div>'
-    +'<h1>'+titulo+'</h1>'
-    +'<div class="subt">'+subtitulo+'</div>'
-    +'<div class="conteudo">'+obj.texto.replace(/</g,'&lt;')+'</div>'
-    +'<div class="rodape">'+rodape+(obj.cidades_analisadas?' · '+obj.cidades_analisadas+' cidade(s) analisada(s)':'')+'</div>'
-    +'<scr'+'ipt>setTimeout(function(){window.print();}, 350);</scr'+'ipt>'
+    +'<div class="capa">'
+      +'<span class="badge-tipo">'+emojiTipo+' '+subtitleBadge+'</span>'
+      +'<h1>'+titulo+'</h1>'
+      +'<div class="subt">'+subtitulo+(isCidade && obj.cidade_nome ? ' · Cidade: '+obj.cidade_nome+(obj.cidade_uf?'/'+obj.cidade_uf:'') : '')+'</div>'
+      +kpisHtml
+    +'</div>'
+    +'<div>'+conteudoHtml+'</div>'
+    +'<div class="rodape">'
+      +'<span><span class="rodape-marca">Gâmi Delivery</span> · '+rodape+'</span>'
+      +'<span class="rodape-conf">CONFIDENCIAL</span>'
+    +'</div>'
+    +'<scr'+'ipt>setTimeout(function(){window.print();}, 400);</scr'+'ipt>'
     +'</body></html>';
   w.document.open(); w.document.write(html); w.document.close();
 }
