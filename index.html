@@ -1,4 +1,4 @@
-<!-- v23.52 - UX nova: cards de cidades na entrada Relatorios + queda padrao 20% - 30/05/2026 -->
+<!-- v23.54b - Status corretos no ticket evolucao e receita periodo - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10325,6 +10325,43 @@ function _rlFormatarData(d){
   return d.toLocaleDateString('pt-BR');
 }
 
+/* ============================================================ */
+/* HELPERS de normalização dos campos Machine                    */
+/* (uso obrigatório em TODOS os geradores)                       */
+/* ============================================================ */
+function _rlDataStr(x){
+  // Retorna string YYYY-MM-DD ou ''
+  return (x.data_hora_solicitacao || x.data_solicitacao || x.data || '').slice(0,10);
+}
+function _rlDataObj(x){
+  var s = _rlDataStr(x);
+  if(!s) return null;
+  var d = new Date(s+'T00:00:00');
+  return isNaN(d.getTime()) ? null : d;
+}
+function _rlDataHora(x){
+  // Retorna Date com hora real (pra pico de horário)
+  var s = x.data_hora_solicitacao || x.data_solicitacao || x.data || '';
+  if(!s) return null;
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+function _rlNomeEmpresa(x){
+  return (x.nome_passageiro || x.nome_empresa || '').trim();
+}
+function _rlValor(x){
+  return parseFloat(x.valor_corrida || x.valor || 0) || 0;
+}
+function _rlStatus(x){
+  return x.status_solicitacao || x.status || '';
+}
+function _rlIdMotoboy(x){
+  return x.condutor_id || x.taxista_id || null;
+}
+function _rlNomeMotoboy(x){
+  return ((x.nome_condutor || x.nome_taxista || '').trim()) || ('Motoboy '+_rlIdMotoboy(x));
+}
+
 /* 1️⃣ EMPRESAS SUMIDAS — pediram em 45 dias, mas estão há N+ dias sem pedir
    Alinhado com aba Empresas da cidade. Janela fixa 45d, agrupa por nome */
 function _gen_empresas_sumidas(d){
@@ -10539,45 +10576,74 @@ function _gen_empresas_queda(d){
   };
 }
 
-/* 2️⃣ CLIENTES NOVOS */
+/* 2️⃣ CLIENTES NOVOS — primeiro pedido nos últimos X dias */
 function _gen_clientes_novos(d){
   var c = _rlGetCidade();
   var periodo = _RL.periodo;
   
+  if(!d.corridas45d || !d.corridas45d.length){
+    return { id:'clientes_novos', icone:'🌟', titulo:'Clientes novos', descricao:'Sem corridas no período', cidade:c, colunas:[], linhas:[], vazio:true };
+  }
+  
   var hoje = new Date(d.hojeStr+'T00:00:00');
-  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate() - periodo);
   
-  // Acha primeira corrida de cada empresa
-  var primeiraPorEmpresa = {};
-  (d.corridas45d||[]).forEach(function(x){
-    var empId = x.empresa_id;
-    if(!empId) return;
-    var nome = x.nome_empresa || ('Empresa '+empId);
-    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dataCorrida.getTime())) return;
+  // Indexa empresas pra puxar telefone/bairro
+  var cidadeAtual = window.__cidadeAtual;
+  var empresasCidade = (typeof _empFiltrarPorCidade === 'function')
+    ? _empFiltrarPorCidade(d.empresas || [], cidadeAtual ? cidadeAtual.nome : '')
+    : (d.empresas || []);
+  var mapEmp = {};
+  empresasCidade.forEach(function(e){
+    var n = (e.nome||'').trim();
+    if(n) mapEmp[n.toLowerCase()] = e;
+  });
+  
+  // Agrupa por nome, descobre PRIMEIRA e ÚLTIMA data
+  var byEmp = {};
+  d.corridas45d.forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
     
-    if(!primeiraPorEmpresa[empId]){
-      primeiraPorEmpresa[empId] = { id:empId, nome:nome, primeira:dataCorrida, total:0, valor:0 };
-    }
-    if(dataCorrida < primeiraPorEmpresa[empId].primeira) primeiraPorEmpresa[empId].primeira = dataCorrida;
-    primeiraPorEmpresa[empId].total++;
-    primeiraPorEmpresa[empId].valor += parseFloat(x.valor || 0);
+    if(!byEmp[n]) byEmp[n] = { nome:n, primeira:dStr, ultima:dStr, total:0, valor:0 };
+    if(dStr < byEmp[n].primeira) byEmp[n].primeira = dStr;
+    if(dStr > byEmp[n].ultima) byEmp[n].ultima = dStr;
+    byEmp[n].total++;
+    byEmp[n].valor += parseFloat(x.valor_corrida || x.valor || 0);
   });
   
-  // Filtra: primeira corrida no período
-  var lista = Object.values(primeiraPorEmpresa).filter(function(e){
-    return e.primeira >= inicioPeriodo;
+  // Filtra: primeira dentro do período
+  var inicioStr = inicio.toISOString().split('T')[0];
+  var novos = [];
+  Object.values(byEmp).forEach(function(e){
+    if(e.primeira < inicioStr) return; // já era cliente antes
+    var info = mapEmp[e.nome.toLowerCase()] || {};
+    novos.push({
+      nome: e.nome,
+      primeira: e.primeira,
+      ultima: e.ultima,
+      total: e.total,
+      valor: e.valor,
+      tel: info.telefone || '',
+      bairro: info.bairro || ''
+    });
   });
-  lista.sort(function(a,b){ return b.primeira - a.primeira; });
+  
+  // Ordena: mais recentes primeiro
+  novos.sort(function(a,b){ return b.primeira < a.primeira ? -1 : b.primeira > a.primeira ? 1 : 0; });
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa', '1º pedido', 'Total pedidos', 'Faz pedidos há'];
+  var colunas = ['Empresa','Bairro','1º pedido','Total pedidos','Cliente há'];
   if(podeValor) colunas.push('Receita total');
+  colunas.push('Telefone');
   
-  var linhas = lista.map(function(e){
-    var dias = Math.floor((hoje - e.primeira) / 86400000);
-    var row = [e.nome, _rlFormatarData(e.primeira), e.total, dias+'d'];
+  var linhas = novos.map(function(e){
+    var prim = new Date(e.primeira+'T00:00:00');
+    var dias = Math.floor((hoje - prim) / 86400000);
+    var primFmt = e.primeira.split('-').reverse().join('/');
+    var row = ['🌟 '+e.nome, e.bairro||'—', primFmt, e.total, dias+' dias'];
     if(podeValor) row.push('R$ '+e.valor.toFixed(2));
+    row.push(e.tel || '—');
     return row;
   });
   
@@ -10585,58 +10651,81 @@ function _gen_clientes_novos(d){
     id:'clientes_novos',
     icone:'🌟',
     titulo:'Clientes novos',
-    descricao:'Empresas que fizeram primeiro pedido nos últimos '+periodo+' dias',
+    descricao:'Empresas que fizeram o primeiro pedido nos últimos '+periodo+' dias',
     cidade:c,
     colunas:colunas,
     linhas:linhas,
-    vazio: lista.length === 0,
+    vazio: novos.length === 0,
+    podeWhatsApp: true,
     kpis:[
-      { label:'Novos clientes', valor:lista.length, cor:'#1D9E75' },
-      { label:'Pedidos gerados', valor:lista.reduce(function(s,e){return s+e.total;},0), cor:'#1AB8F0' }
+      { label:'Novos clientes', valor:novos.length, cor:'#1D9E75' },
+      { label:'Pedidos gerados', valor:novos.reduce(function(s,e){return s+e.total;},0), cor:'#1AB8F0' }
     ]
   };
 }
 
-/* 3️⃣ TOP CLIENTES — só pra quem pode ver valor */
+/* 3️⃣ TOP CLIENTES — top N por pedidos no período */
 function _gen_top_clientes(d){
   var c = _rlGetCidade();
   var periodo = _RL.periodo;
   var topN = _RL.topN;
   
-  var hoje = new Date(d.hojeStr+'T00:00:00');
-  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  if(!d.corridas45d || !d.corridas45d.length){
+    return { id:'top_clientes', icone:'🏆', titulo:'Top clientes', descricao:'Sem corridas no período', cidade:c, colunas:[], linhas:[], vazio:true };
+  }
   
-  var porEmpresa = {};
-  (d.corridas45d||[]).forEach(function(x){
-    var empId = x.empresa_id;
-    if(!empId) return;
-    var nome = x.nome_empresa || ('Empresa '+empId);
-    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dataCorrida.getTime())) return;
-    if(dataCorrida < inicioPeriodo) return;
-    
-    if(!porEmpresa[empId]) porEmpresa[empId] = { id:empId, nome:nome, total:0, valor:0 };
-    porEmpresa[empId].total++;
-    porEmpresa[empId].valor += parseFloat(x.valor || 0);
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate() - periodo);
+  var inicioStr = inicio.toISOString().split('T')[0];
+  
+  // Indexa empresas pra puxar telefone/bairro
+  var cidadeAtual = window.__cidadeAtual;
+  var empresasCidade = (typeof _empFiltrarPorCidade === 'function')
+    ? _empFiltrarPorCidade(d.empresas || [], cidadeAtual ? cidadeAtual.nome : '')
+    : (d.empresas || []);
+  var mapEmp = {};
+  empresasCidade.forEach(function(e){
+    var n = (e.nome||'').trim();
+    if(n) mapEmp[n.toLowerCase()] = e;
   });
   
-  var lista = Object.values(porEmpresa);
+  // Agrupa por nome dentro do período
+  var byEmp = {};
+  d.corridas45d.forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
+    if(dStr < inicioStr) return;
+    
+    if(!byEmp[n]) byEmp[n] = { nome:n, total:0, valor:0, ultima:dStr };
+    byEmp[n].total++;
+    byEmp[n].valor += parseFloat(x.valor_corrida || x.valor || 0);
+    if(dStr > byEmp[n].ultima) byEmp[n].ultima = dStr;
+  });
+  
+  var lista = Object.values(byEmp);
   lista.sort(function(a,b){ return b.total - a.total; });
   lista = lista.slice(0, topN);
   
   var totalGeral = lista.reduce(function(s,e){return s+e.total;},0);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['#', 'Empresa', 'Pedidos', '% do top '+topN];
+  var colunas = ['#','Empresa','Bairro','Pedidos','% do top '+topN];
   if(podeValor){ colunas.push('Receita'); colunas.push('Ticket médio'); }
+  colunas.push('Último pedido');
+  colunas.push('Telefone');
   
   var linhas = lista.map(function(e, i){
+    var info = mapEmp[e.nome.toLowerCase()] || {};
+    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
     var pctTopN = totalGeral > 0 ? ((e.total / totalGeral) * 100).toFixed(1) + '%' : '—';
-    var row = [(i+1)+'º', e.nome, e.total, pctTopN];
+    var ultFmt = e.ultima.split('-').reverse().join('/');
+    var row = [medal, e.nome, info.bairro||'—', e.total, pctTopN];
     if(podeValor){
       row.push('R$ '+e.valor.toFixed(2));
       row.push('R$ '+(e.total > 0 ? (e.valor/e.total).toFixed(2) : '0,00'));
     }
+    row.push(ultFmt);
+    row.push(info.telefone || '—');
     return row;
   });
   
@@ -10649,6 +10738,12 @@ function _gen_top_clientes(d){
     colunas:colunas,
     linhas:linhas,
     vazio: lista.length === 0,
+    podeWhatsApp: true,
+    kpis:[
+      { label:'Top '+topN, valor:lista.length, cor:'#EF9F27' },
+      { label:'Total pedidos', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Líder', valor: lista[0] ? lista[0].total+' pedidos' : '—', cor:'#1D9E75' }
+    ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
         +'<select onchange="_RL.topN=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
@@ -10668,40 +10763,40 @@ function _gen_motoboys_ausentes(d){
   var periodo = _RL.periodo;
   var semHa = _RL.semPedirHa;
   
-  var hoje = new Date(d.hojeStr+'T00:00:00');
-  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
-  var corteSem = new Date(hoje); corteSem.setDate(corteSem.getDate()-semHa);
+  if(!d.corridas45d || !d.corridas45d.length){
+    return { id:'motoboys_ausentes', icone:'😴', titulo:'Motoboys ausentes', descricao:'Sem corridas no período', cidade:c, colunas:[], linhas:[], vazio:true };
+  }
   
-  var porMotoboy = {};
-  (d.corridas45d||[]).forEach(function(x){
-    var id = x.condutor_id || x.taxista_id;
-    if(!id) return;
-    var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy ID '+id);
-    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dataCorrida.getTime())) return;
-    if(dataCorrida < inicioPeriodo) return;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var byMb = {};
+  d.corridas45d.forEach(function(x){
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
+    var id = _rlIdMotoboy(x); if(!id) return;
+    var nome = _rlNomeMotoboy(x);
     
-    if(!porMotoboy[id]) porMotoboy[id] = { id:id, nome:nome, ultima:dataCorrida, total:0 };
-    if(dataCorrida > porMotoboy[id].ultima) porMotoboy[id].ultima = dataCorrida;
-    porMotoboy[id].total++;
+    if(!byMb[id]) byMb[id] = { id:id, nome:nome, ultima:dt, total:0 };
+    if(dt > byMb[id].ultima) byMb[id].ultima = dt;
+    byMb[id].total++;
   });
   
-  // Pega telefone dos condutores
+  // Telefones do cadastro de condutores
   (d.condutores||[]).forEach(function(cond){
-    if(cond && cond.id && porMotoboy[cond.id]){
-      porMotoboy[cond.id].telefone = cond.telefone_celular || cond.telefone || cond.celular || '';
+    if(cond && cond.id && byMb[cond.id]){
+      byMb[cond.id].tel = cond.telefone_celular || cond.telefone || cond.celular || '';
     }
   });
   
-  var lista = Object.values(porMotoboy).filter(function(m){
-    return m.ultima < corteSem;
-  });
-  lista.sort(function(a,b){ return b.ultima - a.ultima; });
+  var corteSem = new Date(hoje); corteSem.setDate(corteSem.getDate()-semHa);
+  var ausentes = Object.values(byMb).filter(function(m){ return m.ultima < corteSem; });
+  ausentes.sort(function(a,b){ return b.ultima - a.ultima; });
   
-  var linhas = lista.map(function(m){
+  var linhas = ausentes.map(function(m){
     var dias = Math.floor((hoje - m.ultima) / 86400000);
-    var tel = m.telefone || '—';
-    return [m.nome, _rlFormatarData(m.ultima), dias+'d', m.total, tel];
+    var icone = dias >= 14 ? '🔴' : dias >= 7 ? '🟠' : '🟡';
+    return [icone+' '+m.nome, _rlFormatarData(m.ultima), dias+' dias', m.total, m.tel || '—'];
   });
   
   return {
@@ -10710,17 +10805,18 @@ function _gen_motoboys_ausentes(d){
     titulo:'Motoboys ausentes',
     descricao:'Motoboys que rodaram nos últimos '+periodo+' dias mas estão há '+semHa+'+ dias sem rodar',
     cidade:c,
-    colunas:['Motoboy', 'Última corrida', 'Dias sem rodar', 'Corridas no período', 'Telefone'],
+    colunas:['Motoboy','Última corrida','Sem rodar há','Corridas no período','Telefone'],
     linhas:linhas,
-    vazio: lista.length === 0,
-    podeWhatsApp: true, // ativa botão WhatsApp por linha
+    vazio: ausentes.length === 0,
+    podeWhatsApp: true,
     kpis:[
-      { label:'Motoboys ausentes', valor:lista.length, cor:'#E24B4A' },
-      { label:'Corridas perdidas', valor:lista.reduce(function(s,m){return s+m.total;},0), cor:'#EF9F27' }
+      { label:'Motoboys ausentes', valor:ausentes.length, cor:'#E24B4A' },
+      { label:'Corridas perdidas', valor:ausentes.reduce(function(s,m){return s+m.total;},0), cor:'#EF9F27' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem rodar há:</strong>'
         +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="2"'+(semHa===2?' selected':'')+'>2+ dias</option>'
           +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
           +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
           +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
@@ -10737,40 +10833,41 @@ function _gen_top_motoboys(d){
   var periodo = _RL.periodo;
   var topN = _RL.topN;
   
-  var hoje = new Date(d.hojeStr+'T00:00:00');
-  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  if(!d.corridas45d || !d.corridas45d.length){
+    return { id:'top_motoboys', icone:'🏆', titulo:'Top motoboys', descricao:'Sem corridas no período', cidade:c, colunas:[], linhas:[], vazio:true };
+  }
   
-  var porMotoboy = {};
-  (d.corridas45d||[]).forEach(function(x){
-    var id = x.condutor_id || x.taxista_id;
-    if(!id) return;
-    var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy ID '+id);
-    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dataCorrida.getTime())) return;
-    if(dataCorrida < inicioPeriodo) return;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var byMb = {};
+  d.corridas45d.forEach(function(x){
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
+    var id = _rlIdMotoboy(x); if(!id) return;
+    var nome = _rlNomeMotoboy(x);
     
-    if(!porMotoboy[id]) porMotoboy[id] = { id:id, nome:nome, total:0, ultima:dataCorrida };
-    porMotoboy[id].total++;
-    if(dataCorrida > porMotoboy[id].ultima) porMotoboy[id].ultima = dataCorrida;
+    if(!byMb[id]) byMb[id] = { id:id, nome:nome, total:0, ultima:dt };
+    byMb[id].total++;
+    if(dt > byMb[id].ultima) byMb[id].ultima = dt;
   });
   
-  // Telefones
   (d.condutores||[]).forEach(function(cond){
-    if(cond && cond.id && porMotoboy[cond.id]){
-      porMotoboy[cond.id].telefone = cond.telefone_celular || cond.telefone || cond.celular || '';
+    if(cond && cond.id && byMb[cond.id]){
+      byMb[cond.id].tel = cond.telefone_celular || cond.telefone || cond.celular || '';
     }
   });
   
-  var lista = Object.values(porMotoboy);
+  var lista = Object.values(byMb);
   lista.sort(function(a,b){ return b.total - a.total; });
   lista = lista.slice(0, topN);
   
   var totalGeral = lista.reduce(function(s,m){return s+m.total;},0);
   
   var linhas = lista.map(function(m, i){
+    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
     var pct = totalGeral > 0 ? ((m.total / totalGeral) * 100).toFixed(1) + '%' : '—';
-    var tel = m.telefone || '—';
-    return [(i+1)+'º', m.nome, m.total, pct, _rlFormatarData(m.ultima), tel];
+    return [medal, m.nome, m.total, pct, _rlFormatarData(m.ultima), m.tel || '—'];
   });
   
   return {
@@ -10779,10 +10876,15 @@ function _gen_top_motoboys(d){
     titulo:'Top '+topN+' motoboys do período',
     descricao:'Motoboys que mais rodaram nos últimos '+periodo+' dias',
     cidade:c,
-    colunas:['#', 'Motoboy', 'Corridas', '% do top '+topN, 'Última corrida', 'Telefone'],
+    colunas:['#','Motoboy','Corridas','% do top '+topN,'Última corrida','Telefone'],
     linhas:linhas,
     vazio: lista.length === 0,
     podeWhatsApp: true,
+    kpis:[
+      { label:'Top '+topN, valor:lista.length, cor:'#EF9F27' },
+      { label:'Total corridas', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Líder', valor: lista[0] ? lista[0].total+' corridas' : '—', cor:'#1D9E75' }
+    ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
         +'<select onchange="_RL.topN=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
@@ -10883,8 +10985,8 @@ function _gen_corridas_dia_semana(d){
   var contagem = [0,0,0,0,0,0,0];
   
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     contagem[dt.getDay()]++;
   });
   
@@ -10929,8 +11031,8 @@ function _gen_pico_horario(d){
   
   var porHora = new Array(24).fill(0);
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     porHora[dt.getHours()]++;
   });
   
@@ -10971,14 +11073,13 @@ function _gen_taxa_cancelamento(d){
   
   var porEmpresa = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
-    var empId = x.empresa_id;
-    if(!empId) return;
-    var nome = x.nome_empresa || ('Empresa '+empId);
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
+    var empId = _rlNomeEmpresa(x); if(!empId) return;
+    var nome = _rlNomeEmpresa(x) || ('Empresa '+empId);
     if(!porEmpresa[empId]) porEmpresa[empId] = { nome:nome, total:0, cancelada:0 };
     porEmpresa[empId].total++;
-    if(x.status === 'C') porEmpresa[empId].cancelada++;
+    if(_rlStatus(x) === 'C') porEmpresa[empId].cancelada++;
   });
   
   var lista = Object.values(porEmpresa)
@@ -10993,10 +11094,10 @@ function _gen_taxa_cancelamento(d){
   
   var totalGeral = 0, totalCancelado = 0;
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     totalGeral++;
-    if(x.status === 'C') totalCancelado++;
+    if(_rlStatus(x) === 'C') totalCancelado++;
   });
   var taxaGeral = totalGeral > 0 ? (totalCancelado / totalGeral * 100) : 0;
   
@@ -11030,8 +11131,8 @@ function _gen_dias_anomalos(d){
   
   var porDia = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     var chave = dt.toISOString().split('T')[0];
     porDia[chave] = (porDia[chave]||0) + 1;
   });
@@ -11087,17 +11188,17 @@ function _gen_saude_cidade(d){
   var corridas = 0, finalizadas = 0, canceladas = 0;
   var motoboysAtivos = {}, empresasAtivas = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     corridas++;
-    if(x.status === 'F') finalizadas++;
-    if(x.status === 'C') canceladas++;
+    if(_rlStatus(x) === 'F') finalizadas++;
+    if(_rlStatus(x) === 'C') canceladas++;
     if(x.condutor_id) motoboysAtivos[x.condutor_id] = true;
     if(x.empresa_id) empresasAtivas[x.empresa_id] = true;
   });
   
-  var motoboysCad = (d.condutores||[]).filter(function(x){return x.status==='A';}).length;
-  var empresasCad = (d.empresas||[]).filter(function(x){return x.status==='A';}).length;
+  var motoboysCad = (d.condutores||[]).filter(function(x){return _rlStatus(x) === 'A';}).length;
+  var empresasCad = (d.empresas||[]).filter(function(x){return _rlStatus(x) === 'A';}).length;
   var totalMotoAtivos = Object.keys(motoboysAtivos).length;
   var totalEmpAtivas = Object.keys(empresasAtivas).length;
   
@@ -11171,9 +11272,9 @@ function _gen_receita_periodo(d){
   
   var buckets = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
-    if(x.status !== 'F') return; // só finalizadas
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
+    if(_rlStatus(x) !== 'F') return; // só finalizadas
     var key;
     if(granul === 'dia') key = dt.toISOString().split('T')[0];
     else { // semana: começo da semana (segunda)
@@ -11183,7 +11284,7 @@ function _gen_receita_periodo(d){
     }
     if(!buckets[key]) buckets[key] = { corridas:0, receita:0 };
     buckets[key].corridas++;
-    buckets[key].receita += parseFloat(x.valor || 0);
+    buckets[key].receita += _rlValor(x);
   });
   
   var ordenado = Object.keys(buckets).sort().map(function(k){
@@ -11233,13 +11334,13 @@ function _gen_ticket_evolucao(d){
   
   var buckets = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
-    if(x.status !== 'F') return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
+    if(_rlStatus(x) !== 'F') return;
     var key = dt.toISOString().split('T')[0];
     if(!buckets[key]) buckets[key] = { c:0, v:0 };
     buckets[key].c++;
-    buckets[key].v += parseFloat(x.valor || 0);
+    buckets[key].v += _rlValor(x);
   });
   
   var ordenado = Object.keys(buckets).sort().map(function(k){
@@ -11299,14 +11400,13 @@ function _gen_crescimento_mom(d){
   }
   
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime())) return;
+    var dt = _rlDataObj(x); if(!dt) return;
     for(var i = 0; i < meses.length; i++){
       var m = meses[i];
       if(dt >= m.ini && dt <= m.fim){
-        if(x.status === 'F'){
+        if(_rlStatus(x) === 'F'){
           m.corridas++;
-          m.receita += parseFloat(x.valor || 0);
+          m.receita += _rlValor(x);
         }
         break;
       }
@@ -11361,13 +11461,13 @@ function _gen_pareto_empresas(d){
   
   var porEmp = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
-    if(x.status !== 'F') return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
+    if(_rlStatus(x) !== 'F') return;
     if(!x.empresa_id) return;
     var nome = x.nome_empresa || ('Empresa '+x.empresa_id);
     if(!porEmp[x.empresa_id]) porEmp[x.empresa_id] = { nome:nome, receita:0, corridas:0 };
-    porEmp[x.empresa_id].receita += parseFloat(x.valor || 0);
+    porEmp[x.empresa_id].receita += _rlValor(x);
     porEmp[x.empresa_id].corridas++;
   });
   
@@ -11422,8 +11522,8 @@ function _gen_pareto_motoboys(d){
   
   var porMb = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     var id = x.condutor_id || x.taxista_id;
     if(!id) return;
     var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy '+id);
@@ -11486,17 +11586,17 @@ function _rlCidadeMetricas(dadosCidade){
   var corridas = 0, finalizadas = 0, canceladas = 0, receita = 0;
   var motoboysAtivos = {}, empresasAtivas = {};
   (d.corridas45d||[]).forEach(function(x){
-    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
-    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var dt = _rlDataObj(x); if(!dt) return;
+    if(dt < inicio) return;
     corridas++;
-    if(x.status === 'F'){ finalizadas++; receita += parseFloat(x.valor||0); }
-    if(x.status === 'C') canceladas++;
+    if(_rlStatus(x) === 'F'){ finalizadas++; receita += _rlValor(x); }
+    if(_rlStatus(x) === 'C') canceladas++;
     if(x.condutor_id) motoboysAtivos[x.condutor_id] = true;
     if(x.empresa_id) empresasAtivas[x.empresa_id] = true;
   });
   
-  var motoCad = (d.condutores||[]).filter(function(x){return x.status==='A';}).length;
-  var empCad = (d.empresas||[]).filter(function(x){return x.status==='A';}).length;
+  var motoCad = (d.condutores||[]).filter(function(x){return _rlStatus(x) === 'A';}).length;
+  var empCad = (d.empresas||[]).filter(function(x){return _rlStatus(x) === 'A';}).length;
   
   return {
     corridas:corridas,
