@@ -1,4 +1,4 @@
-<!-- v23.51 - Sumidas e Queda alinhados com aba Cidade (janela 45d nome_passageiro) - 30/05/2026 -->
+<!-- v23.52 - UX nova: cards de cidades na entrada Relatorios + queda padrao 20% - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9807,9 +9807,11 @@ var _RL = {
   cidadeId: null,
   periodo: 30, // dias
   semPedirHa: 2, // padrão pra empresas_sumidas
+  quedaMin: 20, // padrão pra empresas_queda
   topN: 10,
   relatorioAtual: null,
-  resultadoAtual: null
+  resultadoAtual: null,
+  vista: 'cidades' // 'cidades' | 'categorias' | 'resultado'
 };
 
 /* Catálogo de relatórios disponíveis */
@@ -9935,53 +9937,160 @@ function _rlCidadesDisponiveis(){
 
 /* INIT — chamada quando a aba abre */
 function initRelatoriosAba(){
-  // Define cidade padrão
-  if(!_RL.cidadeId){
-    var disponiveis = _rlCidadesDisponiveis();
-    if(disponiveis.length){
-      _RL.cidadeId = disponiveis[0].id;
-    }
+  var disponiveis = _rlCidadesDisponiveis();
+  
+  // Se tem 1 cidade só (gestor): pula a seleção e vai direto pras categorias
+  if(disponiveis.length === 1){
+    _RL.cidadeId = disponiveis[0].id;
+    _RL.vista = 'categorias';
+    _RL.relatorioAtual = null;
+    document.getElementById('rl-btn-voltar').style.display = 'none';
+    rlRenderCategorias();
+    return;
   }
+  
+  // Senão começa na seleção de cidades
+  _RL.vista = 'cidades';
   _RL.relatorioAtual = null;
   document.getElementById('rl-btn-voltar').style.display = 'none';
-  rlRenderCategorias();
+  rlRenderSelecaoCidade();
 }
 
-/* Renderiza a tela inicial com as categorias */
-function rlRenderCategorias(){
+/* Tela inicial: cards de cidades + comparativos (se permitido) */
+function rlRenderSelecaoCidade(){
   var host = document.getElementById('rl-content');
   if(!host) return;
-  var cidades = _rlCidadesDisponiveis();
-  var podeValor = _rlPodeVerValor();
   
-  var cidadeOptions = cidades.map(function(c){
-    var sel = c.id === _RL.cidadeId ? ' selected' : '';
-    return '<option value="'+c.id+'"'+sel+'>'+c.nome+'/'+c.uf+'</option>';
-  }).join('');
+  var cidades = _rlCidadesDisponiveis();
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var podeComparativo = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
   
   var html = '';
   
-  // Barra de filtros
-  html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
-    +'<div style="display:flex;align-items:center;gap:8px">'
-      +'<span style="font-size:11px;color:var(--text3);font-weight:600">🏙️ Cidade:</span>'
-      +'<select onchange="_RL.cidadeId=this.value;rlRenderCategorias()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:white;cursor:pointer">'+cidadeOptions+'</select>'
-    +'</div>'
+  // Banner do período (selector compacto no topo)
+  html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
     +'<div style="display:flex;align-items:center;gap:8px">'
       +'<span style="font-size:11px;color:var(--text3);font-weight:600">📅 Período:</span>'
-      +'<select onchange="_RL.periodo=parseInt(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:white;cursor:pointer">'
+      +'<select onchange="_RL.periodo=parseInt(this.value)" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:white;cursor:pointer">'
         +'<option value="7"'+(_RL.periodo===7?' selected':'')+'>Últimos 7 dias</option>'
         +'<option value="15"'+(_RL.periodo===15?' selected':'')+'>Últimos 15 dias</option>'
         +'<option value="30"'+(_RL.periodo===30?' selected':'')+'>Últimos 30 dias</option>'
         +'<option value="45"'+(_RL.periodo===45?' selected':'')+'>Últimos 45 dias</option>'
       +'</select>'
     +'</div>'
-    + (podeValor ? '' : '<div style="font-size:10px;color:var(--text3);background:#FFF8EE;border:1px solid #EF9F2733;padding:4px 10px;border-radius:6px">🔒 Valores ($) ocultos pra seu nível</div>')
+    +'<span style="font-size:10px;color:var(--text3)">Aplicado em relatórios que dependem de período (Sumidas/Queda usam janela fixa de 45d)</span>'
   +'</div>';
   
-  // Cards de categoria
+  // SEÇÃO COMPARATIVOS (só pra quem pode)
+  if(podeComparativo){
+    var compCat = RELATORIOS.comparativo;
+    var compVisiveis = _rlRelatoriosVisiveis(compCat);
+    if(compVisiveis.length){
+      html += '<div style="margin-bottom:24px">'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+          +'<span style="font-size:16px">📈</span> Comparativos da rede'
+          +'<span style="font-size:10px;color:var(--text3);font-weight:500;font-family:\'DM Sans\',sans-serif">'+compVisiveis.length+' relatórios · usa as 11 cidades</span>'
+        +'</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px">'
+        + compVisiveis.map(function(r){
+          return '<div onclick="rlAbrirRelatorio(\''+r.id+'\')" style="padding:14px 16px;background:linear-gradient(135deg,#FCEBEB,#FFFFFF);border:1px solid #E24B4A33;border-left:4px solid #E24B4A;border-radius:10px;cursor:pointer;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.06)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">'
+            +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+              +'<span style="font-size:18px">'+r.icone+'</span>'
+              +'<span style="font-size:13px;font-weight:700;color:var(--text)">'+r.nome+'</span>'
+            +'</div>'
+            +'<div style="font-size:10.5px;color:var(--text3);line-height:1.4">'+r.descricao+'</div>'
+          +'</div>';
+        }).join('')
+        +'</div>'
+      +'</div>';
+    }
+  }
+  
+  // SEÇÃO CIDADES
+  html += '<div>'
+    +'<div style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:16px">🏙️</span> Escolha uma cidade'
+      +'<span style="font-size:10px;color:var(--text3);font-weight:500;font-family:\'DM Sans\',sans-serif">'+cidades.length+' disponíveis</span>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">';
+  
+  cidades.forEach(function(c){
+    var gestorLabel = c.gestor ? c.gestor : '—';
+    // Conta total de relatórios visíveis pra esta cidade (todas categorias menos comparativo)
+    var totalRel = 0;
+    Object.keys(RELATORIOS).forEach(function(catKey){
+      if(catKey === 'comparativo') return;
+      totalRel += _rlRelatoriosVisiveis(RELATORIOS[catKey]).length;
+    });
+    
+    html += '<div onclick="rlEntrarNaCidade(\''+c.id+'\')" style="padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:transform .15s,box-shadow .15s;border-left:4px solid #8B5CF6" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.06)\';this.style.borderColor=\'#8B5CF6\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\';this.style.borderColor=\'var(--border)\';this.style.borderLeftColor=\'#8B5CF6\'">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        +'<span style="font-size:18px">🏙️</span>'
+        +'<span style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:700;color:var(--text)">'+c.nome+'</span>'
+        +'<span style="font-size:10px;color:var(--text3);font-weight:600">'+c.uf+'</span>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:4px">'
+        +'<span style="font-size:9px">👤</span> '+gestorLabel
+      +'</div>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between">'
+        +'<span style="font-size:9px;color:#8B5CF6;font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+totalRel+' relatórios</span>'
+        +'<span style="font-size:14px;color:#8B5CF6">→</span>'
+      +'</div>'
+    +'</div>';
+  });
+  
+  html += '</div></div>';
+  
+  host.innerHTML = html;
+}
+
+/* Click numa cidade → entra na seleção de categorias dela */
+function rlEntrarNaCidade(cidadeId){
+  _RL.cidadeId = cidadeId;
+  _RL.vista = 'categorias';
+  document.getElementById('rl-btn-voltar').style.display = 'inline-flex';
+  rlRenderCategorias();
+}
+
+/* Renderiza categorias dentro da cidade escolhida */
+function rlRenderCategorias(){
+  var host = document.getElementById('rl-content');
+  if(!host) return;
+  var cidades = _rlCidadesDisponiveis();
+  var cidadeAtual = cidades.find(function(c){ return c.id === _RL.cidadeId; });
+  var podeValor = _rlPodeVerValor();
+  
+  var html = '';
+  
+  // Header da cidade selecionada
+  if(cidadeAtual){
+    html += '<div style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">'
+      +'<div>'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px">'
+          +'<span style="font-size:20px">🏙️</span> '+cidadeAtual.nome+'/'+cidadeAtual.uf
+        +'</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:2px">👤 Gestor: '+(cidadeAtual.gestor||'—')+'</div>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +'<div style="display:flex;align-items:center;gap:6px">'
+          +'<span style="font-size:11px;color:var(--text3);font-weight:600">📅</span>'
+          +'<select onchange="_RL.periodo=parseInt(this.value)" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:white;cursor:pointer">'
+            +'<option value="7"'+(_RL.periodo===7?' selected':'')+'>7 dias</option>'
+            +'<option value="15"'+(_RL.periodo===15?' selected':'')+'>15 dias</option>'
+            +'<option value="30"'+(_RL.periodo===30?' selected':'')+'>30 dias</option>'
+            +'<option value="45"'+(_RL.periodo===45?' selected':'')+'>45 dias</option>'
+          +'</select>'
+        +'</div>'
+        + (podeValor ? '' : '<span style="font-size:10px;color:var(--text3);background:#FFF8EE;border:1px solid #EF9F2733;padding:4px 10px;border-radius:6px">🔒 Sem valores</span>')
+      +'</div>'
+    +'</div>';
+  }
+  
+  // Cards de categoria (sem Comparativo aqui — ele tá na tela inicial)
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">';
   Object.keys(RELATORIOS).forEach(function(catKey){
+    if(catKey === 'comparativo') return; // comparativos ficam na tela inicial
     var cat = RELATORIOS[catKey];
     var visiveis = _rlRelatoriosVisiveis(cat);
     if(!visiveis.length) return;
@@ -10006,30 +10115,52 @@ function rlRenderCategorias(){
   });
   html += '</div>';
   
-  // Aviso (apenas pra super_admin)
-  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : '';
-  if(nivel === 'super_admin'){
-    html += '<div style="margin-top:20px;padding:12px 16px;background:#F3E8FF;border:1px solid #8B5CF633;border-radius:8px;font-size:11px;color:#6A1B9A;line-height:1.5">'
-      +'<strong>📋 Sistema completo</strong> · 18 relatórios em 5 categorias. Comparativos carregam dados das 11 cidades (~1-2min na 1ª vez).'
-    +'</div>';
-  }
-  
   host.innerHTML = html;
 }
 
-/* Abre um relatório específico (mostra filtros + gera) */
+/* Abre um relatório específico */
 function rlAbrirRelatorio(id){
   _RL.relatorioAtual = id;
+  _RL.vista = 'resultado';
   document.getElementById('rl-btn-voltar').style.display = 'inline-flex';
   _rlGerarERenderizar();
 }
 
+/* Voltar: contexto-aware (resultado → categorias → cidades) */
 function rlVoltarCategorias(){
+  if(_RL.vista === 'resultado'){
+    _RL.relatorioAtual = null;
+    _RL.resultadoAtual = null;
+    // Se é comparativo (sem cidade selecionada) volta pra cidades
+    var ehComparativo = _RL.cidadeId === null || !RELATORIOS.empresas.relatorios.find(function(){return false;});
+    // Lógica: se cidadeId tá vazio (veio direto de comparativo) ou só tem 1 cidade, vai pra cidades
+    var cidades = _rlCidadesDisponiveis();
+    if(cidades.length > 1 && _RL.vista !== 'cidades'){
+      _RL.vista = 'categorias';
+      rlRenderCategorias();
+      return;
+    } else {
+      _RL.vista = 'cidades';
+      document.getElementById('rl-btn-voltar').style.display = 'none';
+      rlRenderSelecaoCidade();
+      return;
+    }
+  }
+  if(_RL.vista === 'categorias'){
+    var cidades = _rlCidadesDisponiveis();
+    if(cidades.length > 1){
+      _RL.vista = 'cidades';
+      _RL.cidadeId = null;
+      document.getElementById('rl-btn-voltar').style.display = 'none';
+      rlRenderSelecaoCidade();
+      return;
+    }
+  }
+  // Default: voltar pra cidades
+  _RL.vista = 'cidades';
   _RL.relatorioAtual = null;
-  _RL.resultadoAtual = null;
   document.getElementById('rl-btn-voltar').style.display = 'none';
-  rlRenderCategorias();
+  rlRenderSelecaoCidade();
 }
 
 /* Garante que os dados Machine da cidade estão carregados */
@@ -10397,9 +10528,10 @@ function _gen_empresas_queda(d){
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mínima:</strong>'
         +'<select onchange="_RL.quedaMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
-          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+</option>'
-          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+</option>'
-          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+</option>'
+          +'<option value="10"'+(quedaMin===10?' selected':'')+'>10%+ (todas)</option>'
+          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+ (recomendado)</option>'
+          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+ (moderada)</option>'
+          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+ (crítica)</option>'
         +'</select>'
       +'</label>'
       +'<span style="font-size:10px;color:var(--text3)">⚠️ Janela fixa de 45 dias (independente do filtro de período acima)</span>'
