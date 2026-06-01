@@ -1,4 +1,4 @@
-<!-- v23.49 - Empresas em queda na aba Cidade + relatorio com sumidas e em queda - 30/05/2026 -->
+<!-- v23.50 - Relatorios separados: empresas_sumidas e empresas_queda - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9806,7 +9806,7 @@ function filtrarCidadeStatus(btn, status){
 var _RL = {
   cidadeId: null,
   periodo: 30, // dias
-  semPedirHa: 3, // padrão pra clientes_recuperar
+  semPedirHa: 2, // padrão pra empresas_sumidas
   topN: 10,
   relatorioAtual: null,
   resultadoAtual: null
@@ -9817,8 +9817,11 @@ var RELATORIOS = {
   empresas: {
     nome: '🏪 EMPRESAS', cor:'#1AB8F0',
     relatorios: [
-      { id:'clientes_recuperar', icone:'🔴', nome:'Clientes a recuperar',
-        descricao:'Sumidas (sem pedir) + em queda (reduziram volume) — mesma análise da aba Empresas',
+      { id:'empresas_sumidas', icone:'🚨', nome:'Empresas sumidas',
+        descricao:'Pediram nos últimos 45 dias mas estão há 2+ dias sem pedir (ordenadas das mais recentes pras antigas)',
+        temValor:false, fase:1 },
+      { id:'empresas_queda', icone:'📉', nome:'Empresas em queda',
+        descricao:'Ainda fazem pedidos, mas reduziram volume 30%+ na segunda metade do período',
         temValor:false, fase:1 },
       { id:'clientes_novos', icone:'🌟', nome:'Clientes novos',
         descricao:'Empresas com primeiro pedido nos últimos X dias',
@@ -10101,7 +10104,9 @@ async function _rlGerarERenderizar(){
 function _rlGerarRelatorio(id, dados){
   switch(id){
     // Fase 1 — Empresas + Motoboys
-    case 'clientes_recuperar': return _gen_clientes_recuperar(dados);
+    case 'empresas_sumidas':   return _gen_empresas_sumidas(dados);
+    case 'empresas_queda':     return _gen_empresas_queda(dados);
+    case 'clientes_recuperar': return _gen_empresas_sumidas(dados); // alias antigo
     case 'clientes_novos':     return _gen_clientes_novos(dados);
     case 'top_clientes':       return _gen_top_clientes(dados);
     case 'motoboys_ausentes':  return _gen_motoboys_ausentes(dados);
@@ -10189,8 +10194,8 @@ function _rlFormatarData(d){
   return d.toLocaleDateString('pt-BR');
 }
 
-/* 1️⃣ CLIENTES A RECUPERAR — Sumidas + Em queda */
-function _gen_clientes_recuperar(d){
+/* 1️⃣ EMPRESAS SUMIDAS — pediram em 45 dias, mas estão há 2+ dias sem pedir */
+function _gen_empresas_sumidas(d){
   var c = _rlGetCidade();
   var periodo = _RL.periodo;
   var semHa = _RL.semPedirHa;
@@ -10198,9 +10203,91 @@ function _gen_clientes_recuperar(d){
   var hoje = new Date(d.hojeStr+'T00:00:00');
   var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
   var corteSemPedir = new Date(hoje); corteSemPedir.setDate(corteSemPedir.getDate()-semHa);
+  
+  // Agrupa por empresa
+  var porEmpresa = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var empId = x.empresa_id;
+    if(!empId) return;
+    var nome = x.nome_empresa || x.nome_passageiro || ('Empresa '+empId);
+    var dataCorrida = new Date(x.data_solicitacao || x.data_hora_solicitacao || x.data || x.created_at);
+    if(isNaN(dataCorrida.getTime())) return;
+    if(dataCorrida < inicioPeriodo) return;
+    
+    if(!porEmpresa[empId]){
+      porEmpresa[empId] = { id:empId, nome:nome, ultima:dataCorrida, total:0, valor:0 };
+    }
+    if(dataCorrida > porEmpresa[empId].ultima) porEmpresa[empId].ultima = dataCorrida;
+    porEmpresa[empId].total++;
+    porEmpresa[empId].valor += parseFloat(x.valor || x.valor_corrida || 0);
+  });
+  
+  // Telefones
+  (d.empresas || []).forEach(function(emp){
+    if(emp && emp.id && porEmpresa[emp.id]){
+      porEmpresa[emp.id].telefone = emp.telefone || '';
+    }
+  });
+  
+  // Filtra: última corrida ANTES do corte
+  var sumidas = Object.values(porEmpresa)
+    .filter(function(e){ return e.ultima < corteSemPedir; })
+    .sort(function(a,b){ return b.ultima - a.ultima; }); // mais recentes primeiro
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa','Último pedido','Sem pedir há','Pedidos no período'];
+  if(podeValor) colunas.push('Valor total');
+  colunas.push('Telefone');
+  
+  var linhas = sumidas.map(function(e){
+    var dias = Math.floor((hoje - e.ultima) / 86400000);
+    var corDias = dias >= 30 ? '🔴' : dias >= 15 ? '🟠' : '🟡';
+    var row = [corDias+' '+e.nome, _rlFormatarData(e.ultima), dias+' dias', e.total];
+    if(podeValor) row.push('R$ '+e.valor.toFixed(2));
+    row.push(e.telefone || '—');
+    return row;
+  });
+  
+  return {
+    id:'empresas_sumidas',
+    icone:'🚨',
+    titulo:'Empresas sumidas',
+    descricao:'Pediram nos últimos '+periodo+' dias mas estão há '+semHa+'+ dias sem pedir · ordenadas das mais recentes pras antigas',
+    cidade:c,
+    colunas:colunas,
+    linhas:linhas,
+    vazio: sumidas.length === 0,
+    podeWhatsApp: true,
+    kpis:[
+      { label:'Empresas sumidas', valor:sumidas.length, cor:'#E24B4A' },
+      { label:'Pedidos perdidos', valor:sumidas.reduce(function(s,e){return s+e.total;},0), cor:'#EF9F27' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem pedir há:</strong>'
+        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="2"'+(semHa===2?' selected':'')+'>2+ dias</option>'
+          +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
+          +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
+          +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* 1️⃣b EMPRESAS EM QUEDA — ainda pedem, mas reduziram volume 30%+ */
+function _gen_empresas_queda(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var semHa = _RL.semPedirHa;
+  var quedaMin = _RL.quedaMin || 30;
+  
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  var corteSemPedir = new Date(hoje); corteSemPedir.setDate(corteSemPedir.getDate()-semHa);
   var meio = new Date(hoje); meio.setDate(meio.getDate() - Math.floor(periodo/2));
   
-  // Agrupa por empresa: última corrida, total no período, count1 (1ª metade), count2 (2ª metade)
   var porEmpresa = {};
   (d.corridas45d||[]).forEach(function(x){
     var empId = x.empresa_id;
@@ -10220,86 +10307,57 @@ function _gen_clientes_recuperar(d){
     else porEmpresa[empId].count2++;
   });
   
-  // Telefones das empresas
   (d.empresas || []).forEach(function(emp){
     if(emp && emp.id && porEmpresa[emp.id]){
       porEmpresa[emp.id].telefone = emp.telefone || '';
     }
   });
   
-  // SUMIDAS: última corrida ANTES do corte
-  var sumidas = Object.values(porEmpresa)
-    .filter(function(e){ return e.ultima < corteSemPedir; })
-    .sort(function(a,b){ return b.ultima - a.ultima; });
-  
-  // EM QUEDA: ainda ativas (última corrida < corteSemPedir) E count1 ≥ 3 E queda ≥ 30%
+  // Em queda: ainda ativas + count1 ≥ 3 + queda ≥ quedaMin%
   var emQueda = Object.values(porEmpresa)
     .filter(function(e){
       if(e.ultima < corteSemPedir) return false; // já é sumida
       if(e.count1 < 3) return false; // base muito pequena
       var quedaPct = e.count1 > 0 ? ((e.count1 - e.count2) / e.count1) * 100 : 0;
       e._quedaPct = quedaPct;
-      return quedaPct >= 30;
+      return quedaPct >= quedaMin;
     })
     .sort(function(a,b){ return b._quedaPct - a._quedaPct; });
   
   var podeValor = _rlPodeVerValor();
-  
-  // Constrói linhas COM SEÇÕES (usando marcadores visuais)
-  var linhas = [];
-  
-  if(sumidas.length){
-    linhas.push(['📂 SUMIDAS — sem pedir há '+semHa+'+ dias','','','','','','']);
-    sumidas.forEach(function(e){
-      var dias = Math.floor((hoje - e.ultima) / 86400000);
-      var corDias = dias >= 30 ? '🔴' : dias >= 15 ? '🟠' : '🟡';
-      var row = [corDias+' '+e.nome, _rlFormatarData(e.ultima), dias+'d', e.total, '—'];
-      if(podeValor) row.push('R$ '+e.valor.toFixed(2));
-      row.push(e.telefone || '—');
-      linhas.push(row);
-    });
-  }
-  
-  if(emQueda.length){
-    if(sumidas.length) linhas.push(['','','','','','','']); // espaçador
-    linhas.push(['📉 EM QUEDA — ainda pedem mas reduziram '+Math.round(emQueda[0]._quedaPct)+'%+','','','','','','']);
-    emQueda.forEach(function(e){
-      var dias = Math.floor((hoje - e.ultima) / 86400000);
-      var pct = Math.round(e._quedaPct);
-      var icone = pct >= 60 ? '🔴' : pct >= 40 ? '🟠' : '🟡';
-      var row = [icone+' '+e.nome, _rlFormatarData(e.ultima), dias+'d', e.count1+' → '+e.count2, '-'+pct+'%'];
-      if(podeValor) row.push('R$ '+e.valor.toFixed(2));
-      row.push(e.telefone || '—');
-      linhas.push(row);
-    });
-  }
-  
-  var colunas = ['Empresa','Último pedido','Há quanto','Pedidos','Queda %'];
+  var colunas = ['Empresa','Último pedido','Variação','Queda %','Pedidos totais'];
   if(podeValor) colunas.push('Valor total');
   colunas.push('Telefone');
   
+  var linhas = emQueda.map(function(e){
+    var pct = Math.round(e._quedaPct);
+    var icone = pct >= 60 ? '🔴' : pct >= 40 ? '🟠' : '🟡';
+    var row = [icone+' '+e.nome, _rlFormatarData(e.ultima), e.count1+' → '+e.count2, '-'+pct+'%', e.total];
+    if(podeValor) row.push('R$ '+e.valor.toFixed(2));
+    row.push(e.telefone || '—');
+    return row;
+  });
+  
   return {
-    id:'clientes_recuperar',
-    icone:'🔴',
-    titulo:'Clientes a recuperar',
-    descricao:'Sumidas (sem pedir há '+semHa+'+ dias) + Em queda (reduziram 30%+) nos últimos '+periodo+' dias',
+    id:'empresas_queda',
+    icone:'📉',
+    titulo:'Empresas em queda',
+    descricao:'Ainda fazem pedidos, mas reduziram '+quedaMin+'%+ comparando primeira metade vs segunda metade dos últimos '+periodo+' dias',
     cidade:c,
     colunas:colunas,
     linhas:linhas,
-    vazio: sumidas.length === 0 && emQueda.length === 0,
+    vazio: emQueda.length === 0,
     podeWhatsApp: true,
     kpis:[
-      { label:'🚨 Sumidas', valor:sumidas.length, cor:'#E24B4A' },
-      { label:'📉 Em queda', valor:emQueda.length, cor:'#EF9F27' },
-      { label:'Pedidos a recuperar', valor:sumidas.reduce(function(s,e){return s+e.total;},0), cor:'#8B5CF6' }
+      { label:'Empresas em queda', valor:emQueda.length, cor:'#EF9F27' },
+      { label:'Maior queda', valor:emQueda.length ? '-'+Math.round(emQueda[0]._quedaPct)+'%' : '—', cor:'#E24B4A' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
-      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sumida = sem pedir há:</strong>'
-        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
-          +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
-          +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
-          +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
-          +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mínima:</strong>'
+        +'<select onchange="_RL.quedaMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+</option>'
+          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+</option>'
+          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+</option>'
         +'</select>'
       +'</label>'
     +'</div>'
