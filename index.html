@@ -1,4 +1,4 @@
-<!-- v23.47 - Aba relatorios autorizada em todos os niveis na MATRIZ_PERMISSOES - 30/05/2026 -->
+<!-- v23.48 - Fix Relatorios: carrega dados via vgCarregarPainel correto - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10028,13 +10028,34 @@ function rlVoltarCategorias(){
 
 /* Garante que os dados Machine da cidade estão carregados */
 async function _rlGarantirDados(cidadeId){
-  if(!_vgCache[cidadeId] || !_vgCache[cidadeId].dados){
-    if(typeof _vgCarregarPainel === 'function'){
-      var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
-      var c = cidades.find(function(x){ return x.id === cidadeId; });
-      if(c) await _vgCarregarPainel(c);
-    }
+  // Se já tem cache válido, retorna direto
+  if(_vgCache[cidadeId] && _vgCache[cidadeId].dados){
+    return _vgCache[cidadeId].dados;
   }
+  
+  // Pega objeto cidade
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var c = cidades.find(function(x){ return x.id === cidadeId; });
+  if(!c){ console.warn('[Relatórios] cidade não encontrada:', cidadeId); return null; }
+  
+  // vgCarregarPainel usa window.__cidadeAtual — precisamos setar antes
+  var anterior = window.__cidadeAtual;
+  window.__cidadeAtual = c;
+  
+  try {
+    if(typeof vgCarregarPainel === 'function'){
+      await vgCarregarPainel({ auto:true });
+    } else {
+      console.warn('[Relatórios] vgCarregarPainel não disponível');
+    }
+  } catch(e){
+    console.error('[Relatórios] Erro carregando painel:', e);
+  } finally {
+    // Restaura cidade anterior (não deixa contaminado)
+    if(anterior) window.__cidadeAtual = anterior;
+    else window.__cidadeAtual = c; // se não tinha, mantém esta pra próximas chamadas
+  }
+  
   return _vgCache[cidadeId] && _vgCache[cidadeId].dados;
 }
 
