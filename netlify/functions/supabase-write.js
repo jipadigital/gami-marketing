@@ -26,7 +26,14 @@ const TABELAS_PERMITIDAS = [
   'machine_corridas',
   'machine_condutores',
   'machine_empresas',
-  'machine_sync_log'
+  'machine_sync_log',
+  'audit_log'  // pra registrar ações de auditoria
+];
+
+// Funções RPC permitidas (whitelist)
+const RPCS_PERMITIDAS = [
+  'refresh_machine_views',
+  'limpar_sessoes_expiradas'
 ];
 
 // Origens permitidas (CORS)
@@ -41,23 +48,82 @@ function corsHeaders(origin){
   return {
     'Access-Control-Allow-Origin': permitido,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Gami-User',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Gami-User, X-Gami-Token',
     'Content-Type': 'application/json'
   };
 }
 
-// Valida o usuário consultando a tabela pessoas
-async function validarUsuario(userId){
-  if(!userId) return null;
+// Valida o usuário + token de sessão
+async function validarSessao(userId, token){
+  if(!userId) return { valido: false, erro: 'Usuário não informado' };
+  
   try {
-    const r = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,super_admin', {
+    // Busca o usuário em usuarios_login (que tem token + expiração)
+    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,nome,token_atual,token_expira_em,ativo&limit=1', {
       headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer '+SUPA_ANON_KEY }
     });
-    if(!r.ok) return null;
+    if(!r.ok) return { valido: false, erro: 'Falha ao validar' };
     const arr = await r.json();
-    if(!Array.isArray(arr) || arr.length === 0) return null;
-    return arr[0];
-  } catch(e){ return null; }
+    if(!Array.isArray(arr) || arr.length === 0) return { valido: false, erro: 'Usuário não existe' };
+    
+    const u = arr[0];
+    
+    if(u.ativo === false) return { valido: false, erro: 'Usuário desativado' };
+    
+    // Se token foi enviado, valida (mais seguro)
+    // Se token não foi enviado (sistema antigo), valida só user_id (compatibilidade)
+    if(token){
+      if(!u.token_atual) return { valido: false, erro: 'Sessão não encontrada (faça login de novo)' };
+      if(u.token_atual !== token) return { valido: false, erro: 'Token inválido' };
+      if(u.token_expira_em && new Date(u.token_expira_em) < new Date()){
+        return { valido: false, erro: 'Sessão expirada (faça login de novo)' };
+      }
+    }
+    
+    // Busca o nivel na tabela pessoas
+    const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,super_admin&limit=1', {
+      headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer '+SUPA_ANON_KEY }
+    });
+    const arrP = await rP.json();
+    const pessoa = (Array.isArray(arrP) && arrP[0]) ? arrP[0] : null;
+    
+    return { 
+      valido: true, 
+      usuario: { 
+        id: userId, 
+        nome: u.nome,
+        nivel: pessoa ? pessoa.nivel : null,
+        super_admin: pessoa ? (pessoa.super_admin === true || pessoa.nivel === 'super_admin') : false
+      } 
+    };
+  } catch(e){
+    console.error('validarSessao:', e);
+    return { valido: false, erro: 'Erro ao validar sessão' };
+  }
+}
+
+// Registra evento no audit_log (não bloqueia o fluxo se falhar)
+async function auditar(usuario, acao, recurso, detalhes, ip, userAgent){
+  try {
+    await fetch(SUPA_URL+'/rest/v1/audit_log', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': 'Bearer '+SUPA_SERVICE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify([{
+        pessoa_id: usuario.id,
+        pessoa_nome: usuario.nome,
+        acao: acao,
+        recurso: recurso,
+        detalhes: detalhes || null,
+        ip: ip || null,
+        user_agent: userAgent || null
+      }])
+    });
+  } catch(e){ /* silencioso */ }
 }
 
 exports.handler = async function(event){
@@ -77,21 +143,25 @@ exports.handler = async function(event){
     return { statusCode: 500, headers: cors, body: JSON.stringify({error:'Servidor não configurado (SUPA_SERVICE_KEY ausente)'}) };
   }
   
-  // Valida usuário
+  // Valida usuário + token de sessão
   const userId = event.headers['x-gami-user'] || event.headers['X-Gami-User'];
+  const token = event.headers['x-gami-token'] || event.headers['X-Gami-Token'];
+  const ip = event.headers['x-forwarded-for'] || event.headers['x-nf-client-connection-ip'] || '';
+  const userAgent = event.headers['user-agent'] || '';
+  
   if(!userId){
     return { statusCode: 401, headers: cors, body: JSON.stringify({error:'Usuário não informado (header X-Gami-User)'}) };
   }
   
-  const usuario = await validarUsuario(userId);
-  if(!usuario){
-    return { statusCode: 401, headers: cors, body: JSON.stringify({error:'Usuário inválido'}) };
+  const sessao = await validarSessao(userId, token);
+  if(!sessao.valido){
+    return { statusCode: 401, headers: cors, body: JSON.stringify({error: sessao.erro}) };
   }
   
+  const usuario = sessao.usuario;
+  
   // Só super_admin pode escrever (por enquanto)
-  // (depois podemos permitir gestor/diretoria pra operações específicas)
-  const ehSuperAdmin = usuario.super_admin === true || usuario.nivel === 'super_admin';
-  if(!ehSuperAdmin){
+  if(!usuario.super_admin){
     return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada (não é super_admin)'}) };
   }
   
@@ -141,9 +211,12 @@ exports.handler = async function(event){
       supaHeaders['Prefer'] = 'return=minimal';
     }
     else if(operacao === 'rpc'){
-      // Pra chamar functions/refresh_machine_views
+      // Pra chamar functions (refresh_machine_views etc)
       if(!body.funcao){
         return { statusCode: 400, headers: cors, body: JSON.stringify({error:'rpc precisa de funcao'}) };
+      }
+      if(RPCS_PERMITIDAS.indexOf(body.funcao) < 0){
+        return { statusCode: 400, headers: cors, body: JSON.stringify({error:'RPC não permitida: '+body.funcao}) };
       }
       url = SUPA_URL+'/rest/v1/rpc/'+body.funcao;
       method = 'POST';
@@ -164,6 +237,13 @@ exports.handler = async function(event){
     
     const respBody = await r.text();
     const resultado = respBody ? JSON.parse(respBody) : null;
+    
+    // Audit log (não bloqueia se falhar)
+    auditar(usuario, operacao, tabela || (body.funcao || ''), {
+      qtd: Array.isArray(dados) ? dados.length : 0,
+      filtro: filtro || null,
+      funcao: body.funcao || null
+    }, ip, userAgent);
     
     return { statusCode: 200, headers: cors, body: JSON.stringify({
       ok: true,

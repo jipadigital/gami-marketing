@@ -1,4 +1,4 @@
-<!-- v23.60 - Seguranca Fase 1: escritas via Netlify function supabase-write (SERVICE_KEY) - 02/06/2026 -->
+<!-- v23.61 - Seguranca Fase 2: token sessao + CORS restrito + headers + audit log - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -7278,7 +7278,12 @@ async function tentarLogin(identificador, pin){
       return { sucesso: false, erro: 'PIN incorreto (' + (5-tentativas) + ' tentativas restantes)' };
     }
     
-    // Sucesso! Atualiza último login
+    // Sucesso! Gera token de sessão + atualiza login
+    var sessaoToken = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+      ? crypto.randomUUID() 
+      : (Date.now() + '_' + Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2));
+    var sessaoExpira = new Date(Date.now() + 24*60*60*1000); // 24h
+    
     try {
       await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + usuario.pessoa_id, {
         method: 'PATCH',
@@ -7289,9 +7294,14 @@ async function tentarLogin(identificador, pin){
         body: JSON.stringify({
           ultimo_login: new Date().toISOString(),
           tentativas_falhas: 0,
-          bloqueado_ate: null
+          bloqueado_ate: null,
+          token_atual: sessaoToken,
+          token_expira_em: sessaoExpira.toISOString(),
+          ultimo_user_agent: navigator.userAgent || null
         })
       });
+      // Guarda token no localStorage pra usar em chamadas seguras
+      try { localStorage.setItem('gami_sessao_token', sessaoToken); } catch(e){}
     } catch(e){}
     
     // Busca dados completos da pessoa - PRIORIDADE: Supabase em tempo real
@@ -7454,6 +7464,26 @@ async function definirUsername(pessoaId, username){
 
 /* LOGOUT */
 function fazerLogout(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var userId = u && u.id ? u.id : null;
+  
+  // Limpa token de sessão localmente
+  try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
+  
+  // Invalida token no servidor (best-effort, não bloqueia logout)
+  if(userId){
+    try {
+      fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + userId, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
+          'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ token_atual: null, token_expira_em: null })
+      }).catch(function(){});
+    } catch(e){}
+  }
+  
   setUsuarioLogado(null);
   // Limpa caches relacionados
   try { localStorage.removeItem('gami_pontos_cache'); } catch(e){}
@@ -12126,16 +12156,19 @@ function _syncMostrarProgresso(){
 }
 
 /* Helper centralizado pra escritas no Supabase via função Netlify (segura)
-   Usa SUPA_SERVICE_KEY do servidor, não a chave pública */
+   Usa SUPA_SERVICE_KEY do servidor + valida X-Gami-Token de sessão */
 async function _syncEscrever(payload){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var userId = u && u.id ? u.id : 'desconhecido';
+  var token = '';
+  try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
   
   var r = await fetch('/.netlify/functions/supabase-write', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Gami-User': userId
+      'X-Gami-User': userId,
+      'X-Gami-Token': token
     },
     body: JSON.stringify(payload)
   });
@@ -12145,6 +12178,15 @@ async function _syncEscrever(payload){
     var msg = '';
     try { var j = JSON.parse(txt); msg = j.error || j.detalhe || txt; }
     catch(e){ msg = txt; }
+    
+    // Se sessão expirou, redireciona pro login
+    if(r.status === 401 && (msg.indexOf('expirada') >= 0 || msg.indexOf('inválido') >= 0)){
+      try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
+      alert('Sessão expirada. Faça login novamente.');
+      if(typeof logout === 'function') logout();
+      else location.reload();
+    }
+    
     throw new Error('Escrita falhou ('+r.status+'): '+msg);
   }
   

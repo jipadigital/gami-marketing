@@ -15,6 +15,18 @@
 
 const BASE_URL = 'https://api.taximachine.com.br/api/integracao';
 
+// Origens permitidas (somente nosso domínio + localhost pra dev)
+const ORIGENS_PERMITIDAS = [
+  'https://gami-marketing.netlify.app',
+  'http://localhost:8888',
+  'http://localhost:3000'
+];
+
+function corsPermitido(origem){
+  if(!origem) return ORIGENS_PERMITIDAS[0]; // requests sem origin (curl, server-to-server)
+  return ORIGENS_PERMITIDAS.indexOf(origem) >= 0 ? origem : null;
+}
+
 // Recursos liberados pra leitura via GET (whitelist por seguranca)
 const RECURSOS_GET = {
   condutor: '/condutor',
@@ -38,8 +50,20 @@ function getCidadeKey(cidade){
 }
 
 exports.handler = async function(event){
+  var origem = event.headers.origin || event.headers.Origin || '';
+  var origemPermitida = corsPermitido(origem);
+  
+  // Se origem não permitida, bloqueia (exceto chamada server-to-server sem origem)
+  if(origem && !origemPermitida){
+    return { 
+      statusCode: 403, 
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({success:false, error:'Origem não autorizada'})
+    };
+  }
+  
   var cors = {
-    'Access-Control-Allow-Origin':'*',
+    'Access-Control-Allow-Origin': origemPermitida || ORIGENS_PERMITIDAS[0],
     'Access-Control-Allow-Methods':'GET, OPTIONS',
     'Content-Type':'application/json'
   };

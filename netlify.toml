@@ -1,0 +1,76 @@
+# netlify.toml - Configuração Gâmi Dashboard
+# v5 - 02/06/2026 - Adicionado headers de segurança Fase 2
+
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[build.environment]
+  SECRETS_SCAN_ENABLED = "false"
+
+# ============================================================
+# HEADERS DE SEGURANÇA - Aplicados em todas as páginas
+# ============================================================
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Impede que o site seja embedado em iframe (clickjacking)
+    X-Frame-Options = "DENY"
+    
+    # Impede MIME type sniffing
+    X-Content-Type-Options = "nosniff"
+    
+    # Não envia referrer pra outros domínios (privacidade)
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    
+    # Desabilita features perigosas do navegador
+    Permissions-Policy = "geolocation=(), microphone=(), camera=(), usb=(), payment=()"
+    
+    # Força HTTPS por 2 anos (HSTS)
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    
+    # XSS protection (legacy mas ainda útil em alguns navegadores)
+    X-XSS-Protection = "1; mode=block"
+
+# Headers ESPECÍFICOS pra functions (CORS é gerenciado dentro delas)
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate"
+
+# ============================================================
+# REDIRECTS - ORDEM IMPORTA
+# ============================================================
+
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# ============================================================
+# CRON JOBS — Scheduled Functions
+# ============================================================
+
+# Stories automáticos (v2 - lógica por dia da semana)
+[functions."scheduled-stories"]
+  schedule = "0,30 10,15,19,21,22 * * *"
+
+# Posts agendados (Cowork)
+[functions."posts-cron"]
+  schedule = "*/15 * * * *"
+
+# Sync diário Machine→Supabase (6h UTC = 3h Brasília)
+[functions."sync-diario-background"]
+  schedule = "0 6 * * *"
