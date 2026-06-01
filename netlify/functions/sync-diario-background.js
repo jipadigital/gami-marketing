@@ -7,7 +7,8 @@
 const { schedule } = require('@netlify/functions');
 
 const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
-const SUPA_KEY = process.env.SUPA_PUBLIC_KEY || 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
+// Service key bypassa RLS — só funciona em env var do Netlify (nunca expor)
+const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY || process.env.SUPA_PUBLIC_KEY || 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
 
 // Cidades a sincronizar (slugs igual ao machine.js)
 const CIDADES = [
@@ -49,8 +50,8 @@ async function upsertSupabase(tabela, registros){
       const r = await fetch(`${SUPA_URL}/rest/v1/${tabela}`, {
         method: 'POST',
         headers: {
-          'apikey': SUPA_KEY,
-          'Authorization': `Bearer ${SUPA_KEY}`,
+          'apikey': SUPA_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
           'Content-Type': 'application/json',
           'Prefer': 'resolution=merge-duplicates,return=minimal'
         },
@@ -69,8 +70,8 @@ async function criarLog(slug, nome){
     const r = await fetch(`${SUPA_URL}/rest/v1/machine_sync_log`, {
       method: 'POST',
       headers: {
-        'apikey': SUPA_KEY,
-        'Authorization': `Bearer ${SUPA_KEY}`,
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=representation'
       },
@@ -96,8 +97,8 @@ async function atualizarLog(id, dados){
     await fetch(`${SUPA_URL}/rest/v1/machine_sync_log?id=eq.${id}`, {
       method: 'PATCH',
       headers: {
-        'apikey': SUPA_KEY,
-        'Authorization': `Bearer ${SUPA_KEY}`,
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal'
       },
@@ -222,8 +223,8 @@ const handler = async function(event, context) {
     const r = await fetch(`${SUPA_URL}/rest/v1/rpc/refresh_machine_views`, {
       method: 'POST',
       headers: {
-        'apikey': SUPA_KEY,
-        'Authorization': `Bearer ${SUPA_KEY}`,
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
         'Content-Type': 'application/json'
       },
       body: '{}'

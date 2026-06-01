@@ -1,4 +1,4 @@
-<!-- v23.56 - machine.js limites 10k + refragmentacao auto 12h se truncar - 30/05/2026 -->
+<!-- v23.60 - Seguranca Fase 1: escritas via Netlify function supabase-write (SERVICE_KEY) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3327,6 +3327,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
             <strong>Painel operacional</strong> — clique para carregar os dados reais das corridas e motoboys desta cidade.
           </div>
           <button onclick="vgCarregarPainel({forcar:true})" id="vg-painel-btn" style="padding:6px 12px;border:none;border-radius:7px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">🟢 Carregar dados reais</button>
+        </div>
+        <!-- Botão sync Supabase (só super_admin) -->
+        <div id="cidade-sync-supabase-box" style="display:none;margin-bottom:12px;padding:10px 12px;background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-radius:10px;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:16px">☁️</span>
+          <div style="flex:1;min-width:200px">
+            <div style="font-size:11.5px;font-weight:700;color:#6A1B9A">Sincronizar dados com Supabase</div>
+            <div style="font-size:10px;color:#7B3FA0">Salva 60 dias de corridas no banco. Permite histórico longo e análises avançadas.</div>
+          </div>
+          <button onclick="if(window.__cidadeAtual)abrirSincronizacaoSupabase(window.__cidadeAtual.id)" style="padding:7px 14px;border:none;border-radius:7px;background:#8B5CF6;color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">☁️ Sincronizar agora</button>
         </div>
         <div id="vg-painel-conteudo"></div>
       </div>
@@ -10220,7 +10229,7 @@ async function _rlGerarERenderizar(){
   
   var resultado;
   try {
-    resultado = _rlGerarRelatorio(_RL.relatorioAtual, dados);
+    resultado = await _rlGerarRelatorio(_RL.relatorioAtual, dados);
   } catch(e){
     console.error('[Relatórios]', e);
     host.innerHTML = '<div style="padding:20px;background:#FCEBEB;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D">⚠️ Erro ao gerar relatório: '+e.message+'</div>';
@@ -10231,18 +10240,470 @@ async function _rlGerarERenderizar(){
   _rlRenderResultado(resultado);
 }
 
-/* DESPACHADOR — chama a função do relatório específico */
-function _rlGerarRelatorio(id, dados){
+/* ============================================================ */
+/* HELPERS Supabase — leem das materialized views                */
+/* ============================================================ */
+
+// Cache: pra cada cidade, sabemos se tem dados Supabase ou não
+var _rlSupabaseCache = {};
+
+async function _rlCidadeTemSupabase(slug){
+  if(_rlSupabaseCache[slug] !== undefined) return _rlSupabaseCache[slug];
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/mv_empresas_atividade?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=cidade_slug&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+    });
+    if(!r.ok){ _rlSupabaseCache[slug] = false; return false; }
+    var arr = await r.json();
+    _rlSupabaseCache[slug] = Array.isArray(arr) && arr.length > 0;
+  } catch(e){ _rlSupabaseCache[slug] = false; }
+  return _rlSupabaseCache[slug];
+}
+
+function _rlSlug(){
+  var c = _rlGetCidade();
+  if(!c) return null;
+  return (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+}
+
+async function _rlSupaQuery(path){
+  var r = await fetch(SUPA_URL+'/rest/v1/'+path, {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+  });
+  if(!r.ok) throw new Error('Supabase HTTP '+r.status);
+  return await r.json();
+}
+
+/* Pega corridas de HOJE da Machine (em tempo real)
+   Tenta cache primeiro pra economizar chamada */
+async function _rlPegarCorridasHoje(slug){
+  var c = _rlGetCidade();
+  if(c && _vgCache[c.id] && _vgCache[c.id].dados && _vgCache[c.id].dados.corridasDia){
+    var cacheTs = _vgCache[c.id].ts || 0;
+    // Se cache <5min, usa direto
+    if(Date.now() - cacheTs < 5*60*1000){
+      return _vgCache[c.id].dados.corridasDia || [];
+    }
+  }
+  // Senão, chama Machine direto
+  try {
+    var hoje = new Date().toISOString().split('T')[0];
+    var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+hoje+'&data_fim='+hoje);
+    if(!r.ok) return [];
+    var d = await r.json();
+    return (d && Array.isArray(d.response)) ? d.response : [];
+  } catch(e){ return []; }
+}
+
+/* Mescla dados de HOJE no agregado por empresa */
+function _rlMesclarEmpresasHoje(historico, corridasHoje){
+  var porNome = {};
+  historico.forEach(function(h){ porNome[h.nome_passageiro] = Object.assign({}, h); });
+  
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var hojeStr = hoje.toISOString().split('T')[0];
+  
+  corridasHoje.forEach(function(x){
+    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var valor = parseFloat(x.valor_corrida || x.valor || 0) || 0;
+    var status = x.status_solicitacao || x.status || '';
+    var dHora = x.data_hora_solicitacao || x.data_solicitacao || new Date().toISOString();
+    
+    if(!porNome[n]){
+      porNome[n] = {
+        nome_passageiro: n, ultima_corrida: dHora, primeira_corrida: dHora,
+        total: 1, count_recente: 1, count_antigo: 0,
+        valor_total: status==='F' ? valor : 0,
+        total_finalizadas: status==='F' ? 1 : 0, total_canceladas: status==='C' ? 1 : 0,
+        dias_sem_pedir: 0
+      };
+    } else {
+      porNome[n].total++;
+      porNome[n].count_recente++;
+      if(dHora > porNome[n].ultima_corrida){
+        porNome[n].ultima_corrida = dHora;
+        porNome[n].dias_sem_pedir = 0;
+      }
+      if(status === 'F'){
+        porNome[n].valor_total = parseFloat(porNome[n].valor_total||0) + valor;
+        porNome[n].total_finalizadas++;
+      }
+      if(status === 'C') porNome[n].total_canceladas++;
+    }
+  });
+  return Object.values(porNome);
+}
+
+/* Mescla dados de HOJE no agregado por motoboy */
+function _rlMesclarMotoboysHoje(historico, corridasHoje){
+  var porId = {};
+  historico.forEach(function(m){ porId[m.condutor_id] = Object.assign({}, m); });
+  
+  corridasHoje.forEach(function(x){
+    var id = x.condutor_id || x.taxista_id; if(!id) return;
+    var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy '+id);
+    var valor = parseFloat(x.valor_corrida || x.valor || 0) || 0;
+    var status = x.status_solicitacao || x.status || '';
+    var dHora = x.data_hora_solicitacao || x.data_solicitacao || new Date().toISOString();
+    
+    if(!porId[id]){
+      porId[id] = {
+        condutor_id: id, nome_condutor: nome,
+        ultima_corrida: dHora, primeira_corrida: dHora,
+        total: 1, count_recente: 1, count_antigo: 0,
+        valor_total: status==='F' ? valor : 0,
+        total_finalizadas: status==='F' ? 1 : 0,
+        dias_sem_rodar: 0, telefone: null
+      };
+    } else {
+      porId[id].total++;
+      porId[id].count_recente++;
+      if(dHora > porId[id].ultima_corrida){
+        porId[id].ultima_corrida = dHora;
+        porId[id].dias_sem_rodar = 0;
+      }
+      if(status === 'F'){
+        porId[id].valor_total = parseFloat(porId[id].valor_total||0) + valor;
+        porId[id].total_finalizadas++;
+      }
+    }
+  });
+  return Object.values(porId);
+}
+
+/* ─── 1) EMPRESAS SUMIDAS (Supabase + hoje) ─── */
+async function _sb_empresas_sumidas(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var semHa = _RL.semPedirHa || 2;
+  
+  // Supabase histórico + hoje Machine (em paralelo)
+  var [historico, corridasHoje] = await Promise.all([
+    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=ultima_corrida.desc&limit=10000'),
+    _rlPegarCorridasHoje(slug)
+  ]);
+  
+  // Mescla hoje no histórico
+  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
+  
+  // Recalcula dias_sem_pedir COM dados de hoje
+  var agora = new Date();
+  mesclado.forEach(function(e){
+    var ult = new Date(e.ultima_corrida);
+    e.dias_sem_pedir = Math.floor((agora - ult) / 86400000);
+  });
+  
+  // Filtra sumidas
+  var sumidas = mesclado.filter(function(e){ return e.dias_sem_pedir >= semHa; });
+  sumidas.sort(function(a,b){ return b.dias_sem_pedir < a.dias_sem_pedir ? 1 : -1; });
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa','Último pedido','Sem pedir há','Pedidos no período'];
+  if(podeValor) colunas.push('Valor total');
+  
+  var linhas = sumidas.map(function(e){
+    var icone = e.dias_sem_pedir >= 30 ? '🔴' : e.dias_sem_pedir >= 15 ? '🟠' : '🟡';
+    var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
+    var row = [icone+' '+e.nome_passageiro, ultFmt, e.dias_sem_pedir+' dias', e.total];
+    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+    return row;
+  });
+  
+  return {
+    id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
+    descricao:'⚡ Supabase + 📅 hoje em tempo real · Pediram nos últimos 45 dias mas estão há '+semHa+'+ dias sem pedir',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
+    kpis:[
+      { label:'Empresas sumidas', valor:sumidas.length, cor:'#E24B4A' },
+      { label:'Pedidos perdidos', valor:sumidas.reduce(function(s,e){return s+e.total;},0), cor:'#EF9F27' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem pedir há:</strong>'
+        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="2"'+(semHa===2?' selected':'')+'>2+ dias</option>'
+          +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
+          +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
+          +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ─── 2) EMPRESAS EM QUEDA (Supabase + hoje) ─── */
+async function _sb_empresas_queda(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var quedaMin = _RL.quedaMin || 20;
+  
+  var [historico, corridasHoje] = await Promise.all([
+    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=count_antigo.desc&limit=10000'),
+    _rlPegarCorridasHoje(slug)
+  ]);
+  
+  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
+  
+  // Recalcula dias_sem_pedir
+  var agora = new Date();
+  mesclado.forEach(function(e){
+    var ult = new Date(e.ultima_corrida);
+    e.dias_sem_pedir = Math.floor((agora - ult) / 86400000);
+  });
+  
+  // Em queda: ainda ativas (<5 dias) + count_antigo ≥ 3 + queda ≥ quedaMin%
+  var emQueda = mesclado.filter(function(e){
+    if(e.dias_sem_pedir >= 5) return false;
+    if(e.count_antigo < 3) return false;
+    var quedaPct = e.count_antigo > 0 ? ((e.count_antigo - e.count_recente) / e.count_antigo) * 100 : 0;
+    e._quedaPct = Math.round(quedaPct);
+    return e._quedaPct >= quedaMin;
+  });
+  
+  emQueda.sort(function(a,b){ return b._quedaPct - a._quedaPct; });
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa','Último pedido','Variação','Queda %','Pedidos totais'];
+  if(podeValor) colunas.push('Valor total');
+  
+  var linhas = emQueda.map(function(e){
+    var icone = e._quedaPct >= 60 ? '🔴' : e._quedaPct >= 40 ? '🟠' : '🟡';
+    var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR') + ' ('+e.dias_sem_pedir+'d atrás)';
+    var row = [icone+' '+e.nome_passageiro, ultFmt, e.count_antigo+' → '+e.count_recente, '-'+e._quedaPct+'%', e.total];
+    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+    return row;
+  });
+  
+  return {
+    id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
+    descricao:'⚡ Supabase + 📅 hoje · Reduziram '+quedaMin+'%+ comparando 1ª metade vs 2ª metade dos últimos 45 dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: emQueda.length === 0,
+    kpis:[
+      { label:'Empresas em queda', valor:emQueda.length, cor:'#EF9F27' },
+      { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0]._quedaPct+'%' : '—', cor:'#E24B4A' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mínima:</strong>'
+        +'<select onchange="_RL.quedaMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="10"'+(quedaMin===10?' selected':'')+'>10%+ (todas)</option>'
+          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+ (recomendado)</option>'
+          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+ (moderada)</option>'
+          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+ (crítica)</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ─── 3) CLIENTES NOVOS (Supabase + hoje) ─── */
+async function _sb_clientes_novos(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  
+  var [historico, corridasHoje] = await Promise.all([
+    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=primeira_corrida.desc&limit=5000'),
+    _rlPegarCorridasHoje(slug)
+  ]);
+  
+  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
+  
+  // Filtra: primeira corrida nos últimos X dias
+  var corte = new Date(Date.now() - periodo*86400000).toISOString();
+  var novos = mesclado.filter(function(e){ return e.primeira_corrida >= corte; });
+  novos.sort(function(a,b){ return b.primeira_corrida < a.primeira_corrida ? -1 : 1; });
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa','1º pedido','Total pedidos','Cliente há'];
+  if(podeValor) colunas.push('Receita total');
+  
+  var linhas = novos.map(function(e){
+    var prim = new Date(e.primeira_corrida);
+    var dias = Math.floor((Date.now() - prim.getTime()) / 86400000);
+    var row = ['🌟 '+e.nome_passageiro, prim.toLocaleDateString('pt-BR'), e.total, dias+' dias'];
+    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+    return row;
+  });
+  
+  return {
+    id:'clientes_novos', icone:'🌟', titulo:'Clientes novos',
+    descricao:'⚡ Supabase + 📅 hoje · Empresas com 1º pedido nos últimos '+periodo+' dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: novos.length === 0,
+    kpis:[
+      { label:'Novos clientes', valor:novos.length, cor:'#1D9E75' },
+      { label:'Pedidos gerados', valor:novos.reduce(function(s,e){return s+e.total;},0), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* ─── 4) TOP CLIENTES (Supabase + hoje) ─── */
+async function _sb_top_clientes(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var topN = _RL.topN || 10;
+  
+  var [historico, corridasHoje] = await Promise.all([
+    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=total.desc&limit=200'),
+    _rlPegarCorridasHoje(slug)
+  ]);
+  
+  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
+  mesclado.sort(function(a,b){ return b.total - a.total; });
+  var top = mesclado.slice(0, topN);
+  var totalGeral = top.reduce(function(s,e){return s+e.total;},0);
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['#','Empresa','Pedidos','% do top '+topN];
+  if(podeValor){ colunas.push('Receita'); colunas.push('Ticket médio'); }
+  
+  var linhas = top.map(function(e, i){
+    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
+    var pct = totalGeral > 0 ? ((e.total / totalGeral) * 100).toFixed(1) + '%' : '—';
+    var row = [medal, e.nome_passageiro, e.total, pct];
+    if(podeValor){
+      var valor = parseFloat(e.valor_total||0);
+      row.push('R$ '+valor.toFixed(2));
+      row.push('R$ '+(e.total > 0 ? (valor/e.total).toFixed(2) : '0,00'));
+    }
+    return row;
+  });
+  
+  return {
+    id:'top_clientes', icone:'🏆', titulo:'Top '+topN+' clientes do período',
+    descricao:'⚡ Supabase + 📅 hoje · Empresas que mais pediram nos últimos 45 dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: top.length === 0,
+    kpis:[
+      { label:'Top '+topN, valor:top.length, cor:'#EF9F27' },
+      { label:'Total pedidos', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Líder', valor: top[0] ? top[0].total+' pedidos' : '—', cor:'#1D9E75' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
+        +'<select onchange="_RL.topN=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(topN===5?' selected':'')+'>Top 5</option>'
+          +'<option value="10"'+(topN===10?' selected':'')+'>Top 10</option>'
+          +'<option value="20"'+(topN===20?' selected':'')+'>Top 20</option>'
+          +'<option value="50"'+(topN===50?' selected':'')+'>Top 50</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ─── 5) MOTOBOYS AUSENTES (Supabase + hoje) ─── */
+async function _sb_motoboys_ausentes(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var semHa = _RL.semPedirHa || 2;
+  
+  var [historico, corridasHoje] = await Promise.all([
+    _rlSupaQuery('mv_motoboys_atividade?cidade_slug=eq.'+slug+'&order=ultima_corrida.desc&limit=10000'),
+    _rlPegarCorridasHoje(slug)
+  ]);
+  
+  var mesclado = _rlMesclarMotoboysHoje(historico, corridasHoje);
+  
+  // Recalcula dias_sem_rodar
+  var agora = new Date();
+  mesclado.forEach(function(m){
+    var ult = new Date(m.ultima_corrida);
+    m.dias_sem_rodar = Math.floor((agora - ult) / 86400000);
+  });
+  
+  var ausentes = mesclado.filter(function(m){ return m.dias_sem_rodar >= semHa; });
+  ausentes.sort(function(a,b){ return b.dias_sem_rodar < a.dias_sem_rodar ? 1 : -1; });
+  
+  var linhas = ausentes.map(function(m){
+    var icone = m.dias_sem_rodar >= 14 ? '🔴' : m.dias_sem_rodar >= 7 ? '🟠' : '🟡';
+    var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
+    return [icone+' '+m.nome_condutor, ultFmt, m.dias_sem_rodar+' dias', m.total, m.telefone || '—'];
+  });
+  
+  return {
+    id:'motoboys_ausentes', icone:'😴', titulo:'Motoboys ausentes',
+    descricao:'⚡ Supabase + 📅 hoje · Rodaram nos últimos 45 dias mas estão há '+semHa+'+ dias sem rodar',
+    cidade:c, colunas:['Motoboy','Última corrida','Sem rodar há','Corridas no período','Telefone'],
+    linhas:linhas, vazio: ausentes.length === 0, podeWhatsApp: true,
+    kpis:[
+      { label:'Motoboys ausentes', valor:ausentes.length, cor:'#E24B4A' },
+      { label:'Corridas perdidas', valor:ausentes.reduce(function(s,m){return s+m.total;},0), cor:'#EF9F27' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem rodar há:</strong>'
+        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="2"'+(semHa===2?' selected':'')+'>2+ dias</option>'
+          +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
+          +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
+          +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ─── 6) TOP MOTOBOYS (Supabase + hoje) ─── */
+async function _sb_top_motoboys(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var topN = _RL.topN || 10;
+  
+  var [historico, corridasHoje] = await Promise.all([
+    _rlSupaQuery('mv_motoboys_atividade?cidade_slug=eq.'+slug+'&order=total.desc&limit=200'),
+    _rlPegarCorridasHoje(slug)
+  ]);
+  
+  var mesclado = _rlMesclarMotoboysHoje(historico, corridasHoje);
+  mesclado.sort(function(a,b){ return b.total - a.total; });
+  var top = mesclado.slice(0, topN);
+  var totalGeral = top.reduce(function(s,m){return s+m.total;},0);
+  
+  var linhas = top.map(function(m, i){
+    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
+    var pct = totalGeral > 0 ? ((m.total / totalGeral) * 100).toFixed(1) + '%' : '—';
+    var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
+    return [medal, m.nome_condutor, m.total, pct, ultFmt, m.telefone || '—'];
+  });
+  
+  return {
+    id:'top_motoboys', icone:'🏆', titulo:'Top '+topN+' motoboys do período',
+    descricao:'⚡ Supabase + 📅 hoje · Motoboys que mais rodaram nos últimos 45 dias',
+    cidade:c, colunas:['#','Motoboy','Corridas','% do top '+topN,'Última corrida','Telefone'],
+    linhas:linhas, vazio: top.length === 0, podeWhatsApp: true,
+    kpis:[
+      { label:'Top '+topN, valor:top.length, cor:'#EF9F27' },
+      { label:'Total corridas', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Líder', valor: top[0] ? top[0].total+' corridas' : '—', cor:'#1D9E75' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
+        +'<select onchange="_RL.topN=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(topN===5?' selected':'')+'>Top 5</option>'
+          +'<option value="10"'+(topN===10?' selected':'')+'>Top 10</option>'
+          +'<option value="20"'+(topN===20?' selected':'')+'>Top 20</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* DESPACHADOR — Supabase quando disponível, senão cache Machine */
+async function _rlGerarRelatorio(id, dados){
+  var slug = _rlSlug();
+  var temSupa = slug ? await _rlCidadeTemSupabase(slug) : false;
+  
   switch(id){
-    // Fase 1 — Empresas + Motoboys
-    case 'empresas_sumidas':   return _gen_empresas_sumidas(dados);
-    case 'empresas_queda':     return _gen_empresas_queda(dados);
-    case 'clientes_recuperar': return _gen_empresas_sumidas(dados); // alias antigo
-    case 'clientes_novos':     return _gen_clientes_novos(dados);
-    case 'top_clientes':       return _gen_top_clientes(dados);
-    case 'motoboys_ausentes':  return _gen_motoboys_ausentes(dados);
-    case 'top_motoboys':       return _gen_top_motoboys(dados);
-    // Fase 2 — Operacional
+    // Relatórios com versão Supabase (rápidos!)
+    case 'empresas_sumidas':
+    case 'clientes_recuperar': // alias antigo
+      return temSupa ? await _sb_empresas_sumidas() : _gen_empresas_sumidas(dados);
+    case 'empresas_queda':     return temSupa ? await _sb_empresas_queda() : _gen_empresas_queda(dados);
+    case 'clientes_novos':     return temSupa ? await _sb_clientes_novos() : _gen_clientes_novos(dados);
+    case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
+    case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
+    case 'top_motoboys':       return temSupa ? await _sb_top_motoboys() : _gen_top_motoboys(dados);
+    
+    // Fase 2 — Operacional (ainda no cache Machine — todo migrar)
     case 'corridas_dia_semana':return _gen_corridas_dia_semana(dados);
     case 'pico_horario':       return _gen_pico_horario(dados);
     case 'taxa_cancelamento':  return _gen_taxa_cancelamento(dados);
@@ -10254,7 +10715,7 @@ function _rlGerarRelatorio(id, dados){
     case 'crescimento_mom':    return _gen_crescimento_mom(dados);
     case 'pareto_empresas':    return _gen_pareto_empresas(dados);
     case 'pareto_motoboys':    return _gen_pareto_motoboys(dados);
-    // Fase 3 — Comparativos (assíncronos: precisam de todas as cidades)
+    // Fase 3 — Comparativos
     case 'cidades_lado_a_lado':return _gen_cidades_lado_a_lado(dados);
     case 'compare_duas':       return _gen_compare_duas(dados);
     case 'ranking_gestores':   return _gen_ranking_gestores(dados);
@@ -11664,6 +12125,32 @@ function _syncMostrarProgresso(){
   document.getElementById('sync-prog').style.display = 'block';
 }
 
+/* Helper centralizado pra escritas no Supabase via função Netlify (segura)
+   Usa SUPA_SERVICE_KEY do servidor, não a chave pública */
+async function _syncEscrever(payload){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var userId = u && u.id ? u.id : 'desconhecido';
+  
+  var r = await fetch('/.netlify/functions/supabase-write', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Gami-User': userId
+    },
+    body: JSON.stringify(payload)
+  });
+  
+  if(!r.ok){
+    var txt = await r.text().catch(function(){return '';});
+    var msg = '';
+    try { var j = JSON.parse(txt); msg = j.error || j.detalhe || txt; }
+    catch(e){ msg = txt; }
+    throw new Error('Escrita falhou ('+r.status+'): '+msg);
+  }
+  
+  return await r.json();
+}
+
 /* Inicia sincronização */
 async function iniciarSincronizacaoSupabase(cidadeId){
   if(_SYNC.rodando){ alert('Já tem uma sincronização rodando'); return; }
@@ -11702,24 +12189,24 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     }
     _syncLog('✓ Tabelas Supabase OK');
     
-    // Cria registro de log
+    // Cria registro de log via função segura
     try {
-      var rLogIni = await fetch(SUPA_URL+'/rest/v1/machine_sync_log', {
-        method:'POST',
-        headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=representation'},
-        body: JSON.stringify({
+      var rLogIni = await _syncEscrever({
+        tabela: 'machine_sync_log',
+        operacao: 'upsert',
+        retornar: true,
+        dados: [{
           cidade_slug: slug,
           cidade_nome: c.nome+'/'+c.uf,
           dias_solicitados: 60,
           status: 'rodando',
           usuario: usuarioNome
-        })
+        }]
       });
-      if(rLogIni.ok){
-        var logData = await rLogIni.json();
-        if(Array.isArray(logData) && logData[0]) logId = logData[0].id;
+      if(rLogIni && rLogIni.resultado && Array.isArray(rLogIni.resultado) && rLogIni.resultado[0]){
+        logId = rLogIni.resultado[0].id;
       }
-    } catch(e){}
+    } catch(e){ _syncLog('⚠ Log: '+e.message); }
     
     // ====== 2) Busca dados Machine em chunks de 1 DIA ======
     _syncProgresso(5, 'Buscando 60 dias da Machine (chunks de 1 dia)...', '');
@@ -11858,21 +12345,15 @@ async function iniciarSincronizacaoSupabase(cidadeId){
       }).filter(function(r){ return r.id_solicitacao; });
       
       try {
-        var rUp = await fetch(SUPA_URL+'/rest/v1/machine_corridas', {
-          method:'POST',
-          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(lote)
+        var rUp = await _syncEscrever({
+          tabela: 'machine_corridas',
+          operacao: 'upsert',
+          dados: lote
         });
-        if(rUp.ok){
-          corridasSalvas += lote.length;
-        } else {
-          corridasErro += lote.length;
-          var txt = await rUp.text().catch(function(){return '';});
-          _syncLog('✗ Lote '+(Math.floor(i/BATCH)+1)+' falhou ('+rUp.status+'): '+txt.substring(0,120));
-        }
+        corridasSalvas += lote.length;
       } catch(e){
         corridasErro += lote.length;
-        _syncLog('✗ Lote erro: '+e.message);
+        _syncLog('✗ Lote '+(Math.floor(i/BATCH)+1)+' falhou: '+e.message.substring(0,120));
       }
       
       var pct = 62 + Math.round((i / Math.max(1, todasCorridas.length)) * 30);
@@ -11897,13 +12378,9 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         };
       }).filter(function(r){ return r.id; });
       try {
-        var rUpC = await fetch(SUPA_URL+'/rest/v1/machine_condutores', {
-          method:'POST',
-          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(loteCond)
-        });
-        if(rUpC.ok){ condutoresOk = loteCond.length; _syncLog('✓ '+loteCond.length+' condutores salvos'); }
-        else _syncLog('✗ Condutores falhou: HTTP '+rUpC.status);
+        await _syncEscrever({ tabela: 'machine_condutores', operacao: 'upsert', dados: loteCond });
+        condutoresOk = loteCond.length;
+        _syncLog('✓ '+loteCond.length+' condutores salvos');
       } catch(e){ _syncLog('✗ Erro condutores: '+e.message); }
     }
     
@@ -11920,24 +12397,31 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         };
       }).filter(function(r){ return r.id; });
       try {
-        var rUpE = await fetch(SUPA_URL+'/rest/v1/machine_empresas', {
-          method:'POST',
-          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
-          body: JSON.stringify(loteEmp)
-        });
-        if(rUpE.ok){ empresasOk = loteEmp.length; _syncLog('✓ '+loteEmp.length+' empresas salvas'); }
-        else _syncLog('✗ Empresas falhou: HTTP '+rUpE.status);
+        await _syncEscrever({ tabela: 'machine_empresas', operacao: 'upsert', dados: loteEmp });
+        empresasOk = loteEmp.length;
+        _syncLog('✓ '+loteEmp.length+' empresas salvas');
       } catch(e){ _syncLog('✗ Erro empresas: '+e.message); }
     }
     
-    // ====== 7) Atualiza log de sync ======
+    // ====== 7) Refresh das materialized views ======
+    _syncProgresso(98, 'Atualizando relatórios pré-computados...', '');
+    try {
+      await _syncEscrever({ operacao: 'rpc', funcao: 'refresh_machine_views', tabela: 'machine_corridas' });
+      _syncLog('✓ Materialized views atualizadas');
+      if(typeof _rlSupabaseCache !== 'undefined') _rlSupabaseCache = {};
+    } catch(e){
+      _syncLog('⚠ Refresh views: '+e.message);
+    }
+    
+    // ====== 8) Atualiza log de sync ======
     var duracaoSeg = (Date.now() - inicioTs) / 1000;
     if(logId){
       try {
-        await fetch(SUPA_URL+'/rest/v1/machine_sync_log?id=eq.'+logId, {
-          method:'PATCH',
-          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
-          body: JSON.stringify({
+        await _syncEscrever({
+          tabela: 'machine_sync_log',
+          operacao: 'patch',
+          filtro: 'id=eq.'+logId,
+          patch: {
             finalizado_em: new Date().toISOString(),
             duracao_segundos: Math.round(duracaoSeg),
             corridas_inseridas: corridasSalvas,
@@ -11945,12 +12429,12 @@ async function iniciarSincronizacaoSupabase(cidadeId){
             condutores_inseridos: condutoresOk,
             empresas_inseridas: empresasOk,
             status: 'concluido'
-          })
+          }
         });
       } catch(e){}
     }
     
-    // ====== 8) Concluído ======
+    // ====== 9) Concluído ======
     _syncProgresso(100, '🎉 Concluído!', '');
     _syncLog('🎉 Sync completo em '+Math.round(duracaoSeg)+'s ('+Math.round(duracaoSeg/60)+'min)');
     _syncStatus('<strong style="color:#1D9E75">✓ Sincronização concluída em '+Math.round(duracaoSeg/60)+' min!</strong><br>'
@@ -11966,15 +12450,16 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     // Marca log como erro
     if(logId){
       try {
-        await fetch(SUPA_URL+'/rest/v1/machine_sync_log?id=eq.'+logId, {
-          method:'PATCH',
-          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
-          body: JSON.stringify({
+        await _syncEscrever({
+          tabela: 'machine_sync_log',
+          operacao: 'patch',
+          filtro: 'id=eq.'+logId,
+          patch: {
             finalizado_em: new Date().toISOString(),
             duracao_segundos: Math.round((Date.now() - inicioTs) / 1000),
             status: _SYNC.cancelar ? 'cancelado' : 'erro',
             mensagem_erro: e.message
-          })
+          }
         });
       } catch(e2){}
     }
@@ -15081,6 +15566,14 @@ function abrirCidade(id){
   document.getElementById('cidades-lista').style.display='none';
   document.getElementById('cidade-painel').style.display='block';
   setTimeout(function(){ if(typeof initMachineTab === 'function') initMachineTab(); }, 200);
+
+  // Mostra botão sync Supabase só pra super_admin
+  try {
+    var uLog = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    var nivelLog = (typeof detectarNivelPermissao === 'function' && uLog) ? detectarNivelPermissao(uLog) : '';
+    var boxSync = document.getElementById('cidade-sync-supabase-box');
+    if(boxSync) boxSync.style.display = (nivelLog === 'super_admin') ? 'flex' : 'none';
+  } catch(e){}
 
   // Auto-carrega dados Machine (usa cache de 5min se ja foi carregado recentemente)
   setTimeout(function(){
