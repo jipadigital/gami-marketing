@@ -1,4 +1,4 @@
-<!-- v23.55 - Sincronizacao Machine para Supabase (60d Maceio piloto) - 30/05/2026 -->
+<!-- v23.56 - machine.js limites 10k + refragmentacao auto 12h se truncar - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11608,7 +11608,8 @@ function abrirSincronizacaoSupabase(cidadeId){
         +'</div>'
       +'</div>'
       +'<div style="font-size:12px;color:#56627a;margin:12px 0;line-height:1.55">'
-        +'Vai puxar <strong>60 dias</strong> de dados da Machine e salvar no Supabase pra ter histórico completo, mais rápido e independente do limite Netlify de 26s.'
+        +'Vai puxar <strong>60 dias</strong> em chunks de 1 dia (3 paralelos). <strong>Maceió ~180k corridas → 5-10 min.</strong><br>'
+        +'<span style="color:#1D9E75">🛡️ Proteção:</span> se algum dia passar de 10k corridas, o sistema refragmenta automaticamente em manhã/tarde pra garantir que pega TUDO.'
       +'</div>'
       +'<div id="sync-status" style="padding:14px;background:#F5F8FB;border-radius:8px;font-size:12px;color:#1a1a1a">'
         +'<strong>Pronto pra começar.</strong><br>'
@@ -11672,80 +11673,149 @@ async function iniciarSincronizacaoSupabase(cidadeId){
   if(!c) return;
   
   var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var usuarioNome = (u && (u.nome || u.email)) || 'desconhecido';
   
   _SYNC.rodando = true;
   _SYNC.cancelar = false;
   _SYNC.cidade = c;
+  var inicioTs = Date.now();
   
-  // UI: esconde botão de iniciar, mostra progresso
   document.getElementById('sync-btn-start').style.display = 'none';
+  // Mostra botão cancelar
+  document.getElementById('sync-acoes').innerHTML += 
+    '<button id="sync-btn-cancel" onclick="_SYNC.cancelar=true;this.textContent=\'Cancelando...\'" style="padding:9px 16px;background:#E24B4A;color:white;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">⛔ Cancelar</button>';
   _syncMostrarProgresso();
   _syncStatus('<strong>🔄 Sincronizando '+c.nome+'...</strong>');
-  _syncLog('Iniciando sync · cidade='+slug);
+  _syncLog('Iniciando sync · cidade='+slug+' · usuário='+usuarioNome);
+  
+  var logId = null; // ID do registro no log do Supabase
   
   try {
-    // 1) Verifica se tabelas existem no Supabase
-    _syncProgresso(2, 'Verificando tabelas do Supabase...', '');
+    // ====== 1) Verifica tabelas e cria registro de log ======
+    _syncProgresso(2, 'Verificando Supabase...', '');
     var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?select=cidade_slug&limit=1', {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
     });
     if(!r.ok){
-      throw new Error('Tabelas não existem no Supabase. Rode o SQL primeiro (veja arquivo supabase_machine_setup.sql).');
+      throw new Error('Tabelas não existem no Supabase. Rode o SQL primeiro (supabase_machine_setup.sql).');
     }
     _syncLog('✓ Tabelas Supabase OK');
     
-    // 2) Busca dados Machine — chunks de 7 dias até 60 dias
-    _syncProgresso(5, 'Buscando dados da Machine (60 dias)...', '');
+    // Cria registro de log
+    try {
+      var rLogIni = await fetch(SUPA_URL+'/rest/v1/machine_sync_log', {
+        method:'POST',
+        headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=representation'},
+        body: JSON.stringify({
+          cidade_slug: slug,
+          cidade_nome: c.nome+'/'+c.uf,
+          dias_solicitados: 60,
+          status: 'rodando',
+          usuario: usuarioNome
+        })
+      });
+      if(rLogIni.ok){
+        var logData = await rLogIni.json();
+        if(Array.isArray(logData) && logData[0]) logId = logData[0].id;
+      }
+    } catch(e){}
+    
+    // ====== 2) Busca dados Machine em chunks de 1 DIA ======
+    _syncProgresso(5, 'Buscando 60 dias da Machine (chunks de 1 dia)...', '');
     var diasTotal = 60;
     var hoje = new Date(); hoje.setHours(0,0,0,0);
-    var hojeStr = hoje.toISOString().split('T')[0];
     
-    // Limpa chunks anteriores
+    // Cria lista de dias
+    var listaDias = [];
+    for(var i = 0; i < diasTotal; i++){
+      var d = new Date(hoje); d.setDate(d.getDate() - i);
+      listaDias.push(d.toISOString().split('T')[0]);
+    }
+    // Ordena: mais recentes primeiro (resultados úteis logo)
+    listaDias.sort(function(a,b){ return b.localeCompare(a); });
+    
     var todasCorridas = [];
-    var chunksTotal = Math.ceil(diasTotal/7);
-    var chunkIdx = 0;
+    var diasFeitos = 0;
+    var diasComErro = [];
     
-    for(var diaIni = diasTotal-1; diaIni >= 0 && !_SYNC.cancelar; diaIni -= 7){
-      var diaFim = Math.max(0, diaIni - 6);
-      var dInicio = new Date(hoje); dInicio.setDate(dInicio.getDate() - diaIni);
-      var dFim = new Date(hoje); dFim.setDate(dFim.getDate() - diaFim);
-      var iniStr = dInicio.toISOString().split('T')[0];
-      var fimStr = dFim.toISOString().split('T')[0];
-      
-      chunkIdx++;
-      _syncLog('Chunk '+chunkIdx+'/'+chunksTotal+': '+iniStr+' a '+fimStr);
-      _syncProgresso(
-        Math.round(5 + (chunkIdx/chunksTotal)*55),
-        'Buscando Machine · chunk '+chunkIdx+'/'+chunksTotal,
-        'Período: '+iniStr+' a '+fimStr+'<br>Corridas coletadas até agora: <strong>'+todasCorridas.length+'</strong>'
-      );
-      
+    // Função pra buscar 1 dia, com refragmentação automática se truncar
+    var buscarDia = async function(dia){
       try {
-        var rChunk = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+iniStr+'&data_fim='+fimStr);
-        if(!rChunk.ok){
-          _syncLog('⚠ Chunk falhou (HTTP '+rChunk.status+') · pulando');
-          continue;
-        }
+        var rChunk = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+dia+'&data_fim='+dia);
+        if(!rChunk.ok){ diasComErro.push(dia); return []; }
         var dataChunk = await rChunk.json();
         var arr = (dataChunk && Array.isArray(dataChunk.response)) ? dataChunk.response : [];
+        
+        // ⚠ Se Machine truncou (mais de 10k no dia), refragmenta em 12h
+        if(dataChunk && dataChunk.truncado){
+          _syncLog('⚠ '+dia+' truncado em '+arr.length+' corridas — refragmentando em 12h');
+          
+          // Busca manhã (00:00-12:00) e tarde (12:00-23:59) com timestamps ISO
+          var manhaIni = dia+'T00:00:00.000Z';
+          var manhaFim = dia+'T11:59:59.999Z';
+          var tardeIni = dia+'T12:00:00.000Z';
+          var tardeFim = dia+'T23:59:59.999Z';
+          
+          var arrRefeito = [];
+          try {
+            var rManha = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(manhaIni)+'&data_fim='+encodeURIComponent(manhaFim));
+            if(rManha.ok){
+              var dm = await rManha.json();
+              if(dm && Array.isArray(dm.response)) arrRefeito = arrRefeito.concat(dm.response);
+              if(dm && dm.truncado) _syncLog('⚠⚠ '+dia+' MANHÃ ainda truncada ('+dm.response.length+'+ corridas)');
+            }
+            var rTarde = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(tardeIni)+'&data_fim='+encodeURIComponent(tardeFim));
+            if(rTarde.ok){
+              var dt = await rTarde.json();
+              if(dt && Array.isArray(dt.response)) arrRefeito = arrRefeito.concat(dt.response);
+              if(dt && dt.truncado) _syncLog('⚠⚠ '+dia+' TARDE ainda truncada ('+dt.response.length+'+ corridas)');
+            }
+          } catch(e2){ _syncLog('Erro refragmentação '+dia+': '+e2.message); }
+          
+          if(arrRefeito.length > arr.length){
+            _syncLog('✓ '+dia+' refragmentado: '+arr.length+' → '+arrRefeito.length+' corridas');
+            return arrRefeito;
+          }
+        }
+        
+        return arr;
+      } catch(e){ diasComErro.push(dia); return []; }
+    };
+    
+    // Processa em batches de 3 dias em paralelo
+    var BATCH_PARALELO = 3;
+    for(var i = 0; i < listaDias.length && !_SYNC.cancelar; i += BATCH_PARALELO){
+      var batch = listaDias.slice(i, i+BATCH_PARALELO);
+      var resultados = await Promise.all(batch.map(buscarDia));
+      
+      resultados.forEach(function(arr){
         todasCorridas = todasCorridas.concat(arr);
-        _syncLog('✓ '+arr.length+' corridas neste chunk');
-      } catch(e){
-        _syncLog('✗ Erro no chunk: '+e.message);
+      });
+      diasFeitos += batch.length;
+      
+      var pct = Math.round(5 + (diasFeitos/diasTotal) * 55);
+      _syncProgresso(pct, 'Buscando Machine...', 
+        '<strong>'+diasFeitos+'</strong>/'+diasTotal+' dias processados<br>'
+        +'Corridas coletadas: <strong>'+todasCorridas.length.toLocaleString('pt-BR')+'</strong>'
+        +(diasComErro.length ? '<br>⚠ Dias com erro: '+diasComErro.length : ''));
+      
+      // Log a cada 10 dias
+      if(diasFeitos % 10 === 0 || diasFeitos === diasTotal){
+        _syncLog('Progresso: '+diasFeitos+'/'+diasTotal+' dias · '+todasCorridas.length.toLocaleString('pt-BR')+' corridas');
       }
       
-      // Delay leve entre chunks
-      await new Promise(function(r){setTimeout(r, 300);});
+      // Delay leve entre batches
+      await new Promise(function(r){setTimeout(r, 200);});
     }
     
     if(_SYNC.cancelar) throw new Error('Cancelado pelo usuário');
+    if(diasComErro.length) _syncLog('⚠ '+diasComErro.length+' dias falharam: '+diasComErro.slice(0,5).join(', ')+(diasComErro.length>5?'...':''));
+    _syncLog('✓ Total Machine: '+todasCorridas.length.toLocaleString('pt-BR')+' corridas em '+diasTotal+' dias');
     
-    _syncLog('Total: '+todasCorridas.length+' corridas em '+chunksTotal+' chunks');
-    
-    // 3) Busca condutores e empresas (snapshot atual)
+    // ====== 3) Busca condutores e empresas (snapshot atual) ======
     _syncProgresso(60, 'Buscando condutores e empresas...', '');
-    var condutores = [];
-    var empresas = [];
+    var condutores = [], empresas = [];
     
     try {
       var rCond = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor');
@@ -11765,20 +11835,19 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     
     _syncLog('✓ '+condutores.length+' condutores · '+empresas.length+' empresas');
     
-    // 4) Upsert no Supabase em batches
-    _syncProgresso(65, 'Salvando no Supabase...', '');
-    
-    // 4a) Corridas em batches de 200
-    var BATCH = 200;
+    // ====== 4) Upsert corridas no Supabase em batches de 500 ======
+    _syncProgresso(62, 'Salvando no Supabase...', '');
+    var BATCH = 500;
     var corridasSalvas = 0;
     var corridasErro = 0;
+    
     for(var i = 0; i < todasCorridas.length && !_SYNC.cancelar; i += BATCH){
       var lote = todasCorridas.slice(i, i+BATCH).map(function(x){
         var ds = x.data_hora_solicitacao || x.data_solicitacao || '';
         return {
           cidade_slug: slug,
           id_solicitacao: String(x.id || x.id_solicitacao || ''),
-          data_hora_solicitacao: ds || hojeStr+'T00:00:00',
+          data_hora_solicitacao: ds || new Date().toISOString(),
           nome_passageiro: x.nome_passageiro || null,
           condutor_id: x.condutor_id ? String(x.condutor_id) : (x.taxista_id ? String(x.taxista_id) : null),
           nome_condutor: x.nome_condutor || x.nome_taxista || null,
@@ -11786,17 +11855,12 @@ async function iniciarSincronizacaoSupabase(cidadeId){
           status_solicitacao: x.status_solicitacao || x.status || null,
           raw: x
         };
-      }).filter(function(r){ return r.id_solicitacao; }); // só com ID
+      }).filter(function(r){ return r.id_solicitacao; });
       
       try {
         var rUp = await fetch(SUPA_URL+'/rest/v1/machine_corridas', {
           method:'POST',
-          headers:{
-            'apikey':SUPA_KEY,
-            'Authorization':'Bearer '+SUPA_KEY,
-            'Content-Type':'application/json',
-            'Prefer':'resolution=merge-duplicates,return=minimal'
-          },
+          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
           body: JSON.stringify(lote)
         });
         if(rUp.ok){
@@ -11804,76 +11868,93 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         } else {
           corridasErro += lote.length;
           var txt = await rUp.text().catch(function(){return '';});
-          _syncLog('✗ Lote falhou ('+rUp.status+'): '+txt.substring(0,150));
+          _syncLog('✗ Lote '+(Math.floor(i/BATCH)+1)+' falhou ('+rUp.status+'): '+txt.substring(0,120));
         }
       } catch(e){
         corridasErro += lote.length;
         _syncLog('✗ Lote erro: '+e.message);
       }
       
-      var pct = 65 + Math.round((i / Math.max(1, todasCorridas.length)) * 25);
-      _syncProgresso(pct, 'Salvando corridas...', 
-        'Salvas: <strong>'+corridasSalvas+'</strong> de '+todasCorridas.length+(corridasErro?' · Erros: '+corridasErro:''));
+      var pct = 62 + Math.round((i / Math.max(1, todasCorridas.length)) * 30);
+      _syncProgresso(pct, 'Salvando corridas no Supabase...', 
+        'Salvas: <strong>'+corridasSalvas.toLocaleString('pt-BR')+'</strong> de '+todasCorridas.length.toLocaleString('pt-BR')+
+        (corridasErro?' · ❌ Erros: '+corridasErro:''));
     }
     
     if(_SYNC.cancelar) throw new Error('Cancelado pelo usuário');
+    _syncLog('✓ Corridas: '+corridasSalvas.toLocaleString('pt-BR')+' salvas'+(corridasErro?' · '+corridasErro+' erros':''));
     
-    // 4b) Condutores
-    _syncProgresso(92, 'Salvando condutores...', 'Salvas: '+corridasSalvas+' corridas');
+    // ====== 5) Upsert condutores ======
+    _syncProgresso(92, 'Salvando condutores...', '');
+    var condutoresOk = 0;
     if(condutores.length){
       var loteCond = condutores.map(function(x){
         return {
-          cidade_slug: slug,
-          id: String(x.id),
+          cidade_slug: slug, id: String(x.id),
           nome: x.nome || null,
           telefone_celular: x.telefone_celular || x.telefone || x.celular || null,
-          status: x.status || null,
-          raw: x
+          status: x.status || null, raw: x
         };
       }).filter(function(r){ return r.id; });
-      
       try {
         var rUpC = await fetch(SUPA_URL+'/rest/v1/machine_condutores', {
           method:'POST',
-          headers:{ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+SUPA_KEY, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
           body: JSON.stringify(loteCond)
         });
-        if(rUpC.ok) _syncLog('✓ '+loteCond.length+' condutores salvos');
+        if(rUpC.ok){ condutoresOk = loteCond.length; _syncLog('✓ '+loteCond.length+' condutores salvos'); }
         else _syncLog('✗ Condutores falhou: HTTP '+rUpC.status);
       } catch(e){ _syncLog('✗ Erro condutores: '+e.message); }
     }
     
-    // 4c) Empresas
+    // ====== 6) Upsert empresas ======
     _syncProgresso(96, 'Salvando empresas...', '');
+    var empresasOk = 0;
     if(empresas.length){
       var loteEmp = empresas.map(function(x){
         return {
-          cidade_slug: slug,
-          id: String(x.id),
+          cidade_slug: slug, id: String(x.id),
           nome: x.nome || null,
-          telefone: x.telefone || null,
-          bairro: x.bairro || null,
-          status_empresa: x.status_empresa || x.status || null,
-          raw: x
+          telefone: x.telefone || null, bairro: x.bairro || null,
+          status_empresa: x.status_empresa || x.status || null, raw: x
         };
       }).filter(function(r){ return r.id; });
-      
       try {
         var rUpE = await fetch(SUPA_URL+'/rest/v1/machine_empresas', {
           method:'POST',
-          headers:{ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+SUPA_KEY, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
           body: JSON.stringify(loteEmp)
         });
-        if(rUpE.ok) _syncLog('✓ '+loteEmp.length+' empresas salvas');
+        if(rUpE.ok){ empresasOk = loteEmp.length; _syncLog('✓ '+loteEmp.length+' empresas salvas'); }
         else _syncLog('✗ Empresas falhou: HTTP '+rUpE.status);
       } catch(e){ _syncLog('✗ Erro empresas: '+e.message); }
     }
     
-    // 5) Concluído!
-    _syncProgresso(100, 'Concluído!', '');
-    _syncLog('🎉 Sincronização completa em '+new Date().toLocaleTimeString('pt-BR'));
-    _syncStatus('<strong style="color:#1D9E75">✓ Sincronização concluída!</strong><br>'
-      +'<span style="color:#56627a">Corridas: '+corridasSalvas+' · Condutores: '+condutores.length+' · Empresas: '+empresas.length+'</span>');
+    // ====== 7) Atualiza log de sync ======
+    var duracaoSeg = (Date.now() - inicioTs) / 1000;
+    if(logId){
+      try {
+        await fetch(SUPA_URL+'/rest/v1/machine_sync_log?id=eq.'+logId, {
+          method:'PATCH',
+          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+          body: JSON.stringify({
+            finalizado_em: new Date().toISOString(),
+            duracao_segundos: Math.round(duracaoSeg),
+            corridas_inseridas: corridasSalvas,
+            corridas_erro: corridasErro,
+            condutores_inseridos: condutoresOk,
+            empresas_inseridas: empresasOk,
+            status: 'concluido'
+          })
+        });
+      } catch(e){}
+    }
+    
+    // ====== 8) Concluído ======
+    _syncProgresso(100, '🎉 Concluído!', '');
+    _syncLog('🎉 Sync completo em '+Math.round(duracaoSeg)+'s ('+Math.round(duracaoSeg/60)+'min)');
+    _syncStatus('<strong style="color:#1D9E75">✓ Sincronização concluída em '+Math.round(duracaoSeg/60)+' min!</strong><br>'
+      +'<span style="color:#56627a">Corridas: '+corridasSalvas.toLocaleString('pt-BR')+' · Condutores: '+condutoresOk+' · Empresas: '+empresasOk+'</span>');
     
     document.getElementById('sync-acoes').innerHTML = 
       '<button onclick="document.getElementById(\'modal-sync-supa\').remove()" style="padding:10px 22px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Fechar</button>';
@@ -11881,6 +11962,23 @@ async function iniciarSincronizacaoSupabase(cidadeId){
   } catch(e){
     _syncLog('✗ ERRO FATAL: '+e.message);
     _syncStatus('<strong style="color:#A32D2D">⚠️ Falha:</strong> '+e.message);
+    
+    // Marca log como erro
+    if(logId){
+      try {
+        await fetch(SUPA_URL+'/rest/v1/machine_sync_log?id=eq.'+logId, {
+          method:'PATCH',
+          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+          body: JSON.stringify({
+            finalizado_em: new Date().toISOString(),
+            duracao_segundos: Math.round((Date.now() - inicioTs) / 1000),
+            status: _SYNC.cancelar ? 'cancelado' : 'erro',
+            mensagem_erro: e.message
+          })
+        });
+      } catch(e2){}
+    }
+    
     document.getElementById('sync-acoes').innerHTML = 
       '<button onclick="document.getElementById(\'modal-sync-supa\').remove()" style="padding:9px 16px;background:#E5E7EB;color:#333;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Fechar</button>'
       +'<button onclick="iniciarSincronizacaoSupabase(\''+cidadeId+'\')" style="padding:9px 18px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">↻ Tentar de novo</button>';

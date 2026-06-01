@@ -95,9 +95,12 @@ exports.handler = async function(event){
     var todos = [];
     var pagina = 1;
     var LIMITE = 100;
-    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 50;
+    // solicitacao: 100 paginas x 100 = ate 10.000 corridas por chamada (cidades grandes)
+    // condutor: 100 (sem limite real, sao poucos)
+    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 100;
     var INICIO = Date.now();
-    var TEMPO_MAX = 8500;
+    // Netlify Pro permite ate 26s; deixa 4s de margem
+    var TEMPO_MAX = (recurso === 'solicitacao') ? 22000 : 8500;
     var truncado = false;
 
     // Helper: monta a URL pra uma pagina especifica
@@ -115,10 +118,10 @@ exports.handler = async function(event){
       return u;
     };
 
-    // Helper: faz 1 fetch com timeout de 6s
+    // Helper: faz 1 fetch com timeout de 10s
     var fetchPagina = async function(p){
       var ctrl = new AbortController();
-      var t = setTimeout(function(){ ctrl.abort(); }, 6000);
+      var t = setTimeout(function(){ ctrl.abort(); }, 10000);
       try{
         var r = await fetch(montarUrl(p), { method:'GET', headers, signal: ctrl.signal });
         clearTimeout(t);
