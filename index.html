@@ -1,4 +1,4 @@
-<!-- v23.54b - Status corretos no ticket evolucao e receita periodo - 30/05/2026 -->
+<!-- v23.55 - Sincronizacao Machine para Supabase (60d Maceio piloto) - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11577,6 +11577,319 @@ function _gen_pareto_motoboys(d){
 /* FASE 3 — COMPARATIVOS MULTI-CIDADE                            */
 /* ============================================================ */
 
+/* ============================================================ */
+/* SINCRONIZAÇÃO MACHINE → SUPABASE                              */
+/* Puxa dados Machine de uma cidade (60d) e salva no Supabase   */
+/* ============================================================ */
+
+var _SYNC = {
+  rodando: false,
+  cancelar: false,
+  cidade: null,
+  log: []
+};
+
+/* Abre modal de sincronização */
+function abrirSincronizacaoSupabase(cidadeId){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var c = cidades.find(function(x){ return x.id === cidadeId; });
+  if(!c){ alert('Cidade não encontrada'); return; }
+  
+  // Remove modal antigo
+  var old = document.getElementById('modal-sync-supa'); if(old) old.remove();
+  
+  var html = '<div id="modal-sync-supa" style="position:fixed;inset:0;background:rgba(11,37,66,.78);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(!_SYNC.rodando) this.remove()">'
+    +'<div style="background:white;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:24px" onclick="event.stopPropagation()">'
+      +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'
+        +'<span style="font-size:32px">☁️</span>'
+        +'<div>'
+          +'<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#0B2542">Sincronizar com Supabase</div>'
+          +'<div style="font-size:12px;color:#56627a">Cidade: <strong>'+c.nome+'/'+c.uf+'</strong></div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="font-size:12px;color:#56627a;margin:12px 0;line-height:1.55">'
+        +'Vai puxar <strong>60 dias</strong> de dados da Machine e salvar no Supabase pra ter histórico completo, mais rápido e independente do limite Netlify de 26s.'
+      +'</div>'
+      +'<div id="sync-status" style="padding:14px;background:#F5F8FB;border-radius:8px;font-size:12px;color:#1a1a1a">'
+        +'<strong>Pronto pra começar.</strong><br>'
+        +'<span style="color:#56627a">A primeira vez demora ~3-5 min. Próximas serão incrementais (mais rápidas).</span>'
+      +'</div>'
+      +'<div id="sync-prog" style="display:none;margin-top:14px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#56627a;margin-bottom:4px">'
+          +'<span id="sync-prog-label">Iniciando...</span>'
+          +'<span id="sync-prog-pct">0%</span>'
+        +'</div>'
+        +'<div style="height:8px;background:#E0E0E0;border-radius:4px;overflow:hidden">'
+          +'<div id="sync-prog-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#1D9E75,#56C597);border-radius:4px;transition:width .3s"></div>'
+        +'</div>'
+        +'<div id="sync-prog-stats" style="font-size:10.5px;color:#56627a;margin-top:8px;line-height:1.5"></div>'
+        +'<div id="sync-log" style="font-size:10px;color:#56627a;margin-top:10px;padding:8px;background:#F5F8FB;border-radius:6px;max-height:120px;overflow-y:auto;font-family:monospace;line-height:1.5"></div>'
+      +'</div>'
+      +'<div id="sync-acoes" style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap">'
+        +'<button onclick="document.getElementById(\'modal-sync-supa\').remove()" style="padding:9px 16px;background:#E5E7EB;color:#333;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancelar</button>'
+        +'<button id="sync-btn-start" onclick="iniciarSincronizacaoSupabase(\''+cidadeId+'\')" style="padding:9px 18px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">☁️ Iniciar sincronização</button>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+  
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function _syncLog(msg){
+  var el = document.getElementById('sync-log');
+  if(!el) return;
+  var hora = new Date().toLocaleTimeString('pt-BR');
+  el.innerHTML += '<div>['+hora+'] '+msg+'</div>';
+  el.scrollTop = el.scrollHeight;
+}
+
+function _syncStatus(html){
+  var el = document.getElementById('sync-status');
+  if(el) el.innerHTML = html;
+}
+
+function _syncProgresso(pct, label, stats){
+  var bar = document.getElementById('sync-prog-bar');
+  var pctEl = document.getElementById('sync-prog-pct');
+  var labelEl = document.getElementById('sync-prog-label');
+  var statsEl = document.getElementById('sync-prog-stats');
+  if(bar) bar.style.width = pct+'%';
+  if(pctEl) pctEl.textContent = pct+'%';
+  if(labelEl) labelEl.textContent = label;
+  if(statsEl && stats) statsEl.innerHTML = stats;
+}
+
+function _syncMostrarProgresso(){
+  document.getElementById('sync-prog').style.display = 'block';
+}
+
+/* Inicia sincronização */
+async function iniciarSincronizacaoSupabase(cidadeId){
+  if(_SYNC.rodando){ alert('Já tem uma sincronização rodando'); return; }
+  
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var c = cidades.find(function(x){ return x.id === cidadeId; });
+  if(!c) return;
+  
+  var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+  
+  _SYNC.rodando = true;
+  _SYNC.cancelar = false;
+  _SYNC.cidade = c;
+  
+  // UI: esconde botão de iniciar, mostra progresso
+  document.getElementById('sync-btn-start').style.display = 'none';
+  _syncMostrarProgresso();
+  _syncStatus('<strong>🔄 Sincronizando '+c.nome+'...</strong>');
+  _syncLog('Iniciando sync · cidade='+slug);
+  
+  try {
+    // 1) Verifica se tabelas existem no Supabase
+    _syncProgresso(2, 'Verificando tabelas do Supabase...', '');
+    var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?select=cidade_slug&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+    });
+    if(!r.ok){
+      throw new Error('Tabelas não existem no Supabase. Rode o SQL primeiro (veja arquivo supabase_machine_setup.sql).');
+    }
+    _syncLog('✓ Tabelas Supabase OK');
+    
+    // 2) Busca dados Machine — chunks de 7 dias até 60 dias
+    _syncProgresso(5, 'Buscando dados da Machine (60 dias)...', '');
+    var diasTotal = 60;
+    var hoje = new Date(); hoje.setHours(0,0,0,0);
+    var hojeStr = hoje.toISOString().split('T')[0];
+    
+    // Limpa chunks anteriores
+    var todasCorridas = [];
+    var chunksTotal = Math.ceil(diasTotal/7);
+    var chunkIdx = 0;
+    
+    for(var diaIni = diasTotal-1; diaIni >= 0 && !_SYNC.cancelar; diaIni -= 7){
+      var diaFim = Math.max(0, diaIni - 6);
+      var dInicio = new Date(hoje); dInicio.setDate(dInicio.getDate() - diaIni);
+      var dFim = new Date(hoje); dFim.setDate(dFim.getDate() - diaFim);
+      var iniStr = dInicio.toISOString().split('T')[0];
+      var fimStr = dFim.toISOString().split('T')[0];
+      
+      chunkIdx++;
+      _syncLog('Chunk '+chunkIdx+'/'+chunksTotal+': '+iniStr+' a '+fimStr);
+      _syncProgresso(
+        Math.round(5 + (chunkIdx/chunksTotal)*55),
+        'Buscando Machine · chunk '+chunkIdx+'/'+chunksTotal,
+        'Período: '+iniStr+' a '+fimStr+'<br>Corridas coletadas até agora: <strong>'+todasCorridas.length+'</strong>'
+      );
+      
+      try {
+        var rChunk = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+iniStr+'&data_fim='+fimStr);
+        if(!rChunk.ok){
+          _syncLog('⚠ Chunk falhou (HTTP '+rChunk.status+') · pulando');
+          continue;
+        }
+        var dataChunk = await rChunk.json();
+        var arr = (dataChunk && Array.isArray(dataChunk.response)) ? dataChunk.response : [];
+        todasCorridas = todasCorridas.concat(arr);
+        _syncLog('✓ '+arr.length+' corridas neste chunk');
+      } catch(e){
+        _syncLog('✗ Erro no chunk: '+e.message);
+      }
+      
+      // Delay leve entre chunks
+      await new Promise(function(r){setTimeout(r, 300);});
+    }
+    
+    if(_SYNC.cancelar) throw new Error('Cancelado pelo usuário');
+    
+    _syncLog('Total: '+todasCorridas.length+' corridas em '+chunksTotal+' chunks');
+    
+    // 3) Busca condutores e empresas (snapshot atual)
+    _syncProgresso(60, 'Buscando condutores e empresas...', '');
+    var condutores = [];
+    var empresas = [];
+    
+    try {
+      var rCond = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=condutor');
+      if(rCond.ok){
+        var dCond = await rCond.json();
+        condutores = (dCond && Array.isArray(dCond.response)) ? dCond.response : [];
+      }
+    } catch(e){ _syncLog('Condutores: '+e.message); }
+    
+    try {
+      var rEmp = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=empresa');
+      if(rEmp.ok){
+        var dEmp = await rEmp.json();
+        empresas = (dEmp && Array.isArray(dEmp.response)) ? dEmp.response : [];
+      }
+    } catch(e){ _syncLog('Empresas: '+e.message); }
+    
+    _syncLog('✓ '+condutores.length+' condutores · '+empresas.length+' empresas');
+    
+    // 4) Upsert no Supabase em batches
+    _syncProgresso(65, 'Salvando no Supabase...', '');
+    
+    // 4a) Corridas em batches de 200
+    var BATCH = 200;
+    var corridasSalvas = 0;
+    var corridasErro = 0;
+    for(var i = 0; i < todasCorridas.length && !_SYNC.cancelar; i += BATCH){
+      var lote = todasCorridas.slice(i, i+BATCH).map(function(x){
+        var ds = x.data_hora_solicitacao || x.data_solicitacao || '';
+        return {
+          cidade_slug: slug,
+          id_solicitacao: String(x.id || x.id_solicitacao || ''),
+          data_hora_solicitacao: ds || hojeStr+'T00:00:00',
+          nome_passageiro: x.nome_passageiro || null,
+          condutor_id: x.condutor_id ? String(x.condutor_id) : (x.taxista_id ? String(x.taxista_id) : null),
+          nome_condutor: x.nome_condutor || x.nome_taxista || null,
+          valor_corrida: parseFloat(x.valor_corrida || x.valor || 0) || null,
+          status_solicitacao: x.status_solicitacao || x.status || null,
+          raw: x
+        };
+      }).filter(function(r){ return r.id_solicitacao; }); // só com ID
+      
+      try {
+        var rUp = await fetch(SUPA_URL+'/rest/v1/machine_corridas', {
+          method:'POST',
+          headers:{
+            'apikey':SUPA_KEY,
+            'Authorization':'Bearer '+SUPA_KEY,
+            'Content-Type':'application/json',
+            'Prefer':'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify(lote)
+        });
+        if(rUp.ok){
+          corridasSalvas += lote.length;
+        } else {
+          corridasErro += lote.length;
+          var txt = await rUp.text().catch(function(){return '';});
+          _syncLog('✗ Lote falhou ('+rUp.status+'): '+txt.substring(0,150));
+        }
+      } catch(e){
+        corridasErro += lote.length;
+        _syncLog('✗ Lote erro: '+e.message);
+      }
+      
+      var pct = 65 + Math.round((i / Math.max(1, todasCorridas.length)) * 25);
+      _syncProgresso(pct, 'Salvando corridas...', 
+        'Salvas: <strong>'+corridasSalvas+'</strong> de '+todasCorridas.length+(corridasErro?' · Erros: '+corridasErro:''));
+    }
+    
+    if(_SYNC.cancelar) throw new Error('Cancelado pelo usuário');
+    
+    // 4b) Condutores
+    _syncProgresso(92, 'Salvando condutores...', 'Salvas: '+corridasSalvas+' corridas');
+    if(condutores.length){
+      var loteCond = condutores.map(function(x){
+        return {
+          cidade_slug: slug,
+          id: String(x.id),
+          nome: x.nome || null,
+          telefone_celular: x.telefone_celular || x.telefone || x.celular || null,
+          status: x.status || null,
+          raw: x
+        };
+      }).filter(function(r){ return r.id; });
+      
+      try {
+        var rUpC = await fetch(SUPA_URL+'/rest/v1/machine_condutores', {
+          method:'POST',
+          headers:{ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+SUPA_KEY, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(loteCond)
+        });
+        if(rUpC.ok) _syncLog('✓ '+loteCond.length+' condutores salvos');
+        else _syncLog('✗ Condutores falhou: HTTP '+rUpC.status);
+      } catch(e){ _syncLog('✗ Erro condutores: '+e.message); }
+    }
+    
+    // 4c) Empresas
+    _syncProgresso(96, 'Salvando empresas...', '');
+    if(empresas.length){
+      var loteEmp = empresas.map(function(x){
+        return {
+          cidade_slug: slug,
+          id: String(x.id),
+          nome: x.nome || null,
+          telefone: x.telefone || null,
+          bairro: x.bairro || null,
+          status_empresa: x.status_empresa || x.status || null,
+          raw: x
+        };
+      }).filter(function(r){ return r.id; });
+      
+      try {
+        var rUpE = await fetch(SUPA_URL+'/rest/v1/machine_empresas', {
+          method:'POST',
+          headers:{ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+SUPA_KEY, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' },
+          body: JSON.stringify(loteEmp)
+        });
+        if(rUpE.ok) _syncLog('✓ '+loteEmp.length+' empresas salvas');
+        else _syncLog('✗ Empresas falhou: HTTP '+rUpE.status);
+      } catch(e){ _syncLog('✗ Erro empresas: '+e.message); }
+    }
+    
+    // 5) Concluído!
+    _syncProgresso(100, 'Concluído!', '');
+    _syncLog('🎉 Sincronização completa em '+new Date().toLocaleTimeString('pt-BR'));
+    _syncStatus('<strong style="color:#1D9E75">✓ Sincronização concluída!</strong><br>'
+      +'<span style="color:#56627a">Corridas: '+corridasSalvas+' · Condutores: '+condutores.length+' · Empresas: '+empresas.length+'</span>');
+    
+    document.getElementById('sync-acoes').innerHTML = 
+      '<button onclick="document.getElementById(\'modal-sync-supa\').remove()" style="padding:10px 22px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">✓ Fechar</button>';
+    
+  } catch(e){
+    _syncLog('✗ ERRO FATAL: '+e.message);
+    _syncStatus('<strong style="color:#A32D2D">⚠️ Falha:</strong> '+e.message);
+    document.getElementById('sync-acoes').innerHTML = 
+      '<button onclick="document.getElementById(\'modal-sync-supa\').remove()" style="padding:9px 16px;background:#E5E7EB;color:#333;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Fechar</button>'
+      +'<button onclick="iniciarSincronizacaoSupabase(\''+cidadeId+'\')" style="padding:9px 18px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">↻ Tentar de novo</button>';
+  } finally {
+    _SYNC.rodando = false;
+    _SYNC.cancelar = false;
+  }
+}
+
 function _rlCidadeMetricas(dadosCidade){
   var d = dadosCidade.dados;
   var periodo = _RL.periodo;
@@ -12185,6 +12498,7 @@ function renderIntegracoesStatus(){
         '</div>'+
         '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
         '<button onclick="testarIntegracaoMachineTodas()" style="font-size:10px;padding:4px 10px;border:1px solid #1D9E75;border-radius:6px;background:#1D9E75;color:white;cursor:pointer;font-family:inherit;font-weight:600">🔍 Testar conexão Machine</button>'+
+        '<button onclick="(function(){var c=window.__cidadeAtual;if(c)abrirSincronizacaoSupabase(c.id);else alert(\'Abre uma cidade primeiro\');})()" style="font-size:10px;padding:4px 10px;border:1px solid #8B5CF6;border-radius:6px;background:#8B5CF6;color:white;cursor:pointer;font-family:inherit;font-weight:600">☁️ Sincronizar com Supabase</button>'+
         '<button onclick="document.getElementById(\'integ-detalhe\').style.display = document.getElementById(\'integ-detalhe\').style.display===\'none\' ? \'block\' : \'none\'" style="font-size:10px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">Ver detalhes ↓</button>'+
         '</div>'+
       '</div>'+
