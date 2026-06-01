@@ -1,4 +1,4 @@
-<!-- v23.42 - Teste Machine robusto: sequencial fallback empresa diagnostico contextualizado - 30/05/2026 -->
+<!-- v23.45 - Relatorios Fase 2 e 3: operacional financeiro comparativo + graficos SVG - 30/05/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1325,7 +1325,8 @@ window.nav = function(el, page){
         'culture':         function(){ if(typeof renderCulture==='function') renderCulture(); },
         'carreira':        function(){ if(typeof renderCarreira==='function') renderCarreira(); },
         'portal':          function(){ if(typeof renderPortal==='function') renderPortal(); },
-        'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); }
+        'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
+        'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); }
       };
       if(initMap[page]) setTimeout(initMap[page], 80);
       try{ document.getElementById('main-content').scrollTop = 0; }catch(e){}
@@ -1376,6 +1377,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'marketing')"><span class="nav-dot" style="background:#1D9E75"></span>Marketing</div>
     <div class="nav-item" onclick="nav(this,'inbox')"><span class="nav-dot" style="background:#E1306C"></span>Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
     <div class="nav-item" onclick="nav(this,'cidades')"><span class="nav-dot" style="background:#BA7517"></span>Cidades</div>
+    <div class="nav-item" onclick="nav(this,'relatorios')"><span class="nav-dot" style="background:#8B5CF6"></span>Relatórios</div>
     <div class="nav-item" onclick="nav(this,'pessoas')"><span class="nav-dot" style="background:#D4537E"></span>Pessoas<span class="nav-badge" id="badge-pess">2</span></div>
     <div class="nav-item" onclick="nav(this,'ranking')"><span class="nav-dot" style="background:#1AB8F0"></span>Ranking Gâmi</div>
   </div>
@@ -3597,6 +3599,17 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     </div>
 
   </div>
+</div>
+
+<!-- ==================== RELATÓRIOS ==================== -->
+<div class="page" id="pg-relatorios">
+  <div class="page-header">
+    <div><div class="page-title">Relatórios</div><div class="page-sub">Análises práticas pra ação rápida</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="rlVoltarCategorias()" id="rl-btn-voltar" style="display:none;font-size:11px">← Voltar</button>
+    </div>
+  </div>
+  <div id="rl-content" style="padding:0 4px"></div>
 </div>
 
 <!-- ==================== PESSOAS ==================== -->
@@ -9782,6 +9795,1801 @@ function filtrarCidadeStatus(btn, status){
   renderCidadesGrid();
 }
 
+/* ============================================================ */
+/* ABA RELATÓRIOS — Engine de relatórios pro gestor/colaborador  */
+/* ============================================================ */
+
+/* Estado da aba (cidade selecionada, período, relatório aberto) */
+var _RL = {
+  cidadeId: null,
+  periodo: 30, // dias
+  semPedirHa: 3, // padrão pra clientes_recuperar
+  topN: 10,
+  relatorioAtual: null,
+  resultadoAtual: null
+};
+
+/* Catálogo de relatórios disponíveis */
+var RELATORIOS = {
+  empresas: {
+    nome: '🏪 EMPRESAS', cor:'#1AB8F0',
+    relatorios: [
+      { id:'clientes_recuperar', icone:'🔴', nome:'Clientes a recuperar',
+        descricao:'Empresas que pediram nos últimos X dias mas estão Y+ dias sem pedir',
+        temValor:false, fase:1 },
+      { id:'clientes_novos', icone:'🌟', nome:'Clientes novos',
+        descricao:'Empresas com primeiro pedido nos últimos X dias',
+        temValor:false, fase:1 },
+      { id:'top_clientes', icone:'🏆', nome:'Top clientes do período',
+        descricao:'Empresas que mais pediram no período (corridas ou receita)',
+        temValor:true, fase:1 }
+    ]
+  },
+  motoboys: {
+    nome: '🏍️ MOTOBOYS', cor:'#EF9F27',
+    relatorios: [
+      { id:'motoboys_ausentes', icone:'😴', nome:'Motoboys ausentes',
+        descricao:'Motoboys que rodaram nos últimos X dias mas sumiram há Y+ dias',
+        temValor:false, fase:1 },
+      { id:'top_motoboys', icone:'🏆', nome:'Top performers',
+        descricao:'Motoboys que mais rodaram no período',
+        temValor:false, fase:1 }
+    ]
+  },
+  operacional: {
+    nome: '⚙️ OPERACIONAL', cor:'#8B5CF6',
+    relatorios: [
+      { id:'corridas_dia_semana', icone:'📅', nome:'Corridas por dia da semana',
+        descricao:'Distribuição de corridas em cada dia (segunda → domingo)',
+        temValor:false, fase:2 },
+      { id:'pico_horario', icone:'⏰', nome:'Pico de demanda por horário',
+        descricao:'Horários do dia com mais corridas',
+        temValor:false, fase:2 },
+      { id:'taxa_cancelamento', icone:'❌', nome:'Taxa de cancelamento',
+        descricao:'Empresas e motoboys com maior taxa de cancelamento',
+        temValor:false, fase:2 },
+      { id:'dias_anomalos', icone:'🌧️', nome:'Dias anômalos',
+        descricao:'Dias com volume muito acima ou abaixo da média',
+        temValor:false, fase:2 },
+      { id:'saude_cidade', icone:'🎯', nome:'Saúde da cidade',
+        descricao:'Score consolidado 0-100 da operação',
+        temValor:false, fase:2 }
+    ]
+  },
+  financeiro: {
+    nome: '💰 FINANCEIRO', cor:'#1D9E75',
+    soComValor: true, // categoria inteira oculta pra colaborador
+    relatorios: [
+      { id:'receita_periodo', icone:'💰', nome:'Receita por período',
+        descricao:'Evolução da receita ao longo do tempo',
+        temValor:true, fase:2 },
+      { id:'ticket_evolucao', icone:'🎫', nome:'Ticket médio (evolução)',
+        descricao:'Como o ticket médio variou no período',
+        temValor:true, fase:2 },
+      { id:'crescimento_mom', icone:'📈', nome:'Crescimento mês a mês',
+        descricao:'Comparativo dos últimos 3 meses',
+        temValor:true, fase:2 },
+      { id:'pareto_empresas', icone:'💸', nome:'Pareto de empresas',
+        descricao:'Quantas empresas concentram 80% da receita (risco)',
+        temValor:true, fase:2 },
+      { id:'pareto_motoboys', icone:'💸', nome:'Pareto de motoboys',
+        descricao:'Quantos motoboys concentram 80% das corridas',
+        temValor:false, fase:2 }
+    ]
+  },
+  comparativo: {
+    nome: '📈 COMPARATIVO', cor:'#E24B4A',
+    soGerencia: true, // só diretoria, gerência e super_admin
+    relatorios: [
+      { id:'cidades_lado_a_lado', icone:'🏙️', nome:'Todas cidades lado a lado',
+        descricao:'Visão geral das 11 cidades comparadas (carrega dados de todas)',
+        temValor:true, fase:3 },
+      { id:'compare_duas', icone:'🆚', nome:'Comparar 2 cidades',
+        descricao:'Análise detalhada entre 2 cidades à sua escolha',
+        temValor:true, fase:3 },
+      { id:'ranking_gestores', icone:'🏆', nome:'Ranking de gestores',
+        descricao:'Performance comparativa dos gestores das 11 cidades',
+        temValor:true, fase:3 }
+    ]
+  }
+};
+
+/* Filtra relatórios por permissão */
+function _rlRelatoriosVisiveis(cat){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var podeValor = (nivel !== 'colaborador' && nivel !== 'visitante');
+  var podeComparativo = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
+  
+  // Categoria inteira só pra gerência+
+  if(cat.soGerencia && !podeComparativo) return [];
+  // Categoria financeira: colaborador não vê
+  if(cat.soComValor && !podeValor) return [];
+  
+  return (cat.relatorios || []).filter(function(r){
+    return podeValor || !r.temValor;
+  });
+}
+
+/* Retorna se o usuário pode ver valores ($) */
+function _rlPodeVerValor(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  return nivel !== 'colaborador' && nivel !== 'visitante';
+}
+
+/* Cidades que o usuário pode escolher */
+function _rlCidadesDisponiveis(){
+  var todas = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  if(typeof filtrarCidadesPorPermissao === 'function'){
+    return filtrarCidadesPorPermissao(todas);
+  }
+  return todas;
+}
+
+/* INIT — chamada quando a aba abre */
+function initRelatoriosAba(){
+  // Define cidade padrão
+  if(!_RL.cidadeId){
+    var disponiveis = _rlCidadesDisponiveis();
+    if(disponiveis.length){
+      _RL.cidadeId = disponiveis[0].id;
+    }
+  }
+  _RL.relatorioAtual = null;
+  document.getElementById('rl-btn-voltar').style.display = 'none';
+  rlRenderCategorias();
+}
+
+/* Renderiza a tela inicial com as categorias */
+function rlRenderCategorias(){
+  var host = document.getElementById('rl-content');
+  if(!host) return;
+  var cidades = _rlCidadesDisponiveis();
+  var podeValor = _rlPodeVerValor();
+  
+  var cidadeOptions = cidades.map(function(c){
+    var sel = c.id === _RL.cidadeId ? ' selected' : '';
+    return '<option value="'+c.id+'"'+sel+'>'+c.nome+'/'+c.uf+'</option>';
+  }).join('');
+  
+  var html = '';
+  
+  // Barra de filtros
+  html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">'
+    +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:11px;color:var(--text3);font-weight:600">🏙️ Cidade:</span>'
+      +'<select onchange="_RL.cidadeId=this.value;rlRenderCategorias()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:white;cursor:pointer">'+cidadeOptions+'</select>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:11px;color:var(--text3);font-weight:600">📅 Período:</span>'
+      +'<select onchange="_RL.periodo=parseInt(this.value)" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:white;cursor:pointer">'
+        +'<option value="7"'+(_RL.periodo===7?' selected':'')+'>Últimos 7 dias</option>'
+        +'<option value="15"'+(_RL.periodo===15?' selected':'')+'>Últimos 15 dias</option>'
+        +'<option value="30"'+(_RL.periodo===30?' selected':'')+'>Últimos 30 dias</option>'
+        +'<option value="45"'+(_RL.periodo===45?' selected':'')+'>Últimos 45 dias</option>'
+      +'</select>'
+    +'</div>'
+    + (podeValor ? '' : '<div style="font-size:10px;color:var(--text3);background:#FFF8EE;border:1px solid #EF9F2733;padding:4px 10px;border-radius:6px">🔒 Valores ($) ocultos pra seu nível</div>')
+  +'</div>';
+  
+  // Cards de categoria
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">';
+  Object.keys(RELATORIOS).forEach(function(catKey){
+    var cat = RELATORIOS[catKey];
+    var visiveis = _rlRelatoriosVisiveis(cat);
+    if(!visiveis.length) return;
+    
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;border-top:4px solid '+cat.cor+'">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:15px;font-weight:700;color:var(--text)">'+cat.nome+'</div>'
+        +'<span style="font-size:10px;color:var(--text3);background:var(--surface2);padding:3px 8px;border-radius:10px;font-weight:600">'+visiveis.length+' relatórios</span>'
+      +'</div>'
+      +'<div style="display:flex;flex-direction:column;gap:6px">'
+      + visiveis.map(function(r){
+        return '<div onclick="rlAbrirRelatorio(\''+r.id+'\')" style="padding:10px 12px;background:var(--surface2);border-radius:8px;cursor:pointer;border:1px solid transparent;transition:border-color .15s" onmouseover="this.style.borderColor=\''+cat.cor+'\'" onmouseout="this.style.borderColor=\'transparent\'">'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">'
+            +'<span style="font-size:14px">'+r.icone+'</span>'
+            +'<span style="font-size:12px;font-weight:700;color:var(--text)">'+r.nome+'</span>'
+          +'</div>'
+          +'<div style="font-size:10.5px;color:var(--text3);line-height:1.4">'+r.descricao+'</div>'
+        +'</div>';
+      }).join('')
+      +'</div>'
+    +'</div>';
+  });
+  html += '</div>';
+  
+  // Aviso (apenas pra super_admin)
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : '';
+  if(nivel === 'super_admin'){
+    html += '<div style="margin-top:20px;padding:12px 16px;background:#F3E8FF;border:1px solid #8B5CF633;border-radius:8px;font-size:11px;color:#6A1B9A;line-height:1.5">'
+      +'<strong>📋 Sistema completo</strong> · 18 relatórios em 5 categorias. Comparativos carregam dados das 11 cidades (~1-2min na 1ª vez).'
+    +'</div>';
+  }
+  
+  host.innerHTML = html;
+}
+
+/* Abre um relatório específico (mostra filtros + gera) */
+function rlAbrirRelatorio(id){
+  _RL.relatorioAtual = id;
+  document.getElementById('rl-btn-voltar').style.display = 'inline-flex';
+  _rlGerarERenderizar();
+}
+
+function rlVoltarCategorias(){
+  _RL.relatorioAtual = null;
+  _RL.resultadoAtual = null;
+  document.getElementById('rl-btn-voltar').style.display = 'none';
+  rlRenderCategorias();
+}
+
+/* Garante que os dados Machine da cidade estão carregados */
+async function _rlGarantirDados(cidadeId){
+  if(!_vgCache[cidadeId] || !_vgCache[cidadeId].dados){
+    if(typeof _vgCarregarPainel === 'function'){
+      var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+      var c = cidades.find(function(x){ return x.id === cidadeId; });
+      if(c) await _vgCarregarPainel(c);
+    }
+  }
+  return _vgCache[cidadeId] && _vgCache[cidadeId].dados;
+}
+
+/* Gera o relatório atual e renderiza */
+async function _rlGerarERenderizar(){
+  var host = document.getElementById('rl-content');
+  if(!host || !_RL.relatorioAtual || !_RL.cidadeId){ rlRenderCategorias(); return; }
+  
+  // Comparativos precisam de TODAS as cidades
+  var ehComparativo = ['cidades_lado_a_lado','compare_duas','ranking_gestores'].indexOf(_RL.relatorioAtual) >= 0;
+  if(ehComparativo) return _rlGerarERenderizar_Comparativo();
+  
+  // Loading
+  host.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text3)">'
+    +'<div style="font-size:38px;margin-bottom:12px">⏳</div>'
+    +'<div style="font-size:13px;font-weight:600">Carregando dados...</div>'
+    +'<div style="font-size:11px;margin-top:6px">Pode demorar 10-30s se for primeira vez</div>'
+  +'</div>';
+  
+  var dados = await _rlGarantirDados(_RL.cidadeId);
+  if(!dados){
+    host.innerHTML = '<div style="padding:20px;background:#FCEBEB;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D">⚠️ Não consegui carregar os dados da cidade.</div>';
+    return;
+  }
+  
+  var resultado;
+  try {
+    resultado = _rlGerarRelatorio(_RL.relatorioAtual, dados);
+  } catch(e){
+    console.error('[Relatórios]', e);
+    host.innerHTML = '<div style="padding:20px;background:#FCEBEB;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D">⚠️ Erro ao gerar relatório: '+e.message+'</div>';
+    return;
+  }
+  
+  _RL.resultadoAtual = resultado;
+  _rlRenderResultado(resultado);
+}
+
+/* DESPACHADOR — chama a função do relatório específico */
+function _rlGerarRelatorio(id, dados){
+  switch(id){
+    // Fase 1 — Empresas + Motoboys
+    case 'clientes_recuperar': return _gen_clientes_recuperar(dados);
+    case 'clientes_novos':     return _gen_clientes_novos(dados);
+    case 'top_clientes':       return _gen_top_clientes(dados);
+    case 'motoboys_ausentes':  return _gen_motoboys_ausentes(dados);
+    case 'top_motoboys':       return _gen_top_motoboys(dados);
+    // Fase 2 — Operacional
+    case 'corridas_dia_semana':return _gen_corridas_dia_semana(dados);
+    case 'pico_horario':       return _gen_pico_horario(dados);
+    case 'taxa_cancelamento':  return _gen_taxa_cancelamento(dados);
+    case 'dias_anomalos':      return _gen_dias_anomalos(dados);
+    case 'saude_cidade':       return _gen_saude_cidade(dados);
+    // Fase 2 — Financeiro
+    case 'receita_periodo':    return _gen_receita_periodo(dados);
+    case 'ticket_evolucao':    return _gen_ticket_evolucao(dados);
+    case 'crescimento_mom':    return _gen_crescimento_mom(dados);
+    case 'pareto_empresas':    return _gen_pareto_empresas(dados);
+    case 'pareto_motoboys':    return _gen_pareto_motoboys(dados);
+    // Fase 3 — Comparativos (assíncronos: precisam de todas as cidades)
+    case 'cidades_lado_a_lado':return _gen_cidades_lado_a_lado(dados);
+    case 'compare_duas':       return _gen_compare_duas(dados);
+    case 'ranking_gestores':   return _gen_ranking_gestores(dados);
+    default: throw new Error('Relatório não implementado: '+id);
+  }
+}
+
+/* Comparativos: pré-carrega dados de TODAS as cidades antes de gerar */
+async function _rlGerarERenderizar_Comparativo(){
+  var host = document.getElementById('rl-content');
+  host.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text3)">'
+    +'<div style="font-size:38px;margin-bottom:12px">📡</div>'
+    +'<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px">Carregando dados das 11 cidades...</div>'
+    +'<div style="font-size:11px;margin-top:6px">Comparativos precisam de todas. Pode levar 1-2 minutos na primeira vez.</div>'
+    +'<div id="rl-comp-prog" style="margin-top:14px;font-size:11px;color:var(--text2)">0/11 cidades carregadas</div>'
+  +'</div>';
+  
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var carregadas = 0;
+  var dadosTodas = {};
+  
+  for(var i = 0; i < cidades.length; i++){
+    var c = cidades[i];
+    try {
+      var d = await _rlGarantirDados(c.id);
+      if(d) dadosTodas[c.id] = { cidade:c, dados:d };
+    } catch(e){
+      console.warn('Falhou carregar', c.nome, e);
+    }
+    carregadas++;
+    var prog = document.getElementById('rl-comp-prog');
+    if(prog) prog.textContent = carregadas+'/'+cidades.length+' cidades carregadas';
+  }
+  
+  // Agora gera o relatório passando todos os dados
+  try {
+    var resultado;
+    if(_RL.relatorioAtual === 'cidades_lado_a_lado') resultado = _gen_cidades_lado_a_lado_multi(dadosTodas);
+    else if(_RL.relatorioAtual === 'compare_duas') resultado = _gen_compare_duas_multi(dadosTodas);
+    else if(_RL.relatorioAtual === 'ranking_gestores') resultado = _gen_ranking_gestores_multi(dadosTodas);
+    else throw new Error('Comparativo não implementado');
+    _RL.resultadoAtual = resultado;
+    _rlRenderResultado(resultado);
+  } catch(e){
+    console.error('[Comparativo]', e);
+    host.innerHTML = '<div style="padding:20px;background:#FCEBEB;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D">⚠️ Erro: '+e.message+'</div>';
+  }
+}
+
+/* ============================================================ */
+/* GERADORES — cada relatório lê _vgCache e produz objeto padrão */
+/* { titulo, descricao, colunas, linhas, kpis?, vazio? }         */
+/* ============================================================ */
+
+function _rlGetCidade(){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  return cidades.find(function(c){ return c.id === _RL.cidadeId; });
+}
+
+function _rlDataAtras(dias){
+  var d = new Date();
+  d.setDate(d.getDate() - dias);
+  return d;
+}
+
+function _rlFormatarData(d){
+  if(!(d instanceof Date)) d = new Date(d);
+  return d.toLocaleDateString('pt-BR');
+}
+
+/* 1️⃣ CLIENTES A RECUPERAR */
+function _gen_clientes_recuperar(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var semHa = _RL.semPedirHa;
+  
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  var corteSemPedir = new Date(hoje); corteSemPedir.setDate(corteSemPedir.getDate()-semHa);
+  
+  // Agrupa por empresa: último pedido + total no período
+  var porEmpresa = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var empId = x.empresa_id;
+    if(!empId) return;
+    var nome = x.nome_empresa || ('Empresa '+empId);
+    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dataCorrida.getTime())) return;
+    if(dataCorrida < inicioPeriodo) return;
+    
+    if(!porEmpresa[empId]){
+      porEmpresa[empId] = { id:empId, nome:nome, ultima:dataCorrida, total:0, valor:0 };
+    }
+    if(dataCorrida > porEmpresa[empId].ultima) porEmpresa[empId].ultima = dataCorrida;
+    porEmpresa[empId].total++;
+    porEmpresa[empId].valor += parseFloat(x.valor || 0);
+  });
+  
+  // Filtra: última corrida ANTES do corte (ou seja, sem pedir há Y+ dias)
+  var lista = Object.values(porEmpresa).filter(function(e){
+    return e.ultima < corteSemPedir;
+  });
+  
+  // Ordena por última corrida (mais recentes primeiro)
+  lista.sort(function(a,b){ return b.ultima - a.ultima; });
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa', 'Último pedido', 'Dias sem pedir', 'Pedidos no período'];
+  if(podeValor) colunas.push('Valor total');
+  
+  var linhas = lista.map(function(e){
+    var dias = Math.floor((hoje - e.ultima) / 86400000);
+    var row = [e.nome, _rlFormatarData(e.ultima), dias+'d', e.total];
+    if(podeValor) row.push('R$ '+e.valor.toFixed(2));
+    return row;
+  });
+  
+  return {
+    id:'clientes_recuperar',
+    icone:'🔴',
+    titulo:'Clientes a recuperar',
+    descricao:'Empresas que pediram nos últimos '+periodo+' dias mas estão há '+semHa+'+ dias sem pedir',
+    cidade:c,
+    colunas:colunas,
+    linhas:linhas,
+    vazio: lista.length === 0,
+    kpis:[
+      { label:'Total a recuperar', valor:lista.length, cor:'#E24B4A' },
+      { label:'Pedidos perdidos', valor:lista.reduce(function(s,e){return s+e.total;},0), cor:'#EF9F27' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem pedir há:</strong>'
+        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
+          +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
+          +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* 2️⃣ CLIENTES NOVOS */
+function _gen_clientes_novos(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  
+  // Acha primeira corrida de cada empresa
+  var primeiraPorEmpresa = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var empId = x.empresa_id;
+    if(!empId) return;
+    var nome = x.nome_empresa || ('Empresa '+empId);
+    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dataCorrida.getTime())) return;
+    
+    if(!primeiraPorEmpresa[empId]){
+      primeiraPorEmpresa[empId] = { id:empId, nome:nome, primeira:dataCorrida, total:0, valor:0 };
+    }
+    if(dataCorrida < primeiraPorEmpresa[empId].primeira) primeiraPorEmpresa[empId].primeira = dataCorrida;
+    primeiraPorEmpresa[empId].total++;
+    primeiraPorEmpresa[empId].valor += parseFloat(x.valor || 0);
+  });
+  
+  // Filtra: primeira corrida no período
+  var lista = Object.values(primeiraPorEmpresa).filter(function(e){
+    return e.primeira >= inicioPeriodo;
+  });
+  lista.sort(function(a,b){ return b.primeira - a.primeira; });
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa', '1º pedido', 'Total pedidos', 'Faz pedidos há'];
+  if(podeValor) colunas.push('Receita total');
+  
+  var linhas = lista.map(function(e){
+    var dias = Math.floor((hoje - e.primeira) / 86400000);
+    var row = [e.nome, _rlFormatarData(e.primeira), e.total, dias+'d'];
+    if(podeValor) row.push('R$ '+e.valor.toFixed(2));
+    return row;
+  });
+  
+  return {
+    id:'clientes_novos',
+    icone:'🌟',
+    titulo:'Clientes novos',
+    descricao:'Empresas que fizeram primeiro pedido nos últimos '+periodo+' dias',
+    cidade:c,
+    colunas:colunas,
+    linhas:linhas,
+    vazio: lista.length === 0,
+    kpis:[
+      { label:'Novos clientes', valor:lista.length, cor:'#1D9E75' },
+      { label:'Pedidos gerados', valor:lista.reduce(function(s,e){return s+e.total;},0), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* 3️⃣ TOP CLIENTES — só pra quem pode ver valor */
+function _gen_top_clientes(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var topN = _RL.topN;
+  
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  
+  var porEmpresa = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var empId = x.empresa_id;
+    if(!empId) return;
+    var nome = x.nome_empresa || ('Empresa '+empId);
+    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dataCorrida.getTime())) return;
+    if(dataCorrida < inicioPeriodo) return;
+    
+    if(!porEmpresa[empId]) porEmpresa[empId] = { id:empId, nome:nome, total:0, valor:0 };
+    porEmpresa[empId].total++;
+    porEmpresa[empId].valor += parseFloat(x.valor || 0);
+  });
+  
+  var lista = Object.values(porEmpresa);
+  lista.sort(function(a,b){ return b.total - a.total; });
+  lista = lista.slice(0, topN);
+  
+  var totalGeral = lista.reduce(function(s,e){return s+e.total;},0);
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['#', 'Empresa', 'Pedidos', '% do top '+topN];
+  if(podeValor){ colunas.push('Receita'); colunas.push('Ticket médio'); }
+  
+  var linhas = lista.map(function(e, i){
+    var pctTopN = totalGeral > 0 ? ((e.total / totalGeral) * 100).toFixed(1) + '%' : '—';
+    var row = [(i+1)+'º', e.nome, e.total, pctTopN];
+    if(podeValor){
+      row.push('R$ '+e.valor.toFixed(2));
+      row.push('R$ '+(e.total > 0 ? (e.valor/e.total).toFixed(2) : '0,00'));
+    }
+    return row;
+  });
+  
+  return {
+    id:'top_clientes',
+    icone:'🏆',
+    titulo:'Top '+topN+' clientes do período',
+    descricao:'Empresas que mais pediram nos últimos '+periodo+' dias',
+    cidade:c,
+    colunas:colunas,
+    linhas:linhas,
+    vazio: lista.length === 0,
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
+        +'<select onchange="_RL.topN=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(topN===5?' selected':'')+'>Top 5</option>'
+          +'<option value="10"'+(topN===10?' selected':'')+'>Top 10</option>'
+          +'<option value="20"'+(topN===20?' selected':'')+'>Top 20</option>'
+          +'<option value="50"'+(topN===50?' selected':'')+'>Top 50</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* 4️⃣ MOTOBOYS AUSENTES */
+function _gen_motoboys_ausentes(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var semHa = _RL.semPedirHa;
+  
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  var corteSem = new Date(hoje); corteSem.setDate(corteSem.getDate()-semHa);
+  
+  var porMotoboy = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var id = x.condutor_id || x.taxista_id;
+    if(!id) return;
+    var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy ID '+id);
+    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dataCorrida.getTime())) return;
+    if(dataCorrida < inicioPeriodo) return;
+    
+    if(!porMotoboy[id]) porMotoboy[id] = { id:id, nome:nome, ultima:dataCorrida, total:0 };
+    if(dataCorrida > porMotoboy[id].ultima) porMotoboy[id].ultima = dataCorrida;
+    porMotoboy[id].total++;
+  });
+  
+  // Pega telefone dos condutores
+  (d.condutores||[]).forEach(function(cond){
+    if(cond && cond.id && porMotoboy[cond.id]){
+      porMotoboy[cond.id].telefone = cond.telefone_celular || cond.telefone || cond.celular || '';
+    }
+  });
+  
+  var lista = Object.values(porMotoboy).filter(function(m){
+    return m.ultima < corteSem;
+  });
+  lista.sort(function(a,b){ return b.ultima - a.ultima; });
+  
+  var linhas = lista.map(function(m){
+    var dias = Math.floor((hoje - m.ultima) / 86400000);
+    var tel = m.telefone || '—';
+    return [m.nome, _rlFormatarData(m.ultima), dias+'d', m.total, tel];
+  });
+  
+  return {
+    id:'motoboys_ausentes',
+    icone:'😴',
+    titulo:'Motoboys ausentes',
+    descricao:'Motoboys que rodaram nos últimos '+periodo+' dias mas estão há '+semHa+'+ dias sem rodar',
+    cidade:c,
+    colunas:['Motoboy', 'Última corrida', 'Dias sem rodar', 'Corridas no período', 'Telefone'],
+    linhas:linhas,
+    vazio: lista.length === 0,
+    podeWhatsApp: true, // ativa botão WhatsApp por linha
+    kpis:[
+      { label:'Motoboys ausentes', valor:lista.length, cor:'#E24B4A' },
+      { label:'Corridas perdidas', valor:lista.reduce(function(s,m){return s+m.total;},0), cor:'#EF9F27' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem rodar há:</strong>'
+        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
+          +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
+          +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* 5️⃣ TOP MOTOBOYS */
+function _gen_top_motoboys(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var topN = _RL.topN;
+  
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicioPeriodo = new Date(hoje); inicioPeriodo.setDate(inicioPeriodo.getDate()-periodo);
+  
+  var porMotoboy = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var id = x.condutor_id || x.taxista_id;
+    if(!id) return;
+    var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy ID '+id);
+    var dataCorrida = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dataCorrida.getTime())) return;
+    if(dataCorrida < inicioPeriodo) return;
+    
+    if(!porMotoboy[id]) porMotoboy[id] = { id:id, nome:nome, total:0, ultima:dataCorrida };
+    porMotoboy[id].total++;
+    if(dataCorrida > porMotoboy[id].ultima) porMotoboy[id].ultima = dataCorrida;
+  });
+  
+  // Telefones
+  (d.condutores||[]).forEach(function(cond){
+    if(cond && cond.id && porMotoboy[cond.id]){
+      porMotoboy[cond.id].telefone = cond.telefone_celular || cond.telefone || cond.celular || '';
+    }
+  });
+  
+  var lista = Object.values(porMotoboy);
+  lista.sort(function(a,b){ return b.total - a.total; });
+  lista = lista.slice(0, topN);
+  
+  var totalGeral = lista.reduce(function(s,m){return s+m.total;},0);
+  
+  var linhas = lista.map(function(m, i){
+    var pct = totalGeral > 0 ? ((m.total / totalGeral) * 100).toFixed(1) + '%' : '—';
+    var tel = m.telefone || '—';
+    return [(i+1)+'º', m.nome, m.total, pct, _rlFormatarData(m.ultima), tel];
+  });
+  
+  return {
+    id:'top_motoboys',
+    icone:'🏆',
+    titulo:'Top '+topN+' motoboys do período',
+    descricao:'Motoboys que mais rodaram nos últimos '+periodo+' dias',
+    cidade:c,
+    colunas:['#', 'Motoboy', 'Corridas', '% do top '+topN, 'Última corrida', 'Telefone'],
+    linhas:linhas,
+    vazio: lista.length === 0,
+    podeWhatsApp: true,
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
+        +'<select onchange="_RL.topN=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(topN===5?' selected':'')+'>Top 5</option>'
+          +'<option value="10"'+(topN===10?' selected':'')+'>Top 10</option>'
+          +'<option value="20"'+(topN===20?' selected':'')+'>Top 20</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ============================================================ */
+/* HELPERS de gráfico (SVG inline)                                */
+/* ============================================================ */
+
+function _rlBarrasH(items, opts){
+  // items = [{ label, valor, cor? }]
+  opts = opts || {};
+  var max = Math.max.apply(null, items.map(function(i){return i.valor;}));
+  if(max <= 0) max = 1;
+  var altura = opts.altura || 24;
+  var labelW = opts.labelW || 120;
+  var valW = opts.valW || 60;
+  var corBase = opts.cor || '#8B5CF6';
+  
+  var rows = items.map(function(it, i){
+    var pct = (it.valor / max) * 100;
+    var cor = it.cor || corBase;
+    var valFmt = opts.formato ? opts.formato(it.valor) : it.valor.toLocaleString('pt-BR');
+    return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0">'
+      +'<div style="width:'+labelW+'px;font-size:11px;color:var(--text2);font-weight:600;text-align:right;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+it.label+'</div>'
+      +'<div style="flex:1;height:'+altura+'px;background:#F5F5F5;border-radius:4px;overflow:hidden;position:relative">'
+        +'<div style="width:'+pct.toFixed(1)+'%;height:100%;background:linear-gradient(90deg,'+cor+',' +cor+'CC);border-radius:4px;transition:width .4s"></div>'
+      +'</div>'
+      +'<div style="width:'+valW+'px;font-size:11px;color:var(--text);font-weight:700;text-align:left;flex-shrink:0">'+valFmt+'</div>'
+    +'</div>';
+  }).join('');
+  
+  return '<div style="padding:14px;background:white;border:1px solid var(--border);border-radius:10px;margin-bottom:14px">'+rows+'</div>';
+}
+
+function _rlLinhaSVG(pontos, opts){
+  // pontos = [{ label, valor }]
+  opts = opts || {};
+  var w = opts.w || 800;
+  var h = opts.h || 200;
+  var pad = 36;
+  var cor = opts.cor || '#1AB8F0';
+  
+  if(!pontos.length) return '<div style="padding:20px;text-align:center;color:var(--text3)">Sem dados</div>';
+  
+  var max = Math.max.apply(null, pontos.map(function(p){return p.valor;})) || 1;
+  var min = Math.min.apply(null, pontos.map(function(p){return p.valor;}));
+  if(min === max) min = 0;
+  
+  var step = (w - pad*2) / Math.max(1, pontos.length - 1);
+  var pts = pontos.map(function(p, i){
+    var x = pad + i*step;
+    var y = h - pad - ((p.valor - min) / (max - min || 1)) * (h - pad*2);
+    return [x, y, p];
+  });
+  
+  var pathD = pts.map(function(p, i){ return (i===0?'M':'L')+' '+p[0]+' '+p[1]; }).join(' ');
+  var areaD = pathD + ' L '+pts[pts.length-1][0]+' '+(h-pad)+' L '+pts[0][0]+' '+(h-pad)+' Z';
+  
+  var labels = pontos.length <= 12 
+    ? pts.map(function(p,i){ return '<text x="'+p[0]+'" y="'+(h-pad+18)+'" text-anchor="middle" font-size="10" fill="#6B7280">'+pontos[i].label+'</text>'; }).join('')
+    : '';
+  
+  var dots = pts.map(function(p){ return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3" fill="'+cor+'" stroke="white" stroke-width="2"/>'; }).join('');
+  
+  return '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:14px;overflow-x:auto"><svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:'+h+'px;display:block">'
+    +'<defs><linearGradient id="rl-grad-'+(Math.random()*9999|0)+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+cor+'" stop-opacity=".25"/><stop offset="100%" stop-color="'+cor+'" stop-opacity="0"/></linearGradient></defs>'
+    +'<line x1="'+pad+'" y1="'+(h-pad)+'" x2="'+(w-pad/2)+'" y2="'+(h-pad)+'" stroke="#E5E7EB"/>'
+    +'<line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(h-pad)+'" stroke="#E5E7EB"/>'
+    +'<text x="'+(pad-6)+'" y="'+(pad+4)+'" text-anchor="end" font-size="10" fill="#6B7280">'+Math.round(max).toLocaleString('pt-BR')+'</text>'
+    +'<text x="'+(pad-6)+'" y="'+(h-pad+4)+'" text-anchor="end" font-size="10" fill="#6B7280">'+Math.round(min).toLocaleString('pt-BR')+'</text>'
+    +'<path d="'+areaD+'" fill="rgba(26,184,240,.12)"/>'
+    +'<path d="'+pathD+'" fill="none" stroke="'+cor+'" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    +dots+labels
+  +'</svg></div>';
+}
+
+/* ============================================================ */
+/* FASE 2 — OPERACIONAL                                          */
+/* ============================================================ */
+
+/* 6️⃣ CORRIDAS POR DIA DA SEMANA */
+function _gen_corridas_dia_semana(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var cores = ['#E24B4A','#1AB8F0','#1AB8F0','#1AB8F0','#1AB8F0','#1AB8F0','#EF9F27'];
+  var contagem = [0,0,0,0,0,0,0];
+  
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    contagem[dt.getDay()]++;
+  });
+  
+  var total = contagem.reduce(function(a,b){return a+b;},0);
+  var maxIdx = contagem.indexOf(Math.max.apply(null, contagem));
+  var minIdx = contagem.indexOf(Math.min.apply(null, contagem));
+  
+  // Reordena: segunda → domingo
+  var ordem = [1,2,3,4,5,6,0];
+  var barras = ordem.map(function(idx){
+    return { label:dias[idx], valor:contagem[idx], cor:cores[idx] };
+  });
+  
+  var linhas = ordem.map(function(idx){
+    var pct = total > 0 ? ((contagem[idx]/total)*100).toFixed(1)+'%' : '—';
+    return [dias[idx], contagem[idx], pct];
+  });
+  
+  return {
+    id:'corridas_dia_semana', icone:'📅',
+    titulo:'Corridas por dia da semana',
+    descricao:'Distribuição das '+total.toLocaleString('pt-BR')+' corridas nos últimos '+periodo+' dias',
+    cidade:c,
+    grafico: _rlBarrasH(barras, { altura:22, labelW:90, valW:80, cor:'#8B5CF6' }),
+    colunas:['Dia da semana','Corridas','% do total'],
+    linhas:linhas,
+    vazio: total === 0,
+    kpis:[
+      { label:'Dia de pico', valor:dias[maxIdx], cor:'#1D9E75' },
+      { label:'Dia mais fraco', valor:dias[minIdx], cor:'#E24B4A' },
+      { label:'Total no período', valor:total.toLocaleString('pt-BR'), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* 7️⃣ PICO DE HORÁRIO */
+function _gen_pico_horario(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var porHora = new Array(24).fill(0);
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    porHora[dt.getHours()]++;
+  });
+  
+  var total = porHora.reduce(function(a,b){return a+b;},0);
+  var maxIdx = porHora.indexOf(Math.max.apply(null, porHora));
+  
+  var barras = porHora.map(function(v, i){
+    return { label:String(i).padStart(2,'0')+'h', valor:v };
+  });
+  
+  var linhas = porHora.map(function(v, i){
+    var pct = total > 0 ? ((v/total)*100).toFixed(1)+'%' : '—';
+    return [String(i).padStart(2,'0')+'h às '+String(i+1).padStart(2,'0')+'h', v, pct];
+  }).filter(function(r){ return r[1] > 0; });
+  
+  return {
+    id:'pico_horario', icone:'⏰',
+    titulo:'Pico de demanda por horário',
+    descricao:'Distribuição por hora do dia · '+total.toLocaleString('pt-BR')+' corridas',
+    cidade:c,
+    grafico: _rlBarrasH(barras, { altura:14, labelW:50, valW:60, cor:'#EF9F27' }),
+    colunas:['Hora','Corridas','%'],
+    linhas:linhas,
+    vazio: total === 0,
+    kpis:[
+      { label:'Hora de pico', valor:String(maxIdx).padStart(2,'0')+'h', cor:'#1D9E75' },
+      { label:'Corridas pico', valor:porHora[maxIdx], cor:'#EF9F27' }
+    ]
+  };
+}
+
+/* 8️⃣ TAXA DE CANCELAMENTO */
+function _gen_taxa_cancelamento(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var porEmpresa = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var empId = x.empresa_id;
+    if(!empId) return;
+    var nome = x.nome_empresa || ('Empresa '+empId);
+    if(!porEmpresa[empId]) porEmpresa[empId] = { nome:nome, total:0, cancelada:0 };
+    porEmpresa[empId].total++;
+    if(x.status === 'C') porEmpresa[empId].cancelada++;
+  });
+  
+  var lista = Object.values(porEmpresa)
+    .filter(function(e){ return e.total >= 5; }) // mínimo 5 pedidos pra entrar
+    .map(function(e){
+      e.taxa = (e.cancelada / e.total) * 100;
+      return e;
+    })
+    .filter(function(e){ return e.taxa > 0; })
+    .sort(function(a,b){ return b.taxa - a.taxa; })
+    .slice(0, 20);
+  
+  var totalGeral = 0, totalCancelado = 0;
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    totalGeral++;
+    if(x.status === 'C') totalCancelado++;
+  });
+  var taxaGeral = totalGeral > 0 ? (totalCancelado / totalGeral * 100) : 0;
+  
+  var linhas = lista.map(function(e){
+    var taxaIcone = e.taxa >= 30 ? '🔴' : e.taxa >= 15 ? '🟡' : '🟢';
+    return [taxaIcone+' '+e.nome, e.total, e.cancelada, e.taxa.toFixed(1)+'%'];
+  });
+  
+  return {
+    id:'taxa_cancelamento', icone:'❌',
+    titulo:'Taxa de cancelamento por empresa',
+    descricao:'Top 20 empresas com maior cancelamento (mínimo 5 pedidos)',
+    cidade:c,
+    colunas:['Empresa','Total','Canceladas','Taxa'],
+    linhas:linhas,
+    vazio: lista.length === 0,
+    kpis:[
+      { label:'Taxa geral', valor:taxaGeral.toFixed(1)+'%', cor: taxaGeral >= 15 ? '#E24B4A' : '#1D9E75' },
+      { label:'Canceladas', valor:totalCancelado, cor:'#EF9F27' },
+      { label:'Total no período', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* 9️⃣ DIAS ANÔMALOS */
+function _gen_dias_anomalos(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var porDia = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var chave = dt.toISOString().split('T')[0];
+    porDia[chave] = (porDia[chave]||0) + 1;
+  });
+  
+  var dias = Object.keys(porDia).sort().map(function(k){
+    return { data:new Date(k+'T00:00:00'), corridas:porDia[k] };
+  });
+  
+  if(dias.length < 3) return { id:'dias_anomalos', icone:'🌧️', titulo:'Dias anômalos', descricao:'Sem dados suficientes', cidade:c, colunas:['Dia','Corridas','vs média','Status'], linhas:[], vazio:true };
+  
+  var soma = dias.reduce(function(s,x){return s+x.corridas;},0);
+  var media = soma / dias.length;
+  var variancia = dias.reduce(function(s,x){return s+Math.pow(x.corridas-media,2);},0) / dias.length;
+  var desvio = Math.sqrt(variancia);
+  
+  var anomalos = dias.filter(function(x){
+    return Math.abs(x.corridas - media) > 1.5 * desvio;
+  }).sort(function(a,b){ return b.data - a.data; });
+  
+  var linhas = anomalos.map(function(x){
+    var diff = x.corridas - media;
+    var pct = ((diff/media)*100).toFixed(0);
+    var status, icone;
+    if(diff > 0){ status = 'Acima do normal'; icone='📈'; }
+    else { status = 'Abaixo do normal'; icone='📉'; }
+    var diaSem = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][x.data.getDay()];
+    return [diaSem+' '+_rlFormatarData(x.data), x.corridas, (diff>=0?'+':'')+pct+'%', icone+' '+status];
+  });
+  
+  return {
+    id:'dias_anomalos', icone:'🌧️',
+    titulo:'Dias anômalos',
+    descricao:'Dias com volume muito acima ou abaixo da média (média: '+media.toFixed(0)+' corridas/dia)',
+    cidade:c,
+    colunas:['Dia','Corridas','vs Média','Diagnóstico'],
+    linhas:linhas,
+    vazio: anomalos.length === 0,
+    kpis:[
+      { label:'Média diária', valor:media.toFixed(0), cor:'#1AB8F0' },
+      { label:'Desvio padrão', valor:'±'+desvio.toFixed(0), cor:'#8B5CF6' },
+      { label:'Dias atípicos', valor:anomalos.length, cor:'#EF9F27' }
+    ]
+  };
+}
+
+/* 🔟 SAÚDE DA CIDADE — Score consolidado */
+function _gen_saude_cidade(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var corridas = 0, finalizadas = 0, canceladas = 0;
+  var motoboysAtivos = {}, empresasAtivas = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    corridas++;
+    if(x.status === 'F') finalizadas++;
+    if(x.status === 'C') canceladas++;
+    if(x.condutor_id) motoboysAtivos[x.condutor_id] = true;
+    if(x.empresa_id) empresasAtivas[x.empresa_id] = true;
+  });
+  
+  var motoboysCad = (d.condutores||[]).filter(function(x){return x.status==='A';}).length;
+  var empresasCad = (d.empresas||[]).filter(function(x){return x.status==='A';}).length;
+  var totalMotoAtivos = Object.keys(motoboysAtivos).length;
+  var totalEmpAtivas = Object.keys(empresasAtivas).length;
+  
+  var scoreVol = Math.min(100, (corridas / Math.max(1, periodo)) * 100 / 50); // 50 corridas/dia = 100
+  var scoreConc = corridas > 0 ? (finalizadas / corridas) * 100 : 0;
+  var scoreMoto = motoboysCad > 0 ? (totalMotoAtivos / motoboysCad) * 100 : 0;
+  var scoreEmp = empresasCad > 0 ? (totalEmpAtivas / empresasCad) * 100 : 0;
+  
+  var scoreFinal = Math.round((scoreVol * 0.25 + scoreConc * 0.30 + scoreMoto * 0.25 + scoreEmp * 0.20));
+  scoreFinal = Math.min(100, Math.max(0, scoreFinal));
+  
+  var corScore, statusScore, recomendacao;
+  if(scoreFinal >= 80){ corScore = '#1D9E75'; statusScore = 'EXCELENTE'; recomendacao = 'Cidade saudável. Manter ritmo e replicar boas práticas.'; }
+  else if(scoreFinal >= 60){ corScore = '#1AB8F0'; statusScore = 'BOA'; recomendacao = 'Operação estável com margem pra crescer.'; }
+  else if(scoreFinal >= 40){ corScore = '#EF9F27'; statusScore = 'ATENÇÃO'; recomendacao = 'Há gargalos a resolver. Foco em ativação e engajamento.'; }
+  else { corScore = '#E24B4A'; statusScore = 'CRÍTICA'; recomendacao = 'Intervenção urgente. Avaliar gestor e plano de ação imediato.'; }
+  
+  var subs = [
+    { label:'Volume (50 corridas/dia=100)', valor:Math.round(scoreVol), peso:'25%' },
+    { label:'Taxa de conclusão', valor:Math.round(scoreConc), peso:'30%' },
+    { label:'Engajamento motoboys', valor:Math.round(scoreMoto), peso:'25%' },
+    { label:'Ativação empresas', valor:Math.round(scoreEmp), peso:'20%' }
+  ];
+  
+  var grafGauge = '<div style="background:white;border:1px solid var(--border);border-radius:10px;padding:24px;margin-bottom:14px;text-align:center">'
+    +'<div style="position:relative;display:inline-block">'
+      +'<svg viewBox="0 0 200 120" style="width:280px;max-width:100%">'
+        +'<path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E5E7EB" stroke-width="16" stroke-linecap="round"/>'
+        +'<path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="'+corScore+'" stroke-width="16" stroke-linecap="round" stroke-dasharray="'+(scoreFinal/100*251)+' 251"/>'
+        +'<text x="100" y="92" text-anchor="middle" font-family="Syne,sans-serif" font-size="40" font-weight="800" fill="'+corScore+'">'+scoreFinal+'</text>'
+      +'</svg>'
+    +'</div>'
+    +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:'+corScore+';margin-top:-12px">'+statusScore+'</div>'
+    +'<div style="font-size:12px;color:var(--text2);margin-top:6px;max-width:400px;margin-left:auto;margin-right:auto">'+recomendacao+'</div>'
+  +'</div>';
+  
+  var grafSubs = _rlBarrasH(subs.map(function(s){
+    var cor = s.valor >= 70 ? '#1D9E75' : s.valor >= 50 ? '#1AB8F0' : s.valor >= 30 ? '#EF9F27' : '#E24B4A';
+    return { label:s.label+' ('+s.peso+')', valor:s.valor, cor:cor };
+  }), { altura:24, labelW:240, valW:50, formato:function(v){return v+'/100';} });
+  
+  var linhas = subs.map(function(s){
+    return [s.label, s.peso, s.valor+'/100'];
+  });
+  
+  return {
+    id:'saude_cidade', icone:'🎯',
+    titulo:'Saúde da '+c.nome,
+    descricao:'Score consolidado de '+periodo+' dias · 4 dimensões ponderadas',
+    cidade:c,
+    grafico: grafGauge + grafSubs,
+    colunas:['Dimensão','Peso','Score'],
+    linhas:linhas,
+    vazio:false
+  };
+}
+
+/* ============================================================ */
+/* FASE 2 — FINANCEIRO                                           */
+/* ============================================================ */
+
+/* 1️⃣1️⃣ RECEITA POR PERÍODO */
+function _gen_receita_periodo(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  // Granularidade automática: diária se ≤30, semanal se ≤45, mensal se >45
+  var granul = periodo <= 30 ? 'dia' : 'semana';
+  
+  var buckets = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    if(x.status !== 'F') return; // só finalizadas
+    var key;
+    if(granul === 'dia') key = dt.toISOString().split('T')[0];
+    else { // semana: começo da semana (segunda)
+      var diaSem = dt.getDay() || 7;
+      var seg = new Date(dt); seg.setDate(dt.getDate() - (diaSem - 1));
+      key = seg.toISOString().split('T')[0];
+    }
+    if(!buckets[key]) buckets[key] = { corridas:0, receita:0 };
+    buckets[key].corridas++;
+    buckets[key].receita += parseFloat(x.valor || 0);
+  });
+  
+  var ordenado = Object.keys(buckets).sort().map(function(k){
+    var dt = new Date(k+'T00:00:00');
+    var label;
+    if(granul === 'dia'){
+      label = String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0');
+    } else {
+      label = String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0');
+    }
+    return { label:label, data:dt, corridas:buckets[k].corridas, receita:buckets[k].receita };
+  });
+  
+  var totalReceita = ordenado.reduce(function(s,b){return s+b.receita;},0);
+  var totalCorr = ordenado.reduce(function(s,b){return s+b.corridas;},0);
+  var media = ordenado.length > 0 ? totalReceita / ordenado.length : 0;
+  
+  var grafico = _rlLinhaSVG(ordenado.map(function(b){return { label:b.label, valor:b.receita };}), { cor:'#1D9E75' });
+  
+  var linhas = ordenado.map(function(b){
+    return [b.label, b.corridas, 'R$ '+b.receita.toFixed(2), 'R$ '+(b.corridas>0?b.receita/b.corridas:0).toFixed(2)];
+  });
+  
+  return {
+    id:'receita_periodo', icone:'💰',
+    titulo:'Receita por '+(granul==='dia'?'dia':'semana'),
+    descricao:'Evolução da receita ao longo dos últimos '+periodo+' dias',
+    cidade:c,
+    grafico:grafico,
+    colunas:[granul==='dia'?'Dia':'Semana','Corridas','Receita','Ticket'],
+    linhas:linhas,
+    vazio: ordenado.length === 0,
+    kpis:[
+      { label:'Receita total', valor:'R$ '+totalReceita.toFixed(0), cor:'#1D9E75' },
+      { label:'Média/'+(granul==='dia'?'dia':'semana'), valor:'R$ '+media.toFixed(0), cor:'#1AB8F0' },
+      { label:'Corridas', valor:totalCorr.toLocaleString('pt-BR'), cor:'#EF9F27' }
+    ]
+  };
+}
+
+/* 1️⃣2️⃣ TICKET MÉDIO EVOLUÇÃO */
+function _gen_ticket_evolucao(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var buckets = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    if(x.status !== 'F') return;
+    var key = dt.toISOString().split('T')[0];
+    if(!buckets[key]) buckets[key] = { c:0, v:0 };
+    buckets[key].c++;
+    buckets[key].v += parseFloat(x.valor || 0);
+  });
+  
+  var ordenado = Object.keys(buckets).sort().map(function(k){
+    var dt = new Date(k+'T00:00:00');
+    var ticket = buckets[k].c > 0 ? buckets[k].v / buckets[k].c : 0;
+    return { label:String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0'), data:dt, ticket:ticket, corridas:buckets[k].c };
+  });
+  
+  var ticketGeral = 0;
+  var corridasTot = 0, receitaTot = 0;
+  ordenado.forEach(function(b){ corridasTot += b.corridas; receitaTot += b.ticket * b.corridas; });
+  ticketGeral = corridasTot > 0 ? receitaTot / corridasTot : 0;
+  
+  // Detecta tendência (primeiros 1/3 vs últimos 1/3)
+  var terco = Math.floor(ordenado.length / 3) || 1;
+  var primTerco = ordenado.slice(0, terco);
+  var ultTerco = ordenado.slice(-terco);
+  var avgPrim = primTerco.reduce(function(s,b){return s+b.ticket;},0) / Math.max(1, primTerco.length);
+  var avgUlt = ultTerco.reduce(function(s,b){return s+b.ticket;},0) / Math.max(1, ultTerco.length);
+  var varPct = avgPrim > 0 ? ((avgUlt - avgPrim) / avgPrim * 100) : 0;
+  
+  var grafico = _rlLinhaSVG(ordenado.map(function(b){return { label:b.label, valor:b.ticket };}), { cor:'#EF9F27' });
+  
+  var linhas = ordenado.map(function(b){
+    return [b.label, b.corridas, 'R$ '+b.ticket.toFixed(2)];
+  });
+  
+  return {
+    id:'ticket_evolucao', icone:'🎫',
+    titulo:'Ticket médio (evolução)',
+    descricao:'Como o valor médio por corrida variou nos últimos '+periodo+' dias',
+    cidade:c,
+    grafico:grafico,
+    colunas:['Dia','Corridas','Ticket médio'],
+    linhas:linhas,
+    vazio: ordenado.length === 0,
+    kpis:[
+      { label:'Ticket médio geral', valor:'R$ '+ticketGeral.toFixed(2), cor:'#1D9E75' },
+      { label:'Tendência', valor:(varPct>=0?'+':'')+varPct.toFixed(1)+'%', cor: varPct >= 0 ? '#1D9E75' : '#E24B4A' },
+      { label:'Início vs fim', valor:'R$ '+avgPrim.toFixed(2)+' → R$ '+avgUlt.toFixed(2), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* 1️⃣3️⃣ CRESCIMENTO MÊS A MÊS */
+function _gen_crescimento_mom(d){
+  var c = _rlGetCidade();
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  
+  // Define 3 meses: atual, anterior, retrasado
+  var meses = [];
+  for(var i = 0; i < 3; i++){
+    var fim = new Date(hoje.getFullYear(), hoje.getMonth() - i + 1, 0); // último dia do mês
+    var ini = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+    var label = ini.toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+    meses.push({ ini:ini, fim:fim, label:label, corridas:0, receita:0 });
+  }
+  
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime())) return;
+    for(var i = 0; i < meses.length; i++){
+      var m = meses[i];
+      if(dt >= m.ini && dt <= m.fim){
+        if(x.status === 'F'){
+          m.corridas++;
+          m.receita += parseFloat(x.valor || 0);
+        }
+        break;
+      }
+    }
+  });
+  
+  meses.reverse(); // mais antigo primeiro
+  
+  var linhas = meses.map(function(m, i){
+    var prev = i > 0 ? meses[i-1] : null;
+    var pctCorr = prev && prev.corridas > 0 ? ((m.corridas - prev.corridas)/prev.corridas*100) : null;
+    var pctRec = prev && prev.receita > 0 ? ((m.receita - prev.receita)/prev.receita*100) : null;
+    return [
+      m.label,
+      m.corridas,
+      pctCorr !== null ? (pctCorr>=0?'📈 +':'📉 ')+pctCorr.toFixed(1)+'%' : '—',
+      'R$ '+m.receita.toFixed(2),
+      pctRec !== null ? (pctRec>=0?'📈 +':'📉 ')+pctRec.toFixed(1)+'%' : '—'
+    ];
+  });
+  
+  var grafico = _rlBarrasH(meses.map(function(m){
+    return { label:m.label, valor:m.receita };
+  }), { altura:30, labelW:140, valW:90, cor:'#1D9E75', formato:function(v){return 'R$ '+v.toFixed(0);} });
+  
+  var atual = meses[meses.length-1];
+  var anterior = meses[meses.length-2];
+  var crescPct = anterior && anterior.receita > 0 ? ((atual.receita - anterior.receita)/anterior.receita*100) : 0;
+  
+  return {
+    id:'crescimento_mom', icone:'📈',
+    titulo:'Crescimento mês a mês',
+    descricao:'Comparativo dos últimos 3 meses (atual pode estar incompleto)',
+    cidade:c,
+    grafico:grafico,
+    colunas:['Mês','Corridas','vs ant.','Receita','vs ant.'],
+    linhas:linhas,
+    vazio: meses.every(function(m){return m.corridas === 0;}),
+    kpis:[
+      { label:'Atual', valor:'R$ '+atual.receita.toFixed(0), cor:'#1AB8F0' },
+      { label:'Crescimento', valor:(crescPct>=0?'+':'')+crescPct.toFixed(1)+'%', cor:crescPct >= 0 ? '#1D9E75' : '#E24B4A' }
+    ]
+  };
+}
+
+/* 1️⃣4️⃣ PARETO DE EMPRESAS */
+function _gen_pareto_empresas(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var porEmp = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    if(x.status !== 'F') return;
+    if(!x.empresa_id) return;
+    var nome = x.nome_empresa || ('Empresa '+x.empresa_id);
+    if(!porEmp[x.empresa_id]) porEmp[x.empresa_id] = { nome:nome, receita:0, corridas:0 };
+    porEmp[x.empresa_id].receita += parseFloat(x.valor || 0);
+    porEmp[x.empresa_id].corridas++;
+  });
+  
+  var lista = Object.values(porEmp).sort(function(a,b){return b.receita - a.receita;});
+  var totalRec = lista.reduce(function(s,e){return s+e.receita;},0);
+  
+  var acumulado = 0, indice80 = -1;
+  lista.forEach(function(e, i){
+    acumulado += e.receita;
+    if(indice80 < 0 && totalRec > 0 && acumulado / totalRec >= 0.8) indice80 = i;
+  });
+  
+  acumulado = 0;
+  var linhas = lista.slice(0, 30).map(function(e, i){
+    acumulado += e.receita;
+    var pctInd = totalRec > 0 ? (e.receita / totalRec * 100).toFixed(1)+'%' : '—';
+    var pctAcum = totalRec > 0 ? (acumulado / totalRec * 100).toFixed(1)+'%' : '—';
+    var status = i <= indice80 ? '🔴 80%' : '';
+    return [(i+1)+'º', e.nome, e.corridas, 'R$ '+e.receita.toFixed(2), pctInd, pctAcum, status];
+  });
+  
+  var riscoTxt;
+  if(indice80 >= 0){
+    var qtd80 = indice80 + 1;
+    if(qtd80 <= 5) riscoTxt = '⚠️ ALTÍSSIMO RISCO: apenas '+qtd80+' empresas concentram 80% da receita. Perder 1 delas pode quebrar a operação.';
+    else if(qtd80 <= 10) riscoTxt = '⚠️ Risco médio: '+qtd80+' empresas concentram 80%. Diversificar carteira é prioridade.';
+    else riscoTxt = '✓ Diversificação saudável: '+qtd80+' empresas pra chegar a 80%.';
+  } else riscoTxt = 'Sem dados suficientes';
+  
+  return {
+    id:'pareto_empresas', icone:'💸',
+    titulo:'Pareto de empresas (Curva ABC)',
+    descricao:'Quantas empresas concentram 80% da receita · '+riscoTxt,
+    cidade:c,
+    colunas:['#','Empresa','Corridas','Receita','% indiv.','% acum.','80%'],
+    linhas:linhas,
+    vazio: lista.length === 0,
+    kpis:[
+      { label:'Total empresas', valor:lista.length, cor:'#1AB8F0' },
+      { label:'Concentram 80%', valor:(indice80>=0?(indice80+1):'—'), cor: indice80 >= 0 && indice80 < 5 ? '#E24B4A' : '#1D9E75' },
+      { label:'Receita total', valor:'R$ '+totalRec.toFixed(0), cor:'#1D9E75' }
+    ]
+  };
+}
+
+/* 1️⃣5️⃣ PARETO DE MOTOBOYS (sem valor — colaborador pode ver) */
+function _gen_pareto_motoboys(d){
+  var c = _rlGetCidade();
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var porMb = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    var id = x.condutor_id || x.taxista_id;
+    if(!id) return;
+    var nome = (x.nome_condutor || x.nome_taxista || '').trim() || ('Motoboy '+id);
+    if(!porMb[id]) porMb[id] = { nome:nome, corridas:0 };
+    porMb[id].corridas++;
+  });
+  
+  var lista = Object.values(porMb).sort(function(a,b){return b.corridas - a.corridas;});
+  var totalCorr = lista.reduce(function(s,m){return s+m.corridas;},0);
+  
+  var acumulado = 0, indice80 = -1;
+  lista.forEach(function(m, i){
+    acumulado += m.corridas;
+    if(indice80 < 0 && totalCorr > 0 && acumulado / totalCorr >= 0.8) indice80 = i;
+  });
+  
+  acumulado = 0;
+  var linhas = lista.slice(0, 30).map(function(m, i){
+    acumulado += m.corridas;
+    var pctInd = totalCorr > 0 ? (m.corridas / totalCorr * 100).toFixed(1)+'%' : '—';
+    var pctAcum = totalCorr > 0 ? (acumulado / totalCorr * 100).toFixed(1)+'%' : '—';
+    var status = i <= indice80 ? '🔴 80%' : '';
+    return [(i+1)+'º', m.nome, m.corridas, pctInd, pctAcum, status];
+  });
+  
+  var riscoTxt;
+  if(indice80 >= 0){
+    var qtd80 = indice80 + 1;
+    if(qtd80 <= 5) riscoTxt = '⚠️ Concentração extrema: '+qtd80+' motoboys fazem 80% das corridas. Risco operacional alto.';
+    else if(qtd80 <= 15) riscoTxt = '⚠️ Concentração moderada: '+qtd80+' motoboys fazem 80%. Investir na base.';
+    else riscoTxt = '✓ Rede equilibrada: '+qtd80+' motoboys pra chegar a 80%.';
+  } else riscoTxt = 'Sem dados suficientes';
+  
+  return {
+    id:'pareto_motoboys', icone:'💸',
+    titulo:'Pareto de motoboys (Curva ABC)',
+    descricao:'Quantos motoboys concentram 80% das corridas · '+riscoTxt,
+    cidade:c,
+    colunas:['#','Motoboy','Corridas','% indiv.','% acum.','80%'],
+    linhas:linhas,
+    vazio: lista.length === 0,
+    kpis:[
+      { label:'Total motoboys', valor:lista.length, cor:'#1AB8F0' },
+      { label:'Concentram 80%', valor:(indice80>=0?(indice80+1):'—'), cor: indice80 >= 0 && indice80 < 5 ? '#E24B4A' : '#1D9E75' },
+      { label:'Corridas no período', valor:totalCorr.toLocaleString('pt-BR'), cor:'#EF9F27' }
+    ]
+  };
+}
+
+/* ============================================================ */
+/* FASE 3 — COMPARATIVOS MULTI-CIDADE                            */
+/* ============================================================ */
+
+function _rlCidadeMetricas(dadosCidade){
+  var d = dadosCidade.dados;
+  var periodo = _RL.periodo;
+  var hoje = new Date(d.hojeStr+'T00:00:00');
+  var inicio = new Date(hoje); inicio.setDate(inicio.getDate()-periodo);
+  
+  var corridas = 0, finalizadas = 0, canceladas = 0, receita = 0;
+  var motoboysAtivos = {}, empresasAtivas = {};
+  (d.corridas45d||[]).forEach(function(x){
+    var dt = new Date(x.data_solicitacao || x.data || x.created_at);
+    if(isNaN(dt.getTime()) || dt < inicio) return;
+    corridas++;
+    if(x.status === 'F'){ finalizadas++; receita += parseFloat(x.valor||0); }
+    if(x.status === 'C') canceladas++;
+    if(x.condutor_id) motoboysAtivos[x.condutor_id] = true;
+    if(x.empresa_id) empresasAtivas[x.empresa_id] = true;
+  });
+  
+  var motoCad = (d.condutores||[]).filter(function(x){return x.status==='A';}).length;
+  var empCad = (d.empresas||[]).filter(function(x){return x.status==='A';}).length;
+  
+  return {
+    corridas:corridas,
+    finalizadas:finalizadas,
+    canceladas:canceladas,
+    taxaConclusao: corridas > 0 ? (finalizadas/corridas*100) : 0,
+    receita:receita,
+    ticket: finalizadas > 0 ? receita/finalizadas : 0,
+    motoboysAtivos: Object.keys(motoboysAtivos).length,
+    motoboysCad:motoCad,
+    pctMotoboys: motoCad > 0 ? Object.keys(motoboysAtivos).length/motoCad*100 : 0,
+    empresasAtivas: Object.keys(empresasAtivas).length,
+    empresasCad:empCad,
+    pctEmpresas: empCad > 0 ? Object.keys(empresasAtivas).length/empCad*100 : 0
+  };
+}
+
+/* 1️⃣6️⃣ CIDADES LADO A LADO */
+function _gen_cidades_lado_a_lado_multi(dadosTodas){
+  var cidadesData = Object.values(dadosTodas);
+  
+  var linhas = cidadesData.map(function(cd){
+    var m = _rlCidadeMetricas(cd);
+    return {
+      c:cd.cidade, m:m,
+      row: [
+        cd.cidade.nome+'/'+cd.cidade.uf,
+        m.corridas.toLocaleString('pt-BR'),
+        m.taxaConclusao.toFixed(1)+'%',
+        'R$ '+m.receita.toFixed(0),
+        'R$ '+m.ticket.toFixed(2),
+        m.motoboysAtivos+'/'+m.motoboysCad+' ('+m.pctMotoboys.toFixed(0)+'%)',
+        m.empresasAtivas+'/'+m.empresasCad+' ('+m.pctEmpresas.toFixed(0)+'%)'
+      ]
+    };
+  });
+  
+  // Ordena por receita
+  linhas.sort(function(a,b){return b.m.receita - a.m.receita;});
+  
+  var totalCorr = linhas.reduce(function(s,l){return s+l.m.corridas;},0);
+  var totalRec = linhas.reduce(function(s,l){return s+l.m.receita;},0);
+  
+  return {
+    id:'cidades_lado_a_lado', icone:'🏙️',
+    titulo:'Todas as cidades lado a lado',
+    descricao:'Comparativo das '+linhas.length+' cidades nos últimos '+_RL.periodo+' dias',
+    cidade:{nome:'Rede Gâmi', uf:'BR'},
+    colunas:['Cidade','Corridas','Conclusão','Receita','Ticket','Motoboys','Empresas'],
+    linhas:linhas.map(function(l){return l.row;}),
+    vazio: linhas.length === 0,
+    kpis:[
+      { label:'Cidades', valor:linhas.length, cor:'#1AB8F0' },
+      { label:'Corridas totais', valor:totalCorr.toLocaleString('pt-BR'), cor:'#EF9F27' },
+      { label:'Receita total', valor:'R$ '+totalRec.toFixed(0), cor:'#1D9E75' }
+    ]
+  };
+}
+
+/* 1️⃣7️⃣ COMPARAR 2 CIDADES */
+function _gen_compare_duas_multi(dadosTodas){
+  var cidadesArr = Object.values(dadosTodas);
+  
+  if(!_RL.cidadeA) _RL.cidadeA = cidadesArr[0] && cidadesArr[0].cidade.id;
+  if(!_RL.cidadeB) _RL.cidadeB = cidadesArr[1] && cidadesArr[1].cidade.id;
+  
+  var cA = dadosTodas[_RL.cidadeA];
+  var cB = dadosTodas[_RL.cidadeB];
+  
+  if(!cA || !cB){
+    return { id:'compare_duas', icone:'🆚', titulo:'Comparar 2 cidades', descricao:'Escolha 2 cidades pra comparar', cidade:{nome:'Rede Gâmi', uf:'BR'}, colunas:[], linhas:[], vazio:true };
+  }
+  
+  var mA = _rlCidadeMetricas(cA);
+  var mB = _rlCidadeMetricas(cB);
+  
+  function diff(a, b, formato){
+    var d = a - b;
+    var pct = b > 0 ? ((a-b)/b*100).toFixed(1) : '—';
+    var icone = d > 0 ? '🟢' : d < 0 ? '🔴' : '⚪';
+    return icone+' '+(d>=0?'+':'')+pct+'%';
+  }
+  
+  var linhas = [
+    ['Corridas no período', mA.corridas, mB.corridas, diff(mA.corridas, mB.corridas)],
+    ['Taxa de conclusão', mA.taxaConclusao.toFixed(1)+'%', mB.taxaConclusao.toFixed(1)+'%', diff(mA.taxaConclusao, mB.taxaConclusao)],
+    ['Receita', 'R$ '+mA.receita.toFixed(0), 'R$ '+mB.receita.toFixed(0), diff(mA.receita, mB.receita)],
+    ['Ticket médio', 'R$ '+mA.ticket.toFixed(2), 'R$ '+mB.ticket.toFixed(2), diff(mA.ticket, mB.ticket)],
+    ['Motoboys ativos', mA.motoboysAtivos+'/'+mA.motoboysCad, mB.motoboysAtivos+'/'+mB.motoboysCad, diff(mA.motoboysAtivos, mB.motoboysAtivos)],
+    ['Engajamento motoboys', mA.pctMotoboys.toFixed(1)+'%', mB.pctMotoboys.toFixed(1)+'%', diff(mA.pctMotoboys, mB.pctMotoboys)],
+    ['Empresas ativas', mA.empresasAtivas+'/'+mA.empresasCad, mB.empresasAtivas+'/'+mB.empresasCad, diff(mA.empresasAtivas, mB.empresasAtivas)],
+    ['Ativação empresas', mA.pctEmpresas.toFixed(1)+'%', mB.pctEmpresas.toFixed(1)+'%', diff(mA.pctEmpresas, mB.pctEmpresas)]
+  ];
+  
+  var optsA = cidadesArr.map(function(x){
+    return '<option value="'+x.cidade.id+'"'+(x.cidade.id===_RL.cidadeA?' selected':'')+'>'+x.cidade.nome+'</option>';
+  }).join('');
+  var optsB = cidadesArr.map(function(x){
+    return '<option value="'+x.cidade.id+'"'+(x.cidade.id===_RL.cidadeB?' selected':'')+'>'+x.cidade.nome+'</option>';
+  }).join('');
+  
+  return {
+    id:'compare_duas', icone:'🆚',
+    titulo:'Comparar 2 cidades',
+    descricao:cA.cidade.nome+' (A) vs '+cB.cidade.nome+' (B) · diferença mostra "A em relação a B"',
+    cidade:{nome:'Rede Gâmi', uf:'BR'},
+    colunas:['Métrica', cA.cidade.nome+' (A)', cB.cidade.nome+' (B)', 'Diferença'],
+    linhas:linhas,
+    vazio:false,
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px">A: <select onchange="_RL.cidadeA=this.value;_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'+optsA+'</select></label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px">B: <select onchange="_RL.cidadeB=this.value;_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'+optsB+'</select></label>'
+    +'</div>'
+  };
+}
+
+/* 1️⃣8️⃣ RANKING DE GESTORES */
+function _gen_ranking_gestores_multi(dadosTodas){
+  var cidadesArr = Object.values(dadosTodas);
+  
+  var lista = cidadesArr.map(function(cd){
+    var m = _rlCidadeMetricas(cd);
+    var scoreVol = Math.min(100, m.corridas / _RL.periodo / 50 * 100);
+    var scoreConc = m.taxaConclusao;
+    var scoreMoto = m.pctMotoboys;
+    var scoreEmp = m.pctEmpresas;
+    var score = Math.round(scoreVol*0.25 + scoreConc*0.30 + scoreMoto*0.25 + scoreEmp*0.20);
+    return { cidade:cd.cidade, m:m, score:Math.min(100, Math.max(0, score)) };
+  });
+  
+  lista.sort(function(a,b){return b.score - a.score;});
+  
+  var linhas = lista.map(function(item, i){
+    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
+    var scoreIcone = item.score >= 80 ? '🟢' : item.score >= 60 ? '🔵' : item.score >= 40 ? '🟡' : '🔴';
+    return [medal, item.cidade.gestor||'—', item.cidade.nome+'/'+item.cidade.uf, item.m.corridas, item.m.taxaConclusao.toFixed(1)+'%', scoreIcone+' '+item.score+'/100'];
+  });
+  
+  return {
+    id:'ranking_gestores', icone:'🏆',
+    titulo:'Ranking de gestores',
+    descricao:'Performance comparativa dos gestores das 11 cidades · Score = volume(25) + conclusão(30) + motoboys(25) + empresas(20)',
+    cidade:{nome:'Rede Gâmi', uf:'BR'},
+    colunas:['Pos','Gestor','Cidade','Corridas','Conclusão','Score'],
+    linhas:linhas,
+    vazio:false,
+    kpis:[
+      { label:'🥇 Top 1', valor:(lista[0] && lista[0].cidade.gestor) || '—', cor:'#FFD700' },
+      { label:'Score médio', valor:Math.round(lista.reduce(function(s,i){return s+i.score;},0)/Math.max(1,lista.length))+'/100', cor:'#1AB8F0' }
+    ]
+  };
+}
+
+
+function _rlRenderResultado(r){
+  var host = document.getElementById('rl-content');
+  if(!host || !r) return;
+  
+  var cidadeLabel = r.cidade ? (r.cidade.nome+'/'+r.cidade.uf) : '—';
+  
+  var html = '';
+  
+  // Cabeçalho do relatório
+  html += '<div style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-radius:12px;padding:18px 20px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">'
+      +'<div style="flex:1;min-width:200px">'
+        +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
+          +'<span style="font-size:24px">'+r.icone+'</span>'
+          +'<h2 style="margin:0;font-family:\'Syne\',sans-serif;font-size:20px;font-weight:800;color:var(--text)">'+r.titulo+'</h2>'
+        +'</div>'
+        +'<div style="font-size:12px;color:var(--text2);margin-bottom:4px">'+r.descricao+'</div>'
+        +'<div style="font-size:11px;color:var(--text3)"><strong>🏙️ '+cidadeLabel+'</strong> · 📅 Últimos '+_RL.periodo+' dias</div>'
+        + (r.filtros || '')
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +'<button onclick="_rlCopiarLista()" style="font-size:11px;padding:7px 12px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:#0E7AB8;cursor:pointer;font-family:inherit;font-weight:600">📋 Copiar</button>'
+        +'<button onclick="_rlBaixarPDF()" style="font-size:11px;padding:7px 12px;border:1px solid #8B5CF6;border-radius:6px;background:#8B5CF6;color:white;cursor:pointer;font-family:inherit;font-weight:600">📄 PDF</button>'
+        +'<button onclick="_rlBaixarCSV()" style="font-size:11px;padding:7px 12px;border:1px solid #1D9E75;border-radius:6px;background:white;color:#1D9E75;cursor:pointer;font-family:inherit;font-weight:600">📊 CSV</button>'
+      +'</div>'
+    +'</div>'
+  +'</div>';
+  
+  // KPIs (se houver)
+  if(r.kpis && r.kpis.length){
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">';
+    r.kpis.forEach(function(k){
+      html += '<div style="padding:12px 14px;background:white;border:1px solid var(--border);border-left:4px solid '+k.cor+';border-radius:8px">'
+        +'<div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">'+k.label+'</div>'
+        +'<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:'+k.cor+';margin-top:2px">'+k.valor+'</div>'
+      +'</div>';
+    });
+    html += '</div>';
+  }
+  
+  // Gráfico (se houver)
+  if(r.grafico){
+    html += r.grafico;
+  }
+  
+  // Resultado: tabela ou vazio
+  if(r.vazio){
+    html += '<div style="padding:50px 20px;text-align:center;background:#EAF3DE;border:1px solid #1D9E7555;border-radius:12px">'
+      +'<div style="font-size:38px;margin-bottom:8px">✨</div>'
+      +'<div style="font-size:14px;font-weight:700;color:#1D5E11;margin-bottom:4px">Nenhum resultado!</div>'
+      +'<div style="font-size:12px;color:var(--text3);max-width:400px;margin:0 auto">Não há registros que se encaixem nos filtros atuais.</div>'
+    +'</div>';
+  } else {
+    // Tabela
+    html += '<div style="background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden">'
+      +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+        +'<thead><tr style="background:var(--surface2);border-bottom:2px solid var(--border)">'
+          + r.colunas.map(function(col){
+            return '<th style="padding:10px 12px;text-align:left;font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap">'+col+'</th>';
+          }).join('')
+          + (r.podeWhatsApp ? '<th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase">Ação</th>' : '')
+        +'</tr></thead>'
+        +'<tbody>'
+          + r.linhas.map(function(row, idx){
+            var bg = idx % 2 === 0 ? 'white' : '#FAFAFB';
+            var rowHtml = '<tr style="background:'+bg+';border-bottom:1px solid var(--border)">'
+              + row.map(function(cell, ci){
+                return '<td style="padding:9px 12px;color:var(--text)">'+ (cell !== null && cell !== undefined ? cell : '—') +'</td>';
+              }).join('');
+            
+            // Botão WhatsApp se aplicável (precisa que a última coluna seja telefone)
+            if(r.podeWhatsApp){
+              var tel = String(row[row.length-1] || '').replace(/\D/g,'');
+              if(tel.length >= 10){
+                var nome = row[0] || row[1] || ''; // 1ª coluna geralmente nome (ou 2ª se tiver # antes)
+                if(typeof nome === 'string' && nome.match(/^\d+º$/)) nome = row[1];
+                var msg = encodeURIComponent('Oi! Aqui é da Gâmi 👋');
+                rowHtml += '<td style="padding:9px 12px;text-align:right">'
+                  +'<a href="https://wa.me/55'+tel+'?text='+msg+'" target="_blank" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:4px 9px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600">📱 WhatsApp</a>'
+                +'</td>';
+              } else {
+                rowHtml += '<td style="padding:9px 12px;text-align:right;color:var(--text3);font-size:10px">sem nº</td>';
+              }
+            }
+            return rowHtml + '</tr>';
+          }).join('')
+        +'</tbody>'
+      +'</table></div>'
+      +'<div style="padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);font-size:11px;color:var(--text3);text-align:right">'
+        +'<strong>'+r.linhas.length+'</strong> registro'+(r.linhas.length!==1?'s':'')+' · Gerado '+new Date().toLocaleString('pt-BR')
+      +'</div>'
+    +'</div>';
+  }
+  
+  host.innerHTML = html;
+}
+
+/* ============================================================ */
+/* EXPORTAÇÃO                                                     */
+/* ============================================================ */
+
+function _rlCopiarLista(){
+  var r = _RL.resultadoAtual;
+  if(!r){ alert('Nada pra copiar'); return; }
+  var cidadeLabel = r.cidade ? (r.cidade.nome+'/'+r.cidade.uf) : '';
+  var texto = '📊 '+r.titulo+' — '+cidadeLabel+'\n';
+  texto += '('+r.descricao+')\n\n';
+  
+  if(r.vazio){
+    texto += 'Nenhum resultado!\n';
+  } else {
+    // Tabela em texto formato
+    r.linhas.forEach(function(row, i){
+      texto += (i+1)+'. ';
+      texto += row.map(function(c, ci){
+        return r.colunas[ci]+': '+c;
+      }).join(' · ');
+      texto += '\n';
+    });
+    texto += '\nTotal: '+r.linhas.length+' registros\n';
+  }
+  texto += '\nGerado em '+new Date().toLocaleString('pt-BR')+' pelo Dashboard Gâmi';
+  
+  // Copia
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(function(){
+      if(typeof toast === 'function') toast('Copiado! Cole no WhatsApp ou onde quiser', 'success');
+      else alert('✓ Copiado!');
+    });
+  } else {
+    // Fallback
+    var ta = document.createElement('textarea');
+    ta.value = texto;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('✓ Copiado!');
+  }
+}
+
+function _rlBaixarCSV(){
+  var r = _RL.resultadoAtual;
+  if(!r){ alert('Nada pra exportar'); return; }
+  
+  var cidadeLabel = r.cidade ? (r.cidade.nome+'_'+r.cidade.uf) : 'sem_cidade';
+  var nomeArquivo = r.id+'_'+cidadeLabel+'_'+new Date().toISOString().split('T')[0]+'.csv';
+  
+  function csvEscape(v){
+    var s = String(v == null ? '' : v);
+    if(s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0){
+      return '"'+s.replace(/"/g,'""')+'"';
+    }
+    return s;
+  }
+  
+  var linhas = [r.colunas.map(csvEscape).join(',')];
+  r.linhas.forEach(function(row){
+    linhas.push(row.map(csvEscape).join(','));
+  });
+  
+  var csv = '\ufeff' + linhas.join('\n'); // BOM pra Excel reconhecer UTF-8
+  var blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  if(typeof toast === 'function') toast('CSV baixado!', 'success');
+}
+
+function _rlBaixarPDF(){
+  var r = _RL.resultadoAtual;
+  if(!r){ alert('Nada pra exportar'); return; }
+  
+  var cidadeLabel = r.cidade ? (r.cidade.nome+'/'+r.cidade.uf) : '—';
+  var w = window.open('', '_blank', 'width=900,height=1000');
+  if(!w){ alert('Permita popups pra baixar o PDF'); return; }
+  
+  var tabelaHtml = '';
+  if(r.vazio){
+    tabelaHtml = '<div style="padding:40px;text-align:center;background:#F9FAFB;border-radius:8px"><div style="font-size:36px;margin-bottom:8px">✨</div><div style="font-size:13px;font-weight:600">Nenhum resultado nos filtros atuais</div></div>';
+  } else {
+    tabelaHtml = '<table style="width:100%;border-collapse:collapse;font-size:11px">'
+      +'<thead><tr style="background:#F3E8FF;border-bottom:2px solid #8B5CF6">'
+      + r.colunas.map(function(col){
+        return '<th style="padding:8px 10px;text-align:left;font-size:10px;color:#6A1B9A;font-weight:700;text-transform:uppercase">'+col+'</th>';
+      }).join('') + '</tr></thead><tbody>'
+      + r.linhas.map(function(row, idx){
+        var bg = idx % 2 === 0 ? '#FFFFFF' : '#FAFAFB';
+        return '<tr style="background:'+bg+';border-bottom:1px solid #E5E7EB">'
+          + row.map(function(c){ return '<td style="padding:7px 10px">'+(c==null?'—':c)+'</td>'; }).join('')
+        + '</tr>';
+      }).join('') + '</tbody></table>';
+  }
+  
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+r.titulo+'</title>'
+    +'<style>'
+      +'@page { size: A4; margin: 14mm; }'
+      +'body { font-family: -apple-system, "Segoe UI", Arial, sans-serif; color: #1a1a1a; padding: 20px; max-width: 900px; margin: 0 auto; }'
+      +'.brand { display:flex; align-items:center; justify-content:space-between; padding-bottom:12px; border-bottom:1px solid #E5E7EB; margin-bottom:18px }'
+      +'.logo { display:flex; align-items:center; gap:10px }'
+      +'.logo-circle { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#EF9F27,#F3B95E); display:flex; align-items:center; justify-content:center; font-size:17px; font-weight:800; color:white }'
+      +'.titulo-rel { font-family: "Syne", sans-serif; font-size:22px; font-weight:800; color:#0D2B5C; margin:8px 0 4px }'
+      +'.subt { font-size:12px; color:#6B7280; margin-bottom:14px }'
+      +'.btn-print { position:fixed; top:16px; right:16px; padding:12px 22px; background:#8B5CF6; color:white; border:none; border-radius:10px; cursor:pointer; font-size:14px; font-weight:700; box-shadow:0 4px 14px rgba(0,0,0,.15); font-family:inherit; z-index:9999 }'
+      +'@media print { .no-print { display:none !important; } body { padding:0 } }'
+      +'.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin:0 0 14px }'
+      +'.kpi { padding:10px 12px; background:white; border:1px solid #E5E7EB; border-radius:8px }'
+      +'.kpi-label { font-size:9px; color:#6B7280; font-weight:700; text-transform:uppercase }'
+      +'.kpi-val { font-family:Syne,sans-serif; font-size:20px; font-weight:800; line-height:1.1; margin-top:2px }'
+    +'</style></head><body>'
+    +'<button class="btn-print no-print" onclick="window.print()">🖨️ Baixar PDF</button>'
+    +'<div class="brand">'
+      +'<div class="logo">'
+        +'<div class="logo-circle">G</div>'
+        +'<div><div style="font-size:16px;font-weight:800;color:#0D2B5C">Gâmi Delivery</div><div style="font-size:10px;color:#6B7280;letter-spacing:1px;text-transform:uppercase;margin-top:1px">Relatório Operacional</div></div>'
+      +'</div>'
+      +'<div style="font-size:10px;color:#6B7280;text-align:right">'+new Date().toLocaleDateString('pt-BR')+'</div>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;color:#6A1B9A;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase"><span>'+r.icone+'</span>'+r.id+'</div>'
+    +'<h1 class="titulo-rel">'+r.titulo+'</h1>'
+    +'<div class="subt">'+r.descricao+' · <strong>'+cidadeLabel+'</strong> · Últimos '+_RL.periodo+' dias</div>'
+    + (r.kpis ? '<div class="kpis">'+r.kpis.map(function(k){return '<div class="kpi" style="border-left:3px solid '+k.cor+'"><div class="kpi-label">'+k.label+'</div><div class="kpi-val" style="color:'+k.cor+'">'+k.valor+'</div></div>';}).join('')+'</div>' : '')
+    + tabelaHtml
+    +'<div style="margin-top:30px;padding-top:12px;border-top:2px solid #8B5CF6;font-size:10px;color:#6B7280;display:flex;justify-content:space-between"><span><strong style="color:#0D2B5C">Gâmi Delivery</strong> · Gerado em '+new Date().toLocaleString('pt-BR')+'</span><span style="padding:3px 8px;background:#F3E8FF;color:#6A1B9A;border-radius:4px;font-weight:600">CONFIDENCIAL</span></div>'
+    +'<scr'+'ipt>setTimeout(function(){window.print();}, 400);</scr'+'ipt>'
+    +'</body></html>';
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+/* ============================================================ */
+/* FIM Aba Relatórios                                            */
+/* ============================================================ */
+
+
 /* Testa conexão Machine pra TODAS as cidades em paralelo
    Tenta condutor primeiro; se falhar, tenta empresa. Mostra erro detalhado. */
 async function testarIntegracaoMachineTodas(){
@@ -9872,6 +11680,7 @@ async function testarIntegracaoMachineTodas(){
   var temCredencial = resultados.some(function(r){return !r.ok && /[Cc]redenciai|[Nn]ao configurada|[Ss]em credencia/.test(r.erro||'');});
   var temMachineErro = resultados.some(function(r){return !r.ok && /Machine retornou erro/.test(r.erro||'');});
   var temErro401 = resultados.some(function(r){return !r.ok && /401|403|[Uu]nauthor/.test(r.erro||'');});
+  var temUserPass = resultados.some(function(r){return !r.ok && /[Uu]su[aá]rio.*senha|senha.*inv[aá]lid/.test(r.erro||'');});
   
   host.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
     +'<div style="display:flex;align-items:center;gap:10px">'
@@ -9909,11 +11718,20 @@ async function testarIntegracaoMachineTodas(){
   
   // Dicas contextualizadas
   if(falhas > 0){
-    var dicas = '<div style="margin-top:12px;padding:10px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:11px;color:#854F0B;line-height:1.55"><strong>💡 Diagnóstico:</strong><br>';
+    var dicas = '<div style="margin-top:12px;padding:12px;background:#FFF8EE;border:1px solid #EF9F2755;border-radius:6px;font-size:11px;color:#854F0B;line-height:1.6"><strong style="font-size:12px">💡 Diagnóstico:</strong><br>';
+    if(temUserPass){
+      dicas += '<br><div style="padding:8px 10px;background:#FCEBEB;border-left:3px solid #E24B4A;border-radius:5px;margin:6px 0"><strong>🔑 Problema identificado: "Usuário e/ou senhas inválidos"</strong><br>'
+        +'A Machine API exige <strong>USUÁRIO + SENHA</strong> (não só a chave API), e o Netlify tá enviando o mesmo par global pra todas as cidades.<br><br>'
+        +'<strong>Maceió funciona</strong> = o <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_USER</code> e <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_PASS</code> do Netlify são da conta de Maceió.<br>'
+        +'<strong>Outras falham</strong> = cada conta da Machine tem usuário e senha próprios.<br><br>'
+        +'<strong>O que fazer:</strong><br>'
+        +'• <strong>Opção 1</strong>: Pedir pro suporte Machine uma chave/conta com acesso a TODAS as 11 cidades<br>'
+        +'• <strong>Opção 2</strong>: Cadastrar usuário+senha de cada cidade no Netlify (<code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_USER_FORTALEZA</code>, <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_PASS_FORTALEZA</code>, etc) + alterar a função <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">machine.js</code> pra ler por cidade</div>';
+    }
     if(temCredencial){
       dicas += '• Algumas cidades dizem <strong>"Credenciais não configuradas"</strong> — falta env var <code style="background:#FAEEDA;padding:1px 5px;border-radius:3px">MACHINE_API_KEY_&lt;NOME&gt;</code> no Netlify pra essa cidade<br>';
     }
-    if(temMachineErro){
+    if(temMachineErro && !temUserPass){
       dicas += '• A maioria dos erros é <strong>"Machine retornou erro (condutor)"</strong> — significa que a chamada chega na Machine API, mas a Machine devolve erro. Pode ser:<br>'
         +'&nbsp;&nbsp;a) Chave foi rotacionada/revogada na Machine — verificar no painel da Machine<br>'
         +'&nbsp;&nbsp;b) Permissão do recurso "condutor" foi removida — verificar perfil da chave<br>'
@@ -9923,7 +11741,7 @@ async function testarIntegracaoMachineTodas(){
       dicas += '• Erro 401/403 = chave Machine inválida ou sem permissão<br>';
     }
     if(sucesso > 0){
-      dicas += '<br><strong>✨ '+resultados.filter(function(r){return r.ok;}).map(function(r){return r.cidade.nome;}).join(', ')+'</strong> tá funcionando — então a função Netlify e o caminho geral estão OK. O problema é específico das chaves/permissões das outras.';
+      dicas += '<br><strong>✨ '+resultados.filter(function(r){return r.ok;}).map(function(r){return r.cidade.nome;}).join(', ')+'</strong> tá funcionando — então a função Netlify e o caminho geral estão OK. O problema é específico das credenciais das outras.';
     }
     dicas += '</div>';
     host.innerHTML += dicas;
