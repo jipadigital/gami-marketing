@@ -256,93 +256,81 @@ async function listarImagensCategoria(categoria) {
   }
 }
 
-// Escolhe a melhor imagem usando IA Claude (ou fallback aleatório inteligente)
+// Escolhe a melhor imagem com ROTAÇÃO INTELIGENTE (anti-repetição)
+// v3 - 02/06/2026 - Determinística baseada em histórico (sem viés de IA)
 async function escolherImagem({ imagens, categoria, horario, anthropicKey, supaUrl, supaKey }) {
-  // Fallback: se não tem Claude, usa rotação inteligente
-  if (!anthropicKey) {
-    return escolherImagemRotacao(imagens, categoria, supaUrl, supaKey);
+  return escolherPorRotacaoInteligente(imagens, categoria, supaUrl, supaKey);
+}
+
+// Lógica anti-repetição:
+//   1. Busca histórico de até 1000 logs (cobre ~110 ciclos = ~3 semanas)
+//   2. Calcula uso de cada imagem (qtd + último uso)
+//   3. Ordena: menos usadas primeiro → em empate, mais antigas
+//   4. Pega top 3 e sorteia entre elas (variação leve)
+async function escolherPorRotacaoInteligente(imagens, categoria, supaUrl, supaKey) {
+  if (!imagens || imagens.length === 0) {
+    throw new Error('Sem imagens disponíveis pra escolher');
+  }
+  
+  // Caso única imagem, retorna ela
+  if (imagens.length === 1) {
+    console.log(`📸 Única imagem disponível em ${categoria}: ${imagens[0].nome}`);
+    return imagens[0];
   }
   
   try {
-    // Busca histórico das últimas postagens dessa categoria
-    const historico = await buscarHistoricoCategoria(categoria, supaUrl, supaKey);
-    const usadasRecente = historico.slice(0, 7).map(h => h.imagem_nome);
+    // Busca histórico amplo (até 1000 logs = ~110 ciclos)
+    const historico = await buscarHistoricoCategoria(categoria, supaUrl, supaKey, 1000);
     
-    // Disponíveis = não usadas nos últimos 7 posts
-    const disponiveis = imagens.filter(img => !usadasRecente.includes(img.nome));
-    const candidatas = disponiveis.length > 0 ? disponiveis : imagens;
-    
-    // Se só tem 1 candidata, retorna direto sem chamar Claude
-    if (candidatas.length === 1) {
-      return candidatas[0];
-    }
-    
-    // Monta prompt pra Claude
-    const dataHoje = new Date().toLocaleDateString('pt-BR', { 
-      weekday: 'long', day: '2-digit', month: '2-digit'
-    });
-    const horaPostagem = horario || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    
-    const prompt = `Você é o gestor de conteúdo do Instagram da Gâmi Delivery (logística brasileira em 9 cidades). 
-Hoje é ${dataHoje}, vamos postar um story às ${horaPostagem}.
-Categoria do conteúdo: ${categoria}
-
-Aqui estão as imagens disponíveis nessa pasta (apenas os nomes dos arquivos):
-${candidatas.map((img, i) => `${i + 1}. ${img.nome}`).join('\n')}
-
-Não foram usadas nos últimos 7 posts. Escolha a MELHOR imagem pra postar agora considerando:
-- Dia da semana e horário
-- Contexto da categoria
-- Variedade (se nome sugere algo específico, ex: "segunda" pra segunda-feira)
-
-Responda APENAS com o NÚMERO da imagem escolhida (1, 2, 3, ...). Nada mais.`;
-
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 50,
-        messages: [{ role: 'user', content: prompt }]
-      })
+    // Estatística de uso por imagem
+    const stats = {};
+    imagens.forEach(img => {
+      stats[img.nome] = { usos: 0, ultimoUso: null, img: img };
     });
     
-    const data = await r.json();
-    const texto = data.content?.[0]?.text || '';
-    const num = parseInt(texto.trim().match(/\d+/)?.[0] || '1');
+    // Conta usos no histórico (só considera imagens que ainda existem na pasta)
+    historico.forEach(h => {
+      const nome = h.imagem_nome;
+      if (!nome || !stats[nome]) return;
+      stats[nome].usos++;
+      if (!stats[nome].ultimoUso || h.postado_em > stats[nome].ultimoUso) {
+        stats[nome].ultimoUso = h.postado_em;
+      }
+    });
     
-    const escolhida = candidatas[num - 1] || candidatas[0];
-    return escolhida;
+    // Ordena: menos usadas > nunca usadas vêm antes > mais antigas
+    const ranking = Object.values(stats).sort((a, b) => {
+      if (a.usos !== b.usos) return a.usos - b.usos;
+      if (!a.ultimoUso && b.ultimoUso) return -1;
+      if (!b.ultimoUso && a.ultimoUso) return 1;
+      if (!a.ultimoUso && !b.ultimoUso) return 0;
+      return new Date(a.ultimoUso) - new Date(b.ultimoUso);
+    });
+    
+    // Top 3 candidatas pra adicionar leve aleatoriedade
+    const top = ranking.slice(0, Math.min(3, ranking.length));
+    const escolhida = top[Math.floor(Math.random() * top.length)];
+    
+    console.log(`📸 [${categoria}] Escolha: ${escolhida.img.nome} (${escolhida.usos} usos | último: ${escolhida.ultimoUso || 'nunca'})`);
+    console.log(`📸 [${categoria}] Top 3: ${top.map(t => `${t.img.nome}(${t.usos})`).join(', ')}`);
+    
+    return escolhida.img;
     
   } catch (e) {
-    console.warn('Claude falhou, usando fallback:', e.message);
-    return escolherImagemRotacao(imagens, categoria, supaUrl, supaKey);
-  }
-}
-
-// Fallback: escolhe imagem aleatória que NÃO foi usada recentemente
-async function escolherImagemRotacao(imagens, categoria, supaUrl, supaKey) {
-  try {
-    const historico = await buscarHistoricoCategoria(categoria, supaUrl, supaKey);
-    const usadasRecente = historico.slice(0, 7).map(h => h.imagem_nome);
-    
-    const disponiveis = imagens.filter(img => !usadasRecente.includes(img.nome));
-    const pool = disponiveis.length > 0 ? disponiveis : imagens;
-    
-    return pool[Math.floor(Math.random() * pool.length)];
-  } catch (e) {
+    console.warn('Rotação inteligente falhou, sorteio simples:', e.message);
     return imagens[Math.floor(Math.random() * imagens.length)];
   }
 }
 
+// Mantida pra compatibilidade (não é mais usada diretamente)
+async function escolherImagemRotacao(imagens, categoria, supaUrl, supaKey) {
+  return escolherPorRotacaoInteligente(imagens, categoria, supaUrl, supaKey);
+}
+
 // Busca últimas postagens dessa categoria
-async function buscarHistoricoCategoria(categoria, supaUrl, supaKey) {
+async function buscarHistoricoCategoria(categoria, supaUrl, supaKey, limit = 1000) {
   try {
-    const r = await fetch(`${supaUrl}/rest/v1/stories_log?categoria=eq.${categoria}&status=eq.postado&order=postado_em.desc&limit=15`, {
+    const r = await fetch(`${supaUrl}/rest/v1/stories_log?categoria=eq.${categoria}&status=eq.postado&order=postado_em.desc&limit=${limit}`, {
       headers: {
         'apikey': supaKey,
         'Authorization': 'Bearer ' + supaKey
