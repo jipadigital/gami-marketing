@@ -1,4 +1,4 @@
-<!-- v23.84 - Sumidas ATIVAS: filtro frequência + dias_distintos - 02/06/2026 -->
+<!-- v23.85 - Comparativo Visão Geral com Paradas (hoje vs ontem, mês vs mês) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -21491,6 +21491,7 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
   var comp = document.getElementById('cp-comparativo'); if(!comp) return;
   var verFin = podeVerFaturamentoCidade();
 
+  // Corridas (count)
   var nHoje = cDia.length;
   var nOntem = cOntem.length;
   var pctDia = nOntem>0 ? Math.round(((nHoje - nOntem) / nOntem) * 100) : (nHoje>0?100:0);
@@ -21498,6 +21499,22 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
   var nMes = cMes.length;
   var nMesAnt = cMesAnt.length;
   var pctMes = nMesAnt>0 ? Math.round(((nMes - nMesAnt) / nMesAnt) * 100) : (nMes>0?100:0);
+
+  // Paradas (soma de paradas)
+  var sumParadas = function(arr){ 
+    var s=0; 
+    arr.forEach(function(x){ 
+      if(Array.isArray(x.paradas)) s += x.paradas.length;
+    }); 
+    return s; 
+  };
+  var pHoje = sumParadas(cDia);
+  var pOntem = sumParadas(cOntem);
+  var pctParDia = pOntem>0 ? Math.round(((pHoje - pOntem) / pOntem) * 100) : (pHoje>0?100:0);
+  
+  var pMes = sumParadas(cMes);
+  var pMesAnt = sumParadas(cMesAnt);
+  var pctParMes = pMesAnt>0 ? Math.round(((pMes - pMesAnt) / pMesAnt) * 100) : (pMes>0?100:0);
 
   var fmtBR = function(v){ return 'R$ '+v.toFixed(2).replace('.',','); };
   var sumFin = function(arr){ var s=0; arr.forEach(function(x){ if(x.status_solicitacao==='F') s+=parseFloat(x.valor_corrida||0); }); return s; };
@@ -21517,14 +21534,19 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
       + '</div>';
   };
 
-  var html = linha('🛵 Corridas hoje vs ontem', nHoje, nOntem, pctDia, '', false);
-  if(verFin){
-    html += linha('💰 Faturamento hoje vs ontem', fmtBR(fatHoje), fmtBR(fatOntem), pctFatDia, '', false);
-  }
-  html += linha('🛵 Corridas mês vs mês anterior', nMes, nMesAnt, pctMes, '', !verFin);
-  if(verFin){
-    html += linha('💰 Faturamento mês vs mês anterior', fmtBR(fatMes), fmtBR(fatMesAnt), pctFatMes, '', true);
-  }
+  var html = '';
+  // === HOJE vs ONTEM ===
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;padding-top:4px">📅 Hoje vs ontem</div>';
+  html += linha('🛵 Corridas', nHoje, nOntem, pctDia, '', false);
+  html += linha('📦 Paradas (entregas)', pHoje, pOntem, pctParDia, '', false);
+  if(verFin) html += linha('💰 Faturamento', fmtBR(fatHoje), fmtBR(fatOntem), pctFatDia, '', false);
+  
+  // === MES vs MES ANTERIOR ===
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border)">📊 Mês vs mês anterior</div>';
+  html += linha('🛵 Corridas', nMes, nMesAnt, pctMes, '', false);
+  html += linha('📦 Paradas (entregas)', pMes, pMesAnt, pctParMes, '', !verFin);
+  if(verFin) html += linha('💰 Faturamento', fmtBR(fatMes), fmtBR(fatMesAnt), pctFatMes, '', true);
+  
   comp.innerHTML = html;
 }
 
