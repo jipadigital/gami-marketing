@@ -16752,8 +16752,11 @@ var UF_REGIAO = {
 
 /* Renderiza mini-stats no topo (4 cards) */
 function renderCidadesStatsTopo(){
+  // 4 balões removidos a pedido do Cleyton (v23.69b)
   var host = document.getElementById('cidades-stats-topo');
-  if(!host) return;
+  if(host) host.innerHTML = '';
+  return;
+  // Código antigo mantido abaixo (não executa)
   var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
   if(typeof filtrarCidadesPorPermissao === 'function') cidades = filtrarCidadesPorPermissao(cidades);
   if(!cidades.length){ host.innerHTML=''; return; }
@@ -24344,6 +24347,22 @@ function supaHeaders(){
   return {'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY};
 }
 async function supaUpsert(tabela, dados){
+  // ⚡ Rota SEGURA (Netlify Function + service key, contorna RLS)
+  if(typeof _syncEscrever === 'function'){
+    try {
+      var arr = Array.isArray(dados) ? dados : [dados];
+      await _syncEscrever({
+        tabela: tabela,
+        operacao: 'upsert',
+        dados: arr
+      });
+      return true;
+    } catch(e) {
+      console.warn('[supaUpsert via Netlify falhou, tentando direto]', tabela, e && e.message);
+      // Cai pro fallback direto (deve falhar com RLS, mas dá fallback pra cidades sem _syncEscrever)
+    }
+  }
+  // 🔁 Fallback antigo
   try{
     var r=await fetch(SUPA_URL+'/rest/v1/'+tabela+'?on_conflict=id',{
       method:'POST',
@@ -24363,6 +24382,20 @@ async function supaSelect(tabela, filtro){
   return null;
 }
 async function supaDelete(tabela, id){
+  // ⚡ Rota SEGURA
+  if(typeof _syncEscrever === 'function'){
+    try {
+      await _syncEscrever({
+        tabela: tabela,
+        operacao: 'delete',
+        filtro: 'id=eq.'+encodeURIComponent(id)
+      });
+      return true;
+    } catch(e) {
+      console.warn('[supaDelete via Netlify falhou, tentando direto]', tabela, e && e.message);
+    }
+  }
+  // 🔁 Fallback antigo
   try{
     var r=await fetch(SUPA_URL+'/rest/v1/'+tabela+'?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:supaHeaders()});
     return r.ok;
@@ -27898,14 +27931,30 @@ async function tfSupaSalvar(tarefa, tipo, sufixo){
       mensagem_delegacao: tarefa.mensagem_delegacao || null,
       vista_em: tarefa.vista_em || null
     };
-    // Fetch direto pra capturar status code + body do erro
+    
+    // ⚡ Rota SEGURA: vai pela Netlify Function (service key, contorna RLS)
+    if(typeof _syncEscrever === 'function'){
+      try {
+        await _syncEscrever({
+          tabela: 'tarefas',
+          operacao: 'upsert',
+          dados: [row]
+        });
+        return { ok:true, status:200 };
+      } catch(eSync){
+        var msg = eSync && eSync.message ? eSync.message : String(eSync);
+        console.error('[tfSupaSalvar via Netlify]', msg);
+        return { ok:false, status:0, erro: msg };
+      }
+    }
+    
+    // 🔁 FALLBACK (caso _syncEscrever não exista): fetch direto
     var r = await fetch(SUPA_URL+'/rest/v1/tarefas?on_conflict=id', {
       method:'POST',
       headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates,return=representation'}),
       body: JSON.stringify([row])
     });
     if(r.ok) return { ok:true, status:r.status };
-    // Captura o body do erro pra diagnóstico
     var bodyErro = '';
     try { bodyErro = await r.text(); } catch(e){}
     var erroDetalhe = '';
@@ -27920,16 +27969,29 @@ async function tfSupaSalvar(tarefa, tipo, sufixo){
     } else {
       erroDetalhe = 'Supabase HTTP '+r.status+(bodyErro ? ' — '+bodyErro.slice(0,200) : '');
     }
-    console.error('[tfSupaSalvar]', erroDetalhe, bodyErro);
+    console.error('[tfSupaSalvar fallback]', erroDetalhe, bodyErro);
     return { ok:false, status:r.status, erro:erroDetalhe, body:bodyErro };
   }catch(e){ 
     return { ok:false, status:0, erro:'Rede: '+(e.message||e) };
   }
 }
 
-/* Apaga tarefa do Supabase */
+/* Apaga tarefa do Supabase — rota segura */
 async function tfSupaApagar(id){
-  try{ return await supaDelete('tarefas', id); }catch(e){ return false; }
+  try{
+    if(typeof _syncEscrever === 'function'){
+      await _syncEscrever({
+        tabela: 'tarefas',
+        operacao: 'delete',
+        filtro: 'id=eq.'+encodeURIComponent(id)
+      });
+      return true;
+    }
+    return await supaDelete('tarefas', id);
+  }catch(e){
+    console.warn('[tfSupaApagar]', e);
+    return false;
+  }
 }
 
 /* Busca tarefas delegadas PRA MIM que ainda não vi (pro badge/notif) */
