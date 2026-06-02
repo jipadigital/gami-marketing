@@ -90,12 +90,24 @@ async function validarSessao(userId, token){
       }
     }
     
-    // Busca o nivel na tabela pessoas
-    const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,super_admin&limit=1', {
+    // Busca o nivel na tabela pessoas (super_admin pode estar em 'nivel' OU 'niveis' array)
+    const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,niveis,cargo&limit=1', {
       headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer '+SUPA_ANON_KEY }
     });
     const arrP = await rP.json();
     const pessoa = (Array.isArray(arrP) && arrP[0]) ? arrP[0] : null;
+    
+    // super_admin pode estar em:
+    // - nivel === 'super_admin'  (string)
+    // - niveis array contém 'super_admin'  (array)
+    // - cargo === 'super_admin' ou 'Super Admin' (string)
+    function ehSuperAdmin(p){
+      if(!p) return false;
+      if(p.nivel === 'super_admin') return true;
+      if(Array.isArray(p.niveis) && p.niveis.indexOf('super_admin') >= 0) return true;
+      if(typeof p.cargo === 'string' && p.cargo.toLowerCase().replace(/\s/g,'_') === 'super_admin') return true;
+      return false;
+    }
     
     return { 
       valido: true, 
@@ -103,7 +115,9 @@ async function validarSessao(userId, token){
         id: userId, 
         nome: u.nome,
         nivel: pessoa ? pessoa.nivel : null,
-        super_admin: pessoa ? (pessoa.super_admin === true || pessoa.nivel === 'super_admin') : false
+        niveis: pessoa ? pessoa.niveis : null,
+        cargo: pessoa ? pessoa.cargo : null,
+        super_admin: ehSuperAdmin(pessoa)
       } 
     };
   } catch(e){
