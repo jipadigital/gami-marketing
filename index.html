@@ -1,4 +1,4 @@
-<!-- v23.67 - 10 relatorios Operacionais+Financeiros migrados pro Supabase - 02/06/2026 -->
+<!-- v23.68 - Comparativos via Supabase (fase 3 final) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11403,10 +11403,36 @@ async function _rlGerarRelatorio(id, dados){
 /* Comparativos: pré-carrega dados de TODAS as cidades antes de gerar */
 async function _rlGerarERenderizar_Comparativo(){
   var host = document.getElementById('rl-content');
+  var periodo = _RL.periodo || 30;
+  
+  // ⚡ TENTA SUPABASE PRIMEIRO (instantâneo)
+  host.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text3)">'
+    +'<div style="font-size:38px;margin-bottom:12px">⚡</div>'
+    +'<div style="font-size:13px">Carregando comparativo da rede...</div>'
+  +'</div>';
+  
+  try {
+    var dadosRede = await _rlSupaRPC('rel_rede_visao_geral', { p_dias: periodo });
+    
+    if(dadosRede && dadosRede.length > 0){
+      var resultado;
+      if(_RL.relatorioAtual === 'cidades_lado_a_lado') resultado = _sb_cidades_lado_a_lado(dadosRede);
+      else if(_RL.relatorioAtual === 'compare_duas') resultado = _sb_compare_duas(dadosRede);
+      else if(_RL.relatorioAtual === 'ranking_gestores') resultado = _sb_ranking_gestores(dadosRede);
+      else throw new Error('Comparativo não implementado');
+      _RL.resultadoAtual = resultado;
+      _rlRenderResultado(resultado);
+      return;
+    }
+  } catch(e){
+    console.warn('[Comparativo Supabase falhou, fallback Machine]', e);
+  }
+  
+  // 🔁 FALLBACK: pré-carrega Machine (modo antigo)
   host.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text3)">'
     +'<div style="font-size:38px;margin-bottom:12px">📡</div>'
-    +'<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px">Carregando dados das 11 cidades...</div>'
-    +'<div style="font-size:11px;margin-top:6px">Comparativos precisam de todas. Pode levar 1-2 minutos na primeira vez.</div>'
+    +'<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px">Carregando dados das 11 cidades (modo Machine)...</div>'
+    +'<div style="font-size:11px;margin-top:6px">Sem dados Supabase. Buscando direto da Machine — pode levar 1-2 minutos.</div>'
     +'<div id="rl-comp-prog" style="margin-top:14px;font-size:11px;color:var(--text2)">0/11 cidades carregadas</div>'
   +'</div>';
   
@@ -11440,6 +11466,205 @@ async function _rlGerarERenderizar_Comparativo(){
     console.error('[Comparativo]', e);
     host.innerHTML = '<div style="padding:20px;background:#FCEBEB;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D">⚠️ Erro: '+e.message+'</div>';
   }
+}
+
+/* ============================================================ */
+/* COMPARATIVOS via Supabase (rápidos — 1 query pra toda rede)   */
+/* ============================================================ */
+
+// Helper: dado um slug, retorna o objeto cidade do client (nome, uf, gestor, etc)
+function _rlCidadePorSlug(slug){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  // Tenta match direto
+  var c = cidades.find(function(x){
+    var xs = _rlNormalSlug(x.id) || _rlNormalSlug(x.nome);
+    return xs === slug;
+  });
+  if(c) return c;
+  // Tenta normalizando o slug
+  return cidades.find(function(x){
+    return _rlNormalSlug(x.nome) === slug;
+  });
+}
+
+function _rlNormalSlug(s){
+  if(!s) return '';
+  return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+}
+
+/* ─── 17) CIDADES LADO A LADO (Supabase) ─── */
+function _sb_cidades_lado_a_lado(dadosRede){
+  var periodo = _RL.periodo || 30;
+  
+  var linhas = dadosRede.map(function(d){
+    var c = _rlCidadePorSlug(d.cidade_slug) || { nome: d.cidade_slug, uf:'?', gestor:'' };
+    return {
+      cidade: c,
+      receita: parseFloat(d.receita_total || 0),
+      row: [
+        c.nome+'/'+(c.uf||'?'),
+        parseInt(d.total_corridas).toLocaleString('pt-BR'),
+        parseFloat(d.taxa_finalizacao)+'%',
+        'R$ '+parseFloat(d.receita_total).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+        'R$ '+parseFloat(d.ticket_medio).toFixed(2).replace('.',','),
+        parseInt(d.motoboys_unicos).toLocaleString('pt-BR'),
+        parseInt(d.empresas_unicas).toLocaleString('pt-BR')
+      ]
+    };
+  });
+  
+  linhas.sort(function(a,b){ return b.receita - a.receita; });
+  
+  var totalCorr = dadosRede.reduce(function(s,d){return s + parseInt(d.total_corridas||0);},0);
+  var totalRec = dadosRede.reduce(function(s,d){return s + parseFloat(d.receita_total||0);},0);
+  var totalFin = dadosRede.reduce(function(s,d){return s + parseInt(d.total_finalizadas||0);},0);
+  var taxaMedia = totalCorr > 0 ? (totalFin/totalCorr*100).toFixed(1) : 0;
+  
+  return {
+    id:'cidades_lado_a_lado', icone:'🏙️',
+    titulo:'Todas as cidades lado a lado',
+    descricao:'⚡ Supabase · '+linhas.length+' cidades nos últimos '+periodo+' dias',
+    cidade:{nome:'Rede Gâmi', uf:'BR'},
+    colunas:['Cidade','Corridas','Conclusão','Receita','Ticket','Motoboys','Empresas'],
+    linhas: linhas.map(function(l){return l.row;}),
+    vazio: linhas.length === 0,
+    kpis:[
+      { label:'Cidades com dados', valor:linhas.length, cor:'#1AB8F0' },
+      { label:'Corridas totais', valor:totalCorr.toLocaleString('pt-BR'), cor:'#EF9F27' },
+      { label:'Receita total', valor:'R$ '+totalRec.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' },
+      { label:'Taxa conclusão média', valor:taxaMedia+'%', cor:'#8B5CF6' }
+    ]
+  };
+}
+
+/* ─── 18) COMPARAR 2 CIDADES (Supabase) ─── */
+function _sb_compare_duas(dadosRede){
+  // Indexa por slug
+  var porSlug = {};
+  dadosRede.forEach(function(d){ porSlug[d.cidade_slug] = d; });
+  
+  // Lista cidades com dados (com info do client)
+  var cidadesComDados = dadosRede.map(function(d){
+    var c = _rlCidadePorSlug(d.cidade_slug);
+    return c ? { id: c.id, slug: d.cidade_slug, cidade: c, dados: d } : null;
+  }).filter(Boolean);
+  
+  if(cidadesComDados.length < 2){
+    return { id:'compare_duas', icone:'🆚', titulo:'Comparar 2 cidades', 
+      descricao:'⚡ Supabase · Precisa de pelo menos 2 cidades com dados', 
+      cidade:{nome:'Rede Gâmi', uf:'BR'}, colunas:[], linhas:[], vazio:true };
+  }
+  
+  // Default: top 2 por receita
+  if(!_RL.cidadeA || !cidadesComDados.find(function(x){return x.id === _RL.cidadeA;})){
+    _RL.cidadeA = cidadesComDados[0].id;
+  }
+  if(!_RL.cidadeB || !cidadesComDados.find(function(x){return x.id === _RL.cidadeB;})){
+    _RL.cidadeB = cidadesComDados[1].id;
+  }
+  
+  var itemA = cidadesComDados.find(function(x){return x.id === _RL.cidadeA;});
+  var itemB = cidadesComDados.find(function(x){return x.id === _RL.cidadeB;});
+  
+  if(!itemA || !itemB){
+    return { id:'compare_duas', icone:'🆚', titulo:'Comparar 2 cidades',
+      descricao:'Escolha 2 cidades pra comparar', cidade:{nome:'Rede Gâmi', uf:'BR'}, 
+      colunas:[], linhas:[], vazio:true };
+  }
+  
+  var dA = itemA.dados, dB = itemB.dados;
+  
+  function diffPct(a, b){
+    a = parseFloat(a); b = parseFloat(b);
+    if(b === 0) return '—';
+    var pct = ((a - b) / b * 100).toFixed(1);
+    var icone = a > b ? '🟢' : a < b ? '🔴' : '⚪';
+    return icone+' '+(a >= b ? '+' : '')+pct+'%';
+  }
+  
+  var linhas = [
+    ['Corridas no período', parseInt(dA.total_corridas).toLocaleString('pt-BR'), parseInt(dB.total_corridas).toLocaleString('pt-BR'), diffPct(dA.total_corridas, dB.total_corridas)],
+    ['Finalizadas', parseInt(dA.total_finalizadas).toLocaleString('pt-BR'), parseInt(dB.total_finalizadas).toLocaleString('pt-BR'), diffPct(dA.total_finalizadas, dB.total_finalizadas)],
+    ['Canceladas', parseInt(dA.total_canceladas).toLocaleString('pt-BR'), parseInt(dB.total_canceladas).toLocaleString('pt-BR'), diffPct(dA.total_canceladas, dB.total_canceladas)],
+    ['Taxa de conclusão', parseFloat(dA.taxa_finalizacao)+'%', parseFloat(dB.taxa_finalizacao)+'%', diffPct(dA.taxa_finalizacao, dB.taxa_finalizacao)],
+    ['Receita', 'R$ '+parseFloat(dA.receita_total).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), 'R$ '+parseFloat(dB.receita_total).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), diffPct(dA.receita_total, dB.receita_total)],
+    ['Ticket médio', 'R$ '+parseFloat(dA.ticket_medio).toFixed(2).replace('.',','), 'R$ '+parseFloat(dB.ticket_medio).toFixed(2).replace('.',','), diffPct(dA.ticket_medio, dB.ticket_medio)],
+    ['Motoboys ativos', parseInt(dA.motoboys_unicos).toLocaleString('pt-BR'), parseInt(dB.motoboys_unicos).toLocaleString('pt-BR'), diffPct(dA.motoboys_unicos, dB.motoboys_unicos)],
+    ['Empresas únicas', parseInt(dA.empresas_unicas).toLocaleString('pt-BR'), parseInt(dB.empresas_unicas).toLocaleString('pt-BR'), diffPct(dA.empresas_unicas, dB.empresas_unicas)],
+    ['Corridas/dia (média)', parseFloat(dA.corridas_dia_media), parseFloat(dB.corridas_dia_media), diffPct(dA.corridas_dia_media, dB.corridas_dia_media)],
+    ['Dias com operação', parseInt(dA.dias_com_corrida), parseInt(dB.dias_com_corrida), diffPct(dA.dias_com_corrida, dB.dias_com_corrida)]
+  ];
+  
+  var optsA = cidadesComDados.map(function(x){
+    return '<option value="'+x.id+'"'+(x.id===_RL.cidadeA?' selected':'')+'>'+x.cidade.nome+'</option>';
+  }).join('');
+  var optsB = cidadesComDados.map(function(x){
+    return '<option value="'+x.id+'"'+(x.id===_RL.cidadeB?' selected':'')+'>'+x.cidade.nome+'</option>';
+  }).join('');
+  
+  return {
+    id:'compare_duas', icone:'🆚',
+    titulo:'Comparar 2 cidades',
+    descricao:'⚡ Supabase · '+itemA.cidade.nome+' (A) vs '+itemB.cidade.nome+' (B) · Δ é "A em relação a B"',
+    cidade:{nome:'Rede Gâmi', uf:'BR'},
+    colunas:['Métrica', itemA.cidade.nome+' (A)', itemB.cidade.nome+' (B)', 'Diferença'],
+    linhas:linhas, vazio:false,
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px">A: <select onchange="_RL.cidadeA=this.value;_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'+optsA+'</select></label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px">B: <select onchange="_RL.cidadeB=this.value;_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'+optsB+'</select></label>'
+    +'</div>'
+  };
+}
+
+/* ─── 19) RANKING DE GESTORES (Supabase) ─── */
+function _sb_ranking_gestores(dadosRede){
+  var periodo = _RL.periodo || 30;
+  
+  var lista = dadosRede.map(function(d){
+    var c = _rlCidadePorSlug(d.cidade_slug) || { nome:d.cidade_slug, uf:'?', gestor:'' };
+    var corridas = parseInt(d.total_corridas || 0);
+    var taxaConc = parseFloat(d.taxa_finalizacao || 0);
+    var receitaPorDia = parseFloat(d.receita_total || 0) / Math.max(1, periodo);
+    var motoboys = parseInt(d.motoboys_unicos || 0);
+    var empresas = parseInt(d.empresas_unicas || 0);
+    
+    // Score: volume(30) + conclusão(30) + receita/dia(20) + diversidade base(20)
+    var scoreVol = Math.min(100, corridas / periodo / 50 * 100);
+    var scoreConc = taxaConc;
+    var scoreReceita = Math.min(100, receitaPorDia / 1000 * 100);  // R$ 1k/dia = 100
+    var scoreBase = Math.min(100, (motoboys + empresas) / 5);
+    
+    var score = Math.round(scoreVol*0.30 + scoreConc*0.30 + scoreReceita*0.20 + scoreBase*0.20);
+    score = Math.max(0, Math.min(100, score));
+    
+    return { cidade:c, corridas:corridas, taxa:taxaConc, score:score, receita:parseFloat(d.receita_total||0) };
+  });
+  
+  lista.sort(function(a,b){ return b.score - a.score; });
+  
+  var linhas = lista.map(function(item, i){
+    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
+    var scoreIcone = item.score >= 80 ? '🟢' : item.score >= 60 ? '🔵' : item.score >= 40 ? '🟡' : '🔴';
+    return [medal, item.cidade.gestor||'—', item.cidade.nome+'/'+(item.cidade.uf||'?'), 
+      item.corridas.toLocaleString('pt-BR'), item.taxa.toFixed(1)+'%', scoreIcone+' '+item.score+'/100'];
+  });
+  
+  var mediaScore = lista.length > 0 ? Math.round(lista.reduce(function(s,x){return s+x.score;},0) / lista.length) : 0;
+  var top = lista[0];
+  
+  return {
+    id:'ranking_gestores', icone:'🏆',
+    titulo:'Ranking de gestores',
+    descricao:'⚡ Supabase · Score = volume(30) + conclusão(30) + receita/dia(20) + diversidade(20)',
+    cidade:{nome:'Rede Gâmi', uf:'BR'},
+    colunas:['Posição','Gestor','Cidade','Corridas','Conclusão','Score'],
+    linhas:linhas, vazio: lista.length === 0,
+    kpis:[
+      { label:'Líder', valor: top ? top.cidade.gestor||top.cidade.nome : '—', cor:'#1D9E75' },
+      { label:'Score líder', valor: top ? top.score+'/100' : '—', cor:'#EF9F27' },
+      { label:'Média da rede', valor: mediaScore+'/100', cor:'#1AB8F0' }
+    ]
+  };
 }
 
 /* ============================================================ */
