@@ -1,4 +1,4 @@
-<!-- v23.90 - Onda 2: 4 relatórios motoboys (Top, Sumidos Ativos, Em Queda, Pareto) com paradas - 02/06/2026 -->
+<!-- v23.91 - Onda 3: 8 relatórios operacionais com paradas - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12116,12 +12116,12 @@ async function _sb_corridas_dia_semana(){
   var dados = await _rlSupaRPC('rel_corridas_dia_semana', { p_slug: slug, p_dias: periodo });
   
   var total = dados.reduce(function(s,d){return s + parseInt(d.total||0);},0);
+  var totalParadas = dados.reduce(function(s,d){return s + parseInt(d.paradas||0);},0);
   if(total === 0){
     return { id:'corridas_dia_semana', icone:'📅', titulo:'Corridas por dia da semana',
       descricao:'Sem dados no período', cidade:c, vazio:true, kpis:[] };
   }
   
-  // Reordena: segunda → domingo
   var porDia = {0:null,1:null,2:null,3:null,4:null,5:null,6:null};
   dados.forEach(function(d){ porDia[d.dia_num] = d; });
   
@@ -12129,35 +12129,37 @@ async function _sb_corridas_dia_semana(){
   var dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
   var barras = ordem.map(function(idx){
     var d = porDia[idx];
-    return { label: dias[idx], valor: d ? parseInt(d.total) : 0 };
+    return { label: dias[idx], valor: d ? parseInt(d.paradas) : 0 };  // barra usa paradas
   });
   
   var linhas = ordem.map(function(idx){
     var d = porDia[idx];
-    var v = d ? parseInt(d.total) : 0;
-    var pct = d ? d.percentual+'%' : '0%';
-    return [dias[idx], v.toLocaleString('pt-BR'), pct];
+    if(!d) return [dias[idx], 0, 0, 0, 0, '0%', '0%'];
+    return [dias[idx], parseInt(d.total).toLocaleString('pt-BR'),
+            parseInt(d.paradas).toLocaleString('pt-BR'),
+            parseInt(d.finalizadas), parseInt(d.canceladas),
+            d.percentual+'%', d.percentual_paradas+'%'];
   });
   
   var maxIdx = ordem.reduce(function(max, idx){
-    return (!porDia[idx] || (porDia[max] && porDia[idx].total < porDia[max].total)) ? max : idx;
+    return (!porDia[idx] || (porDia[max] && parseInt(porDia[idx].paradas) < parseInt(porDia[max].paradas))) ? max : idx;
   }, ordem[0]);
   var minIdx = ordem.reduce(function(min, idx){
-    return (!porDia[idx] || (porDia[min] && porDia[idx].total > porDia[min].total)) ? min : idx;
+    return (!porDia[idx] || (porDia[min] && parseInt(porDia[idx].paradas) > parseInt(porDia[min].paradas))) ? min : idx;
   }, ordem[0]);
   
   return {
     id:'corridas_dia_semana', icone:'📅',
     titulo:'Corridas por dia da semana',
-    descricao:'⚡ Supabase · '+total.toLocaleString('pt-BR')+' corridas nos últimos '+periodo+' dias',
+    descricao:'⚡ Supabase · '+total.toLocaleString('pt-BR')+' corridas · '+totalParadas.toLocaleString('pt-BR')+' paradas nos últimos '+periodo+' dias',
     cidade:c,
     grafico: (typeof _rlBarrasH === 'function') ? _rlBarrasH(barras, { altura:22, labelW:90, valW:80, cor:'#8B5CF6' }) : '',
-    colunas:['Dia da semana','Corridas','% do total'],
+    colunas:['Dia','Corridas','Paradas','✅ Fin','❌ Canc','% corridas','% paradas'],
     linhas:linhas, vazio:false,
     kpis:[
-      { label:'Dia de pico', valor:dias[maxIdx], cor:'#1D9E75' },
+      { label:'Dia de pico (paradas)', valor:dias[maxIdx], cor:'#1D9E75' },
       { label:'Dia mais fraco', valor:dias[minIdx], cor:'#E24B4A' },
-      { label:'Total no período', valor:total.toLocaleString('pt-BR'), cor:'#1AB8F0' }
+      { label:'Total paradas', valor:totalParadas.toLocaleString('pt-BR'), cor:'#16A085' }
     ]
   };
 }
@@ -12170,39 +12172,49 @@ async function _sb_pico_horario(){
   var dados = await _rlSupaRPC('rel_pico_horario', { p_slug: slug, p_dias: periodo });
   
   var porHora = new Array(24).fill(0);
+  var paradasHora = new Array(24).fill(0);
+  var finHora = new Array(24).fill(0);
+  var cancHora = new Array(24).fill(0);
   var pctPorHora = new Array(24).fill(0);
   dados.forEach(function(d){
     porHora[d.hora] = parseInt(d.total);
-    pctPorHora[d.hora] = d.percentual;
+    paradasHora[d.hora] = parseInt(d.paradas||0);
+    finHora[d.hora] = parseInt(d.finalizadas||0);
+    cancHora[d.hora] = parseInt(d.canceladas||0);
+    pctPorHora[d.hora] = d.percentual_paradas || d.percentual;
   });
   
   var total = porHora.reduce(function(a,b){return a+b;},0);
+  var totalParadas = paradasHora.reduce(function(a,b){return a+b;},0);
   if(total === 0){
     return { id:'pico_horario', icone:'⏰', titulo:'Pico de demanda por horário',
       descricao:'Sem dados no período', cidade:c, vazio:true, kpis:[] };
   }
   
-  var maxIdx = porHora.indexOf(Math.max.apply(null, porHora));
+  // Pico baseado em PARADAS (entregas reais)
+  var maxIdx = paradasHora.indexOf(Math.max.apply(null, paradasHora));
   
-  var barras = porHora.map(function(v, i){
+  var barras = paradasHora.map(function(v, i){
     return { label: String(i).padStart(2,'0')+'h', valor: v };
   });
   
   var linhas = porHora.map(function(v, i){
-    return [String(i).padStart(2,'0')+'h às '+String(i+1).padStart(2,'0')+'h', v, pctPorHora[i]+'%'];
+    return [String(i).padStart(2,'0')+'h às '+String(i+1).padStart(2,'0')+'h',
+            v, paradasHora[i], finHora[i], cancHora[i], pctPorHora[i]+'%'];
   }).filter(function(r){ return r[1] > 0; });
   
   return {
     id:'pico_horario', icone:'⏰',
     titulo:'Pico de demanda por horário',
-    descricao:'⚡ Supabase · '+total.toLocaleString('pt-BR')+' corridas por hora do dia',
+    descricao:'⚡ Supabase · '+totalParadas.toLocaleString('pt-BR')+' paradas por hora · '+total.toLocaleString('pt-BR')+' corridas',
     cidade:c,
     grafico: (typeof _rlBarrasH === 'function') ? _rlBarrasH(barras, { altura:14, labelW:50, valW:60, cor:'#EF9F27' }) : '',
-    colunas:['Hora','Corridas','%'],
+    colunas:['Hora','Corridas','Paradas','✅ Fin','❌ Canc','% paradas'],
     linhas:linhas, vazio:false,
     kpis:[
       { label:'Hora de pico', valor:String(maxIdx).padStart(2,'0')+'h', cor:'#1D9E75' },
-      { label:'Corridas pico', valor:porHora[maxIdx].toLocaleString('pt-BR'), cor:'#EF9F27' }
+      { label:'Paradas no pico', valor:paradasHora[maxIdx].toLocaleString('pt-BR'), cor:'#EF9F27' },
+      { label:'Total paradas', valor:totalParadas.toLocaleString('pt-BR'), cor:'#16A085' }
     ]
   };
 }
@@ -12219,26 +12231,32 @@ async function _sb_taxa_cancelamento(){
       descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
   }
   
-  var primeira = dados[0];
-  var taxaGeral = primeira.taxa_geral;
-  var totalGeral = parseInt(primeira.total_rede);
-  var canceladoGeral = parseInt(primeira.cancelado_rede);
+  // Calcula taxa geral no client
+  var totalGeral = dados.reduce(function(s,e){return s + parseInt(e.total||0);}, 0);
+  var canceladoGeral = dados.reduce(function(s,e){return s + parseInt(e.canceladas||0);}, 0);
+  var paradasGeral = dados.reduce(function(s,e){return s + parseInt(e.paradas||0);}, 0);
+  var taxaGeral = totalGeral > 0 ? ((canceladoGeral / totalGeral) * 100).toFixed(1) : '0';
   
-  var linhas = dados.map(function(e){
-    var taxa = parseFloat(e.taxa);
+  // Top 30 com maior taxa
+  var top = dados.slice(0, 30);
+  
+  var linhas = top.map(function(e){
+    var taxa = parseFloat(e.taxa_cancelamento||0);
     var icone = taxa >= 30 ? '🔴' : taxa >= 15 ? '🟡' : '🟢';
-    return [icone+' '+e.nome_passageiro, parseInt(e.total), parseInt(e.canceladas), taxa.toFixed(1)+'%'];
+    return [icone+' '+e.nome_passageiro, parseInt(e.total), parseInt(e.paradas||0),
+            parseInt(e.finalizadas||0), parseInt(e.canceladas), taxa.toFixed(1)+'%'];
   });
   
   return {
     id:'taxa_cancelamento', icone:'❌',
     titulo:'Taxa de cancelamento por empresa',
-    descricao:'⚡ Supabase · Top 20 empresas com maior cancelamento (mínimo 5 pedidos)',
-    cidade:c, colunas:['Empresa','Total','Canceladas','Taxa'], linhas:linhas, vazio:false,
+    descricao:'⚡ Supabase · Top 30 empresas com maior cancelamento (min 5 pedidos) nos últimos '+periodo+' dias',
+    cidade:c, colunas:['Empresa','Corridas','Paradas','✅ Fin','❌ Canc','Taxa'],
+    linhas:linhas, vazio:false,
     kpis:[
-      { label:'Taxa geral', valor:taxaGeral+'%', cor: taxaGeral >= 15 ? '#E24B4A' : '#1D9E75' },
+      { label:'Taxa geral', valor:taxaGeral+'%', cor: parseFloat(taxaGeral) >= 15 ? '#E24B4A' : '#1D9E75' },
       { label:'Canceladas', valor:canceladoGeral.toLocaleString('pt-BR'), cor:'#EF9F27' },
-      { label:'Total no período', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' }
+      { label:'Empresas analisadas', valor:dados.length, cor:'#1AB8F0' }
     ]
   };
 }
@@ -12256,27 +12274,32 @@ async function _sb_dias_anomalos(){
       cidade:c, vazio:true, kpis:[{label:'Status', valor:'✅ Normal', cor:'#1D9E75'}] };
   }
   
-  var primeira = dados[0];
-  var media = parseFloat(primeira.media_geral);
-  var desvio = parseFloat(primeira.desvio);
+  var podeValor = _rlPodeVerValor();
   
   var linhas = dados.map(function(d){
     var dt = new Date(d.data_dia+'T00:00:00');
     var dataFmt = dt.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' });
     var icone = d.tipo === 'pico' ? '🚀' : '📉';
-    var diff = parseInt(d.total) - media;
-    var diffStr = (diff > 0 ? '+' : '') + diff.toFixed(0);
-    return [icone+' '+dataFmt, parseInt(d.total), media.toFixed(0), diffStr, d.tipo.toUpperCase()];
+    var diffPct = parseFloat(d.diferenca_pct||0);
+    var diffStr = (diffPct > 0 ? '+' : '') + diffPct.toFixed(1) + '%';
+    var row = [icone+' '+dataFmt, parseInt(d.total), parseInt(d.paradas||0),
+               parseInt(d.finalizadas||0), parseInt(d.canceladas||0), diffStr, d.tipo.toUpperCase()];
+    if(podeValor) row.push('R$ '+parseFloat(d.receita||0).toFixed(2));
+    return row;
   });
+  
+  var colunas = ['Data','Corridas','Paradas','✅ Fin','❌ Canc','Diferença','Tipo'];
+  if(podeValor) colunas.push('Receita');
   
   return {
     id:'dias_anomalos', icone:'📊',
     titulo:'Dias anômalos · variação atípica',
-    descricao:'⚡ Supabase · Média '+media.toFixed(0)+' corridas/dia (±'+desvio.toFixed(0)+'). Dias com volume fora do padrão.',
-    cidade:c, colunas:['Data','Total','Média','Diferença','Tipo'], linhas:linhas, vazio:false,
+    descricao:'⚡ Supabase · Dias com volume fora do padrão (acima de +30% ou abaixo de -30% da média)',
+    cidade:c, colunas:colunas, linhas:linhas, vazio:false,
     kpis:[
       { label:'Dias anômalos', valor:dados.length, cor:'#EF9F27' },
-      { label:'Média diária', valor:media.toFixed(0)+' corridas', cor:'#1AB8F0' }
+      { label:'Picos', valor:dados.filter(function(d){return d.tipo==='pico';}).length, cor:'#1D9E75' },
+      { label:'Vales', valor:dados.filter(function(d){return d.tipo==='vale';}).length, cor:'#E24B4A' }
     ]
   };
 }
@@ -12297,30 +12320,36 @@ async function _sb_saude_cidade(){
       descricao:'Sem dados no período', cidade:c, vazio:true, kpis:[] };
   }
   
-  var taxaFin = parseFloat(d.taxa_finalizacao || 0);
+  var taxaConc = parseFloat(d.taxa_conclusao || 0);
+  var taxaCanc = parseFloat(d.taxa_cancelamento || 0);
   var receita = parseFloat(d.receita_total || 0);
-  var ticket = parseFloat(d.ticket_medio || 0);
+  var ticketCorrida = parseFloat(d.ticket_medio_corrida || 0);
+  var ticketParada = parseFloat(d.ticket_medio_parada || 0);
+  var totalParadas = parseInt(d.total_paradas || 0);
+  var paradasFin = parseInt(d.paradas_finalizadas || 0);
   
   var linhas = [
     ['Total de corridas', totalCorridas.toLocaleString('pt-BR')],
-    ['Finalizadas', parseInt(d.total_finalizadas).toLocaleString('pt-BR') + ' ('+taxaFin+'%)'],
-    ['Canceladas', parseInt(d.total_canceladas).toLocaleString('pt-BR')],
+    ['Total de paradas (entregas)', totalParadas.toLocaleString('pt-BR')],
+    ['Finalizadas', parseInt(d.total_finalizadas).toLocaleString('pt-BR') + ' ('+taxaConc+'%)'],
+    ['Canceladas', parseInt(d.total_canceladas).toLocaleString('pt-BR') + ' ('+taxaCanc+'%)'],
+    ['Paradas finalizadas', paradasFin.toLocaleString('pt-BR')],
+    ['Média paradas/corrida', parseFloat(d.paradas_por_corrida||0).toFixed(2)],
     ['Empresas únicas', parseInt(d.empresas_unicas).toLocaleString('pt-BR')],
-    ['Motoboys ativos', parseInt(d.motoboys_unicos).toLocaleString('pt-BR')],
-    ['Corridas/dia (média)', parseFloat(d.corridas_dia_media).toFixed(1)],
-    ['Dias com operação', parseInt(d.dias_com_corrida) + ' de ' + periodo]
+    ['Motoboys ativos', parseInt(d.motoboys_unicos).toLocaleString('pt-BR')]
   ];
   
   if(podeValor){
     linhas.push(['Receita finalizada', 'R$ '+receita.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})]);
-    linhas.push(['Ticket médio', 'R$ '+ticket.toFixed(2).replace('.',',')]);
+    linhas.push(['Ticket médio por corrida', 'R$ '+ticketCorrida.toFixed(2).replace('.',',')]);
+    linhas.push(['Ticket médio por parada', 'R$ '+ticketParada.toFixed(2).replace('.',',')]);
   }
   
-  var corTaxa = taxaFin >= 85 ? '#1D9E75' : taxaFin >= 70 ? '#EF9F27' : '#E24B4A';
+  var corTaxa = taxaConc >= 85 ? '#1D9E75' : taxaConc >= 70 ? '#EF9F27' : '#E24B4A';
   
   var kpis = [
-    { label:'Taxa finalização', valor:taxaFin+'%', cor: corTaxa },
-    { label:'Total corridas', valor:totalCorridas.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+    { label:'Taxa conclusão', valor:taxaConc+'%', cor: corTaxa },
+    { label:'Total paradas', valor:totalParadas.toLocaleString('pt-BR'), cor:'#16A085' },
     { label:'Motoboys ativos', valor:parseInt(d.motoboys_unicos), cor:'#8B5CF6' }
   ];
   if(podeValor){
@@ -12347,25 +12376,33 @@ async function _sb_receita_periodo(){
   }
   
   var totalCorridas = dados.reduce(function(s,d){return s + parseInt(d.corridas||0);},0);
+  var totalParadas = dados.reduce(function(s,d){return s + parseInt(d.paradas||0);},0);
+  var totalFin = dados.reduce(function(s,d){return s + parseInt(d.finalizadas||0);},0);
   var totalReceita = dados.reduce(function(s,d){return s + parseFloat(d.receita||0);},0);
-  var ticketMedio = totalCorridas > 0 ? totalReceita / totalCorridas : 0;
+  // Ticket médio POR PARADA finalizada
+  var paradasFin = dados.reduce(function(s,d){return s + (parseInt(d.finalizadas||0) > 0 ? parseInt(d.paradas||0) * parseInt(d.finalizadas||0) / parseInt(d.corridas||1) : 0);}, 0);
+  var ticketMedio = totalParadas > 0 ? totalReceita / totalParadas : 0;
   
   var linhas = dados.map(function(d){
     var dt = new Date(d.data_dia+'T00:00:00');
     var dataFmt = dt.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' });
-    return [dataFmt, parseInt(d.corridas).toLocaleString('pt-BR'),
-      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      'R$ '+parseFloat(d.ticket_medio).toFixed(2).replace('.',',')];
+    return [dataFmt,
+            parseInt(d.corridas).toLocaleString('pt-BR'),
+            parseInt(d.paradas||0).toLocaleString('pt-BR'),
+            parseInt(d.finalizadas||0), parseInt(d.canceladas||0),
+            'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+            'R$ '+parseFloat(d.ticket_medio_parada||0).toFixed(2).replace('.',',')];
   });
   
   return {
     id:'receita_periodo', icone:'💰', titulo:'Receita por período',
     descricao:'⚡ Supabase · Receita finalizada dia a dia (últimos '+periodo+' dias)',
-    cidade:c, colunas:['Dia','Corridas','Receita','Ticket médio'], linhas:linhas, vazio:false,
+    cidade:c, colunas:['Dia','Corridas','Paradas','✅ Fin','❌ Canc','Receita','Ticket/parada'],
+    linhas:linhas, vazio:false,
     kpis:[
       { label:'Receita total', valor:'R$ '+totalReceita.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' },
-      { label:'Corridas finalizadas', valor:totalCorridas.toLocaleString('pt-BR'), cor:'#1AB8F0' },
-      { label:'Ticket médio', valor:'R$ '+ticketMedio.toFixed(2).replace('.',','), cor:'#8B5CF6' }
+      { label:'Total paradas', valor:totalParadas.toLocaleString('pt-BR'), cor:'#16A085' },
+      { label:'Ticket médio (parada)', valor:'R$ '+ticketMedio.toFixed(2).replace('.',','), cor:'#8B5CF6' }
     ]
   };
 }
@@ -12382,35 +12419,42 @@ async function _sb_ticket_evolucao(){
       descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
   }
   
+  // Ordem cronológica (mais antiga primeiro)
+  dados.sort(function(a,b){ return a.semana_inicio < b.semana_inicio ? -1 : 1; });
+  
   var primeiraSemana = dados[0];
   var ultimaSemana = dados[dados.length-1];
-  var t1 = parseFloat(primeiraSemana.ticket_medio || 0);
-  var t2 = parseFloat(ultimaSemana.ticket_medio || 0);
+  var t1 = parseFloat(primeiraSemana.ticket_medio_parada || 0);
+  var t2 = parseFloat(ultimaSemana.ticket_medio_parada || 0);
   var variacao = t1 > 0 ? ((t2 - t1) / t1) * 100 : 0;
   
   var linhas = dados.map(function(d){
     var dt = new Date(d.semana_inicio+'T00:00:00');
     var dataFmt = 'Semana '+dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' });
-    return [dataFmt, parseInt(d.corridas).toLocaleString('pt-BR'),
-      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      'R$ '+parseFloat(d.ticket_medio).toFixed(2).replace('.',',')];
+    return [dataFmt,
+            parseInt(d.corridas).toLocaleString('pt-BR'),
+            parseInt(d.paradas||0).toLocaleString('pt-BR'),
+            'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+            'R$ '+parseFloat(d.ticket_medio_corrida||0).toFixed(2).replace('.',','),
+            'R$ '+parseFloat(d.ticket_medio_parada||0).toFixed(2).replace('.',',')];
   });
   
   var barras = dados.map(function(d){
     var dt = new Date(d.semana_inicio+'T00:00:00');
-    return { label: dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}), valor: parseFloat(d.ticket_medio) };
+    return { label: dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}), valor: parseFloat(d.ticket_medio_parada||0) };
   });
   
   var corVar = variacao > 5 ? '#1D9E75' : variacao < -5 ? '#E24B4A' : '#1AB8F0';
   
   return {
     id:'ticket_evolucao', icone:'📈', titulo:'Evolução do ticket médio',
-    descricao:'⚡ Supabase · Ticket médio semanal nas últimas '+Math.ceil(periodo/7)+' semanas',
+    descricao:'⚡ Supabase · Ticket médio POR PARADA semanal nas últimas '+Math.ceil(periodo/7)+' semanas',
     cidade:c,
     grafico: (typeof _rlBarrasH === 'function') ? _rlBarrasH(barras, { altura:18, labelW:80, valW:80, cor:'#1D9E75', valFmt: function(v){ return 'R$ '+v.toFixed(2).replace('.',','); } }) : '',
-    colunas:['Semana','Corridas','Receita','Ticket médio'], linhas:linhas, vazio:false,
+    colunas:['Semana','Corridas','Paradas','Receita','Ticket/corrida','Ticket/parada'],
+    linhas:linhas, vazio:false,
     kpis:[
-      { label:'Ticket atual', valor:'R$ '+t2.toFixed(2).replace('.',','), cor:'#1D9E75' },
+      { label:'Ticket parada atual', valor:'R$ '+t2.toFixed(2).replace('.',','), cor:'#1D9E75' },
       { label:'Variação', valor:(variacao > 0 ? '+' : '')+variacao.toFixed(1)+'%', cor: corVar }
     ]
   };
@@ -12429,25 +12473,40 @@ async function _sb_crescimento_mom(){
   
   // Histórico vem em desc; pega ultimoMês válido pros KPIs
   var atual = dados[0];
-  var crescC = atual.crescimento_corridas !== null ? parseFloat(atual.crescimento_corridas) : null;
-  var crescR = atual.crescimento_receita !== null ? parseFloat(atual.crescimento_receita) : null;
+  var crescC = atual.crescimento_corridas_pct !== null ? parseFloat(atual.crescimento_corridas_pct) : null;
+  var crescP = atual.crescimento_paradas_pct !== null ? parseFloat(atual.crescimento_paradas_pct) : null;
+  var crescR = atual.crescimento_receita_pct !== null ? parseFloat(atual.crescimento_receita_pct) : null;
+  
+  var podeValor = _rlPodeVerValor();
   
   var linhas = dados.map(function(d){
-    var fmtCrescC = d.crescimento_corridas !== null ? (parseFloat(d.crescimento_corridas) > 0 ? '+' : '')+parseFloat(d.crescimento_corridas).toFixed(1)+'%' : '—';
-    var fmtCrescR = d.crescimento_receita !== null ? (parseFloat(d.crescimento_receita) > 0 ? '+' : '')+parseFloat(d.crescimento_receita).toFixed(1)+'%' : '—';
-    var iconeC = !d.crescimento_corridas ? '' : parseFloat(d.crescimento_corridas) > 5 ? '🚀 ' : parseFloat(d.crescimento_corridas) < -5 ? '📉 ' : '➖ ';
-    return [d.mes_nome, parseInt(d.corridas).toLocaleString('pt-BR'), iconeC+fmtCrescC,
-      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), fmtCrescR];
+    var fmtP = function(v){ return v !== null ? (parseFloat(v) > 0 ? '+' : '')+parseFloat(v).toFixed(1)+'%' : '—'; };
+    var iconeP = function(v){ if(v === null) return ''; var n = parseFloat(v); return n > 5 ? '🚀 ' : n < -5 ? '📉 ' : '➖ '; };
+    var row = [
+      d.mes_nome,
+      parseInt(d.corridas).toLocaleString('pt-BR'),
+      parseInt(d.paradas||0).toLocaleString('pt-BR'),
+      parseInt(d.finalizadas||0), parseInt(d.canceladas||0),
+      iconeP(d.crescimento_paradas_pct) + fmtP(d.crescimento_paradas_pct)
+    ];
+    if(podeValor){
+      row.push('R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}));
+      row.push(fmtP(d.crescimento_receita_pct));
+    }
+    return row;
   });
   
-  var corC = crescC === null ? '#1AB8F0' : crescC > 5 ? '#1D9E75' : crescC < -5 ? '#E24B4A' : '#EF9F27';
+  var corP = crescP === null ? '#1AB8F0' : crescP > 5 ? '#1D9E75' : crescP < -5 ? '#E24B4A' : '#EF9F27';
+  
+  var colunas = ['Mês','Corridas','Paradas','✅ Fin','❌ Canc','Δ Paradas'];
+  if(podeValor) colunas.push('Receita','Δ Receita');
   
   return {
     id:'crescimento_mom', icone:'🚀', titulo:'Crescimento mês a mês',
-    descricao:'⚡ Supabase · Comparação entre meses consecutivos',
-    cidade:c, colunas:['Mês','Corridas','Δ Corridas','Receita','Δ Receita'], linhas:linhas, vazio:false,
+    descricao:'⚡ Supabase · Comparação entre meses consecutivos (foco em paradas)',
+    cidade:c, colunas:colunas, linhas:linhas, vazio:false,
     kpis:[
-      { label:'Crescimento corridas', valor: crescC === null ? '—' : (crescC > 0 ? '+' : '')+crescC.toFixed(1)+'%', cor: corC },
+      { label:'Crescimento paradas', valor: crescP === null ? '—' : (crescP > 0 ? '+' : '')+crescP.toFixed(1)+'%', cor: corP },
       { label:'Crescimento receita', valor: crescR === null ? '—' : (crescR > 0 ? '+' : '')+crescR.toFixed(1)+'%', cor:'#1AB8F0' },
       { label:'Meses analisados', valor:dados.length, cor:'#8B5CF6' }
     ]
