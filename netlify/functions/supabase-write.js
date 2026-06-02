@@ -27,7 +27,17 @@ const TABELAS_PERMITIDAS = [
   'machine_condutores',
   'machine_empresas',
   'machine_sync_log',
-  'audit_log'  // pra registrar ações de auditoria
+  'audit_log',         // pra registrar ações de auditoria
+  // App Gâmi — tabelas operacionais
+  'tarefas',           // delegação, tarefas pessoais
+  'pessoas',           // cadastros do time
+  'recados',           // mural de recados
+  'anotacoes_cidade',  // anotações por cidade
+  'ranking_mensal',    // ranking gamificação
+  'blog_posts',        // posts do blog
+  'cidades_extra',     // dados adicionais das cidades
+  'configuracoes',     // configurações do dashboard
+  'reconhecimentos'    // reconhecimentos da semana
 ];
 
 // Funções RPC permitidas (whitelist)
@@ -263,6 +273,15 @@ exports.handler = async function(event){
       supaBody = JSON.stringify(patch);
       supaHeaders['Prefer'] = 'return=minimal';
     }
+    else if(operacao === 'delete'){
+      if(!filtro){
+        return { statusCode: 400, headers: cors, body: JSON.stringify({error:'delete precisa de filtro'}) };
+      }
+      method = 'DELETE';
+      url += '?'+filtro;
+      supaBody = undefined;
+      supaHeaders['Prefer'] = 'return=minimal';
+    }
     else if(operacao === 'rpc'){
       // Pra chamar functions (refresh_machine_views etc)
       if(!body.funcao){
@@ -276,7 +295,7 @@ exports.handler = async function(event){
       supaBody = JSON.stringify(body.argumentos || {});
     }
     else {
-      return { statusCode: 400, headers: cors, body: JSON.stringify({error:'operacao inválida: '+operacao+' (use upsert/patch/rpc)'}) };
+      return { statusCode: 400, headers: cors, body: JSON.stringify({error:'operacao inválida: '+operacao+' (use upsert/patch/delete/rpc)'}) };
     }
     
     const r = await fetch(url, { method, headers: supaHeaders, body: supaBody });
