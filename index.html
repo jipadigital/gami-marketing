@@ -1,4 +1,4 @@
-<!-- v23.72 - Fix 502 chunks Machine separada: timeout 18s, chunks 3 dias - 02/06/2026 -->
+<!-- v23.73 - Sync sequencial (rate limit) + retry automático - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -13891,11 +13891,21 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     var diasFeitos = 0;
     var diasComErro = [];
     
-    // Função pra buscar 1 dia, com refragmentação automática se truncar
-    var buscarDia = async function(dia){
+    // Função pra buscar 1 dia, com retry automático e refragmentação se truncar
+    var buscarDia = async function(dia, tentativa){
+      tentativa = tentativa || 1;
       try {
         var rChunk = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+dia+'&data_fim='+dia);
-        if(!rChunk.ok){ diasComErro.push(dia); return []; }
+        if(!rChunk.ok){
+          // Retry automático: 1 vez, esperando 3s (resolve rate limit + timeout transitório)
+          if(tentativa < 2){
+            _syncLog('⚠ '+dia+' HTTP '+rChunk.status+' — retentando em 3s...');
+            await new Promise(function(r){setTimeout(r, 3000);});
+            return buscarDia(dia, tentativa+1);
+          }
+          diasComErro.push(dia);
+          return [];
+        }
         var dataChunk = await rChunk.json();
         var arr = (dataChunk && Array.isArray(dataChunk.response)) ? dataChunk.response : [];
         
@@ -13932,11 +13942,21 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         }
         
         return arr;
-      } catch(e){ diasComErro.push(dia); return []; }
+      } catch(e){
+        // Retry automático em exceção (rede, timeout)
+        if(tentativa < 2){
+          _syncLog('⚠ '+dia+' erro: '+e.message+' — retentando em 3s...');
+          await new Promise(function(r){setTimeout(r, 3000);});
+          return buscarDia(dia, tentativa+1);
+        }
+        diasComErro.push(dia);
+        return [];
+      }
     };
     
-    // Processa em batches de 3 dias em paralelo
-    var BATCH_PARALELO = 3;
+    // Processa em batches sequenciais (cidades grandes geram muitas requests por dia)
+    // Antes era 3 paralelos, mas Machine separada/cidade grande estoura rate limit
+    var BATCH_PARALELO = 1;
     for(var i = 0; i < listaDias.length && !_SYNC.cancelar; i += BATCH_PARALELO){
       var batch = listaDias.slice(i, i+BATCH_PARALELO);
       var resultados = await Promise.all(batch.map(buscarDia));
@@ -13957,8 +13977,8 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         _syncLog('Progresso: '+diasFeitos+'/'+diasTotal+' dias · '+todasCorridas.length.toLocaleString('pt-BR')+' corridas');
       }
       
-      // Delay leve entre batches
-      await new Promise(function(r){setTimeout(r, 200);});
+      // Delay entre dias pra dar respiro à Machine e evitar rate limit
+      await new Promise(function(r){setTimeout(r, 500);});
     }
     
     if(_SYNC.cancelar) throw new Error('Cancelado pelo usuário');
