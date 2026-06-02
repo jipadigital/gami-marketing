@@ -1,4 +1,4 @@
-<!-- v23.69b - PWA + logo customizada no sidebar - 02/06/2026 -->
+<!-- v23.69b - PWA + UI cleanups + 6 cards Pessoas + RLS fix - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3861,11 +3861,41 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
 
   <!-- MÉTRICAS -->
-  <div class="metrics" id="pessoas-metrics">
-    <div class="metric"><div class="metric-label">Total</div><div class="metric-val" id="pm-total">0</div></div>
-    <div class="metric"><div class="metric-label">Diretoria</div><div class="metric-val" id="pm-dir">0</div></div>
-    <div class="metric"><div class="metric-label">Gestores</div><div class="metric-val" id="pm-gest">0</div></div>
-    <div class="metric"><div class="metric-label" id="pm-bday-label">Aniversários hoje</div><div class="metric-val" id="pm-bday" style="color:var(--orange)">0</div><div class="metric-sub" id="pm-bday-sub" style="color:var(--orange)"></div></div>
+  <div class="metrics" id="pessoas-metrics" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <div class="metric" style="background:linear-gradient(135deg,#EAF7DD,#FFFFFF);border-left:3px solid #1D9E75">
+      <div class="metric-label">🟢 Online hoje</div>
+      <div class="metric-val" id="pm-online" style="color:#1D9E75">—</div>
+      <div class="metric-sub" id="pm-online-sub" style="color:#1D9E75">últimas 24h</div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border-left:3px solid #1AB8F0">
+      <div class="metric-label">✅ Concluídas hoje</div>
+      <div class="metric-val" id="pm-tarefas-hoje" style="color:#1AB8F0">0</div>
+      <div class="metric-sub" style="color:#0E7AB8">tarefas do time</div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border-left:3px solid #EF9F27">
+      <div class="metric-label">🎂 Próximos 7 dias</div>
+      <div class="metric-val" id="pm-bday-7d" style="color:#EF9F27;font-size:15px">—</div>
+      <div class="metric-sub" id="pm-bday-7d-sub" style="color:#854F0B"></div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border-left:3px solid #8B5CF6">
+      <div class="metric-label">🎂 Aniversários do mês</div>
+      <div class="metric-val" id="pm-bday-mes" style="color:#8B5CF6">0</div>
+      <div class="metric-sub" id="pm-bday-mes-sub" style="color:#6A1B9A"></div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#FAEEDA,#FFF8E1);border-left:3px solid #EF9F27">
+      <div class="metric-label">🏆 Reconhecido</div>
+      <div class="metric-val" id="pm-reconhecido" style="color:#854F0B;font-size:14px">—</div>
+      <div class="metric-sub" style="color:#854F0B">essa semana</div>
+    </div>
+  </div>
+  
+  <!-- 💬 FRASE GÂMI DO DIA -->
+  <div style="background:linear-gradient(135deg,#FCE6E6,#FFFFFF);border:1px solid #E24B4A33;border-left:4px solid #E24B4A;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+    <div style="font-size:22px;flex-shrink:0">💬</div>
+    <div style="flex:1">
+      <div style="font-size:9px;font-weight:700;color:#A32D2D;letter-spacing:1px;text-transform:uppercase;margin-bottom:3px">Frase Gâmi do dia</div>
+      <div id="pm-frase" style="font-size:13.5px;color:#7A1F1F;font-style:italic;font-weight:500;line-height:1.4">—</div>
+    </div>
   </div>
 
   <!-- FILTROS -->
@@ -8627,19 +8657,638 @@ function setPessoaFiltro(btn, filtro){
   if(typeof syncPessoas==='function')syncPessoas();
 }
 
+// ============================================================
+// 🎯 HELPERS DOS 6 CARDS DA PÁGINA PESSOAS (v23.69b)
+// ============================================================
+
+// Conta tarefas concluídas hoje (todas as listas localStorage)
+function _pm_contarTarefasConcluidasHoje(){
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var contador = 0;
+  try {
+    // Lista todas as chaves de tarefas no localStorage
+    Object.keys(localStorage).forEach(function(k){
+      if(k.indexOf('gami_tarefas') !== 0) return;
+      try {
+        var arr = JSON.parse(localStorage.getItem(k)||'[]');
+        if(!Array.isArray(arr)) return;
+        arr.forEach(function(t){
+          if(t && t.feito && t.concluidoEm){
+            var d = new Date(t.concluidoEm);
+            if(!isNaN(d) && d >= hoje) contador++;
+          }
+        });
+      } catch(e){}
+    });
+  } catch(e){
+    console.warn('[pm contar tarefas]', e);
+  }
+  return contador;
+}
+
+// Conta usuários únicos com login nas últimas 24h
+async function _pm_carregarOnlineHoje(){
+  try {
+    var ontem = new Date(); ontem.setHours(0,0,0,0);
+    var r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?ultimo_login=gte.'+ontem.toISOString()+'&select=pessoa_id', {
+      headers: supaHeaders()
+    });
+    if(!r.ok) return 0;
+    var arr = await r.json();
+    var unicos = {};
+    arr.forEach(function(x){ if(x.pessoa_id) unicos[x.pessoa_id] = true; });
+    return Object.keys(unicos).length;
+  } catch(e){
+    return 0;
+  }
+}
+
+// 50+ frases Gâmi — escolhida pelo dia do ano (todo mundo vê a mesma)
+function _pm_fraseGamiDoDia(){
+  var frases = [
+    'Simples funciona. Clareza antes de estratégia.',
+    'Fé com respeito.',
+    'Cultura é o que acontece quando você não está olhando.',
+    'Cada cidade é única. Cada gestor é peça-chave.',
+    'Não tem cidade fora. Toda Gâmi é Gâmi.',
+    'O algoritmo da Gâmi é a gente.',
+    'O algoritmo Gâmi se chama respeito ao motoboy.',
+    'Pequena cidade hoje. Capital amanhã.',
+    'Quem ajuda, é ajudado. Lei Gâmi.',
+    'Operação invisível é operação que dá certo.',
+    'Operação sem coração não dura.',
+    'Tem cidade nova, tem dor nova. Tem dor nova, tem aprendizado novo.',
+    'Cada cidade é uma escola. Aprende e ensina.',
+    'Cuidar das pessoas é cuidar do negócio.',
+    'Crescer junto vale mais que crescer só.',
+    'Empresa boa não tem rotatividade, tem permanência.',
+    'Gente boa multiplica.',
+    'Gente boa atrai gente boa.',
+    'O motoboy não é entregador. É embaixador da marca.',
+    'Quando o motoboy sorri, a operação fechou.',
+    'A maior métrica é a satisfação do motoboy.',
+    'Marketing sem operação é promessa sem entrega.',
+    'Vender é fácil. Resolver é arte.',
+    'Excelência é hábito, não evento.',
+    'A consistência diária vale mais que o esforço esporádico.',
+    'Plante reconhecimento, colha engajamento.',
+    'Reconhecimento vale mais que comissão.',
+    'Quem chega na Gâmi, fica na Gâmi.',
+    'Fazer simples é o mais difícil.',
+    'Brasil tem pressa. A Gâmi tem método.',
+    'Liderança Gâmi se mede por quem fica, não por quem chega.',
+    'A diretoria que cuida dos gestores, lidera o futuro.',
+    'Cidade pequena ensina a operar grande.',
+    'Onde tem motoboy Gâmi, tem cidade respirando.',
+    'O que une Recife, Natal e Cuiabá é a forma de cuidar.',
+    'Não é sobre conquistar todos os clientes. É sobre manter os bons.',
+    'O cuidado de hoje é a fidelização de amanhã.',
+    'Foco no básico bem feito é cultura de alto desempenho.',
+    'Quem pensa pequeno, opera pequeno. Pensa grande, executa grande.',
+    'Gâmi é uma rede de pessoas, não só de cidades.',
+    'Cada cidade vence quando a vizinha vence também.',
+    'A marca Gâmi cabe em qualquer praça, porque é feita de gente.',
+    'A primeira corrida é mágica. A milésima é cultura.',
+    'Tem cidade nova porque tem gente nova com a mesma fome.',
+    'Diretoria, gerência, gestor, colaborador. Todos puxam o mesmo carro.',
+    'Cada nova cidade aberta é um time inteiro acreditando.',
+    'O nordeste ensinou a Gâmi a operar com alma.',
+    'Não vendemos pedidos, construímos confiança.',
+    'Compartilhar erros economiza tropeços do colega.',
+    'A Gâmi cresce quando os menores também crescem.',
+    'Operação não é planilha, é gente comendo na hora certa.',
+    'Quando dá certo na rua, dá certo no resultado.',
+    'Cada bairro tem sua dor. Cada bairro tem sua oportunidade.',
+    'O motoboy que sorri arrasta o cliente pra próxima compra.',
+    'Cultura forte se vê quando o gerente vai embora.',
+    'A reputação Gâmi se faz no detalhe.',
+    'O cliente percebe quando a entrega é cuidada com carinho.',
+    'Time afinado faz operação invisível.',
+    'Aplicativo é ferramenta. Pessoa é diferencial.',
+    'Cada empresa parceira é um sócio temporário.',
+    'O cliente lembra mais como foi atendido do que o que comprou.',
+    'Motoboys são o coração da operação.',
+    'O primeiro pedido faz cliente. O décimo faz parceiro.',
+    'Cada cliente recuperado é uma vitória da operação.',
+    'O cliente quer ser ouvido antes de ser convencido.',
+    'Velocidade sem direção é só ansiedade.',
+    'Cada decisão clara economiza dez reuniões.',
+    'Pequenos detalhes constroem grandes resultados.',
+    'O que você faz hoje, o time sente amanhã.',
+    'Operação boa é a que ninguém percebe que existe.',
+    'Pedido atrasado é cliente perdido amanhã.',
+    'A rota mais curta é a feita por quem conhece a rua.',
+    'O motoboy é os olhos da operação na ponta.',
+    'Quem entrega cuidado, entrega marca.',
+    'Aplicativo cai. Pessoa não pode cair.',
+    'Cliente quer pedido quente. Não desculpa.',
+    'A excelência operacional começa no jeito de falar com o motoboy.',
+    'Boa operação tira do gestor o medo de tirar férias.',
+    'O empresário do bairro também é cliente da Gâmi.',
+    'Sem motoboy, não tem app. Sem app, não tem motoboy.',
+    'Pedido sumiu? A confiança some junto.',
+    'Treinamento curto e prático bate manual de 80 páginas.',
+    'A operação enxuta é a que sobra com poucos e entrega muito.',
+    'Cada cidade tem seu pico. Quem opera bem antecipa.',
+    'Domingo de futebol é PDV gigante. E a Gâmi joga.',
+    'Chuva forte separa operação amadora da profissional.',
+    'Padronizar é liberar tempo pra inovar.',
+    'Saber quando NÃO crescer é sabedoria.',
+    'Quem corre atrás de pedido, corre atrás de fome.',
+    'Sem rotina diária, o caos vira normal.',
+    'Cada cidade exige um ritual próprio de abertura.',
+    'Operação de sexta à noite mostra quem opera de verdade.',
+    'Excelência é tirar pedido com cliente sorrindo de volta.',
+    'Promoção sem operação testada é tiro no pé.',
+    'Time não está cansado: está mal escalado.',
+    'Quando o app trava, a comunicação tem que voar.',
+    'O cliente perdoa o atraso se ele for informado.',
+    'Cada minuto de espera tira dois pontos de NPS.',
+    'Quanto melhor a operação, menos marketing é necessário.',
+    'Calor de 38 graus, motoboy precisa de água. Operação atenta.',
+    'Sextou opera diferente. Quem sabe disso, sextou ganhando.',
+    'Pico do mês vem na primeira semana — quinzena do salário.',
+    'Cada paralisação avisada é uma multa não paga.',
+    'Operação resiliente é aquela que volta em 10 minutos.',
+    'Erro na cozinha do parceiro também é erro nosso.',
+    'Distância não é só km. É tempo, calor, trânsito.',
+    'Motoboy treinado economiza atendimento na DM.',
+    'Capricho na entrega faz cliente recomendar pra três.',
+    'O motoboy é o último ponto de contato. Decisivo.',
+    'Cliente novo precisa de WOW na primeira entrega.',
+    'Onde tem fila de motoboy é porque tem operação sadia.',
+    'Cidade que escuta o motoboy, retem motoboy.',
+    'Empresa parceira feliz indica outras quatro.',
+    'Quem opera com transparência, opera com paz.',
+    'A operação só falha onde a comunicação falhou primeiro.',
+    'Quem manda fazer, manda. Quem delega, confia.',
+    'O líder come por último. Mas decide primeiro.',
+    'Ouvir o time é o primeiro passo pra liderar.',
+    'Time forte se faz no dia ruim, não no dia bom.',
+    'Confiança não se exige, se constrói.',
+    'Quem assume um problema, ganha autoridade.',
+    'O ânimo do gestor contagia o time inteiro.',
+    'Sem dados, é opinião. Sem ação, é só dado.',
+    'Plano sem execução é só vontade bonita.',
+    'Você não precisa ser o melhor. Precisa ser o mais consistente.',
+    'Quem sabe pra onde vai, todo caminho cabe.',
+    'Disciplina alimentada por propósito vira hábito.',
+    'Quem ajuda primeiro, é lembrado depois.',
+    'Liderança é dar exemplo, não dar bronca.',
+    'O bom gestor faz o time crescer mais do que ele.',
+    'Reunião curta é reunião eficaz.',
+    'O que não tem prazo, não acontece.',
+    'Conflito mal endereçado vira boicote silencioso.',
+    'Promoção sem competência é demissão acelerada.',
+    'O melhor feedback é o que evita o terceiro erro.',
+    'Reconhecer publicamente, corrigir em privado.',
+    'Liderança é responsabilidade dobrada, glória dividida.',
+    'Quem não delega, vira gargalo. Quem delega mal, vira chefe ruim.',
+    '1:1 semanal salva equipes que estavam silenciosamente afundando.',
+    'Bom líder pergunta mais do que afirma.',
+    'Reunião sem ata é reunião que ninguém lembra.',
+    'Decisão por consenso lento mata oportunidade rápida.',
+    'Vai ter problema. A questão é o tempo de resposta.',
+    'Time engajado é time que recomenda amigos.',
+    'Salário compete. Cultura retém.',
+    'Demissão consciente é mais respeitosa que tolerância tóxica.',
+    'Gestor que defende time, ganha time que defende cliente.',
+    'Não há time pequeno se a missão for grande.',
+    'Liderança serve. Não comanda.',
+    'O líder antecipa. O gerente reage.',
+    'Cada onboarding bom economiza 6 meses de retrabalho.',
+    'Cultura forte tem cara, voz e atitude — não cartaz na parede.',
+    'Quem treina seu sucessor, lidera o futuro.',
+    'Confie. Mas confie e confira.',
+    'Líder que mete a mão na massa não perde o pulso da operação.',
+    'O líder não tem dia ruim no time. Tem dia de não aparecer.',
+    'Decisão impopular feita com clareza vira lealdade futura.',
+    'O bom chefe deixa o time saudoso quando sai.',
+    'Reunião sem decisão é só conversa cara.',
+    'A urgência do gestor é o pânico do colaborador.',
+    'Time pequeno bem cuidado bate time grande mal liderado.',
+    'Liderança gentil não é liderança fraca.',
+    'Quem grita perde autoridade. Quem explica conquista.',
+    'Pessoa A+ valoriza ambiente A+, não salário B-.',
+    'Saber quem promover é tão importante quanto saber quem contratar.',
+    'Reconhecer custa zero. Não reconhecer custa caro.',
+    'Time alinhado executa sem precisar de microgestão.',
+    'Liderar é dar contexto, não comando.',
+    'O bom líder cabe num WhatsApp do time.',
+    'Quem lidera com clareza, libera o time da ansiedade.',
+    'Comunicar mal é multiplicar retrabalho.',
+    'Toda meta sem porquê é só pressão.',
+    'Demissão bem feita é cuidado com quem fica.',
+    'Bom chefe transforma promessa em pacto.',
+    'A maior diferença de liderança é o respeito que você inspira no estagiário.',
+    'Decisão difícil postergada vira decisão obrigatória.',
+    'Foco é o que você deixa de fora.',
+    'Estratégia é o que escolher NÃO fazer.',
+    'Quem quer tudo, não terá nada.',
+    'Não escolher é escolher mal.',
+    'Mais informação raramente melhora a decisão.',
+    'Indecisão custa mais que decisão errada.',
+    'Plano A vira plano B. Plano C nasce no caos.',
+    'Boa decisão hoje vale 10 análises perfeitas amanhã.',
+    'Quem analisa demais, executa de menos.',
+    'Reverter rápido vale mais que acertar de primeira.',
+    'Estratégia sem disciplina é só PowerPoint.',
+    'A escolha mais inteligente costuma parecer chata.',
+    'Quem só joga defesa, perde por placar magro.',
+    'Mira larga, foco estreito.',
+    'Aposta certeira: pequena, frequente, recorrente.',
+    'Decisão coletiva diluí culpa, mas dilui qualidade.',
+    'Foco é o luxo de quem tem prioridades claras.',
+    'Nem todo dado merece reação.',
+    'Empresa boa é simples. Não é fácil, é simples.',
+    'Tudo que vira projeto, pede líder.',
+    'Métrica sem ação é vaidade.',
+    'Plano longo sem feedback curto vira ficção.',
+    'Decisão consciente: o erro vira aprendizado, não trauma.',
+    'Estratégia boa cabe num post-it.',
+    'Mover de Excel pra rua é onde tudo se prova.',
+    'A pior métrica é a que ninguém olha.',
+    'Decidir errado e corrigir vale mais que adiar pra acertar.',
+    'Tempo é o único recurso que ninguém devolve.',
+    'Quem replica tendência, copia atraso.',
+    'Inovação verdadeira não vem de benchmark.',
+    'Sustentável é o crescimento que o caixa aguenta.',
+    'Custos baixos compram tempo. Tempo compra escolhas.',
+    'Vantagem competitiva real dura pelo menos cinco anos.',
+    'Quem briga por todo cliente, perde os melhores.',
+    'Cliente errado destrói operação certa.',
+    'Estratégia é onde competir e onde NÃO competir.',
+    'Tese clara facilita o NÃO ao distrator.',
+    'Operação sólida vence campanha brilhante.',
+    'Velocidade de aprendizado bate plano genial.',
+    'Quem documenta vence quem só sabe.',
+    'Ciclos curtos calibram decisões longas.',
+    'Foco do mês é o que mata distração da semana.',
+    'Decisões boas em série constroem império.',
+    'Pequenas perdas controladas pagam grandes vitórias.',
+    'Quem mede frequente, ajusta cedo.',
+    'Cliente errado é receita amarga.',
+    'Quem opera com fé, decide com sabedoria.',
+    'Estratégia que ninguém entende, ninguém executa.',
+    'Quem não mede, não melhora.',
+    'Quem não compartilha, não cresce.',
+    'Erro contado é aprendizado distribuído.',
+    'Mais importante que vencer é processar a derrota.',
+    'Curiosidade pesa mais que QI no longo prazo.',
+    'Sem retrospectiva, repete o mesmo erro.',
+    'Domínio se constrói por reps, não por insight.',
+    'Bons hábitos pagam juros compostos.',
+    'Você é a média das cinco pessoas com quem mais convive.',
+    'Ler 20 minutos por dia vira biblioteca por ano.',
+    'Mentor abre porta. Tu caminha.',
+    'Crescimento exige desconforto controlado.',
+    'Repetição inteligente é a única forma de virar especialista.',
+    'Profissional cresce com o que estuda fora do horário.',
+    'Aprenda a perguntar. Respondas vêm sozinhas.',
+    'Falhar rápido custa menos do que falhar tarde.',
+    'Quem se atualiza por terceiros, sempre chega atrasado.',
+    'Domínio gera autonomia.',
+    'Aprender em público acelera carreira.',
+    'Generalista resolve, especialista decola.',
+    'Lê quem ainda tem fome.',
+    'Cresce quem pergunta. Para quem se acomoda.',
+    'Cada projeto deveria deixar você diferente.',
+    'Quem expõe trabalho, recebe oportunidade.',
+    'Conhecimento sem ação é hobby caro.',
+    'Cresce quem documenta o caminho.',
+    'Praticar 1% melhor por dia muda destino em meses.',
+    'Hábito vale mais que talento.',
+    'Aprende-se mais ensinando do que escutando.',
+    'Quem ensina, refina o próprio domínio.',
+    'Networking real é trocar valor antes de pedir favor.',
+    'Cresça onde te aplaudem por mexer o ponteiro.',
+    'Mestrado prático: três casos reais bem documentados.',
+    'Conhecimento aplicado vira ativo.',
+    'Quem domina o básico, decola no avançado.',
+    'Aprender é confessar que ainda não sabe.',
+    'Currículo é passado. Portfólio é presente.',
+    'Profissional que cresce, pergunta sem medo.',
+    'Mediocridade evita feedback. Excelência implora.',
+    'Quem se compara com o passado, evolui. Com o outro, sofre.',
+    'Boa pergunta vale dez respostas.',
+    'Profissional sênior é o que parece simples por mistura.',
+    'Aprende-se de quem chega antes e de quem chega depois.',
+    'Crescer dói. Não crescer dói mais.',
+    'Quem documenta hoje, multiplica resultado amanhã.',
+    'Mensagem boa é a que dispensa pergunta de volta.',
+    'WhatsApp lota. E-mail ordena. Reunião decide.',
+    'Quem comunica com clareza, lidera sem cargo.',
+    'Áudio de 5 minutos cabe em 2 linhas.',
+    'Comunicação ruim é o sintoma. A causa é falta de pensamento.',
+    'Reunião muda. Decisão registrada não.',
+    'Quem escreve bem, pensa bem.',
+    'Slack não substitui conversa olho no olho.',
+    'Ligação resolve em 3 min o que 20 mensagens não resolveriam.',
+    'Cada e-mail tem que ter assunto bom e CTA claro.',
+    'Mensagem de bom dia genérica não constrói relacionamento.',
+    'Escrever bem é vantagem competitiva.',
+    'A pior comunicação é a que assume que o outro entendeu.',
+    'Confirme o entendimento. Sempre.',
+    'Reunião sem agenda é roubo de tempo coletivo.',
+    'Pergunta direta, resposta direta. Ambos ganham.',
+    'Quando a comunicação falha, o problema escala.',
+    'Comunicação assíncrona escala mais do que síncrona.',
+    'Quanto mais alto o cargo, mais simples deve ser a fala.',
+    'Resposta tardia também é resposta.',
+    'Tom de voz na DM importa tanto quanto o conteúdo.',
+    'Áudio quebra dinâmica. Texto registra.',
+    'Pergunta sem contexto recebe resposta inútil.',
+    'Onde tem fofoca, tem comunicação direta faltando.',
+    'Cliente perdoa erro avisado. Detesta surpresa.',
+    'Cada cidade tem um WhatsApp ativo. Use bem.',
+    'Comunicação clara reduz pressão emocional.',
+    'Linguagem corporal entrega o que a palavra esconde.',
+    'Reunião por reunião é fuga de execução.',
+    'Cada deck tem três mensagens centrais. No máximo.',
+    'Mensagem clara hoje, evita crise amanhã.',
+    'Pergunta certa é metade da resposta.',
+    'Comunicação interna boa é a que reduz reuniões.',
+    'Quem só fala, perde. Quem ouve antes, ganha.',
+    'Comunicação assertiva não é grosseira. É clara.',
+    'Calar é uma forma elegante de comunicação.',
+    'Quem domina o silêncio, conquista o tempo.',
+    'Comunicação digital exige humanidade analógica.',
+    'Cada áudio longo é uma reunião imposta ao colega.',
+    'Quem aparece sempre, vence quem brilha às vezes.',
+    'O dia perfeito é a soma de hábitos chatos.',
+    'Hábito derrota motivação no longo prazo.',
+    'Disciplina é fazer o que precisa, do jeito que precisa, na hora que precisa.',
+    'Acordar cedo não muda o mundo. Mas muda o seu.',
+    'Rotina chata vira resultado extraordinário.',
+    'Quem domina o calendário, domina a carreira.',
+    'Foco diário > foco ocasional.',
+    'Não tem talento que substitua presença.',
+    'Quem entrega no prazo, vira referência.',
+    'Hábito construído em segredo vira reputação em público.',
+    'Disciplina é prova de respeito por si mesmo.',
+    'Sem método, talento se desperdiça.',
+    'O ritmo importa mais que o pico.',
+    'Quem se compromete com pouco, entrega muito.',
+    'Comece pequeno. Repita sempre.',
+    'Inconstância destrói carreira boa.',
+    'Mil dias bons batem mil minutos brilhantes.',
+    'Hábito é o currículo invisível.',
+    'Quem treina o invisível, vence o visível.',
+    'Disciplina protege quando a motivação some.',
+    'Vida desorganizada produz resultado desorganizado.',
+    'Cada decisão pequena vai compondo destino grande.',
+    'Sem rotina, criatividade perde foco.',
+    'O profissional sério faz quando ninguém vê.',
+    'Quem se cuida, cuida melhor do time.',
+    'Saúde do corpo é estratégia, não detalhe.',
+    'Sono de qualidade é vantagem competitiva.',
+    'Hidratação simples melhora decisão complexa.',
+    'Pausa programada evita burnout não programado.',
+    'Cada pausa boa devolve duas horas de foco.',
+    'Foco profundo de 90 minutos vale dia inteiro picado.',
+    'Quem agenda o ócio, lucra criatividade.',
+    'Acumular tarefas é estratégia ruim disfarçada.',
+    'Disciplina não é prisão. É liberdade futura.',
+    'Hábito bom é amigo silencioso. Hábito ruim, sequestro lento.',
+    'Quem cultiva pequeno consegue colher grande.',
+    'Cliente NPS 9 é sócio temporário do crescimento.',
+    'Resposta rápida vale mais que resposta certa.',
+    'Cliente fiel não precisa de promoção pra voltar.',
+    'Reclamação bem tratada vira indicação.',
+    'Cliente perdoa o atraso se ele for informado.',
+    'Cada cancelamento é um diagnóstico de operação.',
+    'Cliente Pareto: 20% das empresas, 80% da receita.',
+    'Atender bem é mais barato que recuperar mal.',
+    'Cada DM respondida em 2 minutos converte 3x mais.',
+    'Cliente perdido leva 5 amigos junto.',
+    'Indicação é o melhor canal de aquisição.',
+    'Custo de aquisição alto exige LTV mais alto.',
+    'Cliente que paga em dia, merece atenção em dia.',
+    'Receita boa é receita previsível.',
+    'Cliente errado faz operação envelhecer.',
+    'Mais barato manter cliente bom do que prospectar ruim.',
+    'Sorriso na entrega vale mais que cupom de R$ 5.',
+    'Promoção é convite. Experiência é casamento.',
+    'Cliente Pareto merece cuidado Pareto.',
+    'Cada ticket alto exige atenção alta.',
+    'Onde tem cliente fiel, tem operação respirando.',
+    'Cliente NPS detrator não some — ele recruta inimigos.',
+    'Ouvir cliente diariamente economiza pesquisa anual.',
+    'Sucesso do cliente é a melhor área de marketing.',
+    'Não bata meta atropelando cliente. Não compensa.',
+    'Cliente bom mora em cidade boa pra operação.',
+    'Atendimento humano é luxo sustentável.',
+    'Onboarding do cliente é onde nasce o segundo pedido.',
+    'Cliente premium quer experiência premium em tudo.',
+    'Atitude vence currículo.',
+    'Quem reclama, perde tempo. Quem age, ganha vantagem.',
+    'Não dá pra controlar o ambiente. Dá pra controlar a resposta.',
+    'Postura abre porta que conhecimento sozinho não abre.',
+    'Energia boa é decisão diária.',
+    'Quem entra no problema com alma, sai com solução.',
+    'Atitude positiva não é negar problema. É enfrentá-lo.',
+    'Quem segue chorando, fica parado.',
+    'Cada problema é um músculo treinado.',
+    'Mentalidade de aprendiz é caro de ouro.',
+    'Vitimismo é cadeira de balanço: ocupa, mas não leva.',
+    'Quem se queixa do mercado, é demitido pelo mercado.',
+    'Curiosidade ativa muda a velocidade do crescimento.',
+    'Quem tem propósito não tem cansaço.',
+    'Otimismo realista bate pessimismo informado.',
+    'Profissional que vibra com o time, multiplica energia.',
+    'Resiliência não é dom. É treino diário.',
+    'Quem domina o sim, domina o não.',
+    'Atitude proativa abre porta de cargo sênior.',
+    'Acreditar antes faz a diferença depois.',
+    'Persistência sem reflexão é teimosia.',
+    'Reflexão sem persistência é fantasia.',
+    'Quem celebra pequeno, conquista grande.',
+    'Profissional não terceiriza culpa.',
+    'Bom humor profissional contagia operação.',
+    'Não desanime na escassez. Não relaxe na abundância.',
+    'Pequenas vitórias diárias somam grande virada.',
+    'Quem treina paciência, colhe oportunidade.',
+    'Gratidão muda a química da equipe.',
+    'Atitude entrega de domingo de manhã.',
+    'Mentalidade vencedora chega antes do recurso.',
+    'Quem age agora, evita o vai e volta.',
+    'Profissional A+ entrega quando ninguém pediu.',
+    'Cada problema é uma promoção disfarçada.',
+    'Ego pequeno acelera carreira grande.',
+    'Humildade técnica é blindagem contra estagnação.',
+    'Quem deve, paga. Quem promete, cumpre.',
+    'Reputação é um banco. Cada ato é depósito ou saque.',
+    'Profissionalismo se prova em dia ruim.',
+    'Quem mantém palavra, vira referência.',
+    'Mentalidade dono cabe em qualquer cargo.',
+    'Posicionar-se bem economiza explicar-se demais.',
+    'Quem sabe pedir desculpa, lidera mais longe.',
+    'Erro admitido cedo, abafa antes de explodir.',
+    'Pequeno gesto, grande lembrança.',
+    'Quem se importa, transforma cliente em fã.',
+    'Energia certa convoca pessoa certa.',
+    'Atitude pequena gera grande indicação.',
+    'Quem tem foco em cliente, tem futuro em alta.',
+    'Mente calma toma decisão sábia.',
+    'Fé com respeito move montanhas e mantém pés no chão.',
+    'Fé não dispensa planejamento. Planejamento não dispensa fé.',
+    'Trabalho honesto é oração com as mãos.',
+    'Propósito grande aguenta dia pequeno.',
+    'Servir o próximo é o melhor KPI.',
+    'Coloque Deus em primeiro lugar. O resto cai no lugar.',
+    'Há tempo de plantar e tempo de colher.',
+    'A fé não dispensa sabedoria. Une-se a ela.',
+    'Acreditar pequeno, conquistar grande.',
+    'Sabedoria começa no temor do Senhor.',
+    'Quem confia no Senhor, renova sua força.',
+    'O trabalho dignifica o homem.',
+    'Cada cidade nova é uma promessa cumprida.',
+    'Trabalho com propósito não cansa, apenas se renova.',
+    'Bom plano gera frutos. Bom coração gera história.',
+    'Confie no caminho, mesmo quando não vê o próximo passo.',
+    'Quem semeia com lágrimas, colhe com alegria.',
+    'Servir é a forma mais elegante de liderar.',
+    'Quem confia em Deus, decide com paz.',
+    'A bênção segue quem honra processo.',
+    'Cada cliente é uma chance de amar o próximo.',
+    'Negócio com Deus tem horizonte longo.',
+    'Profissional grato, profissional inspirador.',
+    'Não conte só com a sorte. Confie no Senhor.',
+    'Decisão importante começa em oração.',
+    'Quem reconhece o pai, é reconhecido pelos seus.',
+    'Equipe que ora junto, vence junto.',
+    'Tem hora de calar e ouvir.',
+    'Fé é certeza do que se espera.',
+    'Trabalhe como se dependesse de você. Confie como se dependesse de Deus.',
+    'Salário não compra paz. Propósito sim.',
+    'Faça o seu melhor. Deus cuida do resto.',
+    'Trabalho duro mais fé prudente: combinação imbatível.',
+    'Bom nome vale mais que muitas riquezas.',
+    'Propósito eterno orienta decisão temporal.',
+    'Quem ora, escuta. Quem escuta, decide melhor.',
+    'Há livramento em decisões adiadas com sabedoria.',
+    'Bom administrador é fiel no pouco.',
+    'Excelência é forma de adorar.',
+    'Receita vaidosa, lucro magro, caixa rei.',
+    'Crescimento sem caixa é colapso programado.',
+    'Custo recorrente é o vilão silencioso.',
+    'Margem boa não é sorte: é disciplina.',
+    'Receita previsível tira sono. Boa noite, fundador.',
+    'Cada centavo gerenciado vira dois recuperados.',
+    'Lucro real é o que sobra na conta, não no Excel.',
+    'Indicador defasado é decisão atrasada.',
+    'Quem mede LTV, decide CAC.',
+    'Ticket médio é termômetro de proposta de valor.',
+    'Crescimento sem retenção é vazamento.',
+    'Receita recorrente compra liberdade.',
+    'Investidor olha tração antes de tese.',
+    'Caixa apertado força criatividade.',
+    'Margem cresce com processo, não com promoção.',
+    'Cada PDV merece análise de unit economics.',
+    'Quem não controla custo variável, perde batalha invisível.',
+    'Resultado financeiro mostra a qualidade da operação.',
+    'Investir em retenção dá mais ROI que aquisição.',
+    'Cobrança bem feita preserva relacionamento.',
+    'Quem reduz CAC sem reduzir LTV, vira referência.',
+    'Cliente bom paga em dia. Cliente ótimo paga adiantado.',
+    'Receita previsível atrai talento previsível.',
+    'Métrica oculta engana time.',
+    'Compartilhe métricas: combata desinformação.',
+    'Resultado de hoje é fruto da estratégia de 6 meses atrás.',
+    'Operação enxuta sobrevive ao inverno.',
+    'Quem economiza no certo, investe melhor no acerto.',
+    'Receita sazonal exige caixa contracíclico.',
+    'Marca é o que se diz quando você não está na sala.',
+    'Posicionamento claro economiza Ads.',
+    'Conteúdo bom é convite. Anúncio é interrupção.',
+    'Storytelling vence dado solto.',
+    'Estética importa: ela transmite respeito ao cliente.',
+    'Marca consistente reduz custo de aquisição.',
+    'Reels boa vence anúncio caro.',
+    'Branding é maratona. Performance é sprint.'
+  ];
+
+  // Seed pelo dia do ano: mesma frase pra todo mundo no mesmo dia
+  var hoje = new Date();
+  var inicio = new Date(hoje.getFullYear(), 0, 0);
+  var diff = hoje - inicio;
+  var diaAno = Math.floor(diff / (1000 * 60 * 60 * 24));
+  return frases[diaAno % frases.length];
+}
+
 function renderPessoas(){
   const pessoas = getPessoas();
   const busca = (document.getElementById('pessoas-busca')||{}).value||'';
   
-  // métricas
-  const dir   = pessoas.filter(p=>p.cargo==='Diretoria').length;
-  const gest  = pessoas.filter(p=>p.cargo==='Gestor').length;
-  const bdays = pessoas.filter(p=>isBdayToday(p.nascimento));
-  const el_t  = document.getElementById('pm-total');   if(el_t) el_t.textContent = pessoas.length;
-  const el_d  = document.getElementById('pm-dir');     if(el_d) el_d.textContent = dir;
-  const el_g  = document.getElementById('pm-gest');    if(el_g) el_g.textContent = gest;
-  const el_b  = document.getElementById('pm-bday');    if(el_b){ el_b.textContent=bdays.length; el_b.style.color=bdays.length>0?'var(--orange)':'var(--text)'; }
-  const el_bs = document.getElementById('pm-bday-sub');if(el_bs){ el_bs.textContent=bdays.length>0?'Gerar posts!':''; el_bs.style.color='var(--orange)'; }
+  // ====== 6 CARDS DO TOPO (v23.69b) ======
+  
+  // 1. 🟢 Online hoje (async - carrega depois)
+  _pm_carregarOnlineHoje().then(function(n){
+    var el = document.getElementById('pm-online');
+    if(el) el.textContent = n;
+  }).catch(function(){
+    var el = document.getElementById('pm-online'); if(el) el.textContent = '—';
+  });
+  
+  // 2. ✅ Tarefas concluídas hoje
+  var concluidas = _pm_contarTarefasConcluidasHoje();
+  var elT = document.getElementById('pm-tarefas-hoje');
+  if(elT) elT.textContent = concluidas;
+  
+  // 3. 🎂 Próximos 7 dias
+  var prox7 = pessoas.filter(function(p){ return isBdayWeek(p.nascimento); })
+                      .sort(function(a,b){ return diasParaAniv(a.nascimento) - diasParaAniv(b.nascimento); });
+  var elP = document.getElementById('pm-bday-7d');
+  var elPSub = document.getElementById('pm-bday-7d-sub');
+  if(prox7.length === 0){
+    if(elP) elP.textContent = 'Nenhum';
+    if(elPSub) elPSub.textContent = '—';
+  } else {
+    var prox = prox7[0];
+    var dias = diasParaAniv(prox.nascimento);
+    if(elP) elP.textContent = (prox.nome||'').split(' ')[0];
+    if(elPSub){
+      var sub = '';
+      if(dias === 0) sub = '🎉 Hoje!';
+      else if(dias === 1) sub = 'amanhã';
+      else sub = 'em '+dias+' dias';
+      if(prox7.length > 1) sub += ' · +'+(prox7.length-1)+' depois';
+      elPSub.textContent = sub;
+    }
+  }
+  
+  // 4. 🎂 Do mês
+  var mesAtual = new Date().getMonth();
+  var doMes = pessoas.filter(function(p){
+    if(!p.nascimento) return false;
+    var n = new Date(p.nascimento+'T00:00:00');
+    return !isNaN(n) && n.getMonth() === mesAtual;
+  });
+  var elM = document.getElementById('pm-bday-mes');
+  var elMSub = document.getElementById('pm-bday-mes-sub');
+  if(elM) elM.textContent = doMes.length;
+  if(elMSub){
+    var mesNome = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][mesAtual];
+    elMSub.textContent = 'em '+mesNome;
+  }
+  
+  // 5. 🏆 Reconhecido da semana
+  var rec = (typeof getReconhecimento === 'function') ? getReconhecimento() : null;
+  var elR = document.getElementById('pm-reconhecido');
+  if(elR){
+    if(rec && rec.nome){
+      elR.textContent = rec.nome;
+    } else {
+      elR.textContent = 'Sem nomeação';
+      elR.style.fontSize = '12px';
+    }
+  }
+  
+  // 6. 💬 Frase Gâmi do dia
+  var elF = document.getElementById('pm-frase');
+  if(elF){ elF.textContent = '"' + _pm_fraseGamiDoDia() + '"'; }
+  
+  // ====== /CARDS ======
 
   // banner aniversários
   const banner = document.getElementById('bday-banner');
