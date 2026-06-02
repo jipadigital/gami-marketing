@@ -1,4 +1,4 @@
-<!-- v23.64 - Sync em massa todas as cidades + status visual por cidade - 02/06/2026 -->
+<!-- v23.65 - Fix contagem corridas por cidade via RPC - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12567,22 +12567,28 @@ async function gerarBackupAgora(){
 var _SYNC_MASSA = { rodando: false, cancelar: false, atual: null, fila: [] };
 
 async function _buscarStatusSyncPorCidade(){
-  // Busca contagens no Supabase + último sync por cidade
-  var [contagens, syncs] = await Promise.all([
-    fetch(SUPA_URL+'/rest/v1/machine_corridas?select=cidade_slug&limit=500000', {
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Range': '0-499999' }
+  // Busca contagens via função SQL (evita limite de 1000 rows do PostgREST)
+  // + último sync por cidade
+  var [contagensRes, syncs] = await Promise.all([
+    fetch(SUPA_URL+'/rest/v1/rpc/contar_corridas_por_cidade', {
+      method:'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+      body: '{}'
     }).then(function(r){return r.ok ? r.json() : [];}).catch(function(){return [];}),
     _rlSupaQuery('machine_sync_log?status=eq.concluido&order=finalizado_em.desc&limit=200').catch(function(){return [];})
   ]);
   
-  // Agrupa contagem por cidade_slug
+  // contagensRes: [ { cidade_slug, total, primeira_corrida, ultima_corrida }, ... ]
   var porSlug = {};
-  contagens.forEach(function(c){
-    var s = c.cidade_slug;
-    porSlug[s] = (porSlug[s] || 0) + 1;
-  });
+  var ultimaCorridaPorSlug = {};
+  if(Array.isArray(contagensRes)){
+    contagensRes.forEach(function(c){
+      porSlug[c.cidade_slug] = parseInt(c.total) || 0;
+      ultimaCorridaPorSlug[c.cidade_slug] = c.ultima_corrida;
+    });
+  }
   
-  // Último sync por cidade
+  // Último sync por cidade (do machine_sync_log)
   var ultimoSync = {};
   syncs.forEach(function(s){
     if(!ultimoSync[s.cidade_slug]){
@@ -12596,7 +12602,16 @@ async function _buscarStatusSyncPorCidade(){
     var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
     var total = porSlug[slug] || 0;
     var ult = ultimoSync[slug];
-    var diasDesde = ult ? Math.floor((Date.now() - new Date(ult.finalizado_em).getTime())/86400000) : null;
+    var ultCorrida = ultimaCorridaPorSlug[slug]; // última corrida real nos dados
+    
+    // Calcula dias desde último sync OU desde última corrida (o mais recente)
+    var diasDesde = null;
+    if(ult){
+      diasDesde = Math.floor((Date.now() - new Date(ult.finalizado_em).getTime())/86400000);
+    } else if(ultCorrida){
+      // Se nunca rodou sync mas tem dados, usa última corrida como referência
+      diasDesde = Math.floor((Date.now() - new Date(ultCorrida).getTime())/86400000);
+    }
     
     var status, cor;
     if(total === 0){ status = 'nunca'; cor = '#E24B4A'; }
@@ -12609,6 +12624,7 @@ async function _buscarStatusSyncPorCidade(){
       cidade: c,
       slug: slug,
       total_corridas: total,
+      ultima_corrida: ultCorrida,
       ultimo_sync: ult ? ult.finalizado_em : null,
       dias_desde: diasDesde,
       status: status,
