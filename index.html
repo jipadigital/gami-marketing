@@ -1,4 +1,4 @@
-<!-- v23.73 - Sync sequencial (rate limit) + retry automático - 02/06/2026 -->
+<!-- v23.74 - Fix slug sync: campogrande → campo-grande - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -13824,7 +13824,10 @@ async function iniciarSincronizacaoSupabase(cidadeId){
   var c = cidades.find(function(x){ return x.id === cidadeId; });
   if(!c) return;
   
-  var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+  var slug = c.nome.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'-')        // espaço → hífen (Campo Grande → campo-grande)
+    .replace(/[^a-z0-9-]/g,''); // remove outros caracteres
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var usuarioNome = (u && (u.nome || u.email)) || 'desconhecido';
   
