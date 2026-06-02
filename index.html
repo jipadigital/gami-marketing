@@ -1,4 +1,4 @@
-<!-- v23.91 - Onda 3: 8 relatórios operacionais com paradas - 02/06/2026 -->
+<!-- v23.92 - Fix slug na Saúde do Sistema (status sync por cidade) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -14848,8 +14848,22 @@ async function _buscarStatusSyncPorCidade(){
   // Monta status pra cada cidade
   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
   return cidades.map(function(c){
-    var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+    // 🔧 Usa _vgSlug (com hífen) — _slugify remove hífen e dá inconsistência com o que o sync salva
+    var slug = (typeof _vgSlug === 'function') 
+      ? _vgSlug(c.nome) 
+      : c.nome.toLowerCase().replace(/\s+/g,'-');
     var total = porSlug[slug] || 0;
+    
+    // Fallback: tenta também sem hífen (legado) caso alguma cidade ainda esteja salva assim
+    if(total === 0 && typeof _slugify === 'function'){
+      var slugLegado = _slugify(c.nome);
+      if(porSlug[slugLegado]){
+        slug = slugLegado;
+        total = porSlug[slugLegado];
+        console.warn('[Saúde Sistema] Cidade '+c.nome+' salva com slug legado:', slugLegado);
+      }
+    }
+    
     var ult = ultimoSync[slug];
     var ultCorrida = ultimaCorridaPorSlug[slug]; // última corrida real nos dados
     
