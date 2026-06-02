@@ -1,4 +1,4 @@
-<!-- v23.75 - Refragmentação 12h auto + timeout 24s pra cidades grandes - 02/06/2026 -->
+<!-- v23.76 - Refragmentação cascata 24h→12h→6h (ResponseSizeTooLarge) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -13960,31 +13960,44 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     };
     
     // Helper: quando 1 dia falha, divide em manhã/tarde pra reduzir volume por chamada
+    // Se manhã/tarde também falhar, divide cada uma em 2 (refragmentação 6h - 4 chamadas total)
     async function _syncRefragmentar12h(dia, slug){
-      var manhaIni = dia+'T00:00:00.000Z';
-      var manhaFim = dia+'T11:59:59.999Z';
-      var tardeIni = dia+'T12:00:00.000Z';
-      var tardeFim = dia+'T23:59:59.999Z';
+      var blocos = [
+        {label:'manhã (00-12)',   ini:dia+'T00:00:00.000Z', fim:dia+'T11:59:59.999Z'},
+        {label:'tarde (12-24)',   ini:dia+'T12:00:00.000Z', fim:dia+'T23:59:59.999Z'}
+      ];
       var arr = [];
       
-      try {
-        var rManha = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(manhaIni)+'&data_fim='+encodeURIComponent(manhaFim));
-        if(rManha.ok){
-          var dm = await rManha.json();
-          if(dm && Array.isArray(dm.response)){ arr = arr.concat(dm.response); }
-        } else { _syncLog('⚠⚠ '+dia+' manhã HTTP '+rManha.status); }
-      } catch(eM){ _syncLog('⚠⚠ '+dia+' manhã: '+eM.message); }
-      
-      // Delay leve entre manhã e tarde
-      await new Promise(function(r){setTimeout(r, 1000);});
-      
-      try {
-        var rTarde = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(tardeIni)+'&data_fim='+encodeURIComponent(tardeFim));
-        if(rTarde.ok){
-          var dt = await rTarde.json();
-          if(dt && Array.isArray(dt.response)){ arr = arr.concat(dt.response); }
-        } else { _syncLog('⚠⚠ '+dia+' tarde HTTP '+rTarde.status); }
-      } catch(eT){ _syncLog('⚠⚠ '+dia+' tarde: '+eT.message); }
+      for(var i = 0; i < blocos.length; i++){
+        var b = blocos[i];
+        var corridas = await _syncBuscarPeriodo(slug, b.ini, b.fim);
+        
+        if(corridas === null){
+          // 12h falhou — tenta refragmentar em 6h (2 blocos de 6h)
+          _syncLog('⚠⚠ '+dia+' '+b.label+' falhou — tentando blocos de 6h');
+          var meioIni = b.ini;
+          var meioMid = b.ini.split('T')[0] + 'T' + (i === 0 ? '05:59:59.999Z' : '17:59:59.999Z');
+          var meioMid2 = b.ini.split('T')[0] + 'T' + (i === 0 ? '06:00:00.000Z' : '18:00:00.000Z');
+          var meioFim = b.fim;
+          
+          var sub1 = await _syncBuscarPeriodo(slug, meioIni, meioMid);
+          await new Promise(function(r){setTimeout(r, 500);});
+          var sub2 = await _syncBuscarPeriodo(slug, meioMid2, meioFim);
+          
+          if(sub1 !== null) arr = arr.concat(sub1);
+          if(sub2 !== null) arr = arr.concat(sub2);
+          if(sub1 === null && sub2 === null){
+            _syncLog('⚠⚠⚠ '+dia+' '+b.label+' falhou mesmo em 6h');
+          } else {
+            _syncLog('✓ '+dia+' '+b.label+' recuperado em 6h: '+(sub1?sub1.length:0)+' + '+(sub2?sub2.length:0)+' corridas');
+          }
+        } else {
+          arr = arr.concat(corridas);
+        }
+        
+        // Delay entre blocos pra não estourar rate limit
+        await new Promise(function(r){setTimeout(r, 500);});
+      }
       
       if(arr.length > 0){
         _syncLog('✓ '+dia+' refragmentado: '+arr.length+' corridas recuperadas');
@@ -13992,6 +14005,21 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         diasComErro.push(dia);
       }
       return arr;
+    }
+    
+    // Helper: faz 1 fetch de uma janela. Retorna array ou null em caso de erro.
+    async function _syncBuscarPeriodo(slug, iniIso, fimIso){
+      try {
+        var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(iniIso)+'&data_fim='+encodeURIComponent(fimIso));
+        if(!r.ok){
+          return null;
+        }
+        var d = await r.json();
+        if(d && Array.isArray(d.response)) return d.response;
+        return null;
+      } catch(e){
+        return null;
+      }
     }
     
     // Processa em batches sequenciais (cidades grandes geram muitas requests por dia)
