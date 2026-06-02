@@ -1,4 +1,4 @@
-<!-- v23.70 - Manual: Cidades detalhado, sem marketing/avancado/super_admin - 02/06/2026 -->
+<!-- v23.71 - Fix Machine separada (CG): filtro inteligente, modal sem alert, log diagnóstico - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18386,10 +18386,25 @@ function empCard(icone, label, valor, sublabel, cor, tooltip){
 function _empFiltrarPorCidade(empresas, cidadeNome){
   if(!empresas || !empresas.length) return [];
   var n = String(cidadeNome||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return empresas.filter(function(e){
+  var filtradas = empresas.filter(function(e){
     var ec = String(e.cidade||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     return ec === n || ec.indexOf(n) >= 0 || n.indexOf(ec) >= 0;
   });
+  // FALLBACK Machine separada: se o filtro retornou 0 (ou muito pouco),
+  // provavelmente a Machine é dedicada à cidade e retorna apenas empresas dela.
+  // Nesse caso, o campo "cidade" pode estar vazio, em formato diferente ou com outro nome.
+  // Como já estamos buscando dados específicos dessa Machine, assume TODAS são da cidade.
+  if(filtradas.length === 0 && empresas.length > 0){
+    console.log('[Filtro Cidade] Filtro retornou 0 — Machine separada detectada, retornando todas as '+empresas.length+' empresas');
+    return empresas;
+  }
+  // Heurística adicional: se filtrou MUITO pouco (<5%) E tem volume razoável (>500),
+  // também trata como Machine separada
+  if(empresas.length > 500 && filtradas.length < empresas.length * 0.05){
+    console.log('[Filtro Cidade] Filtro retornou só '+filtradas.length+'/'+empresas.length+' — tratando como Machine separada');
+    return empresas;
+  }
+  return filtradas;
 }
 
 /* Renderiza os 6 cards superiores */
@@ -18578,14 +18593,15 @@ function empVerEmpresa(nomeEncoded){
   if(!_vgCache[c.id]){ toast('Carregue os dados da Machine primeiro','warn'); return; }
   var d = _vgCache[c.id].dados;
 
-  // Procura empresa cadastrada (Machine /empresa) pelo nome
-  var empresasCidade = _empFiltrarPorCidade(d.empresas || [], c.nome);
-  var emp = empresasCidade.find(function(e){ return (e.nome||'').trim().toLowerCase() === nome.toLowerCase(); });
+  // Procura empresa cadastrada (Machine /empresa) pelo nome - busca em TODA a lista (sem filtro)
+  var nomeNormalizado = nome.trim().toLowerCase();
+  var emp = (d.empresas||[]).find(function(e){ return (e.nome||'').trim().toLowerCase() === nomeNormalizado; });
 
   // Se nao achar no cadastro, monta stub minimo a partir das corridas
   if(!emp){
-    var qualquer = (d.corridas45d||[]).find(function(x){ return (x.nome_passageiro||'').trim().toLowerCase() === nome.toLowerCase(); });
-    if(!qualquer){ alert('Empresa não encontrada nos dados atuais.'); return; }
+    var qualquer = (d.corridas45d||[]).find(function(x){ return (x.nome_passageiro||'').trim().toLowerCase() === nomeNormalizado; });
+    // Mesmo se não achar nas corridas45d, ainda monta um stub básico
+    // (pode ser empresa que apareceu em corridasMes mas não em corridas45d)
     emp = {nome: nome, status_empresa: '?', telefone: '', bairro: '', endereco: '', tipos_pagamento: [], categorias: []};
   }
 
