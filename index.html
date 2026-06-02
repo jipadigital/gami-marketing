@@ -1,4 +1,4 @@
-<!-- v23.76 - Refragmentação cascata 24h→12h→6h (ResponseSizeTooLarge) - 02/06/2026 -->
+<!-- v23.77 - Cap 5MB no machine.js (evita ResponseSizeTooLarge) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -13913,34 +13913,15 @@ async function iniciarSincronizacaoSupabase(cidadeId){
         var dataChunk = await rChunk.json();
         var arr = (dataChunk && Array.isArray(dataChunk.response)) ? dataChunk.response : [];
         
-        // ⚠ Se Machine truncou (mais de 10k no dia), refragmenta em 12h
+        // ⚠ Se Machine truncou (passou de 5MB ou MAX_PAGINAS), refragmenta em 12h/6h
         if(dataChunk && dataChunk.truncado){
-          _syncLog('⚠ '+dia+' truncado em '+arr.length+' corridas — refragmentando em 12h');
-          
-          // Busca manhã (00:00-12:00) e tarde (12:00-23:59) com timestamps ISO
-          var manhaIni = dia+'T00:00:00.000Z';
-          var manhaFim = dia+'T11:59:59.999Z';
-          var tardeIni = dia+'T12:00:00.000Z';
-          var tardeFim = dia+'T23:59:59.999Z';
-          
-          var arrRefeito = [];
-          try {
-            var rManha = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(manhaIni)+'&data_fim='+encodeURIComponent(manhaFim));
-            if(rManha.ok){
-              var dm = await rManha.json();
-              if(dm && Array.isArray(dm.response)) arrRefeito = arrRefeito.concat(dm.response);
-              if(dm && dm.truncado) _syncLog('⚠⚠ '+dia+' MANHÃ ainda truncada ('+dm.response.length+'+ corridas)');
-            }
-            var rTarde = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(tardeIni)+'&data_fim='+encodeURIComponent(tardeFim));
-            if(rTarde.ok){
-              var dt = await rTarde.json();
-              if(dt && Array.isArray(dt.response)) arrRefeito = arrRefeito.concat(dt.response);
-              if(dt && dt.truncado) _syncLog('⚠⚠ '+dia+' TARDE ainda truncada ('+dt.response.length+'+ corridas)');
-            }
-          } catch(e2){ _syncLog('Erro refragmentação '+dia+': '+e2.message); }
-          
-          if(arrRefeito.length > arr.length){
+          _syncLog('⚠ '+dia+' truncado em '+arr.length+' corridas — refragmentando');
+          var arrRefeito = await _syncRefragmentar12h(dia, slug);
+          if(arrRefeito && arrRefeito.length > arr.length){
             _syncLog('✓ '+dia+' refragmentado: '+arr.length+' → '+arrRefeito.length+' corridas');
+            // Remove o dia do diasComErro (foi adicionado pelo _syncRefragmentar12h talvez)
+            var idx = diasComErro.indexOf(dia);
+            if(idx >= 0) diasComErro.splice(idx, 1);
             return arrRefeito;
           }
         }

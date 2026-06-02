@@ -169,9 +169,10 @@ exports.handler = async function(event){
     var todos = [];
     var pagina = 1;
     var LIMITE = 100;
-    // solicitacao: 200 paginas x 100 = ate 20.000 corridas por chamada (cidades grandes)
+    // solicitacao: 60 paginas x 100 = ate 6.000 corridas por chamada (limite Netlify 6MB)
+    // Se passar disso, retorna truncado:true e client refragmenta
     // condutor: 100 (sem limite real, sao poucos)
-    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 200;
+    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 60;
     var INICIO = Date.now();
     // Netlify Pro permite ate 26s; deixa 4s de margem
     // Empresa e solicitacao precisam mais tempo (cidades grandes tem ate 5000 empresas / 20k corridas)
@@ -267,6 +268,11 @@ exports.handler = async function(event){
     }
     // === SOLICITACAO: busca sequencial (mantida, com filtro de data) ===
     else {
+      // Limite seguro de tamanho de resposta: Netlify Functions tem max 6MB.
+      // Paramos antes de chegar nesse limite e retornamos truncado:true pro client refragmentar.
+      var TAMANHO_MAX_BYTES = 5 * 1024 * 1024; // 5MB de margem segura
+      var tamanhoEstimado = 0;
+      
       while(pagina <= MAX_PAGINAS){
         if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
         var rs = await fetchPagina(pagina);
@@ -280,7 +286,7 @@ exports.handler = async function(event){
               recurso: recurso,
               periodo: dataInicio && dataFim ? (dataInicio + ' a ' + dataFim) : null,
               tempo_decorrido_ms: Date.now() - INICIO,
-              dica: rs.erro.message && rs.erro.message.indexOf('aborted') >= 0 ? 'Timeout — Machine demorou >18s pra responder. Reduzir período pode ajudar.' : null
+              dica: rs.erro.message && rs.erro.message.indexOf('aborted') >= 0 ? 'Timeout — Machine demorou >24s pra responder. Reduzir período pode ajudar.' : null
             }) };
           }
           break;
@@ -288,6 +294,18 @@ exports.handler = async function(event){
         var loteS = rs.lote;
         if(!Array.isArray(loteS) || loteS.length === 0) break;
         if(pagina > 1 && loteS.length && todos.some(function(x){ return x.id === loteS[0].id; })) break;
+        
+        // Verifica se adicionar este lote ultrapassa 5MB.
+        // Se sim, para AGORA pra não estourar limite do Netlify (6MB).
+        try {
+          var tamanhoLote = JSON.stringify(loteS).length;
+          if(tamanhoEstimado + tamanhoLote > TAMANHO_MAX_BYTES){
+            truncado = true;
+            break;
+          }
+          tamanhoEstimado += tamanhoLote;
+        } catch(eS){ /* se JSON.stringify falhar, continua normalmente */ }
+        
         todos = todos.concat(loteS);
         // Otimizacao: se filtro de data e o lote ja passou do dia pedido, para
         if(dataFim && loteS.length){
