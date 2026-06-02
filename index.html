@@ -1,4 +1,4 @@
-<!-- v23.82 - Fase 1 Paradas: SQL + sync inclui total_paradas + sumidas com 3 métricas - 02/06/2026 -->
+<!-- v23.83 - Visão Geral cidade com 8 KPIs: corridas paradas canceladas taxa fat ticket tempo lojas - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -21577,12 +21577,23 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
 
   // ---- CÁLCULOS (corridas = HOJE) ----
   var finalizadas = corridas.filter(function(x){ return x.status_solicitacao==='F'; });
+  var canceladas = corridas.filter(function(x){ return x.status_solicitacao==='C'; });
   var total = corridas.length;
   var taxaConclusao = total>0 ? Math.round(finalizadas.length/total*100) : 0;
 
+  // Paradas (entregas)
+  var totalParadas = 0;
+  var paradasFinalizadas = 0;
+  corridas.forEach(function(x){
+    var p = Array.isArray(x.paradas) ? x.paradas.length : 0;
+    totalParadas += p;
+    if(x.status_solicitacao==='F') paradasFinalizadas += p;
+  });
+
   var somaValor = 0;
   finalizadas.forEach(function(x){ somaValor += parseFloat(x.valor_corrida||0); });
-  var ticketMedio = finalizadas.length>0 ? somaValor/finalizadas.length : 0;
+  // Ticket médio POR PARADA (não por corrida) — métrica de negócio correta
+  var ticketMedio = paradasFinalizadas>0 ? somaValor/paradasFinalizadas : 0;
   var faturamento = somaValor;
 
   var somaDur=0, nDur=0;
@@ -21599,12 +21610,14 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
     if(h){ var hora = parseInt(h.split(':')[0]); porHora[hora]=(porHora[hora]||0)+1; }
   });
 
-  // Top lojas (hoje)
+  // Top lojas (hoje) — agrupa por LOWER pra unificar variações de nome
   var lojas = {};
   corridas.forEach(function(x){
-    var nome = x.nome_passageiro||'?';
-    if(!lojas[nome]) lojas[nome]={nome:nome, total:0};
-    lojas[nome].total++;
+    var nomeOrig = (x.nome_passageiro||'').trim();
+    if(!nomeOrig) return;
+    var nKey = nomeOrig.toLowerCase();
+    if(!lojas[nKey]) lojas[nKey]={nome:nomeOrig, total:0};
+    lojas[nKey].total++;
   });
   var topLojas = Object.values(lojas).sort(function(a,b){return b.total-a.total;}).slice(0,8);
   var totalLojas = Object.keys(lojas).length;
@@ -21660,16 +21673,18 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
   // Título do dia
   html += '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📅 Operação de hoje ('+dataLabel+')</div>';
 
-  // Cards de métricas principais. Faturamento + Ticket medio = so quem tem permissao financeira.
+  // Cards de métricas principais — ordem: Corridas, Paradas, Canceladas, Taxa, Faturamento, Ticket, Tempo, Lojas
   html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">';
-  html += vgCard('🛵', 'Corridas hoje', total, '#1AB8F0');
-  html += vgCard('✅', 'Taxa de conclusão', taxaConclusao+'%', '#1D9E75');
+  html += vgCard('🛵', 'Corridas hoje', total, '#1AB8F0', '✅ '+finalizadas.length+' finalizadas');
+  html += vgCard('📦', 'Paradas', totalParadas, '#16A085', paradasFinalizadas+' entregues');
+  html += vgCard('❌', 'Canceladas', canceladas.length, '#E24B4A', total>0 ? Math.round(canceladas.length/total*100)+'% do total' : '');
+  html += vgCard('✅', 'Taxa de conclusão', taxaConclusao+'%', '#1D9E75', finalizadas.length+'/'+total);
   if(verFin){
-    html += vgCard('💰', 'Faturamento', fmt(faturamento), '#16A085');
-    html += vgCard('🎫', 'Ticket médio', fmt(ticketMedio), '#EF9F27');
+    html += vgCard('💰', 'Faturamento', fmt(faturamento), '#16A085', paradasFinalizadas+' paradas pagas');
+    html += vgCard('🎫', 'Ticket médio', fmt(ticketMedio), '#EF9F27', 'por parada');
   }
-  html += vgCard('⏱️', 'Tempo médio', tempoMedio+' min', '#8B5CF6');
-  html += vgCard('🏪', 'Lojas atendidas', totalLojas, '#E24B4A');
+  html += vgCard('⏱️', 'Tempo médio', tempoMedio+' min', '#8B5CF6', 'por entrega');
+  html += vgCard('🏪', 'Lojas atendidas', totalLojas, '#1E88E5', 'únicas hoje');
   html += '</div>';
 
   // Status das corridas (barras)
@@ -21769,11 +21784,12 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
   cont.innerHTML = html;
 }
 
-function vgCard(icone, label, valor, cor){
+function vgCard(icone, label, valor, cor, sub){
   return '<div style="background:var(--surface);border:1px solid var(--border);border-top:3px solid '+cor+';border-radius:10px;padding:12px">'
     + '<div style="font-size:18px">'+icone+'</div>'
     + '<div style="font-size:22px;font-weight:700;color:'+cor+';margin:4px 0">'+valor+'</div>'
     + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px">'+label+'</div>'
+    + (sub ? '<div style="font-size:10px;color:var(--text3);margin-top:3px;opacity:.85">'+sub+'</div>' : '')
     + '</div>';
 }
 
