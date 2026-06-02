@@ -169,12 +169,13 @@ exports.handler = async function(event){
     var todos = [];
     var pagina = 1;
     var LIMITE = 100;
-    // solicitacao: 100 paginas x 100 = ate 10.000 corridas por chamada (cidades grandes)
+    // solicitacao: 200 paginas x 100 = ate 20.000 corridas por chamada (cidades grandes)
     // condutor: 100 (sem limite real, sao poucos)
-    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 100;
+    var MAX_PAGINAS = (recurso === 'condutor') ? 100 : 200;
     var INICIO = Date.now();
     // Netlify Pro permite ate 26s; deixa 4s de margem
-    var TEMPO_MAX = (recurso === 'solicitacao') ? 22000 : 8500;
+    // Empresa e solicitacao precisam mais tempo (cidades grandes tem ate 5000 empresas / 20k corridas)
+    var TEMPO_MAX = (recurso === 'solicitacao' || recurso === 'empresa') ? 22000 : 8500;
     var truncado = false;
 
     // Helper: monta a URL pra uma pagina especifica
@@ -212,11 +213,11 @@ exports.handler = async function(event){
 
     // === CONDUTOR / EMPRESA: busca sequencial (testada e estavel) ===
     // Condutor: LIMITE=200 (com fallback 100), MAX=25 paginas (ate 5000 condutores)
-    // Empresa:  LIMITE=100 (max da API segundo doc), MAX=25 paginas (ate 2500 empresas)
+    // Empresa:  LIMITE=100 (max da API segundo doc), MAX=50 paginas (ate 5000 empresas - cidades grandes)
     if(recurso === 'condutor' || recurso === 'empresa'){
       var ehEmpresa = (recurso === 'empresa');
       var LIMITE_COND = ehEmpresa ? 100 : 200;
-      var MAX_COND = 25;
+      var MAX_COND = ehEmpresa ? 50 : 25;
       var nomeRec = ehEmpresa ? 'empresa' : 'condutor';
       while(pagina <= MAX_COND){
         if(Date.now() - INICIO > TEMPO_MAX){ truncado = true; break; }
