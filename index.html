@@ -1,4 +1,4 @@
-<!-- v23.78 - Empresas em Queda: 30 dias (15/15) - 02/06/2026 -->
+<!-- v23.79 - Empresas Sumidas: 5d→3d + normaliza nome lowercase (CG bug) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -19027,36 +19027,51 @@ function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
   });
 
   var hoje = new Date(hojeStr+'T00:00:00');
-  // Agrupa corridas por empresa, descobre ultima
+  // Agrupa corridas por empresa (NORMALIZADO em lowercase pra evitar duplicação)
+  // Antes: "Ponto do Suco" e "PONTO DO SUCO" eram tratadas como empresas diferentes!
   var byEmp = {};
   corridas45d.forEach(function(x){
-    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var nOrig = (x.nome_passageiro||'').trim(); if(!nOrig) return;
+    var nKey = nOrig.toLowerCase();
     var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
-    if(!byEmp[n]) byEmp[n] = {nome:n, ultima:dStr, total:0};
-    if(dStr > byEmp[n].ultima) byEmp[n].ultima = dStr;
-    byEmp[n].total++;
+    if(!byEmp[nKey]) byEmp[nKey] = {nome:nOrig, ultima:dStr, total:0, variacoes:[nOrig]};
+    if(dStr > byEmp[nKey].ultima) byEmp[nKey].ultima = dStr;
+    // Salva o nome mais comum como display (mantém capitalização original)
+    if(byEmp[nKey].variacoes.indexOf(nOrig) < 0) byEmp[nKey].variacoes.push(nOrig);
+    byEmp[nKey].total++;
   });
 
-  // Filtra: pediu em 45d mas sumiu ha 5+ dias
+  // Filtra: pediu em 45d mas sumiu ha 3+ dias (era 5, mudado conforme pedido)
+  var DIAS_MIN_SUMIDA = 3;
   var sumidas = [];
   Object.values(byEmp).forEach(function(e){
     var ult = new Date(e.ultima+'T00:00:00');
     var dias = Math.floor((hoje - ult) / 86400000);
-    if(dias >= 5){
+    if(dias >= DIAS_MIN_SUMIDA){
       var info = mapEmp[e.nome.toLowerCase()] || {};
       sumidas.push({
         nome: e.nome, dias: dias, total: e.total, ultima: e.ultima,
-        tel: info.telefone || '', status: info.status_empresa || '?', bairro: info.bairro || ''
+        tel: info.telefone || '', status: info.status_empresa || '?', bairro: info.bairro || '',
+        variacoes: e.variacoes.length > 1 ? e.variacoes : null
       });
     }
   });
-  // Ordem crescente: mais recentes primeiro (5 dias, 6, 7...)
+  // Ordem crescente: mais recentes primeiro (3 dias, 4, 5...)
   sumidas.sort(function(a,b){ return a.dias - b.dias; });
+
+  // 🔍 Log de diagnóstico no console pra conferência (útil pra debug)
+  if(sumidas.length > 0){
+    console.log('[Empresas Sumidas] '+sumidas.length+' empresas em ' + (cidadeAtual ? cidadeAtual.nome : '?') + ':', sumidas);
+    var variacoesDup = sumidas.filter(function(s){ return s.variacoes; });
+    if(variacoesDup.length > 0){
+      console.warn('[Empresas Sumidas] ⚠ '+variacoesDup.length+' empresa(s) com variações de nome (foram unificadas):', variacoesDup);
+    }
+  }
 
   if(!sumidas.length){
     box.innerHTML = '<div class="card" style="background:#EAF3DE;border-left:4px solid #1D9E75">'
       + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">✅</span>'
-      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as empresas que pediram nos últimos 45 dias continuam ativas (pediram nos últimos 5 dias).</span></div></div>';
+      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as empresas que pediram nos últimos 45 dias continuam ativas (pediram nos últimos '+DIAS_MIN_SUMIDA+' dias).</span></div></div>';
     return;
   }
 
@@ -19065,7 +19080,7 @@ function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
     + '<div style="font-size:11px;font-weight:700;color:#A93226;text-transform:uppercase;letter-spacing:.5px">🚨 Empresas Sumidas</div>'
     + '<span style="font-size:10px;color:#A93226;background:#E24B4A22;padding:2px 7px;border-radius:6px">'+sumidas.length+' lojas</span>'
     + '</div>'
-    + '<div style="font-size:11px;color:#A93226;margin-bottom:10px">Pediram nos últimos 45 dias mas estão há <strong>5+ dias sem pedir</strong>. Ordenadas das mais recentes para as mais antigas.</div>'
+    + '<div style="font-size:11px;color:#A93226;margin-bottom:10px">Pediram nos últimos 45 dias mas estão há <strong>'+DIAS_MIN_SUMIDA+'+ dias sem pedir</strong>. Ordenadas das mais recentes para as mais antigas. <span style="font-size:10px;opacity:.7">(F12→Console pra log detalhado)</span></div>'
     + '<div style="max-height:520px;overflow-y:auto;padding-right:4px">';
 
   sumidas.forEach(function(e){
