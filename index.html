@@ -1,4 +1,4 @@
-<!-- v23.79 - Empresas Sumidas: 5d→3d + normaliza nome lowercase (CG bug) - 02/06/2026 -->
+<!-- v23.80 - Fix relatório Sumidas: unifica empresas com case diferente - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11381,16 +11381,47 @@ async function _sb_empresas_sumidas(){
   
   // Mescla hoje no histórico
   var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
-  
-  // Recalcula dias_sem_pedir COM dados de hoje
   var agora = new Date();
+  
+  // 🔧 Re-agrupa por nome em lowercase pra unificar variações ("PADARIA X" + "Padaria X")
+  // A view do Supabase ainda separa por case-sensitive — corrige aqui no client
+  var agrupado = {};
   mesclado.forEach(function(e){
+    var nOrig = (e.nome_passageiro||'').trim(); if(!nOrig) return;
+    var nKey = nOrig.toLowerCase();
+    if(!agrupado[nKey]){
+      agrupado[nKey] = {
+        nome_passageiro: nOrig,
+        ultima_corrida: e.ultima_corrida,
+        total: 0,
+        valor_total: 0,
+        variacoes: [nOrig]
+      };
+    }
+    // Mantém a data mais recente (última corrida real da empresa)
+    if(new Date(e.ultima_corrida) > new Date(agrupado[nKey].ultima_corrida)){
+      agrupado[nKey].ultima_corrida = e.ultima_corrida;
+    }
+    if(agrupado[nKey].variacoes.indexOf(nOrig) < 0) agrupado[nKey].variacoes.push(nOrig);
+    agrupado[nKey].total += parseInt(e.total||0);
+    agrupado[nKey].valor_total += parseFloat(e.valor_total||0);
+  });
+  
+  // Recalcula dias_sem_pedir após unificar
+  var mescladoUnificado = Object.values(agrupado);
+  mescladoUnificado.forEach(function(e){
     var ult = new Date(e.ultima_corrida);
     e.dias_sem_pedir = Math.floor((agora - ult) / 86400000);
   });
   
+  // Log diagnóstico
+  var temVariacoes = mescladoUnificado.filter(function(e){ return e.variacoes.length > 1; });
+  if(temVariacoes.length > 0){
+    console.warn('[Relatório Sumidas] '+temVariacoes.length+' empresa(s) com variações de nome unificadas:', temVariacoes);
+  }
+  
   // Filtra sumidas
-  var sumidas = mesclado.filter(function(e){ return e.dias_sem_pedir >= semHa; });
+  var sumidas = mescladoUnificado.filter(function(e){ return e.dias_sem_pedir >= semHa; });
   sumidas.sort(function(a,b){ return b.dias_sem_pedir < a.dias_sem_pedir ? 1 : -1; });
   
   var podeValor = _rlPodeVerValor();
@@ -12499,16 +12530,19 @@ function _gen_empresas_sumidas(d){
     if(n) mapEmp[n.toLowerCase()] = e;
   });
   
-  // Agrupa por nome_passageiro (mesma lógica da aba cidade)
+  // Agrupa por nome_passageiro NORMALIZADO em lowercase (evita duplicação por case)
+  // Antes: "Ponto do Suco" e "PONTO DO SUCO" eram empresas diferentes!
   var byEmp = {};
   d.corridas45d.forEach(function(x){
-    var n = (x.nome_passageiro||'').trim(); if(!n) return;
+    var nOrig = (x.nome_passageiro||'').trim(); if(!nOrig) return;
+    var nKey = nOrig.toLowerCase();
     var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
     
-    if(!byEmp[n]) byEmp[n] = { nome:n, ultima:dStr, total:0, valor:0 };
-    if(dStr > byEmp[n].ultima) byEmp[n].ultima = dStr;
-    byEmp[n].total++;
-    byEmp[n].valor += parseFloat(x.valor_corrida || x.valor || 0);
+    if(!byEmp[nKey]) byEmp[nKey] = { nome:nOrig, ultima:dStr, total:0, valor:0, variacoes:[nOrig] };
+    if(dStr > byEmp[nKey].ultima) byEmp[nKey].ultima = dStr;
+    if(byEmp[nKey].variacoes.indexOf(nOrig) < 0) byEmp[nKey].variacoes.push(nOrig);
+    byEmp[nKey].total++;
+    byEmp[nKey].valor += parseFloat(x.valor_corrida || x.valor || 0);
   });
   
   // Filtra: sem pedir há semHa+ dias
