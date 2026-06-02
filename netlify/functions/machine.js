@@ -193,10 +193,10 @@ exports.handler = async function(event){
       return u;
     };
 
-    // Helper: faz 1 fetch com timeout de 18s (Machine separada pode ser lenta)
+    // Helper: faz 1 fetch com timeout de 24s (próximo do limite Netlify 26s)
     var fetchPagina = async function(p){
       var ctrl = new AbortController();
-      var t = setTimeout(function(){ ctrl.abort(); }, 18000);
+      var t = setTimeout(function(){ ctrl.abort(); }, 24000);
       try{
         var r = await fetch(montarUrl(p), { method:'GET', headers, signal: ctrl.signal });
         clearTimeout(t);

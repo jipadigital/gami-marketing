@@ -1,4 +1,4 @@
-<!-- v23.74 - Fix slug sync: campogrande → campo-grande - 02/06/2026 -->
+<!-- v23.75 - Refragmentação 12h auto + timeout 24s pra cidades grandes - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -13906,8 +13906,9 @@ async function iniciarSincronizacaoSupabase(cidadeId){
             await new Promise(function(r){setTimeout(r, 3000);});
             return buscarDia(dia, tentativa+1);
           }
-          diasComErro.push(dia);
-          return [];
+          // Última tentativa: refragmenta em manhã + tarde (timeout provável de volume grande)
+          _syncLog('⚠ '+dia+' HTTP '+rChunk.status+' após retry — tentando manhã+tarde');
+          return await _syncRefragmentar12h(dia, slug);
         }
         var dataChunk = await rChunk.json();
         var arr = (dataChunk && Array.isArray(dataChunk.response)) ? dataChunk.response : [];
@@ -13952,10 +13953,46 @@ async function iniciarSincronizacaoSupabase(cidadeId){
           await new Promise(function(r){setTimeout(r, 3000);});
           return buscarDia(dia, tentativa+1);
         }
-        diasComErro.push(dia);
-        return [];
+        // Tenta refragmentar em manhã/tarde
+        _syncLog('⚠ '+dia+' exceção '+e.message+' — tentando manhã+tarde');
+        return await _syncRefragmentar12h(dia, slug);
       }
     };
+    
+    // Helper: quando 1 dia falha, divide em manhã/tarde pra reduzir volume por chamada
+    async function _syncRefragmentar12h(dia, slug){
+      var manhaIni = dia+'T00:00:00.000Z';
+      var manhaFim = dia+'T11:59:59.999Z';
+      var tardeIni = dia+'T12:00:00.000Z';
+      var tardeFim = dia+'T23:59:59.999Z';
+      var arr = [];
+      
+      try {
+        var rManha = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(manhaIni)+'&data_fim='+encodeURIComponent(manhaFim));
+        if(rManha.ok){
+          var dm = await rManha.json();
+          if(dm && Array.isArray(dm.response)){ arr = arr.concat(dm.response); }
+        } else { _syncLog('⚠⚠ '+dia+' manhã HTTP '+rManha.status); }
+      } catch(eM){ _syncLog('⚠⚠ '+dia+' manhã: '+eM.message); }
+      
+      // Delay leve entre manhã e tarde
+      await new Promise(function(r){setTimeout(r, 1000);});
+      
+      try {
+        var rTarde = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+encodeURIComponent(tardeIni)+'&data_fim='+encodeURIComponent(tardeFim));
+        if(rTarde.ok){
+          var dt = await rTarde.json();
+          if(dt && Array.isArray(dt.response)){ arr = arr.concat(dt.response); }
+        } else { _syncLog('⚠⚠ '+dia+' tarde HTTP '+rTarde.status); }
+      } catch(eT){ _syncLog('⚠⚠ '+dia+' tarde: '+eT.message); }
+      
+      if(arr.length > 0){
+        _syncLog('✓ '+dia+' refragmentado: '+arr.length+' corridas recuperadas');
+      } else {
+        diasComErro.push(dia);
+      }
+      return arr;
+    }
     
     // Processa em batches sequenciais (cidades grandes geram muitas requests por dia)
     // Antes era 3 paralelos, mas Machine separada/cidade grande estoura rate limit
