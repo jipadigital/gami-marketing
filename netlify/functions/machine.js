@@ -49,6 +49,16 @@ function getCidadeKey(cidade){
   return 'MACHINE_API_KEY_' + n;
 }
 
+// Normaliza nome da cidade pra sufixo de env var
+function getCidadeSufixo(cidade){
+  if(!cidade) return null;
+  return String(cidade).toLowerCase().trim()
+    .replace(/\u00e3/g,'a').replace(/\u00e1/g,'a').replace(/\u00e2/g,'a')
+    .replace(/\u00e9/g,'e').replace(/\u00ea/g,'e').replace(/\u00ed/g,'i')
+    .replace(/\u00f3/g,'o').replace(/\u00f4/g,'o').replace(/\u00fa/g,'u')
+    .replace(/\u00e7/g,'c').replace(/\s+/g,'_').replace(/-/g,'_').toUpperCase();
+}
+
 exports.handler = async function(event){
   var origem = event.headers.origin || event.headers.Origin || '';
   var origemPermitida = corsPermitido(origem);
@@ -108,13 +118,30 @@ exports.handler = async function(event){
     }) };
   }
 
-  // Credenciais
-  var apiKey = process.env[getCidadeKey(cidade)];
-  var user = process.env.MACHINE_USER;
-  var pass = process.env.MACHINE_PASS;
+  // Credenciais — primeiro tenta específica da cidade, depois global (fallback)
+  var sufixo = getCidadeSufixo(cidade);
+  var apiKey = process.env['MACHINE_API_KEY_' + sufixo];
+  var user = process.env['MACHINE_USER_' + sufixo] || process.env.MACHINE_USER;
+  var pass = process.env['MACHINE_PASS_' + sufixo] || process.env.MACHINE_PASS;
+  
+  // Pra debug: indica quais credenciais foram usadas
+  var credenciaisOrigem = {
+    apikey: process.env['MACHINE_API_KEY_' + sufixo] ? ('MACHINE_API_KEY_' + sufixo) : null,
+    user: process.env['MACHINE_USER_' + sufixo] ? ('MACHINE_USER_' + sufixo) : (process.env.MACHINE_USER ? 'MACHINE_USER (global)' : null),
+    pass: process.env['MACHINE_PASS_' + sufixo] ? ('MACHINE_PASS_' + sufixo) : (process.env.MACHINE_PASS ? 'MACHINE_PASS (global)' : null)
+  };
+  
   if(!apiKey || !user || !pass){
     return { statusCode:400, headers:cors, body: JSON.stringify({
-      success:false, error:'Credenciais nao configuradas pra esta cidade', cidade: cidade
+      success:false, 
+      error:'Credenciais nao configuradas pra esta cidade', 
+      cidade: cidade,
+      sufixo: sufixo,
+      faltando: {
+        apikey: !apiKey ? ('MACHINE_API_KEY_' + sufixo) : null,
+        user: !user ? ('MACHINE_USER_' + sufixo + ' ou MACHINE_USER') : null,
+        pass: !pass ? ('MACHINE_PASS_' + sufixo + ' ou MACHINE_PASS') : null
+      }
     }) };
   }
 
