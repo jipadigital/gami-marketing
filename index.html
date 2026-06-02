@@ -1,4 +1,4 @@
-<!-- v23.66 - Mobile premium: time todo no celular - 02/06/2026 -->
+<!-- v23.67 - 10 relatorios Operacionais+Financeiros migrados pro Supabase - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10932,6 +10932,438 @@ async function _sb_top_motoboys(){
   };
 }
 
+/* ============================================================ */
+/* FASE 2 - OPERACIONAIS + FINANCEIROS via Supabase RPC          */
+/* ============================================================ */
+
+async function _rlSupaRPC(funcao, args){
+  var r = await fetch(SUPA_URL+'/rest/v1/rpc/'+funcao, {
+    method:'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+    body: JSON.stringify(args || {})
+  });
+  if(!r.ok) throw new Error('RPC '+funcao+' HTTP '+r.status);
+  return await r.json();
+}
+
+/* ─── 7) CORRIDAS POR DIA DA SEMANA ─── */
+async function _sb_corridas_dia_semana(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_corridas_dia_semana', { p_slug: slug, p_dias: periodo });
+  
+  var total = dados.reduce(function(s,d){return s + parseInt(d.total||0);},0);
+  if(total === 0){
+    return { id:'corridas_dia_semana', icone:'📅', titulo:'Corridas por dia da semana',
+      descricao:'Sem dados no período', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  // Reordena: segunda → domingo
+  var porDia = {0:null,1:null,2:null,3:null,4:null,5:null,6:null};
+  dados.forEach(function(d){ porDia[d.dia_num] = d; });
+  
+  var ordem = [1,2,3,4,5,6,0];
+  var dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var barras = ordem.map(function(idx){
+    var d = porDia[idx];
+    return { label: dias[idx], valor: d ? parseInt(d.total) : 0 };
+  });
+  
+  var linhas = ordem.map(function(idx){
+    var d = porDia[idx];
+    var v = d ? parseInt(d.total) : 0;
+    var pct = d ? d.percentual+'%' : '0%';
+    return [dias[idx], v.toLocaleString('pt-BR'), pct];
+  });
+  
+  var maxIdx = ordem.reduce(function(max, idx){
+    return (!porDia[idx] || (porDia[max] && porDia[idx].total < porDia[max].total)) ? max : idx;
+  }, ordem[0]);
+  var minIdx = ordem.reduce(function(min, idx){
+    return (!porDia[idx] || (porDia[min] && porDia[idx].total > porDia[min].total)) ? min : idx;
+  }, ordem[0]);
+  
+  return {
+    id:'corridas_dia_semana', icone:'📅',
+    titulo:'Corridas por dia da semana',
+    descricao:'⚡ Supabase · '+total.toLocaleString('pt-BR')+' corridas nos últimos '+periodo+' dias',
+    cidade:c,
+    grafico: (typeof _rlBarrasH === 'function') ? _rlBarrasH(barras, { altura:22, labelW:90, valW:80, cor:'#8B5CF6' }) : '',
+    colunas:['Dia da semana','Corridas','% do total'],
+    linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Dia de pico', valor:dias[maxIdx], cor:'#1D9E75' },
+      { label:'Dia mais fraco', valor:dias[minIdx], cor:'#E24B4A' },
+      { label:'Total no período', valor:total.toLocaleString('pt-BR'), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* ─── 8) PICO DE HORÁRIO ─── */
+async function _sb_pico_horario(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_pico_horario', { p_slug: slug, p_dias: periodo });
+  
+  var porHora = new Array(24).fill(0);
+  var pctPorHora = new Array(24).fill(0);
+  dados.forEach(function(d){
+    porHora[d.hora] = parseInt(d.total);
+    pctPorHora[d.hora] = d.percentual;
+  });
+  
+  var total = porHora.reduce(function(a,b){return a+b;},0);
+  if(total === 0){
+    return { id:'pico_horario', icone:'⏰', titulo:'Pico de demanda por horário',
+      descricao:'Sem dados no período', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var maxIdx = porHora.indexOf(Math.max.apply(null, porHora));
+  
+  var barras = porHora.map(function(v, i){
+    return { label: String(i).padStart(2,'0')+'h', valor: v };
+  });
+  
+  var linhas = porHora.map(function(v, i){
+    return [String(i).padStart(2,'0')+'h às '+String(i+1).padStart(2,'0')+'h', v, pctPorHora[i]+'%'];
+  }).filter(function(r){ return r[1] > 0; });
+  
+  return {
+    id:'pico_horario', icone:'⏰',
+    titulo:'Pico de demanda por horário',
+    descricao:'⚡ Supabase · '+total.toLocaleString('pt-BR')+' corridas por hora do dia',
+    cidade:c,
+    grafico: (typeof _rlBarrasH === 'function') ? _rlBarrasH(barras, { altura:14, labelW:50, valW:60, cor:'#EF9F27' }) : '',
+    colunas:['Hora','Corridas','%'],
+    linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Hora de pico', valor:String(maxIdx).padStart(2,'0')+'h', cor:'#1D9E75' },
+      { label:'Corridas pico', valor:porHora[maxIdx].toLocaleString('pt-BR'), cor:'#EF9F27' }
+    ]
+  };
+}
+
+/* ─── 9) TAXA DE CANCELAMENTO ─── */
+async function _sb_taxa_cancelamento(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_taxa_cancelamento', { p_slug: slug, p_dias: periodo, p_min_pedidos: 5 });
+  
+  if(!dados.length){
+    return { id:'taxa_cancelamento', icone:'❌', titulo:'Taxa de cancelamento por empresa',
+      descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var primeira = dados[0];
+  var taxaGeral = primeira.taxa_geral;
+  var totalGeral = parseInt(primeira.total_rede);
+  var canceladoGeral = parseInt(primeira.cancelado_rede);
+  
+  var linhas = dados.map(function(e){
+    var taxa = parseFloat(e.taxa);
+    var icone = taxa >= 30 ? '🔴' : taxa >= 15 ? '🟡' : '🟢';
+    return [icone+' '+e.nome_passageiro, parseInt(e.total), parseInt(e.canceladas), taxa.toFixed(1)+'%'];
+  });
+  
+  return {
+    id:'taxa_cancelamento', icone:'❌',
+    titulo:'Taxa de cancelamento por empresa',
+    descricao:'⚡ Supabase · Top 20 empresas com maior cancelamento (mínimo 5 pedidos)',
+    cidade:c, colunas:['Empresa','Total','Canceladas','Taxa'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Taxa geral', valor:taxaGeral+'%', cor: taxaGeral >= 15 ? '#E24B4A' : '#1D9E75' },
+      { label:'Canceladas', valor:canceladoGeral.toLocaleString('pt-BR'), cor:'#EF9F27' },
+      { label:'Total no período', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* ─── 10) DIAS ANÔMALOS ─── */
+async function _sb_dias_anomalos(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_dias_anomalos', { p_slug: slug, p_dias: periodo });
+  
+  if(!dados.length){
+    return { id:'dias_anomalos', icone:'📊', titulo:'Dias anômalos',
+      descricao:'⚡ Supabase · Nenhum dia atípico nos últimos '+periodo+' dias (operação estável)',
+      cidade:c, vazio:true, kpis:[{label:'Status', valor:'✅ Normal', cor:'#1D9E75'}] };
+  }
+  
+  var primeira = dados[0];
+  var media = parseFloat(primeira.media_geral);
+  var desvio = parseFloat(primeira.desvio);
+  
+  var linhas = dados.map(function(d){
+    var dt = new Date(d.data_dia+'T00:00:00');
+    var dataFmt = dt.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' });
+    var icone = d.tipo === 'pico' ? '🚀' : '📉';
+    var diff = parseInt(d.total) - media;
+    var diffStr = (diff > 0 ? '+' : '') + diff.toFixed(0);
+    return [icone+' '+dataFmt, parseInt(d.total), media.toFixed(0), diffStr, d.tipo.toUpperCase()];
+  });
+  
+  return {
+    id:'dias_anomalos', icone:'📊',
+    titulo:'Dias anômalos · variação atípica',
+    descricao:'⚡ Supabase · Média '+media.toFixed(0)+' corridas/dia (±'+desvio.toFixed(0)+'). Dias com volume fora do padrão.',
+    cidade:c, colunas:['Data','Total','Média','Diferença','Tipo'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Dias anômalos', valor:dados.length, cor:'#EF9F27' },
+      { label:'Média diária', valor:media.toFixed(0)+' corridas', cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* ─── 11) SAÚDE DA CIDADE ─── */
+async function _sb_saude_cidade(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var arr = await _rlSupaRPC('rel_saude_cidade', { p_slug: slug, p_dias: periodo });
+  var d = arr[0] || {};
+  
+  var podeValor = _rlPodeVerValor ? _rlPodeVerValor() : true;
+  var totalCorridas = parseInt(d.total_corridas || 0);
+  
+  if(totalCorridas === 0){
+    return { id:'saude_cidade', icone:'🩺', titulo:'Saúde da cidade',
+      descricao:'Sem dados no período', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var taxaFin = parseFloat(d.taxa_finalizacao || 0);
+  var receita = parseFloat(d.receita_total || 0);
+  var ticket = parseFloat(d.ticket_medio || 0);
+  
+  var linhas = [
+    ['Total de corridas', totalCorridas.toLocaleString('pt-BR')],
+    ['Finalizadas', parseInt(d.total_finalizadas).toLocaleString('pt-BR') + ' ('+taxaFin+'%)'],
+    ['Canceladas', parseInt(d.total_canceladas).toLocaleString('pt-BR')],
+    ['Empresas únicas', parseInt(d.empresas_unicas).toLocaleString('pt-BR')],
+    ['Motoboys ativos', parseInt(d.motoboys_unicos).toLocaleString('pt-BR')],
+    ['Corridas/dia (média)', parseFloat(d.corridas_dia_media).toFixed(1)],
+    ['Dias com operação', parseInt(d.dias_com_corrida) + ' de ' + periodo]
+  ];
+  
+  if(podeValor){
+    linhas.push(['Receita finalizada', 'R$ '+receita.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})]);
+    linhas.push(['Ticket médio', 'R$ '+ticket.toFixed(2).replace('.',',')]);
+  }
+  
+  var corTaxa = taxaFin >= 85 ? '#1D9E75' : taxaFin >= 70 ? '#EF9F27' : '#E24B4A';
+  
+  var kpis = [
+    { label:'Taxa finalização', valor:taxaFin+'%', cor: corTaxa },
+    { label:'Total corridas', valor:totalCorridas.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+    { label:'Motoboys ativos', valor:parseInt(d.motoboys_unicos), cor:'#8B5CF6' }
+  ];
+  if(podeValor){
+    kpis.push({ label:'Receita período', valor:'R$ '+(receita/1000).toFixed(1)+'k', cor:'#1D9E75' });
+  }
+  
+  return {
+    id:'saude_cidade', icone:'🩺', titulo:'Saúde da cidade',
+    descricao:'⚡ Supabase · Indicadores chave dos últimos '+periodo+' dias',
+    cidade:c, colunas:['Indicador','Valor'], linhas:linhas, vazio:false, kpis: kpis
+  };
+}
+
+/* ─── 12) RECEITA POR PERÍODO ─── */
+async function _sb_receita_periodo(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_receita_periodo', { p_slug: slug, p_dias: periodo });
+  
+  if(!dados.length){
+    return { id:'receita_periodo', icone:'💰', titulo:'Receita por período',
+      descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var totalCorridas = dados.reduce(function(s,d){return s + parseInt(d.corridas||0);},0);
+  var totalReceita = dados.reduce(function(s,d){return s + parseFloat(d.receita||0);},0);
+  var ticketMedio = totalCorridas > 0 ? totalReceita / totalCorridas : 0;
+  
+  var linhas = dados.map(function(d){
+    var dt = new Date(d.data_dia+'T00:00:00');
+    var dataFmt = dt.toLocaleDateString('pt-BR', { weekday:'short', day:'2-digit', month:'2-digit' });
+    return [dataFmt, parseInt(d.corridas).toLocaleString('pt-BR'),
+      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      'R$ '+parseFloat(d.ticket_medio).toFixed(2).replace('.',',')];
+  });
+  
+  return {
+    id:'receita_periodo', icone:'💰', titulo:'Receita por período',
+    descricao:'⚡ Supabase · Receita finalizada dia a dia (últimos '+periodo+' dias)',
+    cidade:c, colunas:['Dia','Corridas','Receita','Ticket médio'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Receita total', valor:'R$ '+totalReceita.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' },
+      { label:'Corridas finalizadas', valor:totalCorridas.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Ticket médio', valor:'R$ '+ticketMedio.toFixed(2).replace('.',','), cor:'#8B5CF6' }
+    ]
+  };
+}
+
+/* ─── 13) EVOLUÇÃO DO TICKET MÉDIO ─── */
+async function _sb_ticket_evolucao(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = (_RL.periodo > 30 ? _RL.periodo : 60);
+  var dados = await _rlSupaRPC('rel_ticket_evolucao', { p_slug: slug, p_dias: periodo });
+  
+  if(!dados.length){
+    return { id:'ticket_evolucao', icone:'📈', titulo:'Evolução do ticket médio',
+      descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var primeiraSemana = dados[0];
+  var ultimaSemana = dados[dados.length-1];
+  var t1 = parseFloat(primeiraSemana.ticket_medio || 0);
+  var t2 = parseFloat(ultimaSemana.ticket_medio || 0);
+  var variacao = t1 > 0 ? ((t2 - t1) / t1) * 100 : 0;
+  
+  var linhas = dados.map(function(d){
+    var dt = new Date(d.semana_inicio+'T00:00:00');
+    var dataFmt = 'Semana '+dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' });
+    return [dataFmt, parseInt(d.corridas).toLocaleString('pt-BR'),
+      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      'R$ '+parseFloat(d.ticket_medio).toFixed(2).replace('.',',')];
+  });
+  
+  var barras = dados.map(function(d){
+    var dt = new Date(d.semana_inicio+'T00:00:00');
+    return { label: dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}), valor: parseFloat(d.ticket_medio) };
+  });
+  
+  var corVar = variacao > 5 ? '#1D9E75' : variacao < -5 ? '#E24B4A' : '#1AB8F0';
+  
+  return {
+    id:'ticket_evolucao', icone:'📈', titulo:'Evolução do ticket médio',
+    descricao:'⚡ Supabase · Ticket médio semanal nas últimas '+Math.ceil(periodo/7)+' semanas',
+    cidade:c,
+    grafico: (typeof _rlBarrasH === 'function') ? _rlBarrasH(barras, { altura:18, labelW:80, valW:80, cor:'#1D9E75', valFmt: function(v){ return 'R$ '+v.toFixed(2).replace('.',','); } }) : '',
+    colunas:['Semana','Corridas','Receita','Ticket médio'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Ticket atual', valor:'R$ '+t2.toFixed(2).replace('.',','), cor:'#1D9E75' },
+      { label:'Variação', valor:(variacao > 0 ? '+' : '')+variacao.toFixed(1)+'%', cor: corVar }
+    ]
+  };
+}
+
+/* ─── 14) CRESCIMENTO MoM (mês a mês) ─── */
+async function _sb_crescimento_mom(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var dados = await _rlSupaRPC('rel_crescimento_mom', { p_slug: slug });
+  
+  if(!dados.length){
+    return { id:'crescimento_mom', icone:'🚀', titulo:'Crescimento mês a mês',
+      descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  // Histórico vem em desc; pega ultimoMês válido pros KPIs
+  var atual = dados[0];
+  var crescC = atual.crescimento_corridas !== null ? parseFloat(atual.crescimento_corridas) : null;
+  var crescR = atual.crescimento_receita !== null ? parseFloat(atual.crescimento_receita) : null;
+  
+  var linhas = dados.map(function(d){
+    var fmtCrescC = d.crescimento_corridas !== null ? (parseFloat(d.crescimento_corridas) > 0 ? '+' : '')+parseFloat(d.crescimento_corridas).toFixed(1)+'%' : '—';
+    var fmtCrescR = d.crescimento_receita !== null ? (parseFloat(d.crescimento_receita) > 0 ? '+' : '')+parseFloat(d.crescimento_receita).toFixed(1)+'%' : '—';
+    var iconeC = !d.crescimento_corridas ? '' : parseFloat(d.crescimento_corridas) > 5 ? '🚀 ' : parseFloat(d.crescimento_corridas) < -5 ? '📉 ' : '➖ ';
+    return [d.mes_nome, parseInt(d.corridas).toLocaleString('pt-BR'), iconeC+fmtCrescC,
+      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), fmtCrescR];
+  });
+  
+  var corC = crescC === null ? '#1AB8F0' : crescC > 5 ? '#1D9E75' : crescC < -5 ? '#E24B4A' : '#EF9F27';
+  
+  return {
+    id:'crescimento_mom', icone:'🚀', titulo:'Crescimento mês a mês',
+    descricao:'⚡ Supabase · Comparação entre meses consecutivos',
+    cidade:c, colunas:['Mês','Corridas','Δ Corridas','Receita','Δ Receita'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Crescimento corridas', valor: crescC === null ? '—' : (crescC > 0 ? '+' : '')+crescC.toFixed(1)+'%', cor: corC },
+      { label:'Crescimento receita', valor: crescR === null ? '—' : (crescR > 0 ? '+' : '')+crescR.toFixed(1)+'%', cor:'#1AB8F0' },
+      { label:'Meses analisados', valor:dados.length, cor:'#8B5CF6' }
+    ]
+  };
+}
+
+/* ─── 15) PARETO EMPRESAS (80/20) ─── */
+async function _sb_pareto_empresas(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_pareto_empresas', { p_slug: slug, p_dias: periodo });
+  
+  if(!dados.length){
+    return { id:'pareto_empresas', icone:'📊', titulo:'Pareto 80/20 — Empresas',
+      descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  // Acha o ponto onde acumulado bate 80%
+  var idx80 = dados.findIndex(function(d){ return parseFloat(d.pct_acumulado) >= 80; });
+  var qtd80 = idx80 >= 0 ? idx80 + 1 : dados.length;
+  var pctEmpresas80 = ((qtd80 / dados.length) * 100).toFixed(1);
+  
+  var linhas = dados.map(function(d){
+    var icone = parseFloat(d.pct_acumulado) <= 80 ? '🟢' : '⚪';
+    return [icone+' '+d.posicao+'º', d.nome_passageiro, parseInt(d.corridas).toLocaleString('pt-BR'),
+      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      parseFloat(d.pct_individual).toFixed(2)+'%', parseFloat(d.pct_acumulado).toFixed(1)+'%'];
+  });
+  
+  return {
+    id:'pareto_empresas', icone:'📊', titulo:'Pareto 80/20 — Empresas',
+    descricao:'⚡ Supabase · '+qtd80+' empresas (' + pctEmpresas80 + '% do total) geram 80% da receita',
+    cidade:c, colunas:['#','Empresa','Corridas','Receita','% individual','% acumulado'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Empresas (80% receita)', valor:qtd80, cor:'#1D9E75' },
+      { label:'% das empresas', valor:pctEmpresas80+'%', cor:'#EF9F27' },
+      { label:'Total empresas', valor:dados.length, cor:'#1AB8F0' }
+    ]
+  };
+}
+
+/* ─── 16) PARETO MOTOBOYS (80/20) ─── */
+async function _sb_pareto_motoboys(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var periodo = _RL.periodo || 30;
+  var dados = await _rlSupaRPC('rel_pareto_motoboys', { p_slug: slug, p_dias: periodo });
+  
+  if(!dados.length){
+    return { id:'pareto_motoboys', icone:'🏍️', titulo:'Pareto 80/20 — Motoboys',
+      descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var idx80 = dados.findIndex(function(d){ return parseFloat(d.pct_acumulado) >= 80; });
+  var qtd80 = idx80 >= 0 ? idx80 + 1 : dados.length;
+  var pctMotoboys80 = ((qtd80 / dados.length) * 100).toFixed(1);
+  
+  var linhas = dados.map(function(d){
+    var icone = parseFloat(d.pct_acumulado) <= 80 ? '🟢' : '⚪';
+    return [icone+' '+d.posicao+'º', d.nome_condutor || ('Motoboy '+d.condutor_id),
+      parseInt(d.corridas).toLocaleString('pt-BR'),
+      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
+      parseFloat(d.pct_individual).toFixed(2)+'%', parseFloat(d.pct_acumulado).toFixed(1)+'%'];
+  });
+  
+  return {
+    id:'pareto_motoboys', icone:'🏍️', titulo:'Pareto 80/20 — Motoboys',
+    descricao:'⚡ Supabase · '+qtd80+' motoboys ('+pctMotoboys80+'% do total) geram 80% da receita',
+    cidade:c, colunas:['#','Motoboy','Corridas','Receita','% individual','% acumulado'], linhas:linhas, vazio:false,
+    kpis:[
+      { label:'Motoboys (80% receita)', valor:qtd80, cor:'#1D9E75' },
+      { label:'% dos motoboys', valor:pctMotoboys80+'%', cor:'#EF9F27' },
+      { label:'Total motoboys', valor:dados.length, cor:'#1AB8F0' }
+    ]
+  };
+}
+
 /* DESPACHADOR — Supabase quando disponível, senão cache Machine */
 async function _rlGerarRelatorio(id, dados){
   var slug = _rlSlug();
@@ -10948,19 +11380,19 @@ async function _rlGerarRelatorio(id, dados){
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
     case 'top_motoboys':       return temSupa ? await _sb_top_motoboys() : _gen_top_motoboys(dados);
     
-    // Fase 2 — Operacional (ainda no cache Machine — todo migrar)
-    case 'corridas_dia_semana':return _gen_corridas_dia_semana(dados);
-    case 'pico_horario':       return _gen_pico_horario(dados);
-    case 'taxa_cancelamento':  return _gen_taxa_cancelamento(dados);
-    case 'dias_anomalos':      return _gen_dias_anomalos(dados);
-    case 'saude_cidade':       return _gen_saude_cidade(dados);
-    // Fase 2 — Financeiro
-    case 'receita_periodo':    return _gen_receita_periodo(dados);
-    case 'ticket_evolucao':    return _gen_ticket_evolucao(dados);
-    case 'crescimento_mom':    return _gen_crescimento_mom(dados);
-    case 'pareto_empresas':    return _gen_pareto_empresas(dados);
-    case 'pareto_motoboys':    return _gen_pareto_motoboys(dados);
-    // Fase 3 — Comparativos
+    // Fase 2 — Operacional (migrado pro Supabase v23.67)
+    case 'corridas_dia_semana':return temSupa ? await _sb_corridas_dia_semana() : _gen_corridas_dia_semana(dados);
+    case 'pico_horario':       return temSupa ? await _sb_pico_horario() : _gen_pico_horario(dados);
+    case 'taxa_cancelamento':  return temSupa ? await _sb_taxa_cancelamento() : _gen_taxa_cancelamento(dados);
+    case 'dias_anomalos':      return temSupa ? await _sb_dias_anomalos() : _gen_dias_anomalos(dados);
+    case 'saude_cidade':       return temSupa ? await _sb_saude_cidade() : _gen_saude_cidade(dados);
+    // Fase 2 — Financeiro (migrado pro Supabase v23.67)
+    case 'receita_periodo':    return temSupa ? await _sb_receita_periodo() : _gen_receita_periodo(dados);
+    case 'ticket_evolucao':    return temSupa ? await _sb_ticket_evolucao() : _gen_ticket_evolucao(dados);
+    case 'crescimento_mom':    return temSupa ? await _sb_crescimento_mom() : _gen_crescimento_mom(dados);
+    case 'pareto_empresas':    return temSupa ? await _sb_pareto_empresas() : _gen_pareto_empresas(dados);
+    case 'pareto_motoboys':    return temSupa ? await _sb_pareto_motoboys() : _gen_pareto_motoboys(dados);
+    // Fase 3 — Comparativos (ainda no cache Machine — TODO migrar)
     case 'cidades_lado_a_lado':return _gen_cidades_lado_a_lado(dados);
     case 'compare_duas':       return _gen_compare_duas(dados);
     case 'ranking_gestores':   return _gen_ranking_gestores(dados);
