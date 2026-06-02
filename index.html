@@ -1,4 +1,4 @@
-<!-- v23.83 - Visão Geral cidade com 8 KPIs: corridas paradas canceladas taxa fat ticket tempo lojas - 02/06/2026 -->
+<!-- v23.84 - Sumidas ATIVAS: filtro frequência + dias_distintos - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11392,7 +11392,8 @@ async function _sb_empresas_sumidas(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var semHa = _RL.semPedirHa || 3;
-  var diasLookback = 45;
+  var ativaMin = _RL.ativaMin !== undefined ? _RL.ativaMin : 10;  // dias distintos mínimos pra ser "ativa"
+  var diasLookback = 30;  // janela curta (30 dias) — foco em padrão recente
   
   // 🎯 Usa RPC nova que retorna paradas + finalizadas + canceladas agrupado por LOWER
   var lista = null;
@@ -11498,28 +11499,33 @@ async function _sb_empresas_sumidas(){
     }
   });
   
-  // Filtra sumidas
-  var sumidas = lista.filter(function(e){ return e.dias_sem_pedir >= semHa; });
+  // Filtra sumidas ATIVAS: tinha frequência regular E parou há X dias
+  var sumidas = lista.filter(function(e){ 
+    return e.dias_sem_pedir >= semHa 
+        && (e.dias_distintos === undefined || e.dias_distintos >= ativaMin);
+  });
   sumidas.sort(function(a,b){ return a.dias_sem_pedir - b.dias_sem_pedir; });
   
-  console.log('[Sumidas]', c, '· Total:', lista.length, '· Sumidas ('+semHa+'+ dias):', sumidas.length);
+  console.log('[Sumidas]', c, '· Total empresas:', lista.length, '· Sumidas ATIVAS ('+ativaMin+'+ dias na janela + '+semHa+'+ sem pedir):', sumidas.length);
   if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa', 'Último pedido', 'Sem pedir há', 'Corridas', 'Paradas', 'Finalizadas', 'Canceladas'];
+  var colunas = ['Empresa', 'Atividade', 'Último pedido', 'Sem pedir há', 'Corridas', 'Paradas', '✅ Fin', '❌ Canc'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = sumidas.map(function(e){
     var icone = e.dias_sem_pedir >= 30 ? '🔴' : e.dias_sem_pedir >= 15 ? '🟠' : '🟡';
     var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
+    var atividade = e.dias_distintos !== undefined ? (e.dias_distintos+'/'+diasLookback+'d') : '—';
     var row = [
       icone+' '+e.nome_passageiro,
+      atividade,
       ultFmt,
       e.dias_sem_pedir+' dias',
       (e.total_corridas||0),
       (e.total_paradas||0),
-      '✅ '+(e.total_finalizadas||0),
-      '❌ '+(e.total_canceladas||0)
+      (e.total_finalizadas||0),
+      (e.total_canceladas||0)
     ];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
@@ -11530,10 +11536,10 @@ async function _sb_empresas_sumidas(){
   
   return {
     id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
-    descricao:'⚡ Supabase (banco direto) · Empresas com pedidos nos últimos '+diasLookback+' dias mas há '+semHa+'+ dias sem pedir. Total inclui paradas (entregas).',
+    descricao:'⚡ Supabase · Lojas com pedidos em <strong>'+ativaMin+'+ dias</strong> dos últimos '+diasLookback+' (recorrentes) que estão há <strong>'+semHa+'+ dias sem pedir</strong>. Foco em retomar antes de virarem perda.',
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
     kpis:[
-      { label:'Empresas sumidas', valor:sumidas.length, cor:'#E24B4A' },
+      { label:'Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' },
       { label:'Corridas perdidas', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total_corridas||0);},0), cor:'#EF9F27' },
       { label:'Paradas perdidas', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0), cor:'#E24B4A' }
     ],
@@ -11545,6 +11551,15 @@ async function _sb_empresas_sumidas(){
           +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
           +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
           +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Frequência mín:</strong>'
+        +'<select onchange="_RL.ativaMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(ativaMin===5?' selected':'')+'>5+ dias (esporádica)</option>'
+          +'<option value="10"'+(ativaMin===10?' selected':'')+'>10+ dias (regular)</option>'
+          +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias (ativa)</option>'
+          +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias (super ativa)</option>'
+          +'<option value="25"'+(ativaMin===25?' selected':'')+'>25+ dias (diária)</option>'
         +'</select>'
       +'</label>'
     +'</div>'
