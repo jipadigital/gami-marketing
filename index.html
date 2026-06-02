@@ -1,4 +1,4 @@
-<!-- v23.81 - Empresas Sumidas DEFINITIVO: RPC LOWER no Supabase + fallback - 02/06/2026 -->
+<!-- v23.82 - Fase 1 Paradas: SQL + sync inclui total_paradas + sumidas com 3 métricas - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11394,8 +11394,7 @@ async function _sb_empresas_sumidas(){
   var semHa = _RL.semPedirHa || 3;
   var diasLookback = 45;
   
-  // 🎯 Estratégia: usa RPC que agrupa por LOWER(nome_passageiro) direto no banco
-  // Se a RPC não existir, faz fallback pra view antiga
+  // 🎯 Usa RPC nova que retorna paradas + finalizadas + canceladas agrupado por LOWER
   var lista = null;
   try {
     var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
@@ -11409,109 +11408,134 @@ async function _sb_empresas_sumidas(){
     });
     if(rpcResp.ok){
       lista = await rpcResp.json();
-      console.log('[Sumidas] RPC empresas_atividade_real OK:', lista.length, 'empresas únicas');
+      console.log('[Sumidas] RPC empresas_atividade_real OK:', lista.length, 'empresas únicas em', slug);
     } else {
-      console.warn('[Sumidas] RPC não disponível, usando view materializada');
+      var errTxt = await rpcResp.text();
+      console.warn('[Sumidas] RPC erro HTTP '+rpcResp.status+':', errTxt);
     }
-  } catch(e){ console.warn('[Sumidas] RPC erro:', e.message); }
+  } catch(e){ console.warn('[Sumidas] RPC exceção:', e.message); }
   
-  // Fallback: view materializada + re-agrupamento client-side
+  // Fallback: view materializada
   if(!lista){
     var [historico, corridasHoje] = await Promise.all([
       _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=ultima_corrida.desc&limit=10000'),
       _rlPegarCorridasHoje(slug)
     ]);
     var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
-    // Re-agrupa por lowercase pra segurança extra (mesclado já vem agrupado, mas seguro)
-    var agora = new Date();
-    mesclado.forEach(function(e){
-      var ult = new Date(e.ultima_corrida);
-      e.dias_sem_pedir = Math.floor((agora - ult) / 86400000);
-    });
     lista = mesclado.map(function(e){
       return {
         nome_passageiro: e.nome_passageiro,
         ultima_corrida: e.ultima_corrida,
-        total: e.total,
+        total_corridas: e.total || 0,
         total_finalizadas: e.total_finalizadas || 0,
         total_canceladas: e.total_canceladas || 0,
+        total_paradas: e.total || 0,        // sem dado de paradas no fallback
+        paradas_finalizadas: e.total_finalizadas || 0,
         valor_total: e.valor_total || 0,
-        dias_sem_pedir: e.dias_sem_pedir,
+        ticket_medio_parada: 0,
+        dias_sem_pedir: e.dias_sem_pedir || 0,
         variacoes: e._variacoes || [e.nome_passageiro]
       };
     });
   }
   
-  // Também mescla corridas de HOJE (Machine ao vivo) pra ter o dia atual mesmo que ainda não sincronizado
+  // Mescla corridas de HOJE (Machine ao vivo) — atualiza última_corrida em tempo real
   try {
     var corridasHoje = await _rlPegarCorridasHoje(slug);
     if(corridasHoje && corridasHoje.length){
-      // Indexa lista por lowercase
       var byKey = {};
       lista.forEach(function(e){ byKey[(e.nome_passageiro||'').toLowerCase()] = e; });
-      // Para cada corrida de hoje, atualiza última_corrida se for mais recente
-      var hojeStr = new Date().toISOString().split('T')[0];
       corridasHoje.forEach(function(x){
         var nOrig = (x.nome_passageiro||'').trim(); if(!nOrig) return;
         var nKey = nOrig.toLowerCase();
-        var dHora = x.data_hora_solicitacao || hojeStr+'T12:00:00';
+        var dHora = x.data_hora_solicitacao || new Date().toISOString();
+        var paradasCorrida = Array.isArray(x.paradas) ? x.paradas.length : 0;
+        var status = x.status_solicitacao || '';
+        var valor = parseFloat(x.valor_corrida||0);
+        
         if(!byKey[nKey]){
-          // Nova empresa não estava na lista (pediu hoje pela primeira vez no período)
           var nova = {
-            nome_passageiro: nOrig, ultima_corrida: dHora, total: 1,
-            total_finalizadas: x.status_solicitacao==='F'?1:0, total_canceladas: x.status_solicitacao==='C'?1:0,
-            valor_total: x.status_solicitacao==='F' ? parseFloat(x.valor_corrida||0) : 0,
-            dias_sem_pedir: 0, variacoes: [nOrig]
+            nome_passageiro: nOrig, ultima_corrida: dHora,
+            total_corridas: 1,
+            total_finalizadas: status==='F' ? 1 : 0,
+            total_canceladas: status==='C' ? 1 : 0,
+            total_paradas: paradasCorrida,
+            paradas_finalizadas: status==='F' ? paradasCorrida : 0,
+            valor_total: status==='F' ? valor : 0,
+            ticket_medio_parada: 0,
+            dias_sem_pedir: 0,
+            variacoes: [nOrig]
           };
           lista.push(nova);
           byKey[nKey] = nova;
         } else {
-          if(new Date(dHora) > new Date(byKey[nKey].ultima_corrida)){
-            byKey[nKey].ultima_corrida = dHora;
-            byKey[nKey].dias_sem_pedir = 0; // pediu hoje = 0 dias
+          var e = byKey[nKey];
+          if(new Date(dHora) > new Date(e.ultima_corrida)){
+            e.ultima_corrida = dHora;
+            e.dias_sem_pedir = 0;
           }
+          e.total_corridas = (e.total_corridas||0) + 1;
+          if(status === 'F'){
+            e.total_finalizadas = (e.total_finalizadas||0) + 1;
+            e.paradas_finalizadas = (e.paradas_finalizadas||0) + paradasCorrida;
+            e.valor_total = parseFloat(e.valor_total||0) + valor;
+          }
+          if(status === 'C') e.total_canceladas = (e.total_canceladas||0) + 1;
+          e.total_paradas = (e.total_paradas||0) + paradasCorrida;
         }
       });
     }
-  } catch(e){ console.warn('[Sumidas] Erro ao mesclar corridas de hoje:', e.message); }
+  } catch(e){ console.warn('[Sumidas] Erro mesclar hoje:', e.message); }
   
-  // Recalcula dias_sem_pedir baseado em DATA (não timestamp completo)
+  // Recalcula dias_sem_pedir + ticket
   var hojeData = new Date(); hojeData.setHours(0,0,0,0);
   lista.forEach(function(e){
     var ult = new Date(e.ultima_corrida);
     ult.setHours(0,0,0,0);
     e.dias_sem_pedir = Math.max(0, Math.floor((hojeData - ult) / 86400000));
+    if(e.paradas_finalizadas > 0){
+      e.ticket_medio_parada = parseFloat(e.valor_total||0) / parseFloat(e.paradas_finalizadas);
+    }
   });
   
-  // Filtra sumidas (dias_sem_pedir >= semHa)
+  // Filtra sumidas
   var sumidas = lista.filter(function(e){ return e.dias_sem_pedir >= semHa; });
   sumidas.sort(function(a,b){ return a.dias_sem_pedir - b.dias_sem_pedir; });
   
-  // 🔍 Log diagnóstico
-  console.log('[Sumidas] Cidade:', c, '· Total empresas:', lista.length, '· Sumidas ('+semHa+'+ dias):', sumidas.length);
-  if(sumidas.length > 0) console.log('[Sumidas] Lista detalhada:', sumidas);
-  var temVariacoes = lista.filter(function(e){ return e.variacoes && e.variacoes.length > 1; });
-  if(temVariacoes.length > 0) console.warn('[Sumidas] '+temVariacoes.length+' empresa(s) tinham nomes variados (unificadas):', temVariacoes);
+  console.log('[Sumidas]', c, '· Total:', lista.length, '· Sumidas ('+semHa+'+ dias):', sumidas.length);
+  if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','Último pedido','Sem pedir há','Pedidos no período'];
-  if(podeValor) colunas.push('Valor total');
+  var colunas = ['Empresa', 'Último pedido', 'Sem pedir há', 'Corridas', 'Paradas', 'Finalizadas', 'Canceladas'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = sumidas.map(function(e){
     var icone = e.dias_sem_pedir >= 30 ? '🔴' : e.dias_sem_pedir >= 15 ? '🟠' : '🟡';
     var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
-    var row = [icone+' '+e.nome_passageiro, ultFmt, e.dias_sem_pedir+' dias', e.total];
-    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+    var row = [
+      icone+' '+e.nome_passageiro,
+      ultFmt,
+      e.dias_sem_pedir+' dias',
+      (e.total_corridas||0),
+      (e.total_paradas||0),
+      '✅ '+(e.total_finalizadas||0),
+      '❌ '+(e.total_canceladas||0)
+    ];
+    if(podeValor){
+      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
+    }
     return row;
   });
   
   return {
     id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
-    descricao:'⚡ Supabase (banco direto) + 📅 hoje em tempo real · Pediram nos últimos '+diasLookback+' dias mas estão há '+semHa+'+ dias sem pedir',
+    descricao:'⚡ Supabase (banco direto) · Empresas com pedidos nos últimos '+diasLookback+' dias mas há '+semHa+'+ dias sem pedir. Total inclui paradas (entregas).',
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
     kpis:[
       { label:'Empresas sumidas', valor:sumidas.length, cor:'#E24B4A' },
-      { label:'Pedidos perdidos', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total||0);},0), cor:'#EF9F27' }
+      { label:'Corridas perdidas', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total_corridas||0);},0), cor:'#EF9F27' },
+      { label:'Paradas perdidas', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0), cor:'#E24B4A' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem pedir há:</strong>'
@@ -14168,6 +14192,10 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     for(var i = 0; i < todasCorridas.length && !_SYNC.cancelar; i += BATCH){
       var lote = todasCorridas.slice(i, i+BATCH).map(function(x){
         var ds = x.data_hora_solicitacao || x.data_solicitacao || '';
+        // Calcula total de paradas (entregas) da corrida
+        var totalParadas = 0;
+        if(Array.isArray(x.paradas)) totalParadas = x.paradas.length;
+        else if(x.total_paradas) totalParadas = parseInt(x.total_paradas) || 0;
         return {
           cidade_slug: slug,
           id_solicitacao: String(x.id || x.id_solicitacao || ''),
@@ -14177,6 +14205,7 @@ async function iniciarSincronizacaoSupabase(cidadeId){
           nome_condutor: x.nome_condutor || x.nome_taxista || null,
           valor_corrida: parseFloat(x.valor_corrida || x.valor || 0) || null,
           status_solicitacao: x.status_solicitacao || x.status || null,
+          total_paradas: totalParadas,
           raw: x
         };
       }).filter(function(r){ return r.id_solicitacao; });
