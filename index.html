@@ -1,4 +1,4 @@
-<!-- v23.68 - Comparativos via Supabase (fase 3 final) - 02/06/2026 -->
+<!-- v23.69 - PWA: instala como app + offline cache cauteloso - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9,6 +9,16 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Gâmi Delivery - Gestão Operacional</title>
+
+<!-- 📱 PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0F1F3D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gâmi">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
 
 <!-- ============================================================ -->
 <!-- BLOQUEIO INICIAL — Esconde TUDO antes mesmo do body carregar -->
@@ -31205,7 +31215,125 @@ function recarregarPortal(){
 </script>
 
 
-
+<!-- ============================================================ -->
+<!-- 📱 PWA REGISTRATION v23.69                                    -->
+<!-- Service Worker com cautela: APIs sempre fresh, só assets cache-->
+<!-- KILL SWITCH (emergência):                                     -->
+<!--   No console: navigator.serviceWorker.getRegistrations()      -->
+<!--     .then(rs=>rs.forEach(r=>r.unregister()));                 -->
+<!--   Ou adicione ?nosw=1 na URL pra pular registro nesta sessão  -->
+<!-- ============================================================ -->
+<script>
+(function(){
+  // Kill switch via URL: ?nosw=1
+  if (location.search.indexOf('nosw=1') !== -1) {
+    console.log('[PWA] SW desativado via ?nosw=1');
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(rs){
+        rs.forEach(function(r){ r.unregister(); });
+      });
+    }
+    return;
+  }
+  
+  // Só registra em HTTPS
+  if (!('serviceWorker' in navigator) || location.protocol !== 'https:') return;
+  
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(function(reg){
+        console.log('[PWA] SW registrado');
+        
+        // Detecta atualização disponível
+        reg.addEventListener('updatefound', function(){
+          var nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', function(){
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[PWA] Nova versão disponível');
+              mostrarBannerAtualizar(reg);
+            }
+          });
+        });
+        
+        // Checa por update a cada 30 min
+        setInterval(function(){ reg.update().catch(function(){}); }, 30 * 60 * 1000);
+      })
+      .catch(function(err){
+        console.warn('[PWA] SW falhou (não bloqueante):', err);
+      });
+  });
+  
+  // 🎯 Botão "Instalar app"
+  var deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferredPrompt = e;
+    mostrarBotaoInstalar();
+  });
+  
+  function mostrarBotaoInstalar(){
+    if (document.getElementById('pwa-instalar-btn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'pwa-instalar-btn';
+    btn.innerHTML = '📲 Instalar app';
+    btn.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9998;background:#1AB8F0;color:#0F1F3D;border:none;padding:10px 16px;border-radius:24px;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(26,184,240,.4);font-family:inherit';
+    btn.onclick = function(){
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(function(){
+        deferredPrompt = null;
+        if (btn.parentNode) btn.parentNode.removeChild(btn);
+      });
+    };
+    document.body.appendChild(btn);
+    // Esconde depois de 20s
+    setTimeout(function(){
+      if (btn.parentNode) btn.style.opacity='0.5';
+    }, 20000);
+  }
+  
+  // 🔄 Banner "Nova versão disponível"
+  function mostrarBannerAtualizar(reg){
+    if (document.getElementById('pwa-update-banner')) return;
+    var banner = document.createElement('div');
+    banner.id = 'pwa-update-banner';
+    banner.innerHTML = '<span>✨ Nova versão disponível</span> <button id="pwa-update-btn" style="margin-left:10px;background:#1AB8F0;color:#0F1F3D;border:none;padding:6px 14px;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">Atualizar</button> <button id="pwa-update-close" style="margin-left:6px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer">×</button>';
+    banner.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;background:#0F1F3D;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;display:flex;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.25);font-family:inherit';
+    document.body.appendChild(banner);
+    
+    document.getElementById('pwa-update-btn').onclick = function(){
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      setTimeout(function(){ location.reload(); }, 300);
+    };
+    document.getElementById('pwa-update-close').onclick = function(){
+      banner.parentNode.removeChild(banner);
+    };
+  }
+  
+  // Recarrega quando o SW novo assume controle
+  var refreshing = false;
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
+  }
+  
+  // Expõe kill switch global pra emergência
+  window.pwaKillSwitch = function(){
+    if (!('serviceWorker' in navigator)) return console.log('SW não disponível');
+    navigator.serviceWorker.getRegistrations().then(function(rs){
+      rs.forEach(function(r){ r.unregister().then(function(){ console.log('SW desregistrado'); }); });
+    });
+    caches.keys().then(function(names){
+      names.forEach(function(n){ caches.delete(n).then(function(){ console.log('Cache removido:', n); }); });
+    });
+    console.log('Recarregue a página depois');
+  };
+})();
+</script>
 
 </body>
 </html>
