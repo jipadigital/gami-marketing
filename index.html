@@ -1,4 +1,4 @@
-<!-- v23.88 - Fix var html undefined no comparativo - 02/06/2026 -->
+<!-- v23.89 - Onda 1: 5 relatórios de empresas com paradas + RPCs novas - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10825,16 +10825,19 @@ var RELATORIOS = {
     nome: '🏪 EMPRESAS', cor:'#1AB8F0',
     relatorios: [
       { id:'empresas_sumidas', icone:'🚨', nome:'Empresas sumidas',
-        descricao:'Pediram nos últimos 45 dias mas estão há 2+ dias sem pedir (ordenadas das mais recentes pras antigas)',
+        descricao:'Lojas regulares (10+ dias/mês) que estão há 3+ dias sem pedir — reativação urgente',
         temValor:false, fase:1 },
       { id:'empresas_queda', icone:'📉', nome:'Empresas em queda',
-        descricao:'Reduziram volume 30%+ comparando 1ª vs 2ª metade dos últimos 30 dias (15/15)',
+        descricao:'Lojas regulares que reduziram 20%+ comparando 1ª vs 2ª metade dos últimos 30 dias',
+        temValor:false, fase:1 },
+      { id:'empresas_alta', icone:'📈', nome:'Empresas em alta',
+        descricao:'Empresas que cresceram 30%+ comparando 1ª vs 2ª metade dos últimos 30 dias',
         temValor:false, fase:1 },
       { id:'clientes_novos', icone:'🌟', nome:'Clientes novos',
         descricao:'Empresas com primeiro pedido nos últimos X dias',
         temValor:false, fase:1 },
       { id:'top_clientes', icone:'🏆', nome:'Top clientes do período',
-        descricao:'Empresas que mais pediram no período (corridas ou receita)',
+        descricao:'Empresas que mais geraram paradas no período',
         temValor:true, fase:1 }
     ]
   },
@@ -11571,103 +11574,206 @@ async function _sb_empresas_queda(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var quedaMin = _RL.quedaMin || 20;
+  var ativaMin = _RL.ativaMinQueda !== undefined ? _RL.ativaMinQueda : 10;
+  var diasTotal = 30;
   
-  var [historico, corridasHoje] = await Promise.all([
-    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=count_antigo.desc&limit=10000'),
-    _rlPegarCorridasHoje(slug)
-  ]);
+  // Usa RPC empresas_periodo_comparado (compara metades)
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_periodo_comparado', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias_total: diasTotal })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Em Queda] RPC erro:', e.message); }
   
-  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
-  
-  // Recalcula dias_sem_pedir
-  var agora = new Date();
-  mesclado.forEach(function(e){
-    var ult = new Date(e.ultima_corrida);
-    e.dias_sem_pedir = Math.floor((agora - ult) / 86400000);
+  // Filtra: REGULAR (dias_distintos >= ativaMin) + ainda ativa (<5d sem pedir) + queda >= min
+  var emQueda = lista.filter(function(e){
+    if(parseInt(e.dias_sem_pedir||0) >= 5) return false;
+    if(parseInt(e.dias_distintos||0) < ativaMin) return false;
+    if(parseInt(e.count_antigo||0) < 3) return false;
+    return parseInt(e.queda_pct||0) >= quedaMin;
   });
   
-  // Em queda: ainda ativas (<5 dias) + count_antigo ≥ 3 + queda ≥ quedaMin%
-  var emQueda = mesclado.filter(function(e){
-    if(e.dias_sem_pedir >= 5) return false;
-    if(e.count_antigo < 3) return false;
-    var quedaPct = e.count_antigo > 0 ? ((e.count_antigo - e.count_recente) / e.count_antigo) * 100 : 0;
-    e._quedaPct = Math.round(quedaPct);
-    return e._quedaPct >= quedaMin;
-  });
+  emQueda.sort(function(a,b){ return parseInt(b.queda_pct) - parseInt(a.queda_pct); });
   
-  emQueda.sort(function(a,b){ return b._quedaPct - a._quedaPct; });
+  console.log('[Em Queda] '+slug+' · '+emQueda.length+' empresas regulares em queda ≥'+quedaMin+'%');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','Último pedido','Variação','Queda %','Pedidos totais'];
-  if(podeValor) colunas.push('Valor total');
+  var colunas = ['Empresa','Atividade','Último','Corridas','Paradas','Queda %'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = emQueda.map(function(e){
-    var icone = e._quedaPct >= 60 ? '🔴' : e._quedaPct >= 40 ? '🟠' : '🟡';
-    var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR') + ' ('+e.dias_sem_pedir+'d atrás)';
-    var row = [icone+' '+e.nome_passageiro, ultFmt, e.count_antigo+' → '+e.count_recente, '-'+e._quedaPct+'%', e.total];
-    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+    var queda = parseInt(e.queda_pct||0);
+    var icone = queda >= 60 ? '🔴' : queda >= 40 ? '🟠' : '🟡';
+    var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR') + ' ('+e.dias_sem_pedir+'d)';
+    var ativ = e.dias_distintos+'/'+diasTotal+'d';
+    var variacao = e.count_antigo+' → '+e.count_recente+' corr · '+e.paradas_antigo+' → '+e.paradas_recente+' par';
+    var row = [icone+' '+e.nome_passageiro, ativ, ultFmt, variacao, parseInt(e.total_paradas||0), '-'+queda+'%'];
+    if(podeValor){
+      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
+    }
     return row;
   });
   
   return {
     id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
-    descricao:'⚡ Supabase + 📅 hoje · Reduziram '+quedaMin+'%+ comparando 1ª metade vs 2ª metade dos últimos 30 dias (15/15)',
+    descricao:'⚡ Supabase · Lojas regulares ('+ativaMin+'+ dias) que reduziram '+quedaMin+'%+ comparando 1ª vs 2ª metade dos últimos '+diasTotal+' dias',
     cidade:c, colunas:colunas, linhas:linhas, vazio: emQueda.length === 0,
     kpis:[
-      { label:'Empresas em queda', valor:emQueda.length, cor:'#EF9F27' },
-      { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0]._quedaPct+'%' : '—', cor:'#E24B4A' }
+      { label:'Lojas em queda', valor:emQueda.length, cor:'#EF9F27' },
+      { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0].queda_pct+'%' : '—', cor:'#E24B4A' },
+      { label:'Paradas perdidas', valor:emQueda.reduce(function(s,e){return s+parseInt(e.paradas_antigo||0)-parseInt(e.paradas_recente||0);},0), cor:'#E24B4A' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
-      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mínima:</strong>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mín:</strong>'
         +'<select onchange="_RL.quedaMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
-          +'<option value="10"'+(quedaMin===10?' selected':'')+'>10%+ (todas)</option>'
-          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+ (recomendado)</option>'
-          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+ (moderada)</option>'
-          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+ (crítica)</option>'
+          +'<option value="10"'+(quedaMin===10?' selected':'')+'>10%+</option>'
+          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+</option>'
+          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+</option>'
+          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Frequência mín:</strong>'
+        +'<select onchange="_RL.ativaMinQueda=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(ativaMin===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="10"'+(ativaMin===10?' selected':'')+'>10+ dias</option>'
+          +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias</option>'
+          +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias</option>'
         +'</select>'
       +'</label>'
     +'</div>'
   };
 }
 
-/* ─── 3) CLIENTES NOVOS (Supabase + hoje) ─── */
+/* ─── 3) CLIENTES NOVOS ─── */
 async function _sb_clientes_novos(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var periodo = _RL.periodo || 30;
   
-  var [historico, corridasHoje] = await Promise.all([
-    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=primeira_corrida.desc&limit=5000'),
-    _rlPegarCorridasHoje(slug)
-  ]);
-  
-  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: Math.max(periodo, 30) })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Clientes Novos] RPC erro:', e.message); }
   
   // Filtra: primeira corrida nos últimos X dias
   var corte = new Date(Date.now() - periodo*86400000).toISOString();
-  var novos = mesclado.filter(function(e){ return e.primeira_corrida >= corte; });
-  novos.sort(function(a,b){ return b.primeira_corrida < a.primeira_corrida ? -1 : 1; });
+  var novos = lista.filter(function(e){ return e.primeira_corrida >= corte; });
+  novos.sort(function(a,b){ return a.primeira_corrida < b.primeira_corrida ? 1 : -1; });
+  
+  console.log('[Clientes Novos] '+slug+' · '+novos.length+' novos nos últimos '+periodo+' dias');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','1º pedido','Total pedidos','Cliente há'];
-  if(podeValor) colunas.push('Receita total');
+  var colunas = ['Empresa','1º pedido','Cliente há','Corridas','Paradas','✅ Fin','❌ Canc'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = novos.map(function(e){
     var prim = new Date(e.primeira_corrida);
     var dias = Math.floor((Date.now() - prim.getTime()) / 86400000);
-    var row = ['🌟 '+e.nome_passageiro, prim.toLocaleDateString('pt-BR'), e.total, dias+' dias'];
-    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+    var row = ['🌟 '+e.nome_passageiro, prim.toLocaleDateString('pt-BR'), dias+' dias',
+               (parseInt(e.total_corridas)||0), (parseInt(e.total_paradas)||0),
+               (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0)];
+    if(podeValor){
+      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
+    }
     return row;
   });
   
   return {
     id:'clientes_novos', icone:'🌟', titulo:'Clientes novos',
-    descricao:'⚡ Supabase + 📅 hoje · Empresas com 1º pedido nos últimos '+periodo+' dias',
+    descricao:'⚡ Supabase · Empresas com 1º pedido nos últimos '+periodo+' dias',
     cidade:c, colunas:colunas, linhas:linhas, vazio: novos.length === 0,
     kpis:[
       { label:'Novos clientes', valor:novos.length, cor:'#1D9E75' },
-      { label:'Pedidos gerados', valor:novos.reduce(function(s,e){return s+e.total;},0), cor:'#1AB8F0' }
-    ]
+      { label:'Corridas geradas', valor:novos.reduce(function(s,e){return s+parseInt(e.total_corridas||0);},0), cor:'#1AB8F0' },
+      { label:'Paradas geradas', valor:novos.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0), cor:'#16A085' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Período:</strong>'
+        +'<select onchange="_RL.periodo=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="7"'+(periodo===7?' selected':'')+'>Últimos 7 dias</option>'
+          +'<option value="14"'+(periodo===14?' selected':'')+'>Últimos 14 dias</option>'
+          +'<option value="30"'+(periodo===30?' selected':'')+'>Últimos 30 dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ─── NOVO: EMPRESAS EM ALTA ─── */
+async function _sb_empresas_alta(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var altaMin = _RL.altaMin || 30;
+  var diasTotal = 30;
+  
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_periodo_comparado', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias_total: diasTotal })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Em Alta] RPC erro:', e.message); }
+  
+  // queda_pct negativo = crescimento. Ex: queda_pct=-50 significa cresceu 50%.
+  var emAlta = lista.filter(function(e){
+    var crescimento = -parseInt(e.queda_pct||0);
+    if(crescimento < altaMin) return false;
+    if(parseInt(e.count_recente||0) < 3) return false;  // precisa ter volume na 2ª metade
+    return true;
+  });
+  
+  emAlta.forEach(function(e){ e._crescPct = -parseInt(e.queda_pct||0); });
+  emAlta.sort(function(a,b){ return b._crescPct - a._crescPct; });
+  
+  console.log('[Em Alta] '+slug+' · '+emAlta.length+' empresas crescendo ≥'+altaMin+'%');
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Empresa','Último','Corridas','Paradas','Crescimento'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
+  
+  var linhas = emAlta.map(function(e){
+    var c1 = e._crescPct >= 100 ? '🚀' : e._crescPct >= 50 ? '🔥' : '📈';
+    var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
+    var variacao = e.count_antigo+' → '+e.count_recente+' corr · '+e.paradas_antigo+' → '+e.paradas_recente+' par';
+    var row = [c1+' '+e.nome_passageiro, ultFmt, variacao, parseInt(e.total_paradas||0), '+'+e._crescPct+'%'];
+    if(podeValor){
+      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
+    }
+    return row;
+  });
+  
+  return {
+    id:'empresas_alta', icone:'📈', titulo:'Empresas em alta',
+    descricao:'⚡ Supabase · Empresas que cresceram '+altaMin+'%+ comparando 1ª vs 2ª metade dos últimos '+diasTotal+' dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: emAlta.length === 0,
+    kpis:[
+      { label:'Lojas em alta', valor:emAlta.length, cor:'#1D9E75' },
+      { label:'Maior crescimento', valor:emAlta.length ? '+'+emAlta[0]._crescPct+'%' : '—', cor:'#16A085' },
+      { label:'Paradas ganhas', valor:emAlta.reduce(function(s,e){return s+parseInt(e.paradas_recente||0)-parseInt(e.paradas_antigo||0);},0), cor:'#1AB8F0' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Crescimento mín:</strong>'
+        +'<select onchange="_RL.altaMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="20"'+(altaMin===20?' selected':'')+'>20%+</option>'
+          +'<option value="30"'+(altaMin===30?' selected':'')+'>30%+</option>'
+          +'<option value="50"'+(altaMin===50?' selected':'')+'>50%+</option>'
+          +'<option value="100"'+(altaMin===100?' selected':'')+'>100%+ (dobrou)</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
   };
 }
 
@@ -11676,41 +11782,85 @@ async function _sb_top_clientes(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var topN = _RL.topN || 10;
+  var diasLookback = 30;
   
-  var [historico, corridasHoje] = await Promise.all([
-    _rlSupaQuery('mv_empresas_atividade?cidade_slug=eq.'+slug+'&order=total.desc&limit=200'),
-    _rlPegarCorridasHoje(slug)
-  ]);
+  // Usa RPC nova com paradas
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
+      method: 'POST',
+      headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Top Clientes] RPC erro:', e.message); }
   
-  var mesclado = _rlMesclarEmpresasHoje(historico, corridasHoje);
-  mesclado.sort(function(a,b){ return b.total - a.total; });
-  var top = mesclado.slice(0, topN);
-  var totalGeral = top.reduce(function(s,e){return s+e.total;},0);
+  // Mescla corridas de HOJE (Machine ao vivo)
+  try {
+    var corridasHoje = await _rlPegarCorridasHoje(slug);
+    if(corridasHoje && corridasHoje.length){
+      var byKey = {};
+      lista.forEach(function(e){ byKey[(e.nome_passageiro||'').toLowerCase()] = e; });
+      corridasHoje.forEach(function(x){
+        var nOrig = (x.nome_passageiro||'').trim(); if(!nOrig) return;
+        var nKey = nOrig.toLowerCase();
+        var paradas = Array.isArray(x.paradas) ? x.paradas.length : 0;
+        var status = x.status_solicitacao || '';
+        var valor = parseFloat(x.valor_corrida||0);
+        if(!byKey[nKey]){
+          var nova = {
+            nome_passageiro:nOrig, ultima_corrida:x.data_hora_solicitacao,
+            total_corridas:1, total_finalizadas:status==='F'?1:0, total_canceladas:status==='C'?1:0,
+            total_paradas:paradas, paradas_finalizadas:status==='F'?paradas:0,
+            valor_total:status==='F'?valor:0, ticket_medio_parada:0, dias_distintos:1, dias_sem_pedir:0
+          };
+          lista.push(nova); byKey[nKey]=nova;
+        } else {
+          var e = byKey[nKey];
+          e.total_corridas = (parseInt(e.total_corridas)||0) + 1;
+          e.total_paradas = (parseInt(e.total_paradas)||0) + paradas;
+          if(status==='F'){
+            e.total_finalizadas = (parseInt(e.total_finalizadas)||0) + 1;
+            e.paradas_finalizadas = (parseInt(e.paradas_finalizadas)||0) + paradas;
+            e.valor_total = parseFloat(e.valor_total||0) + valor;
+          }
+          if(status==='C') e.total_canceladas = (parseInt(e.total_canceladas)||0) + 1;
+        }
+      });
+    }
+  } catch(e){ console.warn('[Top Clientes] Erro mesclar hoje:', e.message); }
+  
+  // Ordena por PARADAS (métrica principal)
+  lista.sort(function(a,b){ return parseInt(b.total_paradas||0) - parseInt(a.total_paradas||0); });
+  var top = lista.slice(0, topN);
+  var totalParadasGeral = top.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0);
+  
+  console.log('[Top Clientes] '+slug+' · Top '+topN+':', top);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['#','Empresa','Pedidos','% do top '+topN];
-  if(podeValor){ colunas.push('Receita'); colunas.push('Ticket médio'); }
+  var colunas = ['#','Empresa','Corridas','Paradas','✅ Fin','❌ Canc','% do top '+topN];
+  if(podeValor){ colunas.push('Faturamento'); colunas.push('Ticket/parada'); }
   
   var linhas = top.map(function(e, i){
     var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
-    var pct = totalGeral > 0 ? ((e.total / totalGeral) * 100).toFixed(1) + '%' : '—';
-    var row = [medal, e.nome_passageiro, e.total, pct];
+    var paradas = parseInt(e.total_paradas||0);
+    var pct = totalParadasGeral > 0 ? ((paradas / totalParadasGeral) * 100).toFixed(1) + '%' : '—';
+    var row = [medal, e.nome_passageiro, (parseInt(e.total_corridas)||0), paradas, (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0), pct];
     if(podeValor){
-      var valor = parseFloat(e.valor_total||0);
-      row.push('R$ '+valor.toFixed(2));
-      row.push('R$ '+(e.total > 0 ? (valor/e.total).toFixed(2) : '0,00'));
+      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
     }
     return row;
   });
   
   return {
     id:'top_clientes', icone:'🏆', titulo:'Top '+topN+' clientes do período',
-    descricao:'⚡ Supabase + 📅 hoje · Empresas que mais pediram nos últimos 45 dias',
+    descricao:'⚡ Supabase · Empresas que mais geraram paradas (entregas) nos últimos '+diasLookback+' dias',
     cidade:c, colunas:colunas, linhas:linhas, vazio: top.length === 0,
     kpis:[
       { label:'Top '+topN, valor:top.length, cor:'#EF9F27' },
-      { label:'Total pedidos', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
-      { label:'Líder', valor: top[0] ? top[0].total+' pedidos' : '—', cor:'#1D9E75' }
+      { label:'Total paradas', valor:totalParadasGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Líder', valor: top[0] ? parseInt(top[0].total_paradas||0)+' paradas' : '—', cor:'#1D9E75' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
@@ -12187,34 +12337,82 @@ async function _sb_pareto_empresas(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var periodo = _RL.periodo || 30;
-  var dados = await _rlSupaRPC('rel_pareto_empresas', { p_slug: slug, p_dias: periodo });
   
-  if(!dados.length){
+  // Usa empresas_atividade_real (com paradas + valor)
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: periodo })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Pareto] RPC erro:', e.message); }
+  
+  if(!lista.length){
     return { id:'pareto_empresas', icone:'📊', titulo:'Pareto 80/20 — Empresas',
       descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
   }
   
-  // Acha o ponto onde acumulado bate 80%
-  var idx80 = dados.findIndex(function(d){ return parseFloat(d.pct_acumulado) >= 80; });
-  var qtd80 = idx80 >= 0 ? idx80 + 1 : dados.length;
-  var pctEmpresas80 = ((qtd80 / dados.length) * 100).toFixed(1);
+  // Ordena por valor_total DESC (receita gerada)
+  lista.sort(function(a,b){ return parseFloat(b.valor_total||0) - parseFloat(a.valor_total||0); });
   
-  var linhas = dados.map(function(d){
-    var icone = parseFloat(d.pct_acumulado) <= 80 ? '🟢' : '⚪';
-    return [icone+' '+d.posicao+'º', d.nome_passageiro, parseInt(d.corridas).toLocaleString('pt-BR'),
-      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      parseFloat(d.pct_individual).toFixed(2)+'%', parseFloat(d.pct_acumulado).toFixed(1)+'%'];
+  var receitaTotal = lista.reduce(function(s,e){return s + parseFloat(e.valor_total||0);}, 0);
+  if(receitaTotal === 0){
+    return { id:'pareto_empresas', icone:'📊', titulo:'Pareto 80/20 — Empresas',
+      descricao:'Sem receita no período', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  // Calcula % individual e acumulado
+  var acumPct = 0;
+  lista.forEach(function(e, i){
+    e._posicao = i + 1;
+    e._pctInd = (parseFloat(e.valor_total||0) / receitaTotal) * 100;
+    acumPct += e._pctInd;
+    e._pctAcum = acumPct;
+  });
+  
+  // Acha 80%
+  var idx80 = lista.findIndex(function(e){ return e._pctAcum >= 80; });
+  var qtd80 = idx80 >= 0 ? idx80 + 1 : lista.length;
+  var pctEmpresas80 = ((qtd80 / lista.length) * 100).toFixed(1);
+  
+  console.log('[Pareto] '+slug+' · '+qtd80+'/'+lista.length+' empresas geram 80% da receita');
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['#','Empresa','Corridas','Paradas'];
+  if(podeValor) colunas.push('Receita');
+  colunas.push('% individual','% acumulado');
+  
+  var linhas = lista.map(function(e){
+    var icone = e._pctAcum <= 80 ? '🟢' : '⚪';
+    var row = [icone+' '+e._posicao+'º', e.nome_passageiro,
+               (parseInt(e.total_corridas)||0).toLocaleString('pt-BR'),
+               (parseInt(e.total_paradas)||0).toLocaleString('pt-BR')];
+    if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}));
+    row.push(e._pctInd.toFixed(2)+'%', e._pctAcum.toFixed(1)+'%');
+    return row;
   });
   
   return {
     id:'pareto_empresas', icone:'📊', titulo:'Pareto 80/20 — Empresas',
-    descricao:'⚡ Supabase · '+qtd80+' empresas (' + pctEmpresas80 + '% do total) geram 80% da receita',
-    cidade:c, colunas:['#','Empresa','Corridas','Receita','% individual','% acumulado'], linhas:linhas, vazio:false,
+    descricao:'⚡ Supabase · '+qtd80+' empresas ('+pctEmpresas80+'% do total) geram 80% da receita nos últimos '+periodo+' dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio:false,
     kpis:[
       { label:'Empresas (80% receita)', valor:qtd80, cor:'#1D9E75' },
       { label:'% das empresas', valor:pctEmpresas80+'%', cor:'#EF9F27' },
-      { label:'Total empresas', valor:dados.length, cor:'#1AB8F0' }
-    ]
+      { label:'Total empresas', valor:lista.length, cor:'#1AB8F0' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Período:</strong>'
+        +'<select onchange="_RL.periodo=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="7"'+(periodo===7?' selected':'')+'>7 dias</option>'
+          +'<option value="15"'+(periodo===15?' selected':'')+'>15 dias</option>'
+          +'<option value="30"'+(periodo===30?' selected':'')+'>30 dias</option>'
+          +'<option value="45"'+(periodo===45?' selected':'')+'>45 dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
   };
 }
 
@@ -12265,6 +12463,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'clientes_recuperar': // alias antigo
       return temSupa ? await _sb_empresas_sumidas() : _gen_empresas_sumidas(dados);
     case 'empresas_queda':     return temSupa ? await _sb_empresas_queda() : _gen_empresas_queda(dados);
+    case 'empresas_alta':      return temSupa ? await _sb_empresas_alta() : (window._gen_empresas_alta ? _gen_empresas_alta(dados) : { id:'empresas_alta', icone:'📈', titulo:'Empresas em alta', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] });
     case 'clientes_novos':     return temSupa ? await _sb_clientes_novos() : _gen_clientes_novos(dados);
     case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
