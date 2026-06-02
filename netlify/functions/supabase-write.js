@@ -126,6 +126,47 @@ async function auditar(usuario, acao, recurso, detalhes, ip, userAgent){
   } catch(e){ /* silencioso */ }
 }
 
+// Rate limit: usa função SQL atômica
+const RATE_LIMIT_POR_MIN = 30; // 30 escritas/min por usuário
+async function verificarRateLimit(chave){
+  try {
+    const r = await fetch(SUPA_URL+'/rest/v1/rpc/verificar_rate_limit', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': 'Bearer '+SUPA_SERVICE_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ p_chave: chave, p_limite: RATE_LIMIT_POR_MIN })
+    });
+    if(!r.ok) return { ok: true }; // se o check falha, deixa passar (fail-open)
+    const data = await r.json();
+    return Array.isArray(data) && data[0] ? data[0] : { ok: true };
+  } catch(e){ return { ok: true }; }
+}
+
+// Registra alerta de segurança (não bloqueia)
+async function alertar(tipo, severidade, mensagem, detalhes){
+  try {
+    await fetch(SUPA_URL+'/rest/v1/alertas_log', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_SERVICE_KEY,
+        'Authorization': 'Bearer '+SUPA_SERVICE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify([{
+        tipo: tipo,
+        severidade: severidade,
+        origem: 'supabase-write',
+        mensagem: mensagem,
+        detalhes: detalhes
+      }])
+    });
+  } catch(e){}
+}
+
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -153,8 +194,20 @@ exports.handler = async function(event){
     return { statusCode: 401, headers: cors, body: JSON.stringify({error:'Usuário não informado (header X-Gami-User)'}) };
   }
   
+  // RATE LIMIT: 30 escritas/min por usuário
+  const rl = await verificarRateLimit('user:'+userId);
+  if(!rl.ok){
+    alertar('rate_limit_excedido', 'aviso', 'User excedeu rate limit', { userId, contagem: rl.contagem, ip });
+    return { 
+      statusCode: 429, 
+      headers: cors, 
+      body: JSON.stringify({error:'Muitas requisições. Aguarde 1 minuto.', contagem: rl.contagem, limite: rl.limite}) 
+    };
+  }
+  
   const sessao = await validarSessao(userId, token);
   if(!sessao.valido){
+    alertar('auth_falhou', 'aviso', sessao.erro, { userId, ip });
     return { statusCode: 401, headers: cors, body: JSON.stringify({error: sessao.erro}) };
   }
   

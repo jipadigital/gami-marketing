@@ -68,6 +68,29 @@ exports.handler = async function(event){
     'Content-Type':'application/json'
   };
   if(event.httpMethod === 'OPTIONS') return { statusCode:200, headers:cors, body:'' };
+  
+  // Rate limit por IP (60 chamadas/minuto)
+  var ip = event.headers['x-forwarded-for'] || event.headers['x-nf-client-connection-ip'] || 'desconhecido';
+  ip = ip.split(',')[0].trim();
+  try {
+    var SUPA_URL_RL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
+    var SUPA_KEY_RL = process.env.SUPA_SERVICE_KEY || process.env.SUPA_PUBLIC_KEY || 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
+    var rRL = await fetch(SUPA_URL_RL+'/rest/v1/rpc/verificar_rate_limit', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY_RL,'Authorization':'Bearer '+SUPA_KEY_RL,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_chave: 'machine_ip:'+ip, p_limite: 60 })
+    });
+    if(rRL.ok){
+      var dataRL = await rRL.json();
+      if(Array.isArray(dataRL) && dataRL[0] && !dataRL[0].ok){
+        return { 
+          statusCode: 429, 
+          headers: cors, 
+          body: JSON.stringify({success:false, error:'Muitas chamadas. Aguarde 1 minuto.', contagem: dataRL[0].contagem}) 
+        };
+      }
+    }
+  } catch(e){ /* fail-open: se rate limit falhar, deixa passar */ }
 
   var p = event.queryStringParameters || {};
   var cidade = (p.cidade||'').toLowerCase();

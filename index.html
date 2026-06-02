@@ -1,4 +1,4 @@
-<!-- v23.61 - Seguranca Fase 2: token sessao + CORS restrito + headers + audit log - 02/06/2026 -->
+<!-- v23.62 - Seguranca Fase 3: rate limit + backup semanal + health endpoint + pagina Saude - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -910,7 +910,7 @@ function detectarNivelPermissao(usuario){
 /* Matriz de permissões — define quem vê o quê */
 var MATRIZ_PERMISSOES = {
   super_admin: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude'],
     pode_editar_pessoas: true,
     pode_admin_pontos: true,
     pode_criar_desafios: true,
@@ -1326,7 +1326,8 @@ window.nav = function(el, page){
         'carreira':        function(){ if(typeof renderCarreira==='function') renderCarreira(); },
         'portal':          function(){ if(typeof renderPortal==='function') renderPortal(); },
         'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
-        'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); }
+        'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
+        'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); }
       };
       if(initMap[page]) setTimeout(initMap[page], 80);
       try{ document.getElementById('main-content').scrollTop = 0; }catch(e){}
@@ -1391,6 +1392,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="sb-label">Recursos</div>
     <div class="nav-item" onclick="nav(this,'portal')"><span class="nav-dot" style="background:#378ADD"></span>Portal Gâmi</div>
     <div class="nav-item" onclick="nav(this,'relatorios')"><span class="nav-dot" style="background:#8B5CF6"></span>Relatórios</div>
+    <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')"><span class="nav-dot" style="background:#1D9E75"></span>🩺 Saúde</div>
   </div>
 
   <div class="sb-footer">
@@ -3622,6 +3624,19 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     </div>
   </div>
   <div id="rl-content" style="padding:0 4px"></div>
+</div>
+
+<!-- ==================== SAÚDE DO SISTEMA ==================== -->
+<div class="page" id="pg-saude">
+  <div class="page-header">
+    <div><div class="page-title">🩺 Saúde do Sistema</div><div class="page-sub">Status técnico do dashboard, integrações e backups</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="renderSaudeSistema()" style="font-size:11px">🔄 Atualizar</button>
+    </div>
+  </div>
+  <div id="saude-content" style="padding:0 4px">
+    <div style="padding:40px 20px;text-align:center;color:var(--text3)">⏳ Carregando...</div>
+  </div>
 </div>
 
 <!-- ==================== PESSOAS ==================== -->
@@ -12512,6 +12527,190 @@ async function iniciarSincronizacaoSupabase(cidadeId){
   } finally {
     _SYNC.rodando = false;
     _SYNC.cancelar = false;
+  }
+}
+
+/* ============================================================ */
+/* 🩺 SAÚDE DO SISTEMA — dashboard pro super_admin              */
+/* ============================================================ */
+async function renderSaudeSistema(){
+  var host = document.getElementById('saude-content');
+  if(!host) return;
+  
+  host.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text3)"><div style="font-size:38px;margin-bottom:12px">⏳</div><div style="font-size:13px">Verificando saúde do sistema...</div></div>';
+  
+  // Busca dados em paralelo
+  try {
+    var [healthRes, alertasRes, syncsRes, backupsRes] = await Promise.all([
+      fetch('/.netlify/functions/health').then(function(r){return r.ok ? r.json() : null;}).catch(function(){return null;}),
+      _rlSupaQuery('alertas_log?order=criado_em.desc&limit=10').catch(function(){return [];}),
+      _rlSupaQuery('machine_sync_log?order=iniciado_em.desc&limit=10').catch(function(){return [];}),
+      _rlSupaQuery('backups_semanais?order=semana_inicio.desc&limit=4').catch(function(){return [];})
+    ]);
+    
+    var html = '';
+    
+    // ===== Status geral =====
+    var corStatus = healthRes && healthRes.ok ? '#1D9E75' : '#E24B4A';
+    var iconStatus = healthRes && healthRes.ok ? '✅' : '⚠️';
+    var textoStatus = healthRes && healthRes.ok ? 'Tudo funcionando' : 'Atenção necessária';
+    
+    html += '<div style="background:linear-gradient(135deg,'+corStatus+'15,'+corStatus+'05);border:1px solid '+corStatus+'33;border-left:4px solid '+corStatus+';border-radius:12px;padding:18px 22px;margin-bottom:18px;display:flex;align-items:center;gap:14px">'
+      +'<span style="font-size:36px">'+iconStatus+'</span>'
+      +'<div>'
+        +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:'+corStatus+'">'+textoStatus+'</div>'
+        +'<div style="font-size:12px;color:var(--text3);margin-top:2px">Verificado em '+new Date().toLocaleString('pt-BR')+(healthRes && healthRes.versao ? ' · '+healthRes.versao : '')+'</div>'
+      +'</div>'
+    +'</div>';
+    
+    // ===== Indicadores =====
+    var stats = (healthRes && healthRes.checks && healthRes.checks.estatisticas) || {};
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px">';
+    
+    function statusCor(s){ return s === 'ok' ? '#1D9E75' : s === 'aviso' ? '#EF9F27' : s === 'critico' ? '#E24B4A' : '#1AB8F0'; }
+    function statusIcon(s){ return s === 'ok' ? '✓' : s === 'aviso' ? '⚠' : s === 'critico' ? '✗' : 'i'; }
+    
+    var indicadores = [
+      { chave: 'total_corridas', label: 'Total de corridas', icone: '🏍️' },
+      { chave: 'ultimo_sync', label: 'Último sync', icone: '☁️', formatar: function(v){
+          if(v === 'nunca' || !v) return 'Nunca';
+          try { return new Date(v).toLocaleString('pt-BR'); } catch(e){ return v; }
+        }
+      },
+      { chave: 'sessoes_ativas', label: 'Sessões ativas', icone: '👥' },
+      { chave: 'alertas_criticos', label: 'Alertas críticos', icone: '🚨' },
+      { chave: 'ultimo_backup', label: 'Último backup', icone: '📦', formatar: function(v){
+          if(v === 'nunca' || !v) return 'Nunca';
+          try { return new Date(v).toLocaleDateString('pt-BR'); } catch(e){ return v; }
+        }
+      }
+    ];
+    
+    indicadores.forEach(function(ind){
+      var dados = stats[ind.chave] || { valor: '—', status: 'info' };
+      var valor = ind.formatar ? ind.formatar(dados.valor) : dados.valor;
+      var cor = statusCor(dados.status);
+      
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:10px;padding:12px 14px">'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+          +'<span style="font-size:18px">'+ind.icone+'</span>'
+          +'<span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.3px">'+ind.label+'</span>'
+        +'</div>'
+        +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--text)">'+valor+'</div>'
+        +'<div style="font-size:10px;color:'+cor+';margin-top:4px;font-weight:600">'+statusIcon(dados.status)+' '+dados.status.toUpperCase()+'</div>'
+      +'</div>';
+    });
+    html += '</div>';
+    
+    // ===== Servidor =====
+    var srv = (healthRes && healthRes.checks && healthRes.checks.servidor) || {};
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+        +'<span>⚙️</span> Configuração do servidor'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">'
+        + [
+          { k:'SUPA_SERVICE_KEY (Supabase)', v: srv.service_key_configurada },
+          { k:'MACHINE_USER (Gaudium)', v: srv.machine_user_configurado },
+          { k:'ANTHROPIC_API_KEY (IA)', v: srv.anthropic_key_configurada }
+        ].map(function(item){
+          var ok = item.v === true;
+          return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:6px">'
+            +'<span style="font-size:14px;color:'+(ok?'#1D9E75':'#E24B4A')+'">'+(ok?'✓':'✗')+'</span>'
+            +'<span style="font-size:11px;color:var(--text2);flex:1">'+item.k+'</span>'
+            +'<span style="font-size:10px;color:'+(ok?'#1D9E75':'#E24B4A')+';font-weight:700">'+(ok?'OK':'FALTA')+'</span>'
+          +'</div>';
+        }).join('')
+      +'</div>'
+    +'</div>';
+    
+    // ===== Alertas recentes =====
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+        +'<span>🚨</span> Alertas recentes'
+        +'<span style="font-size:10px;color:var(--text3);font-weight:500">'+(alertasRes.length)+' eventos</span>'
+      +'</div>';
+    if(!alertasRes.length){
+      html += '<div style="font-size:12px;color:#1D9E75;padding:10px;background:#EAF3DE;border-radius:6px">✅ Nenhum alerta registrado</div>';
+    } else {
+      html += '<div style="max-height:280px;overflow-y:auto">';
+      alertasRes.forEach(function(a){
+        var corA = a.severidade === 'critico' ? '#E24B4A' : a.severidade === 'aviso' ? '#EF9F27' : '#1AB8F0';
+        var iconA = a.severidade === 'critico' ? '🔴' : a.severidade === 'aviso' ? '🟡' : 'ℹ️';
+        var qdo = new Date(a.criado_em).toLocaleString('pt-BR');
+        html += '<div style="padding:8px 10px;border-left:3px solid '+corA+';margin-bottom:6px;background:var(--surface2);border-radius:4px">'
+          +'<div style="display:flex;align-items:center;gap:6px;font-size:11px"><span>'+iconA+'</span><strong style="color:var(--text)">'+a.tipo+'</strong><span style="color:var(--text3);margin-left:auto">'+qdo+'</span></div>'
+          +'<div style="font-size:10.5px;color:var(--text3);margin-top:3px">'+(a.mensagem || '')+(a.origem ? ' · '+a.origem : '')+'</div>'
+        +'</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    
+    // ===== Syncs recentes =====
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+        +'<span>☁️</span> Sincronizações recentes'
+      +'</div>';
+    if(!syncsRes.length){
+      html += '<div style="font-size:12px;color:var(--text3);padding:10px">Nenhum sync registrado ainda.</div>';
+    } else {
+      html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'
+        +'<thead><tr style="background:var(--surface2)"><th style="text-align:left;padding:6px 8px">Cidade</th><th style="text-align:left;padding:6px 8px">Quando</th><th style="text-align:right;padding:6px 8px">Duração</th><th style="text-align:right;padding:6px 8px">Corridas</th><th style="text-align:center;padding:6px 8px">Status</th></tr></thead>'
+        +'<tbody>';
+      syncsRes.forEach(function(s){
+        var qdo = new Date(s.iniciado_em).toLocaleString('pt-BR');
+        var corS = s.status === 'concluido' ? '#1D9E75' : s.status === 'rodando' ? '#1AB8F0' : '#E24B4A';
+        html += '<tr style="border-bottom:1px solid var(--border)">'
+          +'<td style="padding:6px 8px;font-weight:600">'+(s.cidade_nome || s.cidade_slug)+'</td>'
+          +'<td style="padding:6px 8px;color:var(--text3)">'+qdo+'</td>'
+          +'<td style="padding:6px 8px;text-align:right">'+(s.duracao_segundos ? s.duracao_segundos+'s' : '—')+'</td>'
+          +'<td style="padding:6px 8px;text-align:right;color:var(--text2)">'+(s.corridas_inseridas || 0).toLocaleString('pt-BR')+'</td>'
+          +'<td style="padding:6px 8px;text-align:center"><span style="font-size:10px;color:white;background:'+corS+';padding:2px 8px;border-radius:8px;font-weight:700">'+s.status.toUpperCase()+'</span></td>'
+        +'</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+    
+    // ===== Backups =====
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
+        +'<span>📦</span> Backups semanais'
+        +'<span style="font-size:10px;color:var(--text3);font-weight:500">Roda automaticamente aos domingos 4h</span>'
+      +'</div>';
+    if(!backupsRes.length){
+      html += '<div style="font-size:12px;color:var(--text3);padding:10px">Nenhum backup ainda. Próximo: domingo às 4h da manhã.</div>';
+    } else {
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">';
+      backupsRes.forEach(function(b){
+        var sem = new Date(b.semana_inicio).toLocaleDateString('pt-BR');
+        html += '<div style="padding:10px 12px;background:var(--surface2);border-radius:8px;border-left:3px solid #8B5CF6">'
+          +'<div style="font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Semana de '+sem+'</div>'
+          +'<div style="font-size:13px;color:var(--text);font-weight:700">'+(b.total_corridas || 0).toLocaleString('pt-BR')+' corridas</div>'
+          +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+(b.total_condutores || 0)+' motoboys · '+(b.total_empresas || 0)+' empresas</div>'
+        +'</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    
+    // ===== Ações rápidas =====
+    html += '<div style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-radius:12px;padding:16px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:#6A1B9A;margin-bottom:10px">⚡ Ações rápidas</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        +'<button onclick="renderSaudeSistema()" style="padding:7px 14px;border:1px solid #8B5CF6;border-radius:6px;background:white;color:#8B5CF6;font-size:11px;font-weight:600;cursor:pointer">🔄 Atualizar</button>'
+        +'<button onclick="window.open(\'/.netlify/functions/health\',\'_blank\')" style="padding:7px 14px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:#1AB8F0;font-size:11px;font-weight:600;cursor:pointer">📊 JSON do /health</button>'
+        +'<button onclick="window.open(\'https://app.netlify.com\',\'_blank\')" style="padding:7px 14px;border:1px solid #0B2542;border-radius:6px;background:white;color:#0B2542;font-size:11px;font-weight:600;cursor:pointer">🚀 Netlify</button>'
+        +'<button onclick="window.open(\'https://supabase.com/dashboard/project/tdbyzsouhrhmhpctttps\',\'_blank\')" style="padding:7px 14px;border:1px solid #1D9E75;border-radius:6px;background:white;color:#1D9E75;font-size:11px;font-weight:600;cursor:pointer">🗄️ Supabase</button>'
+      +'</div>'
+    +'</div>';
+    
+    host.innerHTML = html;
+    
+  } catch(e){
+    console.error('renderSaudeSistema:', e);
+    host.innerHTML = '<div style="padding:20px;background:#FCEBEB;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D">⚠️ Erro ao carregar saúde: '+e.message+'</div>';
   }
 }
 
