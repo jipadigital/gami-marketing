@@ -1,4 +1,4 @@
-<!-- v23.62 - Seguranca Fase 3: rate limit + backup semanal + health endpoint + pagina Saude - 02/06/2026 -->
+<!-- v23.63 - Backup DIARIO operacional + download manual - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12533,6 +12533,89 @@ async function iniciarSincronizacaoSupabase(cidadeId){
 /* ============================================================ */
 /* 🩺 SAÚDE DO SISTEMA — dashboard pro super_admin              */
 /* ============================================================ */
+
+// Gera backup diário manualmente (super_admin)
+async function gerarBackupAgora(){
+  if(!confirm('Gerar backup diário agora? (vai sobrescrever o backup de hoje se já existir)')) return;
+  
+  try {
+    var r = await _syncEscrever({ operacao: 'rpc', funcao: 'gerar_backup_diario', tabela: 'backups_diarios' });
+    if(r && r.resultado){
+      var resp = Array.isArray(r.resultado) ? r.resultado[0] : r.resultado;
+      alert('✅ Backup gerado!\n\n'
+        +'Data: '+(resp.data || 'hoje')+'\n'
+        +'Total de registros: '+(resp.total_registros || 0)+'\n'
+        +'Tamanho: '+(resp.tamanho_kb || 0)+' KB\n'
+        +'Duração: '+(resp.duracao_ms || 0)+'ms\n\n'
+        +'Por tabela:\n'
+        +'• Pessoas: '+(resp.por_tabela && resp.por_tabela.pessoas || 0)+'\n'
+        +'• Tarefas: '+(resp.por_tabela && resp.por_tabela.tarefas || 0)+'\n'
+        +'• Configurações: '+(resp.por_tabela && resp.por_tabela.configuracoes || 0)+'\n'
+        +'• Blog posts: '+(resp.por_tabela && resp.por_tabela.blog_posts || 0)+'\n'
+        +'• Ranking: '+(resp.por_tabela && resp.por_tabela.ranking_mensal || 0));
+    }
+    // Recarrega o dashboard
+    renderSaudeSistema();
+  } catch(e){
+    alert('❌ Erro ao gerar backup: '+e.message);
+  }
+}
+
+// Baixa backup JSON de uma data específica
+async function baixarBackup(dataBackup){
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    var userId = u && u.id ? u.id : '';
+    var token = '';
+    try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+    
+    // Mostra feedback
+    var btnOriginal = event && event.target ? event.target : null;
+    if(btnOriginal){
+      btnOriginal.innerHTML = '⏳';
+      btnOriginal.disabled = true;
+    }
+    
+    var r = await fetch('/.netlify/functions/download-backup?data='+encodeURIComponent(dataBackup), {
+      headers: {
+        'X-Gami-User': userId,
+        'X-Gami-Token': token
+      }
+    });
+    
+    if(!r.ok){
+      var msg = 'Erro HTTP '+r.status;
+      try { var j = await r.json(); msg = j.error || msg; } catch(e){}
+      throw new Error(msg);
+    }
+    
+    // Recebe o blob e força download
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'gami-backup-'+dataBackup+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    if(btnOriginal){
+      btnOriginal.innerHTML = '✓';
+      setTimeout(function(){ 
+        btnOriginal.innerHTML = '⬇ Baixar'; 
+        btnOriginal.disabled = false;
+      }, 1500);
+    }
+  } catch(e){
+    alert('❌ Erro ao baixar backup: '+e.message);
+    if(event && event.target){ 
+      event.target.innerHTML = '⬇ Baixar'; 
+      event.target.disabled = false;
+    }
+  }
+}
+
 async function renderSaudeSistema(){
   var host = document.getElementById('saude-content');
   if(!host) return;
@@ -12541,11 +12624,16 @@ async function renderSaudeSistema(){
   
   // Busca dados em paralelo
   try {
-    var [healthRes, alertasRes, syncsRes, backupsRes] = await Promise.all([
+    var [healthRes, alertasRes, syncsRes, backupsRes, backupsDiariosRes] = await Promise.all([
       fetch('/.netlify/functions/health').then(function(r){return r.ok ? r.json() : null;}).catch(function(){return null;}),
       _rlSupaQuery('alertas_log?order=criado_em.desc&limit=10').catch(function(){return [];}),
       _rlSupaQuery('machine_sync_log?order=iniciado_em.desc&limit=10').catch(function(){return [];}),
-      _rlSupaQuery('backups_semanais?order=semana_inicio.desc&limit=4').catch(function(){return [];})
+      _rlSupaQuery('backups_semanais?order=semana_inicio.desc&limit=4').catch(function(){return [];}),
+      fetch(SUPA_URL+'/rest/v1/rpc/listar_backups_diarios', {
+        method:'POST',
+        headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+        body: JSON.stringify({ p_limite: 30 })
+      }).then(function(r){return r.ok ? r.json() : [];}).catch(function(){return [];})
     ]);
     
     var html = '';
@@ -12673,11 +12761,57 @@ async function renderSaudeSistema(){
     }
     html += '</div>';
     
-    // ===== Backups =====
+    // ===== 💾 BACKUPS DIÁRIOS (operacionais) =====
+    html += '<div style="background:linear-gradient(135deg,#E0F2FE,#FFFFFF);border:1px solid #1AB8F033;border-radius:12px;padding:16px;margin-bottom:18px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:#0369A1;margin-bottom:4px;display:flex;align-items:center;gap:8px">'
+        +'<span>💾</span> Backups diários operacionais'
+        +'<span style="font-size:10px;color:var(--text3);font-weight:500;margin-left:auto">Roda automaticamente às 5h da manhã · mantém 60 dias</span>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text2);margin-bottom:12px">Pessoas, tarefas, configurações, blog, ranking, cidades_extra, usuarios_login. Baixe JSON de qualquer dia se precisar restaurar.</div>';
+    
+    if(!backupsDiariosRes.length){
+      html += '<div style="font-size:12px;color:var(--text3);padding:10px;background:#F0F9FF;border-radius:6px">Nenhum backup diário ainda. Próximo: amanhã 5h da manhã. Ou gera agora: <button onclick="gerarBackupAgora()" style="padding:4px 10px;border:none;border-radius:5px;background:#1AB8F0;color:white;font-size:11px;font-weight:600;cursor:pointer;margin-left:6px">⚡ Gerar agora</button></div>';
+    } else {
+      // Botão de gerar agora
+      html += '<div style="margin-bottom:10px"><button onclick="gerarBackupAgora()" style="padding:6px 12px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:#1AB8F0;font-size:11px;font-weight:600;cursor:pointer">⚡ Gerar backup agora</button></div>';
+      
+      html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'
+        +'<thead><tr style="background:#F0F9FF">'
+          +'<th style="text-align:left;padding:7px 8px;color:#0369A1">Data</th>'
+          +'<th style="text-align:right;padding:7px 8px;color:#0369A1">Registros</th>'
+          +'<th style="text-align:right;padding:7px 8px;color:#0369A1">Tamanho</th>'
+          +'<th style="text-align:right;padding:7px 8px;color:#0369A1">Pessoas</th>'
+          +'<th style="text-align:right;padding:7px 8px;color:#0369A1">Tarefas</th>'
+          +'<th style="text-align:right;padding:7px 8px;color:#0369A1">Posts</th>'
+          +'<th style="text-align:center;padding:7px 8px;color:#0369A1">Download</th>'
+        +'</tr></thead>'
+        +'<tbody>';
+      backupsDiariosRes.forEach(function(b){
+        var data = new Date(b.data_backup).toLocaleDateString('pt-BR', { weekday: 'short', day:'2-digit', month:'2-digit', year:'2-digit' });
+        var hoje = new Date().toISOString().split('T')[0];
+        var ehHoje = b.data_backup === hoje;
+        var tamMB = b.tamanho_kb >= 1024 ? (b.tamanho_kb/1024).toFixed(1)+' MB' : b.tamanho_kb+' KB';
+        html += '<tr style="border-bottom:1px solid var(--border)'+(ehHoje?';background:#F0F9FF':'')+'">'
+          +'<td style="padding:7px 8px;font-weight:600">'+data+(ehHoje?' <span style="font-size:9px;color:#1AB8F0;font-weight:700">HOJE</span>':'')+'</td>'
+          +'<td style="padding:7px 8px;text-align:right">'+(b.total_registros||0).toLocaleString('pt-BR')+'</td>'
+          +'<td style="padding:7px 8px;text-align:right;color:var(--text3)">'+tamMB+'</td>'
+          +'<td style="padding:7px 8px;text-align:right">'+(b.pessoas_count||0)+'</td>'
+          +'<td style="padding:7px 8px;text-align:right">'+(b.tarefas_count||0)+'</td>'
+          +'<td style="padding:7px 8px;text-align:right">'+(b.blog_count||0)+'</td>'
+          +'<td style="padding:7px 8px;text-align:center">'
+            +'<button onclick="baixarBackup(\''+b.data_backup+'\')" style="padding:3px 10px;border:1px solid #1AB8F0;border-radius:5px;background:white;color:#1AB8F0;font-size:10px;font-weight:700;cursor:pointer">⬇ Baixar</button>'
+          +'</td>'
+        +'</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+    html += '</div>';
+    
+    // ===== Backups semanais (contagens agregadas) =====
     html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px">'
       +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px">'
-        +'<span>📦</span> Backups semanais'
-        +'<span style="font-size:10px;color:var(--text3);font-weight:500">Roda automaticamente aos domingos 4h</span>'
+        +'<span>📦</span> Backups semanais (agregados)'
+        +'<span style="font-size:10px;color:var(--text3);font-weight:500">Roda aos domingos · contagens da rede</span>'
       +'</div>';
     if(!backupsRes.length){
       html += '<div style="font-size:12px;color:var(--text3);padding:10px">Nenhum backup ainda. Próximo: domingo às 4h da manhã.</div>';
