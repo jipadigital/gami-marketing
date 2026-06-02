@@ -1,4 +1,4 @@
-<!-- v23.63 - Backup DIARIO operacional + download manual - 02/06/2026 -->
+<!-- v23.64 - Sync em massa todas as cidades + status visual por cidade - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12561,6 +12561,143 @@ async function gerarBackupAgora(){
   }
 }
 
+/* ============================================================ */
+/* SINCRONIZAÇÃO EM MASSA — todas as cidades pendentes          */
+/* ============================================================ */
+var _SYNC_MASSA = { rodando: false, cancelar: false, atual: null, fila: [] };
+
+async function _buscarStatusSyncPorCidade(){
+  // Busca contagens no Supabase + último sync por cidade
+  var [contagens, syncs] = await Promise.all([
+    fetch(SUPA_URL+'/rest/v1/machine_corridas?select=cidade_slug&limit=500000', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Range': '0-499999' }
+    }).then(function(r){return r.ok ? r.json() : [];}).catch(function(){return [];}),
+    _rlSupaQuery('machine_sync_log?status=eq.concluido&order=finalizado_em.desc&limit=200').catch(function(){return [];})
+  ]);
+  
+  // Agrupa contagem por cidade_slug
+  var porSlug = {};
+  contagens.forEach(function(c){
+    var s = c.cidade_slug;
+    porSlug[s] = (porSlug[s] || 0) + 1;
+  });
+  
+  // Último sync por cidade
+  var ultimoSync = {};
+  syncs.forEach(function(s){
+    if(!ultimoSync[s.cidade_slug]){
+      ultimoSync[s.cidade_slug] = s;
+    }
+  });
+  
+  // Monta status pra cada cidade
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  return cidades.map(function(c){
+    var slug = (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+    var total = porSlug[slug] || 0;
+    var ult = ultimoSync[slug];
+    var diasDesde = ult ? Math.floor((Date.now() - new Date(ult.finalizado_em).getTime())/86400000) : null;
+    
+    var status, cor;
+    if(total === 0){ status = 'nunca'; cor = '#E24B4A'; }
+    else if(diasDesde === null){ status = 'pendente'; cor = '#EF9F27'; }
+    else if(diasDesde <= 2){ status = 'atualizado'; cor = '#1D9E75'; }
+    else if(diasDesde <= 7){ status = 'recente'; cor = '#1AB8F0'; }
+    else { status = 'desatualizado'; cor = '#EF9F27'; }
+    
+    return {
+      cidade: c,
+      slug: slug,
+      total_corridas: total,
+      ultimo_sync: ult ? ult.finalizado_em : null,
+      dias_desde: diasDesde,
+      status: status,
+      cor: cor
+    };
+  });
+}
+
+async function _syncCidadeUma(cidadeId){
+  // Aguarda terminar antes de retornar
+  return new Promise(function(resolve){
+    // Inicia
+    iniciarSincronizacaoSupabase(cidadeId);
+    
+    // Polling — checa _SYNC.rodando ficar false
+    var check = setInterval(function(){
+      if(!_SYNC.rodando){
+        clearInterval(check);
+        // Aguarda 2s pro modal terminar de renderizar
+        setTimeout(function(){
+          var modal = document.getElementById('modal-sync-supa');
+          if(modal) modal.remove();
+          resolve();
+        }, 2000);
+      }
+    }, 2000);
+  });
+}
+
+async function sincronizarTodasCidades(){
+  if(_SYNC_MASSA.rodando){ alert('Sync em massa já está rodando!'); return; }
+  
+  var status = await _buscarStatusSyncPorCidade();
+  // Cidades que precisam sincronizar (nunca sync ou desatualizado >7 dias)
+  var pendentes = status.filter(function(s){ 
+    return s.status === 'nunca' || s.status === 'desatualizado'; 
+  });
+  
+  if(pendentes.length === 0){
+    alert('🎉 Todas as cidades estão sincronizadas!');
+    return;
+  }
+  
+  var nomesPendentes = pendentes.map(function(p){ return '• '+p.cidade.nome+' ('+p.status+')'; }).join('\n');
+  
+  if(!confirm('🚀 Sincronizar '+pendentes.length+' cidade(s) com 60 dias?\n\n'+nomesPendentes+'\n\n⚠️ Cada cidade demora ~5 min. Total estimado: '+(pendentes.length*5)+' min.\n\nPosso fechar essa página e ir trabalhar? SIM — vai rodando no fundo.\n\nIniciar?')) return;
+  
+  _SYNC_MASSA.rodando = true;
+  _SYNC_MASSA.cancelar = false;
+  _SYNC_MASSA.fila = pendentes.map(function(p){ return p.cidade.id; });
+  _SYNC_MASSA.total = pendentes.length;
+  _SYNC_MASSA.concluidas = 0;
+  _SYNC_MASSA.erros = [];
+  
+  var inicio = Date.now();
+  
+  for(var i = 0; i < _SYNC_MASSA.fila.length; i++){
+    if(_SYNC_MASSA.cancelar) break;
+    
+    var cidadeId = _SYNC_MASSA.fila[i];
+    var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+    var c = cidades.find(function(x){ return x.id === cidadeId; });
+    _SYNC_MASSA.atual = c ? c.nome : cidadeId;
+    
+    console.log('🚀 Sync ['+ (i+1) +'/'+ _SYNC_MASSA.fila.length +'] '+_SYNC_MASSA.atual);
+    
+    try {
+      await _syncCidadeUma(cidadeId);
+      _SYNC_MASSA.concluidas++;
+    } catch(e){
+      console.error('Erro sync '+_SYNC_MASSA.atual, e);
+      _SYNC_MASSA.erros.push({ cidade: _SYNC_MASSA.atual, erro: e.message });
+    }
+  }
+  
+  _SYNC_MASSA.rodando = false;
+  var duracao = Math.round((Date.now() - inicio) / 60000);
+  
+  var msg = '🎉 Sync em massa concluído!\n\n'
+    +'Cidades sincronizadas: '+_SYNC_MASSA.concluidas+'/'+_SYNC_MASSA.total+'\n'
+    +'Duração total: '+duracao+' min\n';
+  if(_SYNC_MASSA.erros.length){
+    msg += '\nErros:\n' + _SYNC_MASSA.erros.map(function(e){return '• '+e.cidade+': '+e.erro;}).join('\n');
+  }
+  
+  alert(msg);
+  renderSaudeSistema();
+}
+
 // Baixa backup JSON de uma data específica
 async function baixarBackup(dataBackup){
   try {
@@ -12624,7 +12761,7 @@ async function renderSaudeSistema(){
   
   // Busca dados em paralelo
   try {
-    var [healthRes, alertasRes, syncsRes, backupsRes, backupsDiariosRes] = await Promise.all([
+    var [healthRes, alertasRes, syncsRes, backupsRes, backupsDiariosRes, statusCidades] = await Promise.all([
       fetch('/.netlify/functions/health').then(function(r){return r.ok ? r.json() : null;}).catch(function(){return null;}),
       _rlSupaQuery('alertas_log?order=criado_em.desc&limit=10').catch(function(){return [];}),
       _rlSupaQuery('machine_sync_log?order=iniciado_em.desc&limit=10').catch(function(){return [];}),
@@ -12633,7 +12770,8 @@ async function renderSaudeSistema(){
         method:'POST',
         headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
         body: JSON.stringify({ p_limite: 30 })
-      }).then(function(r){return r.ok ? r.json() : [];}).catch(function(){return [];})
+      }).then(function(r){return r.ok ? r.json() : [];}).catch(function(){return [];}),
+      _buscarStatusSyncPorCidade().catch(function(){return [];})
     ]);
     
     var html = '';
@@ -12759,6 +12897,67 @@ async function renderSaudeSistema(){
       });
       html += '</tbody></table></div>';
     }
+    html += '</div>';
+    
+    // ===== 🗺️ STATUS SUPABASE POR CIDADE =====
+    var totalSincronizadas = statusCidades.filter(function(s){ return s.total_corridas > 0; }).length;
+    var totalPendentes = statusCidades.filter(function(s){ return s.status === 'nunca' || s.status === 'desatualizado'; }).length;
+    var totalCorridas = statusCidades.reduce(function(t,s){ return t + s.total_corridas; }, 0);
+    
+    html += '<div style="background:linear-gradient(135deg,#FEF3C7,#FFFFFF);border:1px solid #EF9F2733;border-radius:12px;padding:16px;margin-bottom:18px">'
+      +'<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:#92400E;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        +'<span>🗺️</span> Status Supabase por cidade'
+        +'<span style="font-size:11px;color:var(--text3);font-weight:500;margin-left:auto">'
+          +totalSincronizadas+'/'+statusCidades.length+' sincronizadas · '+totalCorridas.toLocaleString('pt-BR')+' corridas totais'
+        +'</span>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text2);margin-bottom:12px">'
+        +'Status do histórico de cada cidade no Supabase (dados de 60 dias). '+(totalPendentes > 0 ? '🟠 '+totalPendentes+' cidade(s) precisam sincronizar.' : '✅ Todas atualizadas.')
+      +'</div>';
+    
+    if(totalPendentes > 0){
+      html += '<div style="margin-bottom:12px">'
+        +'<button onclick="sincronizarTodasCidades()" style="padding:10px 18px;background:linear-gradient(135deg,#EF9F27,#F59E0B);color:white;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(239,159,39,0.3)">'
+          +'🚀 Sincronizar todas '+totalPendentes+' cidades pendentes (60 dias cada)'
+        +'</button>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:6px">⏱️ ~'+(totalPendentes*5)+' min totais. Pode fechar a tela e ir trabalhar.</div>'
+      +'</div>';
+    }
+    
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">'
+      +'<thead><tr style="background:#FEF3C7">'
+        +'<th style="text-align:left;padding:7px 8px;color:#92400E">Cidade</th>'
+        +'<th style="text-align:left;padding:7px 8px;color:#92400E">Status</th>'
+        +'<th style="text-align:right;padding:7px 8px;color:#92400E">Corridas</th>'
+        +'<th style="text-align:left;padding:7px 8px;color:#92400E">Último sync</th>'
+        +'<th style="text-align:center;padding:7px 8px;color:#92400E">Ação</th>'
+      +'</tr></thead>'
+      +'<tbody>';
+    
+    statusCidades.forEach(function(s){
+      var iconStatus = s.status === 'atualizado' ? '✅' 
+                    : s.status === 'recente' ? '🔵'
+                    : s.status === 'desatualizado' ? '🟠'
+                    : s.status === 'nunca' ? '⭕' 
+                    : '⏳';
+      var labelStatus = s.status === 'atualizado' ? 'Atualizada'
+                     : s.status === 'recente' ? 'Recente'
+                     : s.status === 'desatualizado' ? 'Desatualizada'
+                     : s.status === 'nunca' ? 'Nunca sincronizada' 
+                     : 'Pendente';
+      var ultSync = s.ultimo_sync ? new Date(s.ultimo_sync).toLocaleDateString('pt-BR') + (s.dias_desde === 0 ? ' (hoje)' : ' ('+s.dias_desde+'d atrás)') : '—';
+      
+      html += '<tr style="border-bottom:1px solid var(--border)">'
+        +'<td style="padding:7px 8px;font-weight:600">'+s.cidade.nome+'/'+(s.cidade.uf||'')+'</td>'
+        +'<td style="padding:7px 8px"><span style="color:'+s.cor+';font-weight:600">'+iconStatus+' '+labelStatus+'</span></td>'
+        +'<td style="padding:7px 8px;text-align:right">'+s.total_corridas.toLocaleString('pt-BR')+'</td>'
+        +'<td style="padding:7px 8px;color:var(--text3)">'+ultSync+'</td>'
+        +'<td style="padding:7px 8px;text-align:center">'
+          +'<button onclick="iniciarSincronizacaoSupabase(\''+s.cidade.id+'\')" style="padding:3px 10px;border:1px solid '+s.cor+';border-radius:5px;background:white;color:'+s.cor+';font-size:10px;font-weight:700;cursor:pointer">☁️ Sync</button>'
+        +'</td>'
+      +'</tr>';
+    });
+    html += '</tbody></table></div>';
     html += '</div>';
     
     // ===== 💾 BACKUPS DIÁRIOS (operacionais) =====
