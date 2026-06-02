@@ -1,4 +1,4 @@
-<!-- v23.71 - Fix Machine separada (CG): filtro inteligente, modal sem alert, log diagnóstico - 02/06/2026 -->
+<!-- v23.72 - Fix 502 chunks Machine separada: timeout 18s, chunks 3 dias - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -21083,17 +21083,17 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
   var dFim = new Date(dataFim+'T00:00:00');
   var dias = Math.floor((dFim - dIni) / 86400000) + 1;
 
-  // Periodo pequeno (ate 10 dias): 1 fetch so
-  if(dias <= 10){
+  // Periodo pequeno (ate 4 dias): 1 fetch so
+  if(dias <= 4){
     var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim+nc).then(function(r){return r.json();});
     return (r && r.response) ? r.response : [];
   }
 
-  // Periodo grande: chunks de 7 dias em paralelo
+  // Periodo grande: chunks de 3 dias em paralelo (Machine separada pode ser lenta)
   var chunks = [];
   var atual = new Date(dIni);
   while(atual <= dFim){
-    var fim = new Date(atual.getTime() + 6*86400000);
+    var fim = new Date(atual.getTime() + 2*86400000);
     if(fim > dFim) fim = new Date(dFim);
     chunks.push({ini: _vgData(atual), fim: _vgData(fim)});
     atual = new Date(fim.getTime() + 86400000);

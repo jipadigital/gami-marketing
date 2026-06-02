@@ -193,10 +193,10 @@ exports.handler = async function(event){
       return u;
     };
 
-    // Helper: faz 1 fetch com timeout de 10s
+    // Helper: faz 1 fetch com timeout de 18s (Machine separada pode ser lenta)
     var fetchPagina = async function(p){
       var ctrl = new AbortController();
-      var t = setTimeout(function(){ ctrl.abort(); }, 10000);
+      var t = setTimeout(function(){ ctrl.abort(); }, 18000);
       try{
         var r = await fetch(montarUrl(p), { method:'GET', headers, signal: ctrl.signal });
         clearTimeout(t);
@@ -273,7 +273,14 @@ exports.handler = async function(event){
         if(rs.erro){
           if(pagina === 1){
             return { statusCode: 502, headers:cors, body: JSON.stringify({
-              success:false, error:'Machine retornou erro na primeira pagina', detalhe: rs.erro
+              success:false, 
+              error:'Machine retornou erro na primeira pagina',
+              detalhe: rs.erro,
+              cidade: cidade,
+              recurso: recurso,
+              periodo: dataInicio && dataFim ? (dataInicio + ' a ' + dataFim) : null,
+              tempo_decorrido_ms: Date.now() - INICIO,
+              dica: rs.erro.message && rs.erro.message.indexOf('aborted') >= 0 ? 'Timeout — Machine demorou >18s pra responder. Reduzir período pode ajudar.' : null
             }) };
           }
           break;
