@@ -1,4 +1,4 @@
-<!-- v23.69b - PWA + UI cleanups + 6 cards Pessoas + RLS fix - 02/06/2026 -->
+<!-- v23.70 - Manual do App: 14 artigos em 8 categorias - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1120,7 +1120,7 @@ function detectarNivelPermissao(usuario){
 /* Matriz de permissões — define quem vê o quê */
 var MATRIZ_PERMISSOES = {
   super_admin: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','manual'],
     pode_editar_pessoas: true,
     pode_admin_pontos: true,
     pode_criar_desafios: true,
@@ -1130,7 +1130,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   diretoria: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1140,7 +1140,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   gerencia: {
-    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios'],
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1150,7 +1150,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: false
   },
   gestor: {
-    abas: ['dashboard','calendario','tarefas','inbox','cidades','pessoas','ranking','culture','carreira','portal','relatorios'],
+    abas: ['dashboard','calendario','tarefas','inbox','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1162,7 +1162,7 @@ var MATRIZ_PERMISSOES = {
     filtra_inbox: true
   },
   colaborador: {
-    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios'],
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1534,6 +1534,7 @@ window.nav = function(el, page){
         'scripts':         function(){ if(typeof renderScripts==='function') renderScripts(); },
         'culture':         function(){ if(typeof renderCulture==='function') renderCulture(); },
         'carreira':        function(){ if(typeof renderCarreira==='function') renderCarreira(); },
+        'manual':          function(){ if(typeof renderManual==='function') renderManual(); },
         'portal':          function(){ if(typeof renderPortal==='function') renderPortal(); },
         'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
         'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
@@ -1596,6 +1597,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="sb-label">Cultura Gâmi</div>
     <div class="nav-item" onclick="nav(this,'culture')"><span class="nav-dot" style="background:#1E88E5"></span>Culture Code</div>
     <div class="nav-item" onclick="nav(this,'carreira')"><span class="nav-dot" style="background:#FFB300"></span>Plano de Carreira</div>
+    <div class="nav-item" onclick="nav(this,'manual')"><span class="nav-dot" style="background:#1AB8F0"></span>📘 Manual</div>
   </div>
 
   <div class="sb-section">
@@ -32036,6 +32038,306 @@ function recarregarPortal(){
     console.log('Recarregue a página depois');
   };
 })();
+</script>
+
+<!-- ==================== 📘 MANUAL DO APP ==================== -->
+<div class="page" id="pg-manual">
+  <style>
+    @keyframes man-fadeup{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+    #pg-manual .man-section{animation:man-fadeup .4s ease both}
+    #pg-manual .man-cat-card{
+      background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      padding:18px;cursor:pointer;transition:all .2s ease;
+      display:flex;flex-direction:column;gap:6px;
+    }
+    #pg-manual .man-cat-card:hover{
+      transform:translateY(-3px);box-shadow:0 8px 20px rgba(13,43,92,.10);
+      border-color:var(--gami-blue);
+    }
+    #pg-manual .man-cat-icon{font-size:30px;line-height:1}
+    #pg-manual .man-cat-titulo{font-weight:700;color:var(--text);font-size:14px;line-height:1.3}
+    #pg-manual .man-cat-desc{font-size:11px;color:var(--text3);line-height:1.4}
+    #pg-manual .man-cat-count{
+      font-size:10px;color:var(--gami-blue);font-weight:600;
+      background:var(--surface2);padding:2px 8px;border-radius:10px;
+      align-self:flex-start;margin-top:4px;
+    }
+    #pg-manual .man-artigo-link{
+      display:flex;align-items:center;gap:10px;padding:11px 14px;
+      background:var(--surface);border:1px solid var(--border);border-radius:8px;
+      cursor:pointer;transition:all .15s ease;margin-bottom:6px;
+    }
+    #pg-manual .man-artigo-link:hover{
+      background:var(--surface2);border-color:var(--gami-blue);
+      transform:translateX(2px);
+    }
+    #pg-manual .man-artigo-link.lido{opacity:.55}
+    #pg-manual .man-artigo-link.lido::after{content:'✓';color:#1D9E75;font-weight:700;margin-left:auto;font-size:14px}
+    #pg-manual .man-busca-input{
+      width:100%;padding:13px 16px;border:1px solid var(--border);border-radius:10px;
+      font-size:14px;background:var(--surface);color:var(--text);
+      font-family:inherit;
+    }
+    #pg-manual .man-busca-input:focus{outline:none;border-color:var(--gami-blue)}
+    #pg-manual .man-back{
+      display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
+      background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+      cursor:pointer;font-size:12px;color:var(--text);font-weight:600;
+      transition:all .15s ease;
+    }
+    #pg-manual .man-back:hover{background:var(--gami-blue);color:white;border-color:var(--gami-blue)}
+    #pg-manual .man-conteudo h2{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text);margin:18px 0 8px;letter-spacing:-.3px}
+    #pg-manual .man-conteudo h3{font-size:14px;font-weight:700;color:var(--text);margin:16px 0 6px}
+    #pg-manual .man-conteudo p{font-size:13px;line-height:1.7;color:var(--text2);margin-bottom:10px}
+    #pg-manual .man-conteudo ol,#pg-manual .man-conteudo ul{font-size:13px;line-height:1.8;color:var(--text2);padding-left:20px;margin-bottom:12px}
+    #pg-manual .man-conteudo strong{color:var(--text)}
+    #pg-manual .man-conteudo code{background:var(--surface2);padding:2px 6px;border-radius:4px;font-family:'Monaco',monospace;font-size:11.5px;color:#A32D2D}
+    #pg-manual .man-callout-dica{background:#E6F6FE;border-left:4px solid #1AB8F0;padding:10px 14px;border-radius:8px;margin:12px 0;font-size:12px;line-height:1.6;color:#0E5C8B}
+    #pg-manual .man-callout-atencao{background:#FFF8E1;border-left:4px solid #EF9F27;padding:10px 14px;border-radius:8px;margin:12px 0;font-size:12px;line-height:1.6;color:#854F0B}
+    #pg-manual .man-callout-perigo{background:#FCE6E6;border-left:4px solid #E24B4A;padding:10px 14px;border-radius:8px;margin:12px 0;font-size:12px;line-height:1.6;color:#A32D2D}
+    #pg-manual .man-cta{background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:white;padding:18px 22px;border-radius:12px;text-align:center;margin:14px 0}
+    #pg-manual .man-progresso-bar{background:var(--surface2);border-radius:6px;height:8px;overflow:hidden;margin-top:6px}
+    #pg-manual .man-progresso-fill{background:linear-gradient(90deg,#1D9E75,#1AB8F0);height:100%;transition:width .4s ease}
+  </style>
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">📘 Manual do Gâmi Marketing</div>
+      <div class="page-sub">Como usar todas as funcionalidades · Aprenda no seu ritmo</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost" onclick="manualMarcarTodosLidos()" style="font-size:11px">🔁 Resetar progresso</button>
+    </div>
+  </div>
+
+  <div id="manual-home" class="man-section">
+    <div style="margin-bottom:18px">
+      <input type="text" id="manual-busca" placeholder="🔍 Buscar tópico (ex: tarefa, story, ranking, delegação...)" class="man-busca-input" oninput="manualBuscar(this.value)">
+    </div>
+    <div id="manual-resultado-busca" style="display:none;margin-bottom:18px"></div>
+    <div class="man-cta" style="margin-bottom:18px">
+      <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px">Bem-vindo ao Manual Gâmi 👋</div>
+      <div style="font-size:12px;opacity:.92;margin-bottom:10px;line-height:1.5">Aqui você encontra como usar cada parte do app. Comece pelos artigos de <strong>"Começar aqui"</strong> se for novo.</div>
+      <div id="manual-progresso-geral" style="font-size:11px;opacity:.9"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px" id="manual-categorias"></div>
+  </div>
+
+  <div id="manual-categoria-view" class="man-section" style="display:none">
+    <button class="man-back" onclick="manualVoltarHome()">← Voltar pro Manual</button>
+    <div id="manual-categoria-header" style="margin:14px 0 18px"></div>
+    <div id="manual-categoria-artigos"></div>
+  </div>
+
+  <div id="manual-artigo-view" class="man-section" style="display:none">
+    <button class="man-back" onclick="manualVoltarCategoria()">← Voltar</button>
+    <div class="card" style="margin-top:14px" id="manual-artigo-host"></div>
+    <div style="text-align:center;margin-top:14px">
+      <button class="btn btn-primary" onclick="manualMarcarLido()" id="manual-marcar-btn">✓ Marcar como lido</button>
+    </div>
+    <div id="manual-relacionados" style="margin-top:18px"></div>
+  </div>
+</div>
+
+<script>
+window._MANUAL = { categoriaAtual: null, artigoAtual: null, buscaAtual: '' };
+
+window.MANUAL_CATEGORIAS = [
+  { id:'comecar', icone:'🚀', titulo:'Começar aqui', desc:'Login, navegação, primeiros passos' },
+  { id:'tarefas', icone:'✅', titulo:'Tarefas e produtividade', desc:'Criar, delegar, modo foco' },
+  { id:'cidades', icone:'🏙️', titulo:'Cidades e operação', desc:'Gerenciar as 11 cidades' },
+  { id:'relatorios', icone:'📊', titulo:'Relatórios', desc:'19 relatórios disponíveis' },
+  { id:'marketing', icone:'📱', titulo:'Marketing e conteúdo', desc:'Stories, posts, agendamento' },
+  { id:'comunicacao', icone:'💬', titulo:'Comunicação', desc:'Inbox IG, recados, mural' },
+  { id:'pessoas', icone:'👥', titulo:'Pessoas e cultura', desc:'Time, perfil, Culture Code' },
+  { id:'avancado', icone:'🛡️', titulo:'Avançado (admin)', desc:'Backup, saúde, segurança' }
+];
+
+window.MANUAL_ARTIGOS = [
+{id:'login-primeiro-acesso',categoria:'comecar',titulo:'Login e primeiro acesso',icone:'🔐',tags:['login','pin','senha','entrar','acesso'],conteudo:'<h2>🔐 Login e primeiro acesso</h2><p>O acesso ao Gâmi Marketing é feito com <strong>nome (selecionar da lista) + PIN de 4 dígitos</strong>.</p><h3>Primeiro acesso</h3><ol><li>Acesse <code>gami-marketing.netlify.app</code> no navegador.</li><li>Na tela de login, <strong>selecione seu nome</strong> da lista.</li><li>Digite o <strong>PIN de 4 dígitos</strong> que foi enviado pra você.</li><li>Click em <strong>Entrar</strong>.</li></ol><div class="man-callout-dica">💡 <strong>Dica Gâmi:</strong> seu PIN é como uma senha. Não compartilha. Se esqueceu, fala com seu gestor ou Cleyton pra resetar.</div><h3>Seguir logado</h3><p>Depois do primeiro login, o app <strong>lembra de você por 24h</strong>. Se passar disso, pede o PIN de novo.</p><h3>Esqueci o PIN</h3><p>Manda mensagem pro seu gestor que ele reseta. Você recebe um novo de 4 dígitos.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> nunca peça o PIN de outra pessoa. Cada um usa o seu. O sistema rastreia quem fez cada ação.</div>'},
+{id:'navegacao-geral',categoria:'comecar',titulo:'Navegando pelo app',icone:'🧭',tags:['menu','navegação','sidebar','abas'],conteudo:'<h2>🧭 Navegando pelo app</h2><p>O Gâmi Marketing é organizado em <strong>abas no menu lateral</strong>. Cada aba tem uma função específica.</p><h3>Abas principais</h3><ul><li><strong>📊 Dashboard</strong> — visão geral, compromissos, recados</li><li><strong>📅 Calendário</strong> — eventos, posts agendados, aniversários</li><li><strong>✅ Tarefas</strong> — sua lista pessoal (diário/semana/mês/projetos)</li><li><strong>🏙️ Cidades</strong> — as 11 cidades da rede Gâmi</li><li><strong>👥 Pessoas</strong> — time Gâmi completo</li><li><strong>🎯 Culture Code</strong> — cultura, valores, "Eu sou Gâmi"</li><li><strong>📈 Relatórios</strong> — 19 relatórios</li><li><strong>📘 Manual</strong> — esta área que você tá lendo agora 😉</li></ul><h3>No celular</h3><p>No mobile, o menu lateral fica <strong>escondido</strong>. Pra abrir, toque no <strong>botão azul no canto superior esquerdo</strong>.</p><div class="man-callout-dica">💡 <strong>Dica:</strong> nem todas as abas aparecem pra todo mundo. Cada papel vê o que faz sentido pra função.</div>'},
+{id:'modo-claro-escuro',categoria:'comecar',titulo:'Modo claro / escuro',icone:'🌓',tags:['tema','modo escuro','dark','cores'],conteudo:'<h2>🌓 Modo claro / escuro</h2><p>O app tem duas aparências: <strong>clara</strong> (padrão) e <strong>escura</strong> (poupa bateria à noite).</p><h3>Como alternar</h3><ol><li>No canto inferior esquerdo do menu, click no <strong>botão de tema</strong> (☀️ ou 🌙).</li><li>O app troca imediatamente.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> sua preferência fica salva.</div><p>Funciona em qualquer dispositivo. Você pode ter modo escuro no celular e claro no PC, por exemplo.</p>'},
+{id:'modo-foco',categoria:'comecar',titulo:'Modo foco para concentração',icone:'🎯',tags:['foco','concentração','distração','minimalista'],conteudo:'<h2>🎯 Modo Foco</h2><p>O <strong>modo foco</strong> esconde tudo que não é essencial e deixa só o que importa pro trabalho do momento.</p><h3>Quando ele ajuda</h3><ul><li>Você tem muitas tarefas e quer só ver o essencial</li><li>Está em modo de execução pesada</li><li>Vai apresentar a tela pra alguém</li><li>Tá no celular com tela pequena</li></ul><h3>Como ativar</h3><ol><li>Vá pro <strong>Dashboard</strong>.</li><li>Procure o botão flutuante <strong>🎯 no canto inferior direito</strong>.</li><li>Click — a tela muda instantaneamente.</li></ol><h3>O que aparece em modo foco</h3><ul><li>Compromissos de hoje</li><li>Seus stickies pessoais (notinhas amarelas)</li><li>Recados que precisa ver</li></ul><div class="man-callout-dica">💡 <strong>Dica Gâmi:</strong> os <strong>stickies pessoais</strong> só aparecem no modo foco. É a forma de ter "lembretes" sem poluir o dashboard normal.</div><h3>Como sair</h3><p>Click no mesmo botão 🎯 — a tela volta ao normal.</p>'},
+{id:'criar-tarefa',categoria:'tarefas',titulo:'Criar uma tarefa',icone:'➕',tags:['tarefa','criar','adicionar','to-do'],conteudo:'<h2>➕ Criar uma tarefa</h2><p>Tarefas são suas anotações de "o que preciso fazer". Funcionam como um <strong>to-do list</strong>, mas com poderes extras (delegar, prazo, sincronizar com o time).</p><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Escolha o balde: <strong>Diário</strong> (hoje), <strong>Semana</strong>, <strong>Mês</strong>, <strong>Projetos</strong> (coisas grandes).</li><li>Click no campo <strong>"+ Nova tarefa"</strong>.</li><li>Digite o texto da tarefa.</li><li>Escolha prioridade: <strong>🔴 Alta · 🟡 Média · 🔵 Baixa</strong></li><li>Escolha categoria.</li><li>Defina prazo se precisar.</li><li>Click <strong>Salvar</strong>.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> tarefas com prazo aparecem em <strong>vermelho quando atrasam</strong>.</div><h3>Editar</h3><p>Click no <strong>ícone ✏️</strong> ao lado da tarefa.</p><h3>Concluir</h3><p>Click no <strong>checkbox</strong> ao lado. Vira "concluída". Pra ver as concluídas, click em "Mostrar concluídas".</p><h3>Apagar</h3><p>Click no <strong>ícone 🗑️</strong>.</p>'},
+{id:'delegar-tarefa',categoria:'tarefas',titulo:'Delegar tarefa pra alguém',icone:'📤',tags:['delegar','passar','time','colega'],conteudo:'<h2>📤 Delegar uma tarefa</h2><p>Delegar é <strong>passar uma tarefa pra outra pessoa do time</strong>. Ela recebe na lista dela.</p><h3>Quando delegar</h3><ul><li>Você é gestor e quer atribuir algo</li><li>Algo veio pra você mas é da especialidade de outro</li><li>Quer combinar uma data limite específica</li></ul><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Click em <strong>"+ Delegar tarefa"</strong>.</li><li>Preencha: <strong>pra quem · texto · prioridade · data · mensagem opcional</strong></li><li>Click <strong>Delegar</strong>.</li></ol><h3>O que acontece depois</h3><ul><li>A tarefa aparece na lista da pessoa imediatamente</li><li>Você também vê a tarefa marcada como "delegada"</li><li>Quando ela concluir, você é notificado</li></ul><div class="man-callout-dica">💡 <strong>Boa prática Gâmi:</strong> use mensagem clara. Evite vago ("vê isso") — descreva exatamente ("postar 3 stories sobre a parceria com a empresa X até sexta às 18h").</div><h3>Ver tarefas que delegaram pra mim</h3><p>Na aba <strong>✅ Tarefas</strong>, filtre por <strong>"Recebidas"</strong>.</p>'},
+{id:'navegar-cidades',categoria:'cidades',titulo:'Navegando pelas 11 cidades',icone:'🗺️',tags:['cidades','painel','operação'],conteudo:'<h2>🗺️ Navegando pelas cidades</h2><p>A Gâmi tá em <strong>11 cidades</strong>. Cada uma tem painel completo com gestor, KPIs, relatórios.</p><h3>Onde estamos</h3><ul><li>🏖️ <strong>Maceió/AL</strong> — Chayd (única com Supabase sincronizado)</li><li>🌴 <strong>Fortaleza/CE</strong> — Ítalo</li><li>🌊 <strong>João Pessoa/PB</strong> — Harison</li><li>🌅 <strong>Recife e Jaboatão/PE</strong> — Raimundo / GUGA</li><li>🐪 <strong>Natal/RN</strong> — Talis</li><li>🏝️ <strong>Aracaju/SE</strong> — Sidnen</li><li>🌳 <strong>São Luís/MA</strong> — Cláudio</li><li>🌾 <strong>Cuiabá/MT</strong> — João Bergue</li><li>🌵 <strong>Teresina/PI</strong> — Mazinho</li><li>⛰️ <strong>Vitória/ES</strong> — Wesley</li><li>🌻 <strong>Campo Grande/MS</strong> — João Duarte</li></ul><h3>Como acessar uma cidade</h3><ol><li>Click em <strong>🏙️ Cidades</strong>.</li><li>Click no card da cidade.</li><li>Abre o painel completo.</li></ol><h3>O que tem no painel</h3><ul><li>Métricas operacionais</li><li>📈 Relatórios (16 da cidade individual)</li><li>💡 Anotações</li><li>👥 Time da cidade</li><li>📅 Histórico</li></ul><div class="man-callout-dica">💡 <strong>Dica:</strong> use os <strong>relatórios</strong> toda semana pra acompanhar a operação.</div>'},
+{id:'relatorios-cidade',categoria:'relatorios',titulo:'Como ler os relatórios',icone:'📊',tags:['relatórios','métricas','dados','análise'],conteudo:'<h2>📊 Relatórios de uma cidade</h2><p>Cada cidade tem <strong>16 relatórios individuais</strong>.</p><h3>🟢 Operacionais</h3><ul><li><strong>📅 Corridas por dia da semana</strong></li><li><strong>⏰ Pico de horário</strong></li><li><strong>❌ Taxa de cancelamento</strong></li><li><strong>📊 Dias anômalos</strong></li><li><strong>🩺 Saúde da cidade</strong></li></ul><h3>💰 Financeiros</h3><ul><li><strong>💰 Receita por período</strong></li><li><strong>📈 Ticket evolução</strong></li><li><strong>🚀 Crescimento mês a mês</strong></li><li><strong>📊 Pareto empresas</strong></li><li><strong>🏍️ Pareto motoboys</strong></li></ul><h3>🎯 Prospecção</h3><ul><li><strong>Empresas sumidas</strong></li><li><strong>Empresas em queda</strong></li><li><strong>Clientes novos</strong></li><li><strong>Top clientes</strong></li><li><strong>Motoboys ausentes</strong></li><li><strong>Top motoboys</strong></li></ul><h3>Como usar</h3><ol><li>Entra na cidade.</li><li>Click em <strong>📈 Relatórios</strong>.</li><li>Escolhe o relatório.</li><li>Ajusta período (7/30/60 dias).</li><li>Vê dados — KPIs no topo, tabela embaixo.</li></ol><div class="man-callout-dica">💡 <strong>Cidades com ⚡ Supabase</strong> carregam em <strong>~100ms</strong>. As outras usam cache Machine, demoram alguns segundos.</div>'},
+{id:'agendar-story',categoria:'marketing',titulo:'Stories automáticos',icone:'📸',tags:['stories','instagram','automático'],conteudo:'<h2>📸 Stories automáticos</h2><p>O Gâmi posta <strong>stories automaticamente</strong> em 9 cidades, várias vezes ao dia.</p><h3>Como funciona</h3><p>Tem <strong>6 pastas</strong>, cada uma com várias imagens:</p><ul><li><strong>bom-dia</strong> — Ter a Dom às 07:00</li><li><strong>otima-semana</strong> — Segundas 07:00</li><li><strong>outra</strong> — todo dia 12:00</li><li><strong>motoboy</strong> — todo dia 16:30</li><li><strong>empresa</strong> — todo dia 18:00</li><li><strong>fim-de-semana</strong> — Sextas 19:00</li></ul><h3>Total: 261 stories/semana</h3><p>O sistema escolhe imagem com <strong>rotação inteligente</strong> (não repete em sequência).</p><h3>Adicionar nova imagem</h3><ol><li>Abre o repo no GitHub Desktop.</li><li>Vai em <code>/stories/[categoria]/</code>.</li><li>Cola sua imagem (JPG/PNG/WebP).</li><li>Commit + push.</li><li>Pronto, entra na próxima rotação.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> imagens em <strong>9:16 vertical</strong> ficam melhores. Mínimo 1080×1920px.</div><h3>Postar manualmente agora</h3><p>Vai em <strong>📱 Marketing</strong> → <strong>Stories</strong> → escolhe categoria → click <strong>"Postar agora"</strong>.</p>'},
+{id:'inbox-instagram',categoria:'comunicacao',titulo:'Responder Inbox do Instagram',icone:'📩',tags:['inbox','instagram','dm','mensagem'],conteudo:'<h2>📩 Inbox Instagram</h2><p>O Inbox IG centraliza as <strong>DMs do Instagram das 9 contas Gâmi</strong> em uma só tela.</p><h3>Como acessar</h3><ol><li>Click em <strong>📩 Inbox IG</strong>.</li><li>Vê a lista de conversas das contas.</li><li>Click em uma pra abrir o chat.</li></ol><h3>Filtrar por cidade</h3><p>No topo tem <strong>chips de cidades</strong>. Click pra filtrar.</p><h3>Responder</h3><ol><li>Abre conversa.</li><li>Digita resposta.</li><li>Click <strong>Enviar</strong>.</li></ol><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> verifique sempre <strong>qual cidade está respondendo</strong>. Cada conversa pertence a uma conta diferente.</div><h3>No celular</h3><p>No mobile, o chat ocupa a tela inteira. Pra voltar pra lista, click no botão <strong>← Voltar</strong>.</p><div class="man-callout-dica">💡 <strong>Dica:</strong> use o Inbox como checklist diária. Limpe as DMs pendentes toda manhã.</div>'},
+{id:'reconhecimento-semana',categoria:'pessoas',titulo:'Reconhecimento da semana',icone:'🏆',tags:['reconhecimento','semana','cultura','elogio'],conteudo:'<h2>🏆 Reconhecimento da semana</h2><p>Destaca um colega Gâmi a cada semana. Cultura que celebra publicamente.</p><h3>Quem pode nomear</h3><p>Qualquer pessoa do time pode <strong>indicar</strong>. A diretoria valida e publica.</p><h3>Onde aparece</h3><ul><li><strong>Dashboard</strong> — banner com nome e foto</li><li><strong>Página de Pessoas</strong> — card "🏆 Reconhecido"</li><li><strong>Culture Code</strong> — Mural de Gratidão</li></ul><h3>Como publicar</h3><ol><li>Dashboard → bloco de "Reconhecimento".</li><li>Click <strong>"+ Publicar reconhecimento"</strong>.</li><li>Escolha a pessoa.</li><li>Escreva por que ela merece (1-3 linhas).</li><li>Publique.</li></ol><div class="man-callout-dica">💡 <strong>Boa prática Gâmi:</strong> reconhecer não é "elogio genérico". É descrever <strong>ação específica</strong>: "A Mariana ficou até 22h pra arrumar o app caído" é melhor que "A Mariana é dedicada".</div><h3>Mural de Gratidão</h3><p>No <strong>Culture Code</strong>, qualquer pessoa pode adicionar agradecimentos. Vira histórico permanente.</p>'},
+{id:'cadastrar-pessoa',categoria:'pessoas',titulo:'Cadastrar uma pessoa nova',icone:'👤',tags:['cadastrar','pessoa','novo'],conteudo:'<h2>👤 Cadastrar uma pessoa nova</h2><p>Quando alguém entra no time, precisa ser cadastrada pra ter acesso e aparecer nos relatórios.</p><h3>Quem pode cadastrar</h3><p><strong>Diretoria, Gerência e Super Admin</strong>.</p><h3>Passo a passo</h3><ol><li>Vá em <strong>👥 Pessoas</strong>.</li><li>Click <strong>"+ Nova pessoa"</strong>.</li><li>Preencha: <strong>Nome · Telefone · Email · Nascimento · Cargo · Cidade · Setor · Foto</strong></li><li>Click <strong>Salvar</strong>.</li></ol><h3>Após cadastrar</h3><ol><li>A pessoa aparece na lista.</li><li>Você precisa <strong>gerar PIN de 4 dígitos</strong> e enviar (WhatsApp).</li><li>Ela faz primeiro login com nome + PIN.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> data de nascimento é importante! Sistema usa pra aniversariantes.</div><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> escolha o <strong>cargo correto</strong>. Define o que ela vê no app.</div>'},
+{id:'backup-diario',categoria:'avancado',titulo:'Backup diário e segurança',icone:'💾',tags:['backup','segurança','admin'],conteudo:'<h2>💾 Backup diário e segurança</h2><p>O app faz <strong>backup automático às 5h da manhã</strong> todo dia.</p><h3>O que é salvo</h3><ul><li>Pessoas e dados</li><li>Login e sessões</li><li>Tarefas</li><li>Configurações</li><li>Posts do blog</li><li>Ranking mensal</li><li>Dados extras das cidades</li></ul><h3>Onde acessar</h3><ol><li>Vá em <strong>🩺 Saúde do Sistema</strong> (super_admin).</li><li>Procure "Backups Diários".</li><li>Você vê todos dos últimos 60 dias.</li></ol><h3>Gerar backup manual</h3><p>Click em <strong>"⚡ Gerar agora"</strong>.</p><h3>Baixar um backup</h3><ol><li>Escolha a data.</li><li>Click <strong>"⬇ Baixar"</strong>.</li><li>Baixa JSON com tudo daquele dia.</li></ol><div class="man-callout-dica">💡 <strong>Boa prática:</strong> baixe um backup completo manualmente <strong>uma vez por mês</strong>.</div><h3>Segurança em camadas</h3><ul><li>🔒 <strong>RLS</strong> — banco bloqueia escritas não autorizadas</li><li>🔐 <strong>Tokens de sessão</strong> — único por 24h</li><li>🛡️ <strong>Rate limiting</strong> — máx 60 req/min por IP</li><li>📝 <strong>Audit log</strong> — todas ações registradas</li><li>🚨 <strong>Alertas</strong> — atividade suspeita detectada</li></ul><h3>Backup semanal extra</h3><p><strong>Domingo às 4h</strong> roda backup completo com dados Machine. Armazenado por 30 dias.</p>'}
+];
+
+function renderManual(){
+  document.getElementById('manual-home').style.display = 'block';
+  document.getElementById('manual-categoria-view').style.display = 'none';
+  document.getElementById('manual-artigo-view').style.display = 'none';
+  renderManualCategorias();
+  renderManualProgressoGeral();
+  var inp = document.getElementById('manual-busca');
+  if(inp) inp.value = '';
+  document.getElementById('manual-resultado-busca').style.display = 'none';
+}
+
+function renderManualCategorias(){
+  var host = document.getElementById('manual-categorias');
+  if(!host) return;
+  host.style.display = 'grid';
+  host.innerHTML = window.MANUAL_CATEGORIAS.map(function(cat){
+    var artigos = window.MANUAL_ARTIGOS.filter(function(a){ return a.categoria === cat.id; });
+    var lidos = artigos.filter(function(a){ return _manualEstaLido(a.id); }).length;
+    var pct = artigos.length > 0 ? Math.round((lidos/artigos.length)*100) : 0;
+    return '<div class="man-cat-card" onclick="manualAbrirCategoria(\''+cat.id+'\')">'
+      +'<div class="man-cat-icon">'+cat.icone+'</div>'
+      +'<div class="man-cat-titulo">'+cat.titulo+'</div>'
+      +'<div class="man-cat-desc">'+cat.desc+'</div>'
+      +'<div class="man-cat-count">'+lidos+'/'+artigos.length+' artigos · '+pct+'%</div>'
+    +'</div>';
+  }).join('');
+}
+
+function renderManualProgressoGeral(){
+  var el = document.getElementById('manual-progresso-geral');
+  if(!el) return;
+  var total = window.MANUAL_ARTIGOS.length;
+  var lidos = window.MANUAL_ARTIGOS.filter(function(a){ return _manualEstaLido(a.id); }).length;
+  var pct = total > 0 ? Math.round((lidos/total)*100) : 0;
+  el.innerHTML = 'Progresso: <strong>'+lidos+'/'+total+'</strong> artigos lidos ('+pct+'%)'
+    +'<div class="man-progresso-bar" style="margin-top:6px;background:rgba(255,255,255,.2)"><div class="man-progresso-fill" style="width:'+pct+'%"></div></div>';
+}
+
+function manualAbrirCategoria(catId){
+  window._MANUAL.categoriaAtual = catId;
+  var cat = window.MANUAL_CATEGORIAS.find(function(c){ return c.id === catId; });
+  if(!cat) return;
+  document.getElementById('manual-home').style.display = 'none';
+  document.getElementById('manual-categoria-view').style.display = 'block';
+  document.getElementById('manual-artigo-view').style.display = 'none';
+  var header = document.getElementById('manual-categoria-header');
+  header.innerHTML = '<div style="display:flex;align-items:center;gap:14px">'
+    +'<div style="font-size:38px">'+cat.icone+'</div>'
+    +'<div><div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:700;color:var(--text)">'+cat.titulo+'</div>'
+    +'<div style="font-size:12px;color:var(--text3);margin-top:2px">'+cat.desc+'</div></div>'
+  +'</div>';
+  var artigos = window.MANUAL_ARTIGOS.filter(function(a){ return a.categoria === catId; });
+  var lista = document.getElementById('manual-categoria-artigos');
+  if(artigos.length === 0){
+    lista.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">'
+      +'<div style="font-size:32px;margin-bottom:8px">📝</div>Nenhum artigo nessa categoria ainda. Em breve!</div>';
+    return;
+  }
+  lista.innerHTML = artigos.map(function(a){
+    var lidoClass = _manualEstaLido(a.id) ? ' lido' : '';
+    return '<div class="man-artigo-link'+lidoClass+'" onclick="manualAbrirArtigo(\''+a.id+'\')">'
+      +'<span style="font-size:18px">'+a.icone+'</span>'
+      +'<span style="flex:1;font-size:13px;font-weight:600;color:var(--text)">'+a.titulo+'</span>'
+    +'</div>';
+  }).join('');
+}
+
+function manualAbrirArtigo(artigoId){
+  window._MANUAL.artigoAtual = artigoId;
+  var artigo = window.MANUAL_ARTIGOS.find(function(a){ return a.id === artigoId; });
+  if(!artigo) return;
+  document.getElementById('manual-home').style.display = 'none';
+  document.getElementById('manual-categoria-view').style.display = 'none';
+  document.getElementById('manual-artigo-view').style.display = 'block';
+  var host = document.getElementById('manual-artigo-host');
+  host.innerHTML = '<div class="man-conteudo">'+artigo.conteudo+'</div>';
+  var btn = document.getElementById('manual-marcar-btn');
+  if(_manualEstaLido(artigoId)){
+    btn.textContent = '✓ Já lido (click pra desmarcar)';
+    btn.style.background = 'var(--surface2)';
+    btn.style.color = 'var(--text2)';
+    btn.style.border = '1px solid var(--border)';
+  } else {
+    btn.textContent = '✓ Marcar como lido';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.border = '';
+  }
+  var relacionados = window.MANUAL_ARTIGOS.filter(function(a){ return a.categoria === artigo.categoria && a.id !== artigoId; }).slice(0,3);
+  var relHost = document.getElementById('manual-relacionados');
+  if(relacionados.length > 0){
+    relHost.innerHTML = '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Veja também</div>'
+      +relacionados.map(function(r){
+        return '<div class="man-artigo-link" onclick="manualAbrirArtigo(\''+r.id+'\')">'
+          +'<span style="font-size:18px">'+r.icone+'</span>'
+          +'<span style="font-size:13px;font-weight:600;color:var(--text)">'+r.titulo+'</span>'
+        +'</div>';
+      }).join('');
+  } else {
+    relHost.innerHTML = '';
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function manualVoltarHome(){ renderManual(); }
+function manualVoltarCategoria(){
+  if(window._MANUAL.categoriaAtual) manualAbrirCategoria(window._MANUAL.categoriaAtual);
+  else renderManual();
+}
+function manualMarcarLido(){
+  var id = window._MANUAL.artigoAtual;
+  if(!id) return;
+  _manualSetLido(id, !_manualEstaLido(id));
+  manualAbrirArtigo(id);
+}
+
+function manualBuscar(query){
+  query = (query || '').toLowerCase().trim();
+  window._MANUAL.buscaAtual = query;
+  var host = document.getElementById('manual-resultado-busca');
+  var catsHost = document.getElementById('manual-categorias');
+  if(query.length < 2){
+    host.style.display = 'none';
+    if(catsHost) catsHost.style.display = 'grid';
+    return;
+  }
+  var resultados = window.MANUAL_ARTIGOS.filter(function(a){
+    var texto = (a.titulo + ' ' + (a.tags||[]).join(' ') + ' ' + (a.conteudo||'')).toLowerCase();
+    return texto.indexOf(query) >= 0;
+  });
+  if(catsHost) catsHost.style.display = 'none';
+  host.style.display = 'block';
+  if(resultados.length === 0){
+    host.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px;background:var(--surface);border-radius:10px">'
+      +'<div style="font-size:32px;margin-bottom:8px">🔍</div>Nenhum resultado pra <strong>"'+query+'"</strong>.<br>Tenta outras palavras.</div>';
+    return;
+  }
+  host.innerHTML = '<div style="font-size:11px;color:var(--text3);margin-bottom:8px"><strong>'+resultados.length+'</strong> resultado(s) pra "<strong>'+query+'</strong>"</div>'
+    +resultados.map(function(a){
+      var cat = window.MANUAL_CATEGORIAS.find(function(c){ return c.id === a.categoria; });
+      var lidoClass = _manualEstaLido(a.id) ? ' lido' : '';
+      return '<div class="man-artigo-link'+lidoClass+'" onclick="manualAbrirArtigo(\''+a.id+'\')">'
+        +'<span style="font-size:18px">'+a.icone+'</span>'
+        +'<div style="flex:1">'
+          +'<div style="font-size:13px;font-weight:600;color:var(--text)">'+a.titulo+'</div>'
+          +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+(cat?cat.icone+' '+cat.titulo:'')+'</div>'
+        +'</div>'
+      +'</div>';
+    }).join('');
+}
+
+function manualMarcarTodosLidos(){
+  if(!confirm('Resetar o progresso? Todos os artigos vão voltar pra "não lido".')) return;
+  Object.keys(localStorage).forEach(function(k){
+    if(k.indexOf('gami_manual_lido_') === 0) localStorage.removeItem(k);
+  });
+  renderManual();
+}
+
+function _manualEstaLido(id){
+  try { return localStorage.getItem('gami_manual_lido_'+id) === '1'; }
+  catch(e){ return false; }
+}
+function _manualSetLido(id, lido){
+  try {
+    if(lido) localStorage.setItem('gami_manual_lido_'+id, '1');
+    else localStorage.removeItem('gami_manual_lido_'+id);
+  } catch(e){}
+}
 </script>
 
 </body>
