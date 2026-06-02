@@ -1,4 +1,4 @@
-<!-- v23.89 - Onda 1: 5 relatórios de empresas com paradas + RPCs novas - 02/06/2026 -->
+<!-- v23.90 - Onda 2: 4 relatórios motoboys (Top, Sumidos Ativos, Em Queda, Pareto) com paradas - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10844,11 +10844,14 @@ var RELATORIOS = {
   motoboys: {
     nome: '🏍️ MOTOBOYS', cor:'#EF9F27',
     relatorios: [
-      { id:'motoboys_ausentes', icone:'😴', nome:'Motoboys ausentes',
-        descricao:'Motoboys que rodaram nos últimos X dias mas sumiram há Y+ dias',
+      { id:'motoboys_ausentes', icone:'😴', nome:'Motoboys sumidos ativos',
+        descricao:'Motoboys regulares (10+ dias/mês) que estão há 3+ dias sem rodar',
+        temValor:false, fase:1 },
+      { id:'motoboys_queda', icone:'📉', nome:'Motoboys em queda',
+        descricao:'Motoboys regulares que reduziram 20%+ comparando 1ª vs 2ª metade dos últimos 30 dias',
         temValor:false, fase:1 },
       { id:'top_motoboys', icone:'🏆', nome:'Top performers',
-        descricao:'Motoboys que mais rodaram no período',
+        descricao:'Motoboys que mais geraram paradas no período',
         temValor:false, fase:1 }
     ]
   },
@@ -11879,48 +11882,72 @@ async function _sb_top_clientes(){
 async function _sb_motoboys_ausentes(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
-  var semHa = _RL.semPedirHa || 2;
+  var semHa = _RL.semRodarHa || 3;
+  var ativaMin = _RL.ativaMinMot !== undefined ? _RL.ativaMinMot : 10;
+  var diasLookback = 30;
   
-  var [historico, corridasHoje] = await Promise.all([
-    _rlSupaQuery('mv_motoboys_atividade?cidade_slug=eq.'+slug+'&order=ultima_corrida.desc&limit=10000'),
-    _rlPegarCorridasHoje(slug)
-  ]);
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_atividade_real', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Motoboys Sumidos] RPC erro:', e.message); }
   
-  var mesclado = _rlMesclarMotoboysHoje(historico, corridasHoje);
-  
-  // Recalcula dias_sem_rodar
-  var agora = new Date();
-  mesclado.forEach(function(m){
-    var ult = new Date(m.ultima_corrida);
-    m.dias_sem_rodar = Math.floor((agora - ult) / 86400000);
+  // Filtra: regulares (10+ dias) que estão sumidos (3+ dias sem rodar)
+  var sumidos = lista.filter(function(m){
+    return parseInt(m.dias_distintos||0) >= ativaMin
+        && parseInt(m.dias_sem_rodar||0) >= semHa;
   });
+  sumidos.sort(function(a,b){ return parseInt(a.dias_sem_rodar) - parseInt(b.dias_sem_rodar); });
   
-  var ausentes = mesclado.filter(function(m){ return m.dias_sem_rodar >= semHa; });
-  ausentes.sort(function(a,b){ return b.dias_sem_rodar < a.dias_sem_rodar ? 1 : -1; });
+  console.log('[Motoboys Sumidos]', slug, '· Total:', lista.length, '· Sumidos ativos:', sumidos.length);
   
-  var linhas = ausentes.map(function(m){
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Motoboy','Atividade','Última','Sem rodar há','Corridas','Paradas','✅ Fin','❌ Canc'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
+  
+  var linhas = sumidos.map(function(m){
     var icone = m.dias_sem_rodar >= 14 ? '🔴' : m.dias_sem_rodar >= 7 ? '🟠' : '🟡';
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
-    return [icone+' '+m.nome_condutor, ultFmt, m.dias_sem_rodar+' dias', m.total, m.telefone || '—'];
+    var ativ = m.dias_distintos+'/'+diasLookback+'d';
+    var row = [icone+' '+m.nome_condutor, ativ, ultFmt, m.dias_sem_rodar+' dias',
+               (parseInt(m.total_corridas)||0), (parseInt(m.total_paradas)||0),
+               (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0)];
+    if(podeValor){
+      row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
+    }
+    return row;
   });
   
   return {
-    id:'motoboys_ausentes', icone:'😴', titulo:'Motoboys ausentes',
-    descricao:'⚡ Supabase + 📅 hoje · Rodaram nos últimos 45 dias mas estão há '+semHa+'+ dias sem rodar',
-    cidade:c, colunas:['Motoboy','Última corrida','Sem rodar há','Corridas no período','Telefone'],
-    linhas:linhas, vazio: ausentes.length === 0, podeWhatsApp: true,
+    id:'motoboys_ausentes', icone:'😴', titulo:'Motoboys sumidos ativos',
+    descricao:'⚡ Supabase · Motoboys com '+ativaMin+'+ dias rodando nos últimos '+diasLookback+' que estão há '+semHa+'+ dias sem rodar',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: sumidos.length === 0,
     kpis:[
-      { label:'Motoboys ausentes', valor:ausentes.length, cor:'#E24B4A' },
-      { label:'Corridas perdidas', valor:ausentes.reduce(function(s,m){return s+m.total;},0), cor:'#EF9F27' }
+      { label:'Motoboys sumidos', valor:sumidos.length, cor:'#E24B4A' },
+      { label:'Corridas perdidas', valor:sumidos.reduce(function(s,m){return s+parseInt(m.total_corridas||0);},0), cor:'#EF9F27' },
+      { label:'Paradas perdidas', valor:sumidos.reduce(function(s,m){return s+parseInt(m.total_paradas||0);},0), cor:'#E24B4A' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem rodar há:</strong>'
-        +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+        +'<select onchange="_RL.semRodarHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
           +'<option value="2"'+(semHa===2?' selected':'')+'>2+ dias</option>'
           +'<option value="3"'+(semHa===3?' selected':'')+'>3+ dias</option>'
           +'<option value="5"'+(semHa===5?' selected':'')+'>5+ dias</option>'
           +'<option value="7"'+(semHa===7?' selected':'')+'>7+ dias</option>'
           +'<option value="14"'+(semHa===14?' selected':'')+'>14+ dias</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Frequência mín:</strong>'
+        +'<select onchange="_RL.ativaMinMot=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(ativaMin===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="10"'+(ativaMin===10?' selected':'')+'>10+ dias</option>'
+          +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias</option>'
+          +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias</option>'
         +'</select>'
       +'</label>'
     +'</div>'
@@ -11932,33 +11959,51 @@ async function _sb_top_motoboys(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var topN = _RL.topN || 10;
+  var diasLookback = 30;
   
-  var [historico, corridasHoje] = await Promise.all([
-    _rlSupaQuery('mv_motoboys_atividade?cidade_slug=eq.'+slug+'&order=total.desc&limit=200'),
-    _rlPegarCorridasHoje(slug)
-  ]);
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_atividade_real', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Top Motoboys] RPC erro:', e.message); }
   
-  var mesclado = _rlMesclarMotoboysHoje(historico, corridasHoje);
-  mesclado.sort(function(a,b){ return b.total - a.total; });
-  var top = mesclado.slice(0, topN);
-  var totalGeral = top.reduce(function(s,m){return s+m.total;},0);
+  // Ordena por PARADAS
+  lista.sort(function(a,b){ return parseInt(b.total_paradas||0) - parseInt(a.total_paradas||0); });
+  var top = lista.slice(0, topN);
+  var totalParadasGeral = top.reduce(function(s,m){return s+parseInt(m.total_paradas||0);},0);
+  
+  console.log('[Top Motoboys] '+slug+' · Top '+topN+':', top);
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['#','Motoboy','Corridas','Paradas','✅ Fin','❌ Canc','% do top '+topN,'Última'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = top.map(function(m, i){
     var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
-    var pct = totalGeral > 0 ? ((m.total / totalGeral) * 100).toFixed(1) + '%' : '—';
+    var paradas = parseInt(m.total_paradas||0);
+    var pct = totalParadasGeral > 0 ? ((paradas / totalParadasGeral) * 100).toFixed(1) + '%' : '—';
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
-    return [medal, m.nome_condutor, m.total, pct, ultFmt, m.telefone || '—'];
+    var row = [medal, m.nome_condutor, (parseInt(m.total_corridas)||0), paradas,
+               (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0), pct, ultFmt];
+    if(podeValor){
+      row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
+    }
+    return row;
   });
   
   return {
     id:'top_motoboys', icone:'🏆', titulo:'Top '+topN+' motoboys do período',
-    descricao:'⚡ Supabase + 📅 hoje · Motoboys que mais rodaram nos últimos 45 dias',
-    cidade:c, colunas:['#','Motoboy','Corridas','% do top '+topN,'Última corrida','Telefone'],
-    linhas:linhas, vazio: top.length === 0, podeWhatsApp: true,
+    descricao:'⚡ Supabase · Motoboys que mais geraram paradas (entregas) nos últimos '+diasLookback+' dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: top.length === 0, podeWhatsApp: true,
     kpis:[
       { label:'Top '+topN, valor:top.length, cor:'#EF9F27' },
-      { label:'Total corridas', valor:totalGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
-      { label:'Líder', valor: top[0] ? top[0].total+' corridas' : '—', cor:'#1D9E75' }
+      { label:'Total paradas', valor:totalParadasGeral.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+      { label:'Líder', valor: top[0] ? parseInt(top[0].total_paradas||0)+' paradas' : '—', cor:'#1D9E75' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Top:</strong>'
@@ -11966,6 +12011,83 @@ async function _sb_top_motoboys(){
           +'<option value="5"'+(topN===5?' selected':'')+'>Top 5</option>'
           +'<option value="10"'+(topN===10?' selected':'')+'>Top 10</option>'
           +'<option value="20"'+(topN===20?' selected':'')+'>Top 20</option>'
+          +'<option value="50"'+(topN===50?' selected':'')+'>Top 50</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
+/* ─── NOVO: MOTOBOYS EM QUEDA ─── */
+async function _sb_motoboys_queda(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var quedaMin = _RL.quedaMinMot || 20;
+  var ativaMin = _RL.ativaMinMotQ !== undefined ? _RL.ativaMinMotQ : 10;
+  var diasTotal = 30;
+  
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_periodo_comparado', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias_total: diasTotal })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Motoboys Em Queda] RPC erro:', e.message); }
+  
+  var emQueda = lista.filter(function(m){
+    if(parseInt(m.dias_sem_rodar||0) >= 5) return false;
+    if(parseInt(m.dias_distintos||0) < ativaMin) return false;
+    if(parseInt(m.count_antigo||0) < 3) return false;
+    return parseInt(m.queda_pct||0) >= quedaMin;
+  });
+  emQueda.sort(function(a,b){ return parseInt(b.queda_pct) - parseInt(a.queda_pct); });
+  
+  console.log('[Motoboys Em Queda] '+slug+' · '+emQueda.length+' regulares em queda ≥'+quedaMin+'%');
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['Motoboy','Atividade','Última','Corridas → Paradas','Queda %'];
+  if(podeValor) colunas.push('Faturamento','Ticket/parada');
+  
+  var linhas = emQueda.map(function(m){
+    var queda = parseInt(m.queda_pct);
+    var icone = queda >= 60 ? '🔴' : queda >= 40 ? '🟠' : '🟡';
+    var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR') + ' ('+m.dias_sem_rodar+'d)';
+    var ativ = m.dias_distintos+'/'+diasTotal+'d';
+    var variacao = m.count_antigo+' → '+m.count_recente+' corr · '+m.paradas_antigo+' → '+m.paradas_recente+' par';
+    var row = [icone+' '+m.nome_condutor, ativ, ultFmt, variacao, '-'+queda+'%'];
+    if(podeValor){
+      row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
+      row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
+    }
+    return row;
+  });
+  
+  return {
+    id:'motoboys_queda', icone:'📉', titulo:'Motoboys em queda',
+    descricao:'⚡ Supabase · Motoboys regulares ('+ativaMin+'+ dias) que reduziram '+quedaMin+'%+ comparando 1ª vs 2ª metade dos últimos '+diasTotal+' dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: emQueda.length === 0, podeWhatsApp: true,
+    kpis:[
+      { label:'Motoboys em queda', valor:emQueda.length, cor:'#EF9F27' },
+      { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0].queda_pct+'%' : '—', cor:'#E24B4A' },
+      { label:'Paradas perdidas', valor:emQueda.reduce(function(s,m){return s+parseInt(m.paradas_antigo||0)-parseInt(m.paradas_recente||0);},0), cor:'#E24B4A' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mín:</strong>'
+        +'<select onchange="_RL.quedaMinMot=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="10"'+(quedaMin===10?' selected':'')+'>10%+</option>'
+          +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+</option>'
+          +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+</option>'
+          +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Frequência mín:</strong>'
+        +'<select onchange="_RL.ativaMinMotQ=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="5"'+(ativaMin===5?' selected':'')+'>5+ dias</option>'
+          +'<option value="10"'+(ativaMin===10?' selected':'')+'>10+ dias</option>'
+          +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias</option>'
+          +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias</option>'
         +'</select>'
       +'</label>'
     +'</div>'
@@ -12421,34 +12543,78 @@ async function _sb_pareto_motoboys(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var periodo = _RL.periodo || 30;
-  var dados = await _rlSupaRPC('rel_pareto_motoboys', { p_slug: slug, p_dias: periodo });
   
-  if(!dados.length){
+  var lista = [];
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_atividade_real', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: periodo })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+  } catch(e){ console.warn('[Pareto Motoboys] RPC erro:', e.message); }
+  
+  if(!lista.length){
     return { id:'pareto_motoboys', icone:'🏍️', titulo:'Pareto 80/20 — Motoboys',
       descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
   }
   
-  var idx80 = dados.findIndex(function(d){ return parseFloat(d.pct_acumulado) >= 80; });
-  var qtd80 = idx80 >= 0 ? idx80 + 1 : dados.length;
-  var pctMotoboys80 = ((qtd80 / dados.length) * 100).toFixed(1);
+  lista.sort(function(a,b){ return parseFloat(b.valor_total||0) - parseFloat(a.valor_total||0); });
   
-  var linhas = dados.map(function(d){
-    var icone = parseFloat(d.pct_acumulado) <= 80 ? '🟢' : '⚪';
-    return [icone+' '+d.posicao+'º', d.nome_condutor || ('Motoboy '+d.condutor_id),
-      parseInt(d.corridas).toLocaleString('pt-BR'),
-      'R$ '+parseFloat(d.receita).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),
-      parseFloat(d.pct_individual).toFixed(2)+'%', parseFloat(d.pct_acumulado).toFixed(1)+'%'];
+  var receitaTotal = lista.reduce(function(s,m){return s + parseFloat(m.valor_total||0);}, 0);
+  if(receitaTotal === 0){
+    return { id:'pareto_motoboys', icone:'🏍️', titulo:'Pareto 80/20 — Motoboys',
+      descricao:'Sem receita no período', cidade:c, vazio:true, kpis:[] };
+  }
+  
+  var acumPct = 0;
+  lista.forEach(function(m, i){
+    m._posicao = i + 1;
+    m._pctInd = (parseFloat(m.valor_total||0) / receitaTotal) * 100;
+    acumPct += m._pctInd;
+    m._pctAcum = acumPct;
+  });
+  
+  var idx80 = lista.findIndex(function(m){ return m._pctAcum >= 80; });
+  var qtd80 = idx80 >= 0 ? idx80 + 1 : lista.length;
+  var pctMotoboys80 = ((qtd80 / lista.length) * 100).toFixed(1);
+  
+  console.log('[Pareto Motoboys] '+slug+' · '+qtd80+'/'+lista.length+' motoboys geram 80% da receita');
+  
+  var podeValor = _rlPodeVerValor();
+  var colunas = ['#','Motoboy','Corridas','Paradas'];
+  if(podeValor) colunas.push('Receita');
+  colunas.push('% individual','% acumulado');
+  
+  var linhas = lista.map(function(m){
+    var icone = m._pctAcum <= 80 ? '🟢' : '⚪';
+    var row = [icone+' '+m._posicao+'º', m.nome_condutor || ('Motoboy '+m.condutor_id),
+               (parseInt(m.total_corridas)||0).toLocaleString('pt-BR'),
+               (parseInt(m.total_paradas)||0).toLocaleString('pt-BR')];
+    if(podeValor) row.push('R$ '+parseFloat(m.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}));
+    row.push(m._pctInd.toFixed(2)+'%', m._pctAcum.toFixed(1)+'%');
+    return row;
   });
   
   return {
     id:'pareto_motoboys', icone:'🏍️', titulo:'Pareto 80/20 — Motoboys',
-    descricao:'⚡ Supabase · '+qtd80+' motoboys ('+pctMotoboys80+'% do total) geram 80% da receita',
-    cidade:c, colunas:['#','Motoboy','Corridas','Receita','% individual','% acumulado'], linhas:linhas, vazio:false,
+    descricao:'⚡ Supabase · '+qtd80+' motoboys ('+pctMotoboys80+'% do total) geram 80% da receita nos últimos '+periodo+' dias',
+    cidade:c, colunas:colunas, linhas:linhas, vazio:false,
     kpis:[
       { label:'Motoboys (80% receita)', valor:qtd80, cor:'#1D9E75' },
       { label:'% dos motoboys', valor:pctMotoboys80+'%', cor:'#EF9F27' },
-      { label:'Total motoboys', valor:dados.length, cor:'#1AB8F0' }
-    ]
+      { label:'Total motoboys', valor:lista.length, cor:'#1AB8F0' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Período:</strong>'
+        +'<select onchange="_RL.periodo=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="7"'+(periodo===7?' selected':'')+'>7 dias</option>'
+          +'<option value="15"'+(periodo===15?' selected':'')+'>15 dias</option>'
+          +'<option value="30"'+(periodo===30?' selected':'')+'>30 dias</option>'
+          +'<option value="45"'+(periodo===45?' selected':'')+'>45 dias</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
   };
 }
 
@@ -12467,6 +12633,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'clientes_novos':     return temSupa ? await _sb_clientes_novos() : _gen_clientes_novos(dados);
     case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
+    case 'motoboys_queda':     return temSupa ? await _sb_motoboys_queda() : { id:'motoboys_queda', icone:'📉', titulo:'Motoboys em queda', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
     case 'top_motoboys':       return temSupa ? await _sb_top_motoboys() : _gen_top_motoboys(dados);
     
     // Fase 2 — Operacional (migrado pro Supabase v23.67)
