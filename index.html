@@ -1,4 +1,4 @@
-<!-- v23.85 - Comparativo Visão Geral com Paradas (hoje vs ontem, mês vs mês) - 02/06/2026 -->
+<!-- v23.87 - Alertas Inteligentes com lógica de Sumidas Ativas (10+ dias regular + 3+ sem pedir) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -21534,15 +21534,27 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
       + '</div>';
   };
 
-  var html = '';
   // === HOJE vs ONTEM ===
-  html += '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;padding-top:4px">📅 Hoje vs ontem</div>';
+  // Datas pra label (busca em corridas, fallback pra hoje/ontem)
+  var hojeD = new Date();
+  var ontemD = new Date(hojeD.getTime() - 86400000);
+  var fmtData = function(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); };
+  var labelHoje = fmtData(hojeD);
+  var labelOntem = fmtData(ontemD);
+  
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;padding-top:4px">📅 Hoje ('+labelHoje+') vs ontem ('+labelOntem+')</div>';
   html += linha('🛵 Corridas', nHoje, nOntem, pctDia, '', false);
   html += linha('📦 Paradas (entregas)', pHoje, pOntem, pctParDia, '', false);
   if(verFin) html += linha('💰 Faturamento', fmtBR(fatHoje), fmtBR(fatOntem), pctFatDia, '', false);
   
-  // === MES vs MES ANTERIOR ===
-  html += '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border)">📊 Mês vs mês anterior</div>';
+  // === MES vs MES ANTERIOR (MESMO PERIODO ACUMULADO) ===
+  var inicioMesD = new Date(hojeD.getFullYear(), hojeD.getMonth(), 1);
+  var inicioMesAntD = new Date(hojeD.getFullYear(), hojeD.getMonth()-1, 1);
+  var fimMesAntD = new Date(hojeD.getFullYear(), hojeD.getMonth()-1, hojeD.getDate());
+  var labelMesAtual = fmtData(inicioMesD)+'–'+fmtData(hojeD);
+  var labelMesAnt = fmtData(inicioMesAntD)+'–'+fmtData(fimMesAntD);
+  
+  html += '<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;padding-top:6px;border-top:1px solid var(--border)">📊 Mês até agora ('+labelMesAtual+') vs mesmo período mês anterior ('+labelMesAnt+')</div>';
   html += linha('🛵 Corridas', nMes, nMesAnt, pctMes, '', false);
   html += linha('📦 Paradas (entregas)', pMes, pMesAnt, pctParMes, '', !verFin);
   if(verFin) html += linha('💰 Faturamento', fmtBR(fatMes), fmtBR(fatMesAnt), pctFatMes, '', true);
@@ -21550,58 +21562,92 @@ function vgRenderComparativo(cDia, cOntem, cMes, cMesAnt){
   comp.innerHTML = html;
 }
 
-/* Alertas inteligentes: lojas sumidas
-   - Considera lojas que pediram nos ultimos 45 dias (estavam ativas)
-   - Sinaliza as que NAO pediram nos ultimos 5+ dias
-   - Mostra TODAS, em ORDEM CRESCENTE (menos graves primeiro: 5 dias, 6, 7...) */
+/* Alertas inteligentes: lojas SUMIDAS ATIVAS
+   - Considera SÓ lojas com frequência regular (pediu em 10+ dias dos ultimos 30)
+   - Sinaliza as que NAO pediram nos ultimos 3+ dias
+   - Mostra TODAS, em ORDEM CRESCENTE (menos graves primeiro: 3 dias, 4, 5...) */
 function vgRenderAlertas(corridas45d, hojeStr){
   var box = document.getElementById('cp-alertas-box'); if(!box) return;
   if(!corridas45d || !corridas45d.length){ box.innerHTML=''; return; }
 
   var hoje = new Date(hojeStr+'T00:00:00');
+  var DIAS_JANELA = 30;
+  var DIAS_REGULAR_MIN = 10;   // pediu em pelo menos 10 dos últimos 30 dias = regular
+  var DIAS_SEM_PEDIR_MIN = 3;  // não pede há 3+ dias = sumida
+  
+  var inicioJanela = new Date(hoje.getTime() - DIAS_JANELA*86400000);
+  
+  // Agrupa por LOWER(nome) — unifica variações de case
   var lojas = {};
   corridas45d.forEach(function(x){
-    var nome = (x.nome_passageiro||'').trim(); if(!nome) return;
+    var nomeOrig = (x.nome_passageiro||'').trim(); if(!nomeOrig) return;
     var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
-    if(!lojas[nome]) lojas[nome] = {nome:nome, ultima:dStr, total:0};
-    if(dStr > lojas[nome].ultima) lojas[nome].ultima = dStr;
-    lojas[nome].total++;
+    var dt = new Date(dStr+'T00:00:00');
+    if(dt < inicioJanela) return;
+    
+    var nKey = nomeOrig.toLowerCase();
+    if(!lojas[nKey]){
+      lojas[nKey] = {nome:nomeOrig, ultima:dStr, total:0, paradas:0, valorFin:0, diasUnicos:{}};
+    }
+    if(dStr > lojas[nKey].ultima) lojas[nKey].ultima = dStr;
+    lojas[nKey].diasUnicos[dStr] = true;
+    lojas[nKey].total++;
+    if(Array.isArray(x.paradas)) lojas[nKey].paradas += x.paradas.length;
+    if(x.status_solicitacao === 'F') lojas[nKey].valorFin += parseFloat(x.valor_corrida||0);
   });
 
-  // Filtra: sumida ha 5+ dias mas pediu pelo menos uma vez no periodo (ativa)
+  // Filtra: REGULARES (10+ dias distintos) que estão há 3+ dias sem pedir
   var sumidas = [];
   Object.values(lojas).forEach(function(l){
+    var diasDistintos = Object.keys(l.diasUnicos).length;
+    if(diasDistintos < DIAS_REGULAR_MIN) return; // não é regular, ignora
+    
     var ult = new Date(l.ultima+'T00:00:00');
-    var dias = Math.floor((hoje - ult) / 86400000);
-    if(dias >= 5) sumidas.push({nome:l.nome, dias:dias, total:l.total, ultima:l.ultima});
+    var diasSemPedir = Math.floor((hoje - ult) / 86400000);
+    if(diasSemPedir < DIAS_SEM_PEDIR_MIN) return; // ainda ativa
+    
+    sumidas.push({
+      nome: l.nome,
+      diasSemPedir: diasSemPedir,
+      diasDistintos: diasDistintos,
+      total: l.total,
+      paradas: l.paradas,
+      valorFin: l.valorFin,
+      ultima: l.ultima
+    });
   });
-  // ORDEM CRESCENTE: menos graves primeiro (5, 6, 7... 45)
-  sumidas.sort(function(a,b){ return a.dias - b.dias; });
+  // ORDEM CRESCENTE: menos graves primeiro (3, 4, 5...)
+  sumidas.sort(function(a,b){ return a.diasSemPedir - b.diasSemPedir; });
+
+  console.log('[Alertas Lojas Sumidas Ativas]', sumidas.length, 'lojas regulares pararam de pedir há 3+ dias');
 
   if(!sumidas.length){
     box.innerHTML = '<div class="card" style="background:#EAF3DE;border-left:4px solid #1D9E75;margin-bottom:12px">'
       + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">✅</span>'
-      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as lojas que pedem regularmente fizeram pedido nos últimos 5 dias.</span></div></div>';
+      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as lojas regulares (10+ dias/mês) fizeram pedido nos últimos 3 dias.</span></div></div>';
     return;
   }
 
+  var verFin = podeVerFaturamentoCidade();
   var html = '<div class="card" style="background:#FFF8E1;border-left:4px solid #EF9F27;margin-bottom:12px">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-    + '<div style="font-size:11px;font-weight:700;color:#854F0B;text-transform:uppercase;letter-spacing:.5px">🧠 Alertas Inteligentes — Lojas sumidas</div>'
+    + '<div style="font-size:11px;font-weight:700;color:#854F0B;text-transform:uppercase;letter-spacing:.5px">🧠 Alertas Inteligentes — Lojas sumidas ativas</div>'
     + '<span style="font-size:10px;color:#854F0B;background:#EF9F2722;padding:2px 7px;border-radius:6px">'+sumidas.length+' lojas</span>'
     + '</div>'
-    + '<div style="font-size:11px;color:#854F0B;margin-bottom:10px">Lojas que pediram nos últimos 45 dias mas estão há <strong>5+ dias sem pedido</strong>. Ordenadas das mais recentes para as mais antigas.</div>'
+    + '<div style="font-size:11px;color:#854F0B;margin-bottom:10px">Lojas com pedidos em <strong>10+ dias dos últimos 30</strong> (regulares) que estão há <strong>3+ dias sem pedir</strong>. Reativação urgente.</div>'
     + '<div style="max-height:520px;overflow-y:auto;padding-right:4px">';
 
   sumidas.forEach(function(l){
-    var corBadge = l.dias>=30 ? '#E24B4A' : l.dias>=15 ? '#EF9F27' : '#854F0B';
+    var corBadge = l.diasSemPedir>=14 ? '#E24B4A' : l.diasSemPedir>=7 ? '#EF9F27' : '#854F0B';
+    var subInfo = l.diasDistintos+'/'+DIAS_JANELA+'d ativa · '+l.total+' corridas · '+l.paradas+' paradas';
+    if(verFin && l.valorFin > 0) subInfo += ' · R$ '+l.valorFin.toFixed(2);
     html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px dashed #EF9F2733">'
       + '<span style="font-size:14px">🏪</span>'
       + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+l.nome+'</div>'
-        + '<div style="font-size:10px;color:var(--text3)">Último pedido: '+l.ultima.split('-').reverse().join('/')+' · '+l.total+' pedidos nos últimos 45 dias</div>'
+        + '<div style="font-size:10px;color:var(--text3)">Último: '+l.ultima.split('-').reverse().join('/')+' · '+subInfo+'</div>'
       + '</div>'
-      + '<span style="font-size:11px;font-weight:700;color:white;background:'+corBadge+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+l.dias+' dias</span>'
+      + '<span style="font-size:11px;font-weight:700;color:white;background:'+corBadge+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+l.diasSemPedir+' dias</span>'
       + '</div>';
   });
 
