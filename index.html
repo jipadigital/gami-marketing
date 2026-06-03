@@ -1,4 +1,4 @@
-<!-- v24.12 - Novo relatório: Empresas Fantasmas (cadastradas mas nunca/quase nunca pediram) - 03/06/2026 -->
+<!-- v24.13 - Refatora fantasmas pra usar RPC dedicada (mais robusto) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12202,85 +12202,47 @@ async function _sb_empresas_fantasmas(){
   var slug = _rlSlug();
   var diasMinCad = _RL.diasMinCad !== undefined ? _RL.diasMinCad : 30;  // cadastrada há pelo menos N dias
   var maxPedidos = _RL.maxPedidos !== undefined ? _RL.maxPedidos : 2;   // 0 a N pedidos
-  var diasLookback = 60;  // janela de checagem de pedidos (busca histórica)
+  var diasLookback = 45;  // janela de checagem de pedidos (mesma da aba Empresas)
   
-  console.log('[Fantasmas] Buscando empresas cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos em '+slug);
+  console.log('[Fantasmas] Buscando fantasmas em '+slug+' (cad '+diasMinCad+'+ dias, pedidos <='+maxPedidos+', janela '+diasLookback+'d)');
   
-  // 1) Busca empresas ATIVAS (status A) da cidade
-  var empresas = [];
+  // Usa RPC dedicada que faz JOIN no SQL (mais robusto + mais rápido)
+  var fantasmasRaw = [];
   try {
-    var r = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&status_empresa=eq.A&select=id,nome,telefone,bairro,data_hora_cadastro&limit=10000', {
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_fantasmas', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ 
+        p_cidade_slug: slug,
+        p_dias_min_cad: diasMinCad,
+        p_max_pedidos: maxPedidos,
+        p_dias_lookback: diasLookback
+      })
     });
-    if(r.ok) empresas = await r.json();
-  } catch(e){ console.warn('[Fantasmas] Erro empresas:', e.message); }
+    if(rpcResp.ok){
+      fantasmasRaw = await rpcResp.json();
+      console.log('[Fantasmas] RPC retornou', fantasmasRaw.length, 'fantasmas');
+    } else {
+      var errTxt = await rpcResp.text();
+      console.warn('[Fantasmas] RPC erro HTTP '+rpcResp.status+':', errTxt);
+    }
+  } catch(e){ console.warn('[Fantasmas] RPC exceção:', e.message); }
   
-  console.log('[Fantasmas] Total empresas ativas:', empresas.length);
-  
-  // Filtra: cadastradas há diasMinCad+ dias E com data válida
-  var hoje = new Date();
-  var corteDataCad = new Date(hoje.getTime() - diasMinCad*86400000);
-  
-  var candidatas = empresas.filter(function(e){
-    if(!e.data_hora_cadastro) return false;
-    var dtCad = new Date(String(e.data_hora_cadastro).replace(' ', 'T'));
-    if(isNaN(dtCad.getTime())) return false;
-    return dtCad <= corteDataCad;
-  });
-  
-  console.log('[Fantasmas] Candidatas (cadastradas há '+diasMinCad+'+ dias):', candidatas.length);
-  
-  if(candidatas.length === 0){
+  // Se a RPC não existir ainda, retorna vazio com aviso
+  if(!Array.isArray(fantasmasRaw)){
     return {
       id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
-      descricao:'⚡ Supabase · Empresas ATIVAS cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos',
+      descricao:'⚠️ RPC empresas_fantasmas não está disponível. Rode o SQL sql_rpc_fantasmas.sql no Supabase.',
       cidade:c, colunas:[], linhas:[], vazio:true,
       kpis:[{ label:'👻 Fantasmas', valor:0, cor:'#5DCAA5' }]
     };
   }
   
-  // 2) Conta pedidos por nome (LOWER+TRIM) usando RPC otimizada
-  var contagemPorNome = {};
-  try {
-    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
-      method:'POST',
-      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
-    });
-    if(rpcResp.ok){
-      var corridas = await rpcResp.json();
-      (corridas || []).forEach(function(c){
-        contagemPorNome[(c.nome_passageiro||'').toLowerCase().trim()] = parseInt(c.total_corridas)||0;
-      });
-    }
-  } catch(e){ console.warn('[Fantasmas] Erro RPC contagem:', e.message); }
-  
-  // 3) Filtra fantasmas: candidatas com pedidos <= maxPedidos
-  var fantasmas = candidatas.map(function(e){
-    var nomeKey = (e.nome||'').toLowerCase().trim();
-    var pedidos = contagemPorNome[nomeKey] || 0;
-    var dtCad = new Date(String(e.data_hora_cadastro).replace(' ', 'T'));
-    var diasCad = Math.floor((hoje - dtCad) / 86400000);
-    return {
-      nome: e.nome,
-      bairro: e.bairro || '',
-      telefone: e.telefone || '',
-      data_cadastro: dtCad,
-      data_cadastro_fmt: dtCad.toLocaleDateString('pt-BR'),
-      dias_cadastrado: diasCad,
-      pedidos_total: pedidos
-    };
-  }).filter(function(e){ return e.pedidos_total <= maxPedidos; });
-  
-  console.log('[Fantasmas] '+fantasmas.length+' fantasmas (com 0-'+maxPedidos+' pedidos em '+diasLookback+'d)');
-  
-  // 4) Ordena: MAIS RECENTE → MAIS ANTIGA (do recém cadastrado pro mais distante)
-  fantasmas.sort(function(a,b){ return a.dias_cadastrado - b.dias_cadastrado; });
-  
   var colunas = ['Empresa','Bairro','Cadastro','Há quanto tempo','Pedidos','📞 Telefone'];
-  var linhas = fantasmas.map(function(f){
+  var linhas = fantasmasRaw.map(function(f){
     // Icone baseado em quanto tempo está fantasma (mais antigo = mais grave)
-    var icone = f.dias_cadastrado >= 180 ? '🔴' : f.dias_cadastrado >= 90 ? '🟠' : '🟡';
+    var diasCad = parseInt(f.dias_cadastrado) || 0;
+    var icone = diasCad >= 180 ? '🔴' : diasCad >= 90 ? '🟠' : '🟡';
     
     // Telefone com link WhatsApp
     var tel = f.telefone || '';
@@ -12294,18 +12256,26 @@ async function _sb_empresas_fantasmas(){
     }
     
     // Badge de pedidos
+    var qtd = parseInt(f.qtd_pedidos) || 0;
     var pedBadge;
-    if(f.pedidos_total === 0){
+    if(qtd === 0){
       pedBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FCEBEB;color:#A32D2D;font-weight:700">0 pedidos</span>';
     } else {
-      pedBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FAEEDA;color:#854F0B;font-weight:700">'+f.pedidos_total+' pedidos</span>';
+      pedBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FAEEDA;color:#854F0B;font-weight:700">'+qtd+' pedidos</span>';
+    }
+    
+    // Formata data
+    var dtFmt = '—';
+    if(f.data_cadastro){
+      var dt = new Date(f.data_cadastro);
+      if(!isNaN(dt.getTime())) dtFmt = dt.toLocaleDateString('pt-BR');
     }
     
     return [
-      icone+' '+f.nome,
+      icone+' '+(f.nome||'?'),
       f.bairro || '—',
-      f.data_cadastro_fmt,
-      f.dias_cadastrado+' dias',
+      dtFmt,
+      diasCad+' dias',
       pedBadge,
       telCell
     ];
@@ -12314,9 +12284,9 @@ async function _sb_empresas_fantasmas(){
   return {
     id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
     descricao:'⚡ Supabase · Empresas ATIVAS cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos (janela '+diasLookback+'d) · ordenadas da mais recente pra mais antiga',
-    cidade:c, colunas:colunas, linhas:linhas, vazio: fantasmas.length === 0,
+    cidade:c, colunas:colunas, linhas:linhas, vazio: fantasmasRaw.length === 0,
     kpis:[
-      { label:'👻 Fantasmas', valor:fantasmas.length, cor:'#5DCAA5' }
+      { label:'👻 Fantasmas', valor:fantasmasRaw.length, cor:'#5DCAA5' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Cadastradas há:</strong>'
