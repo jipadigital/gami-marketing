@@ -1,4 +1,4 @@
-<!-- v24.07 - Tabela enxuta sumidas: só Paradas + Telefone (sem projeções) - 02/06/2026 -->
+<!-- v24.08 - Fix Saúde do Sistema: fallback se RPC contar_corridas não existir - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -15157,9 +15157,26 @@ async function _buscarStatusSyncPorCidade(){
       method:'POST',
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
       body: '{}'
-    }).then(function(r){return r.ok ? r.json() : [];}).catch(function(){return [];}),
+    }).then(function(r){return r.ok ? r.json() : null;}).catch(function(){return null;}),
     _rlSupaQuery('machine_sync_log?status=eq.concluido&order=finalizado_em.desc&limit=200').catch(function(){return [];})
   ]);
+  
+  // 🔧 Fallback: se a RPC não existir, conta via query agregada com PostgREST
+  if(!contagensRes){
+    console.warn('[Saúde Sistema] RPC contar_corridas_por_cidade não existe, usando fallback');
+    try {
+      // PostgREST permite uma agregação simples via prefer header
+      var r2 = await fetch(SUPA_URL+'/rest/v1/machine_corridas?select=cidade_slug,total:count(),ultima_corrida:data_hora_solicitacao.max()', {
+        headers: { 
+          'apikey': SUPA_KEY, 
+          'Authorization': 'Bearer '+SUPA_KEY,
+          'Prefer': 'count=exact'
+        }
+      });
+      if(r2.ok) contagensRes = await r2.json();
+    } catch(e){ contagensRes = []; }
+    contagensRes = contagensRes || [];
+  }
   
   // contagensRes: [ { cidade_slug, total, primeira_corrida, ultima_corrida }, ... ]
   var porSlug = {};
