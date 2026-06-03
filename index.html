@@ -1,4 +1,4 @@
-<!-- v24.03 - Telefone explícito em PDF/CSV/print + emoji como link separado - 02/06/2026 -->
+<!-- v24.05 - Simplifica KPIs de Empresas/Motoboys sumidos para só 1 KPI - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11578,14 +11578,14 @@ async function _sb_empresas_sumidas(){
   if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
   
   // 🎯 PROJEÇÃO DE PERDAS: estima quanto cada empresa DEIXOU DE PEDIR desde que sumiu
-  // Fórmula: (volume_histórico / dias_distintos_ativos) × dias_sem_pedir
-  // Usa dias_distintos (dias EFETIVOS) — não a janela total — pra projetar com base no ritmo REAL da empresa
+  // Fórmula: (volume_histórico / dias_lookback) × dias_sem_pedir
+  // 🔧 v24.04: usa janela TOTAL (30d) em vez de dias_distintos pra não inflar projeção
+  //         de empresas esporádicas que só pedem em poucos dias do mês
   sumidas.forEach(function(e){
-    var diasDist = parseInt(e.dias_distintos) || 1;
     var diasSem = parseInt(e.dias_sem_pedir) || 0;
-    e.corridas_proj_perdidas = Math.round(((parseInt(e.total_corridas) || 0) / diasDist) * diasSem);
-    e.paradas_proj_perdidas = Math.round(((parseInt(e.total_paradas) || 0) / diasDist) * diasSem);
-    e.valor_proj_perdido = (parseFloat(e.valor_total) || 0) / diasDist * diasSem;
+    e.corridas_proj_perdidas = Math.round(((parseInt(e.total_corridas) || 0) / diasLookback) * diasSem);
+    e.paradas_proj_perdidas = Math.round(((parseInt(e.total_paradas) || 0) / diasLookback) * diasSem);
+    e.valor_proj_perdido = (parseFloat(e.valor_total) || 0) / diasLookback * diasSem;
   });
   
   // 📞 Garante que telefones foram carregados antes de renderizar
@@ -11631,7 +11631,7 @@ async function _sb_empresas_sumidas(){
     return row;
   });
   
-  // Totais agregados
+  // Totais agregados (mantém só pra log/console)
   var totParadasHist = sumidas.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0);
   var totParadasProj = sumidas.reduce(function(s,e){return s+e.paradas_proj_perdidas;},0);
   var totValorHist = sumidas.reduce(function(s,e){return s+parseFloat(e.valor_total||0);},0);
@@ -11640,21 +11640,15 @@ async function _sb_empresas_sumidas(){
   var ordemTxt = {urgencia:'URGÊNCIA (regularidade × tempo sumida)', recente:'mais recentes (acabaram de sumir)', antiga:'mais antigas (sumidas há mais tempo)', valor:'maior faturamento perdido', paradas:'mais paradas perdidas'}[ordem] || 'urgência';
   
   var kpis = [
-    { label:'🏪 Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' },
-    { label:'📊 Paradas histórico (30d)', valor:totParadasHist.toLocaleString('pt-BR'), cor:'#1AB8F0' },
-    { label:'🔻 Paradas projetadas perdidas', valor:totParadasProj.toLocaleString('pt-BR'), cor:'#E24B4A' }
+    { label:'🏪 Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' }
   ];
-  if(podeValor){
-    kpis.push({ label:'💰 Faturamento histórico (30d)', valor:'R$ '+totValorHist.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' });
-    kpis.push({ label:'💸 Faturamento projetado perdido', valor:'R$ '+totValorProj.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#E24B4A' });
-  }
   
   // Explicação informativa
   var explicacao = '<div style="background:#F5F8FB;padding:10px 12px;border-left:3px solid #1AB8F0;border-radius:6px;margin-top:10px;font-size:11px;color:#56627a;line-height:1.55">'
     +'<strong style="color:#0B2542">📖 Como ler:</strong><br>'
-    +'<strong>📊 Histórico (30d)</strong>: o que essas empresas <em>FIZERAM</em> nos últimos 30 dias (volume real). Mostra o "tamanho" do conjunto sumido.<br>'
-    +'<strong>🔻 Projetadas perdidas</strong>: o que essas empresas <em>TERIAM FEITO</em> desde que sumiram (ritmo médio × dias sem pedir). Mostra o custo de cada dia parado.<br>'
-    +'<strong style="color:#1D9E75">Exemplo:</strong> Padaria A faz ~3 paradas/dia ativo. Sumiu há 5 dias = projeção: 15 paradas perdidas. Cada dia adicional sem ligação aumenta a perda.'
+    +'<strong>📊 Histórico (30d)</strong>: o que essas empresas <em>FIZERAM</em> nos últimos 30 dias (volume real).<br>'
+    +'<strong>🔻 Projetadas perdidas</strong>: o que essas empresas <em>TERIAM FEITO</em> nos dias sumidas, mantendo o mesmo ritmo proporcional do mês.<br>'
+    +'<strong style="color:#1D9E75">Cálculo:</strong> (faturamento ÷ 30 dias) × dias sem pedir. <strong>Exemplo:</strong> empresa fez R$ 3.000 no mês e sumiu há 8 dias = R$ 800 projetados perdidos.'
     +'</div>';
   
   return {
@@ -12060,12 +12054,12 @@ async function _sb_motoboys_ausentes(){
   console.log('[Motoboys Sumidos]', slug, '· Total:', lista.length, '· Sumidos ativos:', sumidos.length);
   
   // 🎯 PROJEÇÃO DE PERDAS pra motoboys
+  // 🔧 v24.04: usa janela TOTAL (30d) em vez de dias_distintos
   sumidos.forEach(function(m){
-    var diasDist = parseInt(m.dias_distintos) || 1;
     var diasSem = parseInt(m.dias_sem_rodar) || 0;
-    m.corridas_proj_perdidas = Math.round(((parseInt(m.total_corridas) || 0) / diasDist) * diasSem);
-    m.paradas_proj_perdidas = Math.round(((parseInt(m.total_paradas) || 0) / diasDist) * diasSem);
-    m.valor_proj_perdido = (parseFloat(m.valor_total) || 0) / diasDist * diasSem;
+    m.corridas_proj_perdidas = Math.round(((parseInt(m.total_corridas) || 0) / diasLookback) * diasSem);
+    m.paradas_proj_perdidas = Math.round(((parseInt(m.total_paradas) || 0) / diasLookback) * diasSem);
+    m.valor_proj_perdido = (parseFloat(m.valor_total) || 0) / diasLookback * diasSem;
   });
   
   // 📞 Aguarda telefones antes de renderizar
@@ -12103,27 +12097,21 @@ async function _sb_motoboys_ausentes(){
     return row;
   });
   
-  // Totais
+  // Totais (mantém pra log/console)
   var totParadasHistM = sumidos.reduce(function(s,m){return s+parseInt(m.total_paradas||0);},0);
   var totParadasProjM = sumidos.reduce(function(s,m){return s+m.paradas_proj_perdidas;},0);
   var totValorHistM = sumidos.reduce(function(s,m){return s+parseFloat(m.valor_total||0);},0);
   var totValorProjM = sumidos.reduce(function(s,m){return s+m.valor_proj_perdido;},0);
   
   var kpisM = [
-    { label:'🏍️ Motoboys sumidos', valor:sumidos.length, cor:'#E24B4A' },
-    { label:'📊 Paradas histórico (30d)', valor:totParadasHistM.toLocaleString('pt-BR'), cor:'#1AB8F0' },
-    { label:'🔻 Paradas projetadas perdidas', valor:totParadasProjM.toLocaleString('pt-BR'), cor:'#E24B4A' }
+    { label:'🏍️ Motoboys sumidos', valor:sumidos.length, cor:'#E24B4A' }
   ];
-  if(podeValor){
-    kpisM.push({ label:'💰 Faturamento histórico (30d)', valor:'R$ '+totValorHistM.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' });
-    kpisM.push({ label:'💸 Faturamento projetado perdido', valor:'R$ '+totValorProjM.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#E24B4A' });
-  }
   
   var explicacaoM = '<div style="background:#F5F8FB;padding:10px 12px;border-left:3px solid #1AB8F0;border-radius:6px;margin-top:10px;font-size:11px;color:#56627a;line-height:1.55">'
     +'<strong style="color:#0B2542">📖 Como ler:</strong><br>'
-    +'<strong>📊 Histórico (30d)</strong>: o que esses motoboys <em>FIZERAM</em> nos últimos 30 dias (volume real). Mostra a "produtividade" do conjunto sumido.<br>'
-    +'<strong>🔻 Projetadas perdidas</strong>: o que esses motoboys <em>TERIAM ENTREGUE</em> desde que sumiram (ritmo médio × dias sem rodar). Mostra o custo de cada dia parado.<br>'
-    +'<strong style="color:#1D9E75">Exemplo:</strong> Motoboy João faz ~12 paradas/dia ativo. Sumiu há 4 dias = projeção: 48 paradas perdidas. Cada dia sem ele aumenta a perda da operação.'
+    +'<strong>📊 Histórico (30d)</strong>: o que esses motoboys <em>FIZERAM</em> nos últimos 30 dias (volume real).<br>'
+    +'<strong>🔻 Projetadas perdidas</strong>: o que esses motoboys <em>TERIAM ENTREGUE</em> nos dias sumidos, mantendo o mesmo ritmo proporcional do mês.<br>'
+    +'<strong style="color:#1D9E75">Cálculo:</strong> (paradas ÷ 30 dias) × dias sem rodar. <strong>Exemplo:</strong> motoboy fez 300 paradas no mês e sumiu há 5 dias = 50 paradas projetadas perdidas.'
     +'</div>';
   
   return {
