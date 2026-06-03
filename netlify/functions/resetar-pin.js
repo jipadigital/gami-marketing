@@ -81,10 +81,12 @@ exports.handler = async function(event){
         'Prefer': 'return=minimal'
       },
       body: JSON.stringify({
-        pin: pinHash,
+        pin_hash: pinHash,
+        pin_trocado: true,
         token_recuperacao: null,
         token_recuperacao_exp: null,
-        token_atual: null  // força novo login com PIN novo
+        token_atual: null,  // força novo login com PIN novo
+        updated_at: new Date().toISOString()
       })
     });
     
