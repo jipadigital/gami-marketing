@@ -1,4 +1,4 @@
-<!-- v24.18 - Em queda: estratégia 2-chamadas (sem RPC nova) pra evitar timeout - 03/06/2026 -->
+<!-- v24.19 - Em queda simplificado: só contagem de corridas 30d vs 30d - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11897,15 +11897,14 @@ async function _sb_empresas_sumidas(){
 }
 
 /* ─── 2) EMPRESAS EM QUEDA (Supabase + hoje) ─── */
-/* v24.18: compara 30d x 30d usando RPC empresas_atividade_real (2x) — evita timeout */
+/* v24.19: contagem simples 30d vs 30d (mês ant vs mês atual) — sem filtros complexos */
 async function _sb_empresas_queda(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var quedaMin = _RL.quedaMin || 20;
-  var ativaMin = _RL.ativaMinQueda !== undefined ? _RL.ativaMinQueda : 10;
   
   console.log('═══════════════════════════════════════════════════');
-  console.log('[📉 Em Queda 30x30] slug:', slug, '| queda min:', quedaMin, '| ativa min:', ativaMin);
+  console.log('[📉 Em Queda] slug:', slug, '| queda min:', quedaMin);
   
   if(!slug){
     return {
@@ -11916,10 +11915,15 @@ async function _sb_empresas_queda(){
     };
   }
   
-  // 🎯 Estratégia: chama RPC existente (que JÁ funciona) duas vezes
-  // - 30d = mês atual
-  // - 60d = total dos 2 meses
-  // Aí calcula: antigo = total60d - recente30d
+  // Calcula datas reais pra mostrar no relatório
+  var hoje = new Date();
+  var d30 = new Date(hoje.getTime() - 30*86400000);
+  var d60 = new Date(hoje.getTime() - 60*86400000);
+  var fmt = function(d){ return d.toLocaleDateString('pt-BR'); };
+  var periodoAtual = fmt(d30)+' a '+fmt(hoje);
+  var periodoAnterior = fmt(d60)+' a '+fmt(d30);
+  
+  // Chama RPC empresas_atividade_real 2x (30d e 60d) + telefones em paralelo
   var [resp30, resp60, mapTel] = await Promise.all([
     fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
       method:'POST',
@@ -11957,44 +11961,29 @@ async function _sb_empresas_queda(){
   var mapRecente = {};
   resp30.forEach(function(e){
     var k = (e.nome_passageiro||'').toLowerCase().trim();
-    if(k) mapRecente[k] = e;
+    if(k) mapRecente[k] = parseInt(e.total_corridas||0);
   });
   
-  // Para cada empresa do total 60d, calcula período antigo (30-60d) e compara
+  // Para cada empresa do total 60d: antigo = total - recente
   var emQueda = [];
   resp60.forEach(function(t60){
     var k = (t60.nome_passageiro||'').toLowerCase().trim();
     if(!k) return;
     
-    var rec = mapRecente[k];
     var qtd_total = parseInt(t60.total_corridas||0);
-    var qtd_recente = rec ? parseInt(rec.total_corridas||0) : 0;
+    var qtd_recente = mapRecente[k] || 0;
     var qtd_antigo = qtd_total - qtd_recente;
     
-    if(qtd_antigo < 3) return; // precisa ter tido pedidos antes
+    if(qtd_antigo < 1) return; // precisa ter pedidos no período anterior pra comparar
     
-    // Calcula queda %
-    var queda = qtd_antigo > 0 ? Math.round(((qtd_antigo - qtd_recente) / qtd_antigo) * 100) : 0;
+    var queda = Math.round(((qtd_antigo - qtd_recente) / qtd_antigo) * 100);
     if(queda < quedaMin) return;
-    
-    // Filtra: empresa ainda ATIVA (último pedido recente)
-    var diasSem = rec ? parseInt(rec.dias_sem_pedir||999) : 999;
-    if(diasSem >= 5) return;
-    
-    // Frequência mín no período recente
-    var diasDist = rec ? parseInt(rec.dias_distintos||0) : 0;
-    if(diasDist < ativaMin) return;
     
     emQueda.push({
       nome: t60.nome_passageiro,
       count_recente: qtd_recente,
       count_antigo: qtd_antigo,
       queda_pct: queda,
-      dias_distintos: diasDist,
-      dias_sem_pedir: diasSem,
-      ultima_corrida: rec ? rec.ultima_corrida : t60.ultima_corrida,
-      total_paradas: rec ? parseInt(rec.total_paradas||0) : 0,
-      valor_total: rec ? parseFloat(rec.valor_total||0) : 0,
       telefone: mapTel[k] || ''
     });
   });
@@ -12004,20 +11993,9 @@ async function _sb_empresas_queda(){
   console.log('[📉 Em Queda] '+slug+' · '+emQueda.length+' empresas em queda ≥'+quedaMin+'%');
   console.log('═══════════════════════════════════════════════════');
   
-  var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','Atividade 30d','Último','Mês ant. → Mês atual','Queda %','📞 Telefone'];
-  if(podeValor) colunas.push('Faturamento');
-  
+  var colunas = ['Empresa','Mês anterior','Mês atual','Queda %','📞 Telefone'];
   var linhas = emQueda.map(function(e){
-    var queda = e.queda_pct;
-    var icone = queda >= 60 ? '🔴' : queda >= 40 ? '🟠' : '🟡';
-    var ultFmt = '—';
-    if(e.ultima_corrida){
-      var dt = new Date(e.ultima_corrida);
-      if(!isNaN(dt.getTime())) ultFmt = dt.toLocaleDateString('pt-BR') + ' ('+e.dias_sem_pedir+'d)';
-    }
-    var ativ = e.dias_distintos+'/30d';
-    var variacao = e.count_antigo+' → '+e.count_recente+' corr';
+    var icone = e.queda_pct >= 60 ? '🔴' : e.queda_pct >= 40 ? '🟠' : '🟡';
     
     var tel = e.telefone || '';
     var telLimpo = tel.replace(/\D/g, '');
@@ -12029,21 +12007,22 @@ async function _sb_empresas_queda(){
       telCell = '<span style="color:#999;font-size:11px">—</span>';
     }
     
-    var row = [icone+' '+e.nome, ativ, ultFmt, variacao, '-'+queda+'%', telCell];
-    if(podeValor){
-      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
-    }
-    return row;
+    return [
+      icone+' '+e.nome,
+      e.count_antigo+' corridas',
+      e.count_recente+' corridas',
+      '-'+e.queda_pct+'%',
+      telCell
+    ];
   });
   
   return {
     id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
-    descricao:'⚡ Supabase · Lojas ativas ('+ativaMin+'+ dias) que reduziram '+quedaMin+'%+ comparando <strong>mês anterior (30-60d) vs mês atual (30d)</strong>',
+    descricao:'⚡ Supabase · Comparando <strong>mês anterior ('+periodoAnterior+') vs mês atual ('+periodoAtual+')</strong> · queda ≥'+quedaMin+'%',
     cidade:c, colunas:colunas, linhas:linhas, vazio: emQueda.length === 0,
     kpis:[
-      { label:'Lojas em queda', valor:emQueda.length, cor:'#EF9F27' },
-      { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0].queda_pct+'%' : '—', cor:'#E24B4A' },
-      { label:'Corridas perdidas', valor:emQueda.reduce(function(s,e){return s+Math.max(0,e.count_antigo-e.count_recente);},0), cor:'#E24B4A' }
+      { label:'📉 Lojas em queda', valor:emQueda.length, cor:'#EF9F27' },
+      { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0].queda_pct+'%' : '—', cor:'#E24B4A' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mín:</strong>'
@@ -12052,14 +12031,7 @@ async function _sb_empresas_queda(){
           +'<option value="20"'+(quedaMin===20?' selected':'')+'>20%+</option>'
           +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+</option>'
           +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+</option>'
-        +'</select>'
-      +'</label>'
-      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Frequência mín:</strong>'
-        +'<select onchange="_RL.ativaMinQueda=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
-          +'<option value="5"'+(ativaMin===5?' selected':'')+'>5+ dias</option>'
-          +'<option value="10"'+(ativaMin===10?' selected':'')+'>10+ dias</option>'
-          +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias</option>'
-          +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias</option>'
+          +'<option value="70"'+(quedaMin===70?' selected':'')+'>70%+</option>'
         +'</select>'
       +'</label>'
     +'</div>'
