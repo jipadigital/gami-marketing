@@ -1,4 +1,4 @@
-<!-- v24.05 - Simplifica KPIs de Empresas/Motoboys sumidos para só 1 KPI - 02/06/2026 -->
+<!-- v24.07 - Tabela enxuta sumidas: só Paradas + Telefone (sem projeções) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11592,9 +11592,7 @@ async function _sb_empresas_sumidas(){
   await promiseTelefones;
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa', 'Frequência', 'Último pedido', 'Sem pedir há', 'Paradas 30d', '🔻 Paradas perdidas'];
-  if(podeValor) colunas.push('Faturamento 30d','🔻 R$ perdido');
-  colunas.push('📞 Telefone');
+  var colunas = ['Empresa', 'Frequência', 'Último pedido', 'Sem pedir há', 'Paradas', '📞 Telefone'];
   
   var linhas = sumidas.map(function(e){
     var icone = e.dias_sem_pedir >= 30 ? '🔴' : e.dias_sem_pedir >= 15 ? '🟠' : '🟡';
@@ -11608,27 +11606,20 @@ async function _sb_empresas_sumidas(){
     var telLimpo = tel.replace(/\D/g, '');
     var telCell;
     if(telLimpo && telLimpo.length >= 10){
-      // Número EXPLÍCITO em texto preto (aparece no PDF) + ícone WhatsApp como link
       telCell = '<span style="font-weight:600;color:#1a1a1a">'+tel+'</span> '
         + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
     } else {
       telCell = '<span style="color:#999;font-size:11px">—</span>';
     }
     
-    var row = [
+    return [
       icone+' '+e.nome_passageiro,
       atividade,
       ultFmt,
       e.dias_sem_pedir+' dias',
       (e.total_paradas||0),
-      e.paradas_proj_perdidas,
+      telCell
     ];
-    if(podeValor){
-      row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
-      row.push('R$ '+e.valor_proj_perdido.toFixed(2));
-    }
-    row.push(telCell);
-    return row;
   });
   
   // Totais agregados (mantém só pra log/console)
@@ -11643,17 +11634,9 @@ async function _sb_empresas_sumidas(){
     { label:'🏪 Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' }
   ];
   
-  // Explicação informativa
-  var explicacao = '<div style="background:#F5F8FB;padding:10px 12px;border-left:3px solid #1AB8F0;border-radius:6px;margin-top:10px;font-size:11px;color:#56627a;line-height:1.55">'
-    +'<strong style="color:#0B2542">📖 Como ler:</strong><br>'
-    +'<strong>📊 Histórico (30d)</strong>: o que essas empresas <em>FIZERAM</em> nos últimos 30 dias (volume real).<br>'
-    +'<strong>🔻 Projetadas perdidas</strong>: o que essas empresas <em>TERIAM FEITO</em> nos dias sumidas, mantendo o mesmo ritmo proporcional do mês.<br>'
-    +'<strong style="color:#1D9E75">Cálculo:</strong> (faturamento ÷ 30 dias) × dias sem pedir. <strong>Exemplo:</strong> empresa fez R$ 3.000 no mês e sumiu há 8 dias = R$ 800 projetados perdidos.'
-    +'</div>';
-  
   return {
     id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
-    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por '+ordemTxt + explicacao,
+    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por '+ordemTxt,
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
     kpis: kpis,
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
@@ -12066,9 +12049,7 @@ async function _sb_motoboys_ausentes(){
   await promiseTelMot;
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Motoboy','Frequência','Última','Sem rodar há','Paradas 30d','🔻 Paradas perdidas'];
-  if(podeValor) colunas.push('Faturamento 30d','🔻 R$ perdido');
-  colunas.push('📞 Telefone');
+  var colunas = ['Motoboy','Frequência','Última','Sem rodar há','Paradas','📞 Telefone'];
   
   var linhas = sumidos.map(function(m){
     var icone = m.dias_sem_rodar >= 14 ? '🔴' : m.dias_sem_rodar >= 7 ? '🟠' : '🟡';
@@ -12087,14 +12068,14 @@ async function _sb_motoboys_ausentes(){
       telCell = '<span style="color:#999;font-size:11px">—</span>';
     }
     
-    var row = [icone+' '+m.nome_condutor, ativ, ultFmt, m.dias_sem_rodar+' dias',
-               (parseInt(m.total_paradas)||0), m.paradas_proj_perdidas];
-    if(podeValor){
-      row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
-      row.push('R$ '+m.valor_proj_perdido.toFixed(2));
-    }
-    row.push(telCell);
-    return row;
+    return [
+      icone+' '+m.nome_condutor,
+      ativ,
+      ultFmt,
+      m.dias_sem_rodar+' dias',
+      (parseInt(m.total_paradas)||0),
+      telCell
+    ];
   });
   
   // Totais (mantém pra log/console)
@@ -12107,16 +12088,9 @@ async function _sb_motoboys_ausentes(){
     { label:'🏍️ Motoboys sumidos', valor:sumidos.length, cor:'#E24B4A' }
   ];
   
-  var explicacaoM = '<div style="background:#F5F8FB;padding:10px 12px;border-left:3px solid #1AB8F0;border-radius:6px;margin-top:10px;font-size:11px;color:#56627a;line-height:1.55">'
-    +'<strong style="color:#0B2542">📖 Como ler:</strong><br>'
-    +'<strong>📊 Histórico (30d)</strong>: o que esses motoboys <em>FIZERAM</em> nos últimos 30 dias (volume real).<br>'
-    +'<strong>🔻 Projetadas perdidas</strong>: o que esses motoboys <em>TERIAM ENTREGUE</em> nos dias sumidos, mantendo o mesmo ritmo proporcional do mês.<br>'
-    +'<strong style="color:#1D9E75">Cálculo:</strong> (paradas ÷ 30 dias) × dias sem rodar. <strong>Exemplo:</strong> motoboy fez 300 paradas no mês e sumiu há 5 dias = 50 paradas projetadas perdidas.'
-    +'</div>';
-  
   return {
     id:'motoboys_ausentes', icone:'😴', titulo:'Motoboys sumidos ativos',
-    descricao:'⚡ Supabase · Motoboys com '+ativaMin+'+ dias rodando nos últimos '+diasLookback+' que estão há '+semHa+'+ dias sem rodar'+explicacaoM,
+    descricao:'⚡ Supabase · Motoboys com '+ativaMin+'+ dias rodando nos últimos '+diasLookback+' que estão há '+semHa+'+ dias sem rodar',
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidos.length === 0,
     kpis: kpisM,
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
