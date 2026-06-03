@@ -1,4 +1,4 @@
-<!-- v23.98 - FIX CRÍTICO: relatórios sempre caíam no legado por causa de view inexistente + slug sem hífen - 02/06/2026 -->
+<!-- v23.99 - Seletor de ordenação em Empresas/Motoboys sumidos - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11518,15 +11518,31 @@ async function _sb_empresas_sumidas(){
         && (e.dias_distintos === undefined || e.dias_distintos >= ativaMin);
   });
   
-  // 🎯 Ordena por URGÊNCIA: empresas MAIS REGULARES sumidas há MAIS TEMPO aparecem primeiro
-  // urgencia = dias_distintos × dias_sem_pedir × (1 + paradas/100)
-  // Faz uma empresa diária (28/30) sumida há 7 dias aparecer antes de uma esporádica (10/30) sumida há 30
+  // 🎯 Ordena conforme escolha do usuário (_RL.ordemSumidas)
+  // urgencia = regularidade × dias sumida + log(paradas) × 5
   sumidas.forEach(function(e){
     var freq = e.dias_distintos || 0;
     var bonus = Math.log(1 + (e.total_paradas || 0)) * 5;
     e._urgencia = (freq * e.dias_sem_pedir) + bonus;
   });
-  sumidas.sort(function(a,b){ return b._urgencia - a._urgencia; });
+  
+  var ordem = _RL.ordemSumidas || 'urgencia';
+  if(ordem === 'recente'){
+    // Recém sumidas primeiro (menos dias sem pedir)
+    sumidas.sort(function(a,b){ return a.dias_sem_pedir - b.dias_sem_pedir; });
+  } else if(ordem === 'antiga'){
+    // Mais tempo sumidas primeiro (mais dias sem pedir)
+    sumidas.sort(function(a,b){ return b.dias_sem_pedir - a.dias_sem_pedir; });
+  } else if(ordem === 'valor'){
+    // Maior faturamento perdido primeiro
+    sumidas.sort(function(a,b){ return parseFloat(b.valor_total||0) - parseFloat(a.valor_total||0); });
+  } else if(ordem === 'paradas'){
+    // Maior volume de paradas primeiro
+    sumidas.sort(function(a,b){ return parseInt(b.total_paradas||0) - parseInt(a.total_paradas||0); });
+  } else {
+    // Default: urgência (regularidade × dias sumida)
+    sumidas.sort(function(a,b){ return b._urgencia - a._urgencia; });
+  }
   
   console.log('[Sumidas]', c, '· Total empresas:', lista.length, '· Sumidas ATIVAS ('+ativaMin+'+ dias na janela + '+semHa+'+ sem pedir):', sumidas.length);
   if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
@@ -11556,9 +11572,11 @@ async function _sb_empresas_sumidas(){
     return row;
   });
   
+  var ordemTxt = {urgencia:'URGÊNCIA (regularidade × tempo sumida)', recente:'mais recentes (acabaram de sumir)', antiga:'mais antigas (sumidas há mais tempo)', valor:'maior faturamento perdido', paradas:'mais paradas perdidas'}[ordem] || 'urgência';
+  
   return {
     id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
-    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por URGÊNCIA (regularidade × tempo sumida)',
+    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por '+ordemTxt,
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
     kpis:[
       { label:'Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' },
@@ -11582,6 +11600,15 @@ async function _sb_empresas_sumidas(){
           +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias (ativa)</option>'
           +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias (super ativa)</option>'
           +'<option value="25"'+(ativaMin===25?' selected':'')+'>25+ dias (diária)</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Ordenar por:</strong>'
+        +'<select onchange="_RL.ordemSumidas=this.value;_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="urgencia"'+(ordem==='urgencia'?' selected':'')+'>🎯 Urgência</option>'
+          +'<option value="recente"'+(ordem==='recente'?' selected':'')+'>📅 Recém sumidas</option>'
+          +'<option value="antiga"'+(ordem==='antiga'?' selected':'')+'>⏳ Sumidas há mais tempo</option>'
+          +'<option value="valor"'+(ordem==='valor'?' selected':'')+'>💰 Maior faturamento</option>'
+          +'<option value="paradas"'+(ordem==='paradas'?' selected':'')+'>📦 Mais paradas</option>'
         +'</select>'
       +'</label>'
     +'</div>'
@@ -11923,7 +11950,19 @@ async function _sb_motoboys_ausentes(){
     var bonus = Math.log(1 + (parseInt(m.total_paradas) || 0)) * 5;
     m._urgencia = (freq * diasSum) + bonus;
   });
-  sumidos.sort(function(a,b){ return b._urgencia - a._urgencia; });
+  
+  var ordem = _RL.ordemMotoboysSumidos || 'urgencia';
+  if(ordem === 'recente'){
+    sumidos.sort(function(a,b){ return parseInt(a.dias_sem_rodar||0) - parseInt(b.dias_sem_rodar||0); });
+  } else if(ordem === 'antiga'){
+    sumidos.sort(function(a,b){ return parseInt(b.dias_sem_rodar||0) - parseInt(a.dias_sem_rodar||0); });
+  } else if(ordem === 'valor'){
+    sumidos.sort(function(a,b){ return parseFloat(b.valor_total||0) - parseFloat(a.valor_total||0); });
+  } else if(ordem === 'paradas'){
+    sumidos.sort(function(a,b){ return parseInt(b.total_paradas||0) - parseInt(a.total_paradas||0); });
+  } else {
+    sumidos.sort(function(a,b){ return b._urgencia - a._urgencia; });
+  }
   
   console.log('[Motoboys Sumidos]', slug, '· Total:', lista.length, '· Sumidos ativos:', sumidos.length);
   
@@ -11970,6 +12009,15 @@ async function _sb_motoboys_ausentes(){
           +'<option value="10"'+(ativaMin===10?' selected':'')+'>10+ dias</option>'
           +'<option value="15"'+(ativaMin===15?' selected':'')+'>15+ dias</option>'
           +'<option value="21"'+(ativaMin===21?' selected':'')+'>21+ dias</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Ordenar por:</strong>'
+        +'<select onchange="_RL.ordemMotoboysSumidos=this.value;_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="urgencia"'+(ordem==='urgencia'?' selected':'')+'>🎯 Urgência</option>'
+          +'<option value="recente"'+(ordem==='recente'?' selected':'')+'>📅 Recém sumidos</option>'
+          +'<option value="antiga"'+(ordem==='antiga'?' selected':'')+'>⏳ Sumidos há mais tempo</option>'
+          +'<option value="valor"'+(ordem==='valor'?' selected':'')+'>💰 Maior faturamento</option>'
+          +'<option value="paradas"'+(ordem==='paradas'?' selected':'')+'>📦 Mais paradas</option>'
         +'</select>'
       +'</label>'
     +'</div>'
