@@ -1,4 +1,4 @@
-<!-- v24.11 - Recuperação automática de PIN por email + cadastro de 3 prospectoras - 03/06/2026 -->
+<!-- v24.12 - Novo relatório: Empresas Fantasmas (cadastradas mas nunca/quase nunca pediram) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11055,7 +11055,10 @@ var RELATORIOS = {
         temValor:false, fase:1 },
       { id:'top_clientes', icone:'🏆', nome:'Top clientes do período',
         descricao:'Empresas que mais geraram paradas no período',
-        temValor:true, fase:1 }
+        temValor:true, fase:1 },
+      { id:'empresas_fantasmas', icone:'👻', nome:'Empresas fantasmas',
+        descricao:'Cadastradas há 30+ dias mas com 0-2 pedidos — não engajaram após cadastro',
+        temValor:false, fase:1 }
     ]
   },
   motoboys: {
@@ -12193,6 +12196,149 @@ async function _sb_top_clientes(){
   };
 }
 
+/* ─── 4.1) EMPRESAS FANTASMAS (cadastradas mas nunca pediram) ─── */
+async function _sb_empresas_fantasmas(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var diasMinCad = _RL.diasMinCad !== undefined ? _RL.diasMinCad : 30;  // cadastrada há pelo menos N dias
+  var maxPedidos = _RL.maxPedidos !== undefined ? _RL.maxPedidos : 2;   // 0 a N pedidos
+  var diasLookback = 60;  // janela de checagem de pedidos (busca histórica)
+  
+  console.log('[Fantasmas] Buscando empresas cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos em '+slug);
+  
+  // 1) Busca empresas ATIVAS (status A) da cidade
+  var empresas = [];
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&status_empresa=eq.A&select=id,nome,telefone,bairro,data_hora_cadastro&limit=10000', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+    });
+    if(r.ok) empresas = await r.json();
+  } catch(e){ console.warn('[Fantasmas] Erro empresas:', e.message); }
+  
+  console.log('[Fantasmas] Total empresas ativas:', empresas.length);
+  
+  // Filtra: cadastradas há diasMinCad+ dias E com data válida
+  var hoje = new Date();
+  var corteDataCad = new Date(hoje.getTime() - diasMinCad*86400000);
+  
+  var candidatas = empresas.filter(function(e){
+    if(!e.data_hora_cadastro) return false;
+    var dtCad = new Date(String(e.data_hora_cadastro).replace(' ', 'T'));
+    if(isNaN(dtCad.getTime())) return false;
+    return dtCad <= corteDataCad;
+  });
+  
+  console.log('[Fantasmas] Candidatas (cadastradas há '+diasMinCad+'+ dias):', candidatas.length);
+  
+  if(candidatas.length === 0){
+    return {
+      id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
+      descricao:'⚡ Supabase · Empresas ATIVAS cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'👻 Fantasmas', valor:0, cor:'#5DCAA5' }]
+    };
+  }
+  
+  // 2) Conta pedidos por nome (LOWER+TRIM) usando RPC otimizada
+  var contagemPorNome = {};
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
+    });
+    if(rpcResp.ok){
+      var corridas = await rpcResp.json();
+      (corridas || []).forEach(function(c){
+        contagemPorNome[(c.nome_passageiro||'').toLowerCase().trim()] = parseInt(c.total_corridas)||0;
+      });
+    }
+  } catch(e){ console.warn('[Fantasmas] Erro RPC contagem:', e.message); }
+  
+  // 3) Filtra fantasmas: candidatas com pedidos <= maxPedidos
+  var fantasmas = candidatas.map(function(e){
+    var nomeKey = (e.nome||'').toLowerCase().trim();
+    var pedidos = contagemPorNome[nomeKey] || 0;
+    var dtCad = new Date(String(e.data_hora_cadastro).replace(' ', 'T'));
+    var diasCad = Math.floor((hoje - dtCad) / 86400000);
+    return {
+      nome: e.nome,
+      bairro: e.bairro || '',
+      telefone: e.telefone || '',
+      data_cadastro: dtCad,
+      data_cadastro_fmt: dtCad.toLocaleDateString('pt-BR'),
+      dias_cadastrado: diasCad,
+      pedidos_total: pedidos
+    };
+  }).filter(function(e){ return e.pedidos_total <= maxPedidos; });
+  
+  console.log('[Fantasmas] '+fantasmas.length+' fantasmas (com 0-'+maxPedidos+' pedidos em '+diasLookback+'d)');
+  
+  // 4) Ordena: MAIS RECENTE → MAIS ANTIGA (do recém cadastrado pro mais distante)
+  fantasmas.sort(function(a,b){ return a.dias_cadastrado - b.dias_cadastrado; });
+  
+  var colunas = ['Empresa','Bairro','Cadastro','Há quanto tempo','Pedidos','📞 Telefone'];
+  var linhas = fantasmas.map(function(f){
+    // Icone baseado em quanto tempo está fantasma (mais antigo = mais grave)
+    var icone = f.dias_cadastrado >= 180 ? '🔴' : f.dias_cadastrado >= 90 ? '🟠' : '🟡';
+    
+    // Telefone com link WhatsApp
+    var tel = f.telefone || '';
+    var telLimpo = tel.replace(/\D/g, '');
+    var telCell;
+    if(telLimpo && telLimpo.length >= 10){
+      telCell = '<span style="font-weight:600;color:#1a1a1a">'+tel+'</span> '
+        + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
+    } else {
+      telCell = '<span style="color:#999;font-size:11px">—</span>';
+    }
+    
+    // Badge de pedidos
+    var pedBadge;
+    if(f.pedidos_total === 0){
+      pedBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FCEBEB;color:#A32D2D;font-weight:700">0 pedidos</span>';
+    } else {
+      pedBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FAEEDA;color:#854F0B;font-weight:700">'+f.pedidos_total+' pedidos</span>';
+    }
+    
+    return [
+      icone+' '+f.nome,
+      f.bairro || '—',
+      f.data_cadastro_fmt,
+      f.dias_cadastrado+' dias',
+      pedBadge,
+      telCell
+    ];
+  });
+  
+  return {
+    id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
+    descricao:'⚡ Supabase · Empresas ATIVAS cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos (janela '+diasLookback+'d) · ordenadas da mais recente pra mais antiga',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: fantasmas.length === 0,
+    kpis:[
+      { label:'👻 Fantasmas', valor:fantasmas.length, cor:'#5DCAA5' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Cadastradas há:</strong>'
+        +'<select onchange="_RL.diasMinCad=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="15"'+(diasMinCad===15?' selected':'')+'>15+ dias</option>'
+          +'<option value="30"'+(diasMinCad===30?' selected':'')+'>30+ dias</option>'
+          +'<option value="60"'+(diasMinCad===60?' selected':'')+'>60+ dias</option>'
+          +'<option value="90"'+(diasMinCad===90?' selected':'')+'>90+ dias</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Pedidos máx:</strong>'
+        +'<select onchange="_RL.maxPedidos=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="0"'+(maxPedidos===0?' selected':'')+'>0 pedidos</option>'
+          +'<option value="1"'+(maxPedidos===1?' selected':'')+'>0-1 pedidos</option>'
+          +'<option value="2"'+(maxPedidos===2?' selected':'')+'>0-2 pedidos</option>'
+          +'<option value="5"'+(maxPedidos===5?' selected':'')+'>0-5 pedidos</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
 /* ─── 5) MOTOBOYS AUSENTES (Supabase + hoje) ─── */
 async function _sb_motoboys_ausentes(){
   var c = _rlGetCidade();
@@ -13077,6 +13223,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'empresas_alta':      return temSupa ? await _sb_empresas_alta() : (window._gen_empresas_alta ? _gen_empresas_alta(dados) : { id:'empresas_alta', icone:'📈', titulo:'Empresas em alta', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] });
     case 'clientes_novos':     return temSupa ? await _sb_clientes_novos() : _gen_clientes_novos(dados);
     case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
+    case 'empresas_fantasmas': return temSupa ? await _sb_empresas_fantasmas() : { id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
     case 'motoboys_queda':     return temSupa ? await _sb_motoboys_queda() : { id:'motoboys_queda', icone:'📉', titulo:'Motoboys em queda', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
     case 'top_motoboys':       return temSupa ? await _sb_top_motoboys() : _gen_top_motoboys(dados);
