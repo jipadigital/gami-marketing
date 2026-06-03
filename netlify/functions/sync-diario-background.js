@@ -1,259 +1,246 @@
 // netlify/functions/sync-diario-background.js
-// Sincronização automática Machine → Supabase
-// Roda às 3h da manhã (6h UTC) todos os dias
-// Pra cada cidade: puxa últimas 48h, salva no Supabase, atualiza views
+// 
+// SYNC INCREMENTAL DIARIO - roda 1x ao dia via Netlify Scheduled Functions
+// Pega so corridas NOVAS (desde a ultima sincronizacao)
+// Salva com slug correto (hifen) - NUNCA underscore
+// 
+// Background Functions tem timeout de 15 minutos
 // ============================================================
 
-const { schedule } = require('@netlify/functions');
-
 const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
-// Service key bypassa RLS — só funciona em env var do Netlify (nunca expor)
-const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY || process.env.SUPA_PUBLIC_KEY || 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
+const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 
-// Cidades a sincronizar (slugs igual ao machine.js)
+// Cidades com slug CORRETO (com hifen)
 const CIDADES = [
-  { slug: 'fortaleza', nome: 'Fortaleza/CE' },
-  { slug: 'maceio', nome: 'Maceió/AL' },
-  { slug: 'joao_pessoa', nome: 'João Pessoa/PB' },
-  { slug: 'recife', nome: 'Recife/PE' },
-  { slug: 'natal', nome: 'Natal/RN' },
-  { slug: 'aracaju', nome: 'Aracaju/SE' },
-  { slug: 'sao_luis', nome: 'São Luís/MA' },
-  { slug: 'cuiaba', nome: 'Cuiabá/MT' },
-  { slug: 'teresina', nome: 'Teresina/PI' },
-  { slug: 'vitoria', nome: 'Vitória/ES' },
-  { slug: 'campo_grande', nome: 'Campo Grande/MS' }
+  { slug: 'maceio',       envSufixo: 'MACEIO' },
+  { slug: 'fortaleza',    envSufixo: 'FORTALEZA' },
+  { slug: 'joao-pessoa',  envSufixo: 'JOAO_PESSOA' },
+  { slug: 'recife',       envSufixo: 'RECIFE' },
+  { slug: 'natal',        envSufixo: 'NATAL' },
+  { slug: 'aracaju',      envSufixo: 'ARACAJU' },
+  { slug: 'sao-luis',     envSufixo: 'SAO_LUIS' },
+  { slug: 'cuiaba',       envSufixo: 'CUIABA' },
+  { slug: 'teresina',     envSufixo: 'TERESINA' },
+  { slug: 'vitoria',      envSufixo: 'VITORIA' },
+  { slug: 'campo-grande', envSufixo: 'CAMPO_GRANDE' }
 ];
 
-// Helper: chama a função machine.js do próprio Netlify
-async function chamarMachine(slug, recurso, dataInicio, dataFim, siteUrl){
-  const base = siteUrl + '/.netlify/functions/machine';
-  let url = `${base}?cidade=${encodeURIComponent(slug)}&recurso=${recurso}`;
-  if(dataInicio) url += `&data_inicio=${dataInicio}`;
-  if(dataFim) url += `&data_fim=${dataFim}`;
-  
-  const r = await fetch(url);
-  if(!r.ok) throw new Error(`Machine ${slug}/${recurso} HTTP ${r.status}`);
-  const data = await r.json();
-  return (data && Array.isArray(data.response)) ? data.response : [];
-}
+// ====================================================================
+// Helpers
+// ====================================================================
 
-// Helper: upsert no Supabase em batches
-async function upsertSupabase(tabela, registros){
-  if(!registros.length) return { ok: 0, erro: 0 };
-  const BATCH = 500;
-  let ok = 0, erro = 0;
-  
-  for(let i = 0; i < registros.length; i += BATCH){
-    const lote = registros.slice(i, i+BATCH);
-    try {
-      const r = await fetch(`${SUPA_URL}/rest/v1/${tabela}`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPA_SERVICE_KEY,
-          'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates,return=minimal'
-        },
-        body: JSON.stringify(lote)
-      });
-      if(r.ok) ok += lote.length;
-      else erro += lote.length;
-    } catch(e) { erro += lote.length; }
-  }
-  return { ok, erro };
-}
-
-// Helper: cria registro de log
-async function criarLog(slug, nome){
+async function logSync(cidade_slug, status, detalhes){
   try {
-    const r = await fetch(`${SUPA_URL}/rest/v1/machine_sync_log`, {
+    await fetch(SUPA_URL+'/rest/v1/machine_sync_log', {
       method: 'POST',
       headers: {
         'apikey': SUPA_SERVICE_KEY,
-        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-      },
-      body: JSON.stringify({
-        cidade_slug: slug,
-        cidade_nome: nome,
-        dias_solicitados: 2,
-        status: 'rodando',
-        usuario: 'sync-automatico'
-      })
-    });
-    if(r.ok){
-      const arr = await r.json();
-      return arr[0] ? arr[0].id : null;
-    }
-  } catch(e) {}
-  return null;
-}
-
-async function atualizarLog(id, dados){
-  if(!id) return;
-  try {
-    await fetch(`${SUPA_URL}/rest/v1/machine_sync_log?id=eq.${id}`, {
-      method: 'PATCH',
-      headers: {
-        'apikey': SUPA_SERVICE_KEY,
-        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
+        'Authorization': 'Bearer '+SUPA_SERVICE_KEY,
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal'
       },
-      body: JSON.stringify(dados)
+      body: JSON.stringify({
+        cidade_slug: cidade_slug,
+        status: status,
+        iniciado_em: detalhes.iniciado_em || new Date().toISOString(),
+        finalizado_em: new Date().toISOString(),
+        total_corridas: detalhes.total_corridas || 0,
+        total_inseridas: detalhes.total_inseridas || 0,
+        observacoes: (detalhes.obs || '') + ' [automatico]'
+      })
     });
-  } catch(e) {}
+  } catch(e){ console.error('[log] erro:', e.message); }
 }
 
-// Helper: sincroniza UMA cidade (últimas 48h)
-async function sincronizarCidade(cidade, siteUrl){
-  const inicioTs = Date.now();
-  const logId = await criarLog(cidade.slug, cidade.nome);
-  
-  console.log(`[sync] Iniciando ${cidade.nome}...`);
-  
+async function pegarUltimoTimestamp(cidade_slug){
+  // Pega o timestamp da corrida mais recente no Supabase
   try {
-    // Pega últimas 48h em 2 chunks de 1 dia (em paralelo)
-    const hoje = new Date(); hoje.setHours(0,0,0,0);
-    const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1);
-    const dh = hoje.toISOString().split('T')[0];
-    const dy = ontem.toISOString().split('T')[0];
-    
-    const [corridasOntem, corridasHoje] = await Promise.all([
-      chamarMachine(cidade.slug, 'solicitacao', dy, dy, siteUrl).catch(e => { console.warn(`Ontem ${cidade.slug}:`, e.message); return []; }),
-      chamarMachine(cidade.slug, 'solicitacao', dh, dh, siteUrl).catch(e => { console.warn(`Hoje ${cidade.slug}:`, e.message); return []; })
-    ]);
-    
-    const todasCorridas = [...corridasOntem, ...corridasHoje];
-    
-    // Pega condutores e empresas (snapshot)
-    const [condutores, empresas] = await Promise.all([
-      chamarMachine(cidade.slug, 'condutor', null, null, siteUrl).catch(e => []),
-      chamarMachine(cidade.slug, 'empresa', null, null, siteUrl).catch(e => [])
-    ]);
-    
-    // Mapeia pra formato Supabase
-    const corridasSupa = todasCorridas.map(x => ({
-      cidade_slug: cidade.slug,
-      id_solicitacao: String(x.id || x.id_solicitacao || ''),
-      data_hora_solicitacao: x.data_hora_solicitacao || x.data_solicitacao || new Date().toISOString(),
-      nome_passageiro: x.nome_passageiro || null,
-      condutor_id: x.condutor_id ? String(x.condutor_id) : (x.taxista_id ? String(x.taxista_id) : null),
-      nome_condutor: x.nome_condutor || x.nome_taxista || null,
-      valor_corrida: parseFloat(x.valor_corrida || x.valor || 0) || null,
-      status_solicitacao: x.status_solicitacao || x.status || null,
-      raw: x
-    })).filter(r => r.id_solicitacao);
-    
-    const condutoresSupa = condutores.map(x => ({
-      cidade_slug: cidade.slug,
-      id: String(x.id),
-      nome: x.nome || null,
-      telefone_celular: x.telefone_celular || x.telefone || x.celular || null,
-      status: x.status || null,
-      raw: x
-    })).filter(r => r.id);
-    
-    const empresasSupa = empresas.map(x => ({
-      cidade_slug: cidade.slug,
-      id: String(x.id),
-      nome: x.nome || null,
-      telefone: x.telefone || null,
-      bairro: x.bairro || null,
-      status_empresa: x.status_empresa || x.status || null,
-      raw: x
-    })).filter(r => r.id);
-    
-    // Upsert em paralelo
-    const [resCorr, resCond, resEmp] = await Promise.all([
-      upsertSupabase('machine_corridas', corridasSupa),
-      upsertSupabase('machine_condutores', condutoresSupa),
-      upsertSupabase('machine_empresas', empresasSupa)
-    ]);
-    
-    const duracao = Math.round((Date.now() - inicioTs) / 1000);
-    
-    await atualizarLog(logId, {
-      finalizado_em: new Date().toISOString(),
-      duracao_segundos: duracao,
-      corridas_inseridas: resCorr.ok,
-      corridas_erro: resCorr.erro,
-      condutores_inseridos: resCond.ok,
-      empresas_inseridas: resEmp.ok,
-      status: 'concluido'
+    const r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(cidade_slug)+'&select=data_hora_solicitacao&order=data_hora_solicitacao.desc&limit=1', {
+      headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
-    
-    console.log(`[sync] ✓ ${cidade.nome}: ${resCorr.ok} corridas, ${resCond.ok} cond, ${resEmp.ok} emp em ${duracao}s`);
-    return { ok: true, cidade: cidade.nome, corridas: resCorr.ok, duracao };
-    
-  } catch(e) {
-    await atualizarLog(logId, {
-      finalizado_em: new Date().toISOString(),
-      duracao_segundos: Math.round((Date.now() - inicioTs) / 1000),
-      status: 'erro',
-      mensagem_erro: e.message
-    });
-    console.error(`[sync] ✗ ${cidade.nome}:`, e.message);
-    return { ok: false, cidade: cidade.nome, erro: e.message };
-  }
+    if(!r.ok) return null;
+    const arr = await r.json();
+    if(arr.length === 0) return null;
+    return new Date(arr[0].data_hora_solicitacao);
+  } catch(e){ return null; }
 }
 
-// Handler principal
-const handler = async function(event, context) {
-  const inicio = Date.now();
-  const siteUrl = process.env.URL || `https://${event.headers?.host || 'gami-marketing.netlify.app'}`;
+async function buscarMachine(envSufixo, recurso, dataInicio){
+  const apiKey = process.env['MACHINE_API_KEY_'+envSufixo];
+  const user = process.env['MACHINE_USER_'+envSufixo];
+  const pass = process.env['MACHINE_PASS_'+envSufixo];
   
-  console.log(`🌙 Sync diário iniciado às ${new Date().toISOString()}`);
-  console.log(`Site: ${siteUrl}`);
-  
-  const resultados = [];
-  
-  // Processa cidades SEQUENCIALMENTE pra não estourar rate limit Machine
-  for(const cidade of CIDADES){
-    const res = await sincronizarCidade(cidade, siteUrl);
-    resultados.push(res);
-    // Pequena pausa entre cidades
-    await new Promise(r => setTimeout(r, 1000));
+  if(!apiKey || !user || !pass){
+    throw new Error('Credenciais Machine '+envSufixo+' nao configuradas');
   }
   
-  // Refresh das materialized views
-  try {
-    const r = await fetch(`${SUPA_URL}/rest/v1/rpc/refresh_machine_views`, {
+  // Endpoint Machine API
+  const baseUrl = 'https://api.taximachine.com.br/api/integracao';
+  let url = baseUrl + '/' + recurso + '?api_key=' + encodeURIComponent(apiKey);
+  if(dataInicio && recurso === 'solicitacao'){
+    const isoBR = dataInicio.toISOString().split('T')[0]; // YYYY-MM-DD
+    url += '&data_inicio=' + isoBR;
+  }
+  
+  const auth = Buffer.from(user+':'+pass).toString('base64');
+  const r = await fetch(url, {
+    headers: { 'Authorization': 'Basic '+auth }
+  });
+  
+  if(!r.ok) throw new Error('Machine '+recurso+' HTTP '+r.status);
+  const json = await r.json();
+  return json.response || [];
+}
+
+async function salvarLote(tabela, dados){
+  if(!dados || dados.length === 0) return 0;
+  // Salva em lotes de 500 pra nao estourar limite 10MB do Netlify
+  const TAM_LOTE = 500;
+  let total = 0;
+  for(let i = 0; i < dados.length; i += TAM_LOTE){
+    const lote = dados.slice(i, i + TAM_LOTE);
+    const r = await fetch(SUPA_URL+'/rest/v1/'+tabela+'?on_conflict=cidade_slug,id_solicitacao', {
       method: 'POST',
       headers: {
         'apikey': SUPA_SERVICE_KEY,
-        'Authorization': `Bearer ${SUPA_SERVICE_KEY}`,
-        'Content-Type': 'application/json'
+        'Authorization': 'Bearer '+SUPA_SERVICE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
       },
-      body: '{}'
+      body: JSON.stringify(lote)
     });
-    if(r.ok) console.log('[sync] ✓ Materialized views atualizadas');
-    else console.warn('[sync] ⚠ Refresh views falhou:', r.status);
-  } catch(e) {
-    console.warn('[sync] ⚠ Refresh views:', e.message);
+    if(r.ok) total += lote.length;
+  }
+  return total;
+}
+
+// ====================================================================
+// Sync de uma cidade
+// ====================================================================
+
+async function syncCidade(cidade){
+  const inicio = new Date();
+  console.log('\n========================================');
+  console.log('[SYNC] '+cidade.slug+' iniciado em', inicio.toISOString());
+  
+  try {
+    // 1) Pega ultimo timestamp pra fazer incremental
+    let dataInicio = await pegarUltimoTimestamp(cidade.slug);
+    if(!dataInicio){
+      // Primeira sync: pega ultimos 60 dias
+      dataInicio = new Date(Date.now() - 60*24*60*60*1000);
+      console.log('[SYNC] '+cidade.slug+' - primeira sync, pegando 60 dias');
+    } else {
+      // Volta 2 dias pra garantir overlap (idempotente devido ao on_conflict)
+      dataInicio = new Date(dataInicio.getTime() - 2*24*60*60*1000);
+      console.log('[SYNC] '+cidade.slug+' - incremental desde', dataInicio.toISOString().split('T')[0]);
+    }
+    
+    // 2) Busca da Machine
+    const [corridas, condutores, empresas] = await Promise.all([
+      buscarMachine(cidade.envSufixo, 'solicitacao', dataInicio),
+      buscarMachine(cidade.envSufixo, 'condutor', null),
+      buscarMachine(cidade.envSufixo, 'empresa', null)
+    ]);
+    
+    console.log('[SYNC] '+cidade.slug+' Machine: '+corridas.length+' corridas, '+condutores.length+' condutores, '+empresas.length+' empresas');
+    
+    // 3) Prepara corridas pra inserir (com slug CORRETO)
+    const corridasFmt = corridas.map(c => ({
+      cidade_slug: cidade.slug, // SEMPRE COM HIFEN
+      id_solicitacao: String(c.id || c.id_solicitacao || ''),
+      data_hora_solicitacao: c.data_hora_solicitacao || c.data || null,
+      nome_passageiro: c.nome_passageiro || '',
+      valor_corrida: parseFloat(c.valor_corrida || c.valor || 0),
+      status_solicitacao: c.status_solicitacao || c.status || '',
+      condutor_id: c.condutor_id ? String(c.condutor_id) : null,
+      raw: c
+    })).filter(x => x.id_solicitacao && x.data_hora_solicitacao);
+    
+    const condutoresFmt = condutores.map(co => ({
+      cidade_slug: cidade.slug,
+      id: String(co.id || ''),
+      nome: co.nome || '',
+      telefone_celular: co.telefone_celular || co.telefone || '',
+      status: co.status || '',
+      raw: co
+    })).filter(x => x.id);
+    
+    const empresasFmt = empresas.map(e => ({
+      cidade_slug: cidade.slug,
+      id: String(e.id || ''),
+      nome: e.nome || '',
+      telefone: e.telefone || '',
+      bairro: e.bairro || '',
+      status_empresa: e.status_empresa || e.status || '',
+      raw: e
+    })).filter(x => x.id);
+    
+    // 4) Salva no Supabase
+    const totalCorridas = await salvarLote('machine_corridas', corridasFmt);
+    const totalCondutores = await salvarLote('machine_condutores', condutoresFmt);
+    const totalEmpresas = await salvarLote('machine_empresas', empresasFmt);
+    
+    console.log('[SYNC] '+cidade.slug+' OK: '+totalCorridas+' corridas, '+totalCondutores+' condutores, '+totalEmpresas+' empresas salvos');
+    
+    await logSync(cidade.slug, 'concluido', {
+      iniciado_em: inicio.toISOString(),
+      total_corridas: corridas.length,
+      total_inseridas: totalCorridas,
+      obs: 'Corridas: '+totalCorridas+', Condutores: '+totalCondutores+', Empresas: '+totalEmpresas
+    });
+    
+    return { slug: cidade.slug, ok: true, corridas: totalCorridas, condutores: totalCondutores, empresas: totalEmpresas };
+    
+  } catch(err) {
+    console.error('[SYNC] '+cidade.slug+' ERRO:', err.message);
+    await logSync(cidade.slug, 'erro', {
+      iniciado_em: inicio.toISOString(),
+      obs: 'ERRO: '+err.message
+    });
+    return { slug: cidade.slug, ok: false, erro: err.message };
+  }
+}
+
+// ====================================================================
+// Handler principal (Background Function)
+// ====================================================================
+
+exports.handler = async function(event){
+  console.log('\n#####################################################');
+  console.log('# SYNC DIARIO AUTOMATICO');
+  console.log('# Inicio:', new Date().toISOString());
+  console.log('#####################################################\n');
+  
+  const resultados = [];
+  
+  // Roda cidades SEQUENCIALMENTE pra nao sobrecarregar
+  for(const cidade of CIDADES){
+    const r = await syncCidade(cidade);
+    resultados.push(r);
+    // Pausa de 1 segundo entre cidades
+    await new Promise(rs => setTimeout(rs, 1000));
   }
   
-  const duracaoTotal = Math.round((Date.now() - inicio) / 1000);
-  const sucessos = resultados.filter(r => r.ok).length;
-  const totalCorridas = resultados.reduce((s,r) => s + (r.corridas || 0), 0);
+  console.log('\n#####################################################');
+  console.log('# RESUMO FINAL:');
+  resultados.forEach(r => {
+    if(r.ok){
+      console.log('# ✓ '+r.slug+': '+r.corridas+' corridas');
+    } else {
+      console.log('# ✗ '+r.slug+': '+r.erro);
+    }
+  });
+  console.log('# Fim:', new Date().toISOString());
+  console.log('#####################################################\n');
   
-  console.log(`🌙 Sync diário concluído em ${duracaoTotal}s · ${sucessos}/${CIDADES.length} cidades OK · ${totalCorridas} corridas`);
-  
-  return {
-    statusCode: 200,
-    body: JSON.stringify({
-      ok: true,
-      duracao_total: duracaoTotal,
-      cidades_ok: sucessos,
-      cidades_total: CIDADES.length,
-      corridas_totais: totalCorridas,
-      resultados
-    })
+  return { 
+    statusCode: 200, 
+    body: JSON.stringify({ ok: true, resultados }) 
   };
 };
 
-// Schedule: 6h UTC = 3h Brasília (UTC-3)
-// Formato cron: minuto hora dia mês dia_semana
-exports.handler = schedule('0 6 * * *', handler);
+// Marca como Background Function (timeout 15min)
+exports.config = {
+  schedule: '@daily'
+};
