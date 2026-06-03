@@ -1,4 +1,4 @@
-<!-- v23.94 - Botão "Só listas" para sync rápido de condutores e empresas - 02/06/2026 -->
+<!-- v23.96 - Painel cidade Empresas Sumidas: regulares + urgência + 5 dias - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11398,7 +11398,7 @@ function _rlMesclarMotoboysHoje(historico, corridasHoje){
 async function _sb_empresas_sumidas(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
-  var semHa = _RL.semPedirHa || 3;
+  var semHa = _RL.semPedirHa || 5;  // 🔧 Era 3 — agora default 5 dias (3 era muito sensível pra clientes diários)
   var ativaMin = _RL.ativaMin !== undefined ? _RL.ativaMin : 10;  // dias distintos mínimos pra ser "ativa"
   var diasLookback = 30;  // janela curta (30 dias) — foco em padrão recente
   
@@ -11511,7 +11511,16 @@ async function _sb_empresas_sumidas(){
     return e.dias_sem_pedir >= semHa 
         && (e.dias_distintos === undefined || e.dias_distintos >= ativaMin);
   });
-  sumidas.sort(function(a,b){ return a.dias_sem_pedir - b.dias_sem_pedir; });
+  
+  // 🎯 Ordena por URGÊNCIA: empresas MAIS REGULARES sumidas há MAIS TEMPO aparecem primeiro
+  // urgencia = dias_distintos × dias_sem_pedir × (1 + paradas/100)
+  // Faz uma empresa diária (28/30) sumida há 7 dias aparecer antes de uma esporádica (10/30) sumida há 30
+  sumidas.forEach(function(e){
+    var freq = e.dias_distintos || 0;
+    var bonus = Math.log(1 + (e.total_paradas || 0)) * 5;
+    e._urgencia = (freq * e.dias_sem_pedir) + bonus;
+  });
+  sumidas.sort(function(a,b){ return b._urgencia - a._urgencia; });
   
   console.log('[Sumidas]', c, '· Total empresas:', lista.length, '· Sumidas ATIVAS ('+ativaMin+'+ dias na janela + '+semHa+'+ sem pedir):', sumidas.length);
   if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
@@ -11543,7 +11552,7 @@ async function _sb_empresas_sumidas(){
   
   return {
     id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
-    descricao:'⚡ Supabase · Lojas com pedidos em <strong>'+ativaMin+'+ dias</strong> dos últimos '+diasLookback+' (recorrentes) que estão há <strong>'+semHa+'+ dias sem pedir</strong>. Foco em retomar antes de virarem perda.',
+    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por URGÊNCIA (regularidade × tempo sumida)',
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
     kpis:[
       { label:'Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' },
@@ -11883,7 +11892,7 @@ async function _sb_top_clientes(){
 async function _sb_motoboys_ausentes(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
-  var semHa = _RL.semRodarHa || 3;
+  var semHa = _RL.semRodarHa || 5;  // 🔧 default 5 dias
   var ativaMin = _RL.ativaMinMot !== undefined ? _RL.ativaMinMot : 10;
   var diasLookback = 30;
   
@@ -11902,7 +11911,13 @@ async function _sb_motoboys_ausentes(){
     return parseInt(m.dias_distintos||0) >= ativaMin
         && parseInt(m.dias_sem_rodar||0) >= semHa;
   });
-  sumidos.sort(function(a,b){ return parseInt(a.dias_sem_rodar) - parseInt(b.dias_sem_rodar); });
+  sumidos.forEach(function(m){
+    var freq = parseInt(m.dias_distintos || 0);
+    var diasSum = parseInt(m.dias_sem_rodar || 0);
+    var bonus = Math.log(1 + (parseInt(m.total_paradas) || 0)) * 5;
+    m._urgencia = (freq * diasSum) + bonus;
+  });
+  sumidos.sort(function(a,b){ return b._urgencia - a._urgencia; });
   
   console.log('[Motoboys Sumidos]', slug, '· Total:', lista.length, '· Sumidos ativos:', sumidos.length);
   
@@ -19785,30 +19800,50 @@ function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
     var nOrig = (x.nome_passageiro||'').trim(); if(!nOrig) return;
     var nKey = nOrig.toLowerCase();
     var dStr = (x.data_hora_solicitacao||'').slice(0,10); if(!dStr) return;
-    if(!byEmp[nKey]) byEmp[nKey] = {nome:nOrig, ultima:dStr, total:0, variacoes:[nOrig]};
+    if(!byEmp[nKey]) byEmp[nKey] = {nome:nOrig, ultima:dStr, total:0, variacoes:[nOrig], diasSet:{}};
     if(dStr > byEmp[nKey].ultima) byEmp[nKey].ultima = dStr;
-    // Salva o nome mais comum como display (mantém capitalização original)
     if(byEmp[nKey].variacoes.indexOf(nOrig) < 0) byEmp[nKey].variacoes.push(nOrig);
     byEmp[nKey].total++;
+    byEmp[nKey].diasSet[dStr] = 1;  // conta dias distintos
   });
 
-  // Filtra: pediu em 45d mas sumiu ha 3+ dias (era 5, mudado conforme pedido)
-  var DIAS_MIN_SUMIDA = 3;
+  // 🎯 Filtra: REGULARES (pediram em 10+ dias distintos dos últimos 30) que sumiram há 5+ dias
+  // Janela de regularidade: últimos 30 dias (mais recente, foco no padrão atual)
+  var DIAS_MIN_SUMIDA = 5;  // 🔧 era 3 — agora 5 (3 era muito sensível pra diários)
+  var DIAS_REGULAR = 10;     // 10+ dias distintos pra ser "regular"
+  var JANELA_REGULAR = 30;   // últimos 30 dias da janela
+  var inicioJanela = new Date(hoje); inicioJanela.setDate(inicioJanela.getDate() - JANELA_REGULAR);
+  
   var sumidas = [];
   Object.values(byEmp).forEach(function(e){
     var ult = new Date(e.ultima+'T00:00:00');
     var dias = Math.floor((hoje - ult) / 86400000);
-    if(dias >= DIAS_MIN_SUMIDA){
-      var info = mapEmp[e.nome.toLowerCase()] || {};
-      sumidas.push({
-        nome: e.nome, dias: dias, total: e.total, ultima: e.ultima,
-        tel: info.telefone || '', status: info.status_empresa || '?', bairro: info.bairro || '',
-        variacoes: e.variacoes.length > 1 ? e.variacoes : null
-      });
-    }
+    if(dias < DIAS_MIN_SUMIDA) return;
+    
+    // Conta dias distintos APENAS dentro da janela de regularidade (últimos 30 dias)
+    var diasDistintosRecentes = 0;
+    Object.keys(e.diasSet).forEach(function(dStr){
+      var dt = new Date(dStr+'T00:00:00');
+      if(dt >= inicioJanela) diasDistintosRecentes++;
+    });
+    
+    if(diasDistintosRecentes < DIAS_REGULAR) return; // não é regular
+    
+    var info = mapEmp[e.nome.toLowerCase()] || {};
+    sumidas.push({
+      nome: e.nome, dias: dias, total: e.total, ultima: e.ultima,
+      diasDistintos: diasDistintosRecentes,
+      tel: info.telefone || '', status: info.status_empresa || '?', bairro: info.bairro || '',
+      variacoes: e.variacoes.length > 1 ? e.variacoes : null
+    });
   });
-  // Ordem crescente: mais recentes primeiro (3 dias, 4, 5...)
-  sumidas.sort(function(a,b){ return a.dias - b.dias; });
+  
+  // 🎯 Ordena por URGÊNCIA: regulares MAIS sumidas primeiro
+  // urgencia = regularidade × dias sumida + log(total) × 3
+  sumidas.forEach(function(s){
+    s._urgencia = (s.diasDistintos * s.dias) + Math.log(1 + s.total) * 3;
+  });
+  sumidas.sort(function(a,b){ return b._urgencia - a._urgencia; });
 
   // 🔍 Log de diagnóstico no console pra conferência (útil pra debug)
   if(sumidas.length > 0){
@@ -19822,16 +19857,16 @@ function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
   if(!sumidas.length){
     box.innerHTML = '<div class="card" style="background:#EAF3DE;border-left:4px solid #1D9E75">'
       + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">✅</span>'
-      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as empresas que pediram nos últimos 45 dias continuam ativas (pediram nos últimos '+DIAS_MIN_SUMIDA+' dias).</span></div></div>';
+      + '<span style="font-size:12px;color:#3B6D11;font-weight:500">Todas as empresas REGULARES ('+DIAS_REGULAR+'+ dias dos últimos '+JANELA_REGULAR+') continuam ativas (pediram nos últimos '+DIAS_MIN_SUMIDA+' dias).</span></div></div>';
     return;
   }
 
   var html = '<div class="card" style="background:#FEF3F2;border-left:4px solid #E24B4A">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-    + '<div style="font-size:11px;font-weight:700;color:#A93226;text-transform:uppercase;letter-spacing:.5px">🚨 Empresas Sumidas</div>'
+    + '<div style="font-size:11px;font-weight:700;color:#A93226;text-transform:uppercase;letter-spacing:.5px">🚨 Empresas Sumidas Ativas</div>'
     + '<span style="font-size:10px;color:#A93226;background:#E24B4A22;padding:2px 7px;border-radius:6px">'+sumidas.length+' lojas</span>'
     + '</div>'
-    + '<div style="font-size:11px;color:#A93226;margin-bottom:10px">Pediram nos últimos 45 dias mas estão há <strong>'+DIAS_MIN_SUMIDA+'+ dias sem pedir</strong>. Ordenadas das mais recentes para as mais antigas. <span style="font-size:10px;opacity:.7">(F12→Console pra log detalhado)</span></div>'
+    + '<div style="font-size:11px;color:#A93226;margin-bottom:10px">Empresas REGULARES ('+DIAS_REGULAR+'+ dias dos últimos '+JANELA_REGULAR+') que estão há <strong>'+DIAS_MIN_SUMIDA+'+ dias sem pedir</strong>. Ordenadas por urgência (regularidade × tempo sumida). <span style="font-size:10px;opacity:.7">(F12→Console pra log detalhado)</span></div>'
     + '<div style="max-height:520px;overflow-y:auto;padding-right:4px">';
 
   sumidas.forEach(function(e){
@@ -19841,7 +19876,7 @@ function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
       + '<span style="font-size:14px">🏪</span>'
       + '<div style="flex:1;min-width:0;cursor:pointer" onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')">'
         + '<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
-        + '<div style="font-size:10px;color:var(--text3)">Último pedido: '+e.ultima.split('-').reverse().join('/')+' · '+e.total+' pedidos nos últimos 45 dias'+(e.bairro?' · '+e.bairro:'')+'</div>'
+        + '<div style="font-size:10px;color:var(--text3)">Último: '+e.ultima.split('-').reverse().join('/')+' · '+e.total+' pedidos · <strong>'+e.diasDistintos+'/'+JANELA_REGULAR+'d ativa</strong>'+(e.bairro?' · '+e.bairro:'')+'</div>'
       + '</div>'
       + '<span style="font-size:11px;font-weight:700;color:white;background:'+corBadge+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+e.dias+' dias</span>'
       + (telLimpo ? '<a href="https://wa.me/55'+telLimpo+'" target="_blank" style="padding:4px 9px;border-radius:6px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600;white-space:nowrap">📱</a>' : '')
