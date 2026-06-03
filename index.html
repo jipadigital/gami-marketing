@@ -1,4 +1,4 @@
-<!-- v24.13 - Refatora fantasmas pra usar RPC dedicada (mais robusto) - 03/06/2026 -->
+<!-- v24.14 - Fantasmas: sempre chama RPC + logs detalhados + mensagens claras - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -12200,51 +12200,105 @@ async function _sb_top_clientes(){
 async function _sb_empresas_fantasmas(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
-  var diasMinCad = _RL.diasMinCad !== undefined ? _RL.diasMinCad : 30;  // cadastrada há pelo menos N dias
-  var maxPedidos = _RL.maxPedidos !== undefined ? _RL.maxPedidos : 2;   // 0 a N pedidos
-  var diasLookback = 45;  // janela de checagem de pedidos (mesma da aba Empresas)
+  var diasMinCad = _RL.diasMinCad !== undefined ? _RL.diasMinCad : 30;
+  var maxPedidos = _RL.maxPedidos !== undefined ? _RL.maxPedidos : 2;
+  var diasLookback = 45;
   
-  console.log('[Fantasmas] Buscando fantasmas em '+slug+' (cad '+diasMinCad+'+ dias, pedidos <='+maxPedidos+', janela '+diasLookback+'d)');
+  console.log('═══════════════════════════════════════════════════');
+  console.log('[👻 Fantasmas] INICIANDO');
+  console.log('  cidade nome:', c && c.nome);
+  console.log('  slug calculado:', slug);
+  console.log('  filtros: cad ≥'+diasMinCad+'d, pedidos ≤'+maxPedidos+', janela '+diasLookback+'d');
   
-  // Usa RPC dedicada que faz JOIN no SQL (mais robusto + mais rápido)
-  var fantasmasRaw = [];
-  try {
-    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_fantasmas', {
-      method:'POST',
-      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-      body: JSON.stringify({ 
-        p_cidade_slug: slug,
-        p_dias_min_cad: diasMinCad,
-        p_max_pedidos: maxPedidos,
-        p_dias_lookback: diasLookback
-      })
-    });
-    if(rpcResp.ok){
-      fantasmasRaw = await rpcResp.json();
-      console.log('[Fantasmas] RPC retornou', fantasmasRaw.length, 'fantasmas');
-    } else {
-      var errTxt = await rpcResp.text();
-      console.warn('[Fantasmas] RPC erro HTTP '+rpcResp.status+':', errTxt);
-    }
-  } catch(e){ console.warn('[Fantasmas] RPC exceção:', e.message); }
-  
-  // Se a RPC não existir ainda, retorna vazio com aviso
-  if(!Array.isArray(fantasmasRaw)){
+  if(!slug){
+    console.warn('[👻 Fantasmas] Slug vazio! Cidade não selecionada ou _rlSlug retornou null.');
     return {
       id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
-      descricao:'⚠️ RPC empresas_fantasmas não está disponível. Rode o SQL sql_rpc_fantasmas.sql no Supabase.',
+      descricao:'⚠️ Selecione uma cidade primeiro.',
       cidade:c, colunas:[], linhas:[], vazio:true,
       kpis:[{ label:'👻 Fantasmas', valor:0, cor:'#5DCAA5' }]
     };
   }
   
+  var fantasmasRaw = null;
+  var erroDetalhado = null;
+  
+  try {
+    var url = SUPA_URL+'/rest/v1/rpc/empresas_fantasmas';
+    var corpoReq = { 
+      p_cidade_slug: slug,
+      p_dias_min_cad: diasMinCad,
+      p_max_pedidos: maxPedidos,
+      p_dias_lookback: diasLookback
+    };
+    console.log('[👻 Fantasmas] POST '+url);
+    console.log('[👻 Fantasmas] body:', corpoReq);
+    
+    var rpcResp = await fetch(url, {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify(corpoReq)
+    });
+    
+    console.log('[👻 Fantasmas] HTTP status:', rpcResp.status);
+    
+    if(rpcResp.ok){
+      fantasmasRaw = await rpcResp.json();
+      console.log('[👻 Fantasmas] ✓ Resposta:', fantasmasRaw.length, 'fantasmas');
+      if(fantasmasRaw.length > 0) console.log('[👻 Fantasmas] primeira:', fantasmasRaw[0]);
+    } else {
+      var errTxt = await rpcResp.text();
+      console.error('[👻 Fantasmas] ❌ Erro HTTP:', rpcResp.status, errTxt);
+      erroDetalhado = 'HTTP '+rpcResp.status+': '+errTxt.substring(0,200);
+    }
+  } catch(e){ 
+    console.error('[👻 Fantasmas] ❌ Exceção:', e);
+    erroDetalhado = e.message;
+  }
+  console.log('═══════════════════════════════════════════════════');
+  
+  // Tratamento de erro/vazio
+  if(!Array.isArray(fantasmasRaw)){
+    return {
+      id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
+      descricao:'⚠️ RPC empresas_fantasmas falhou: '+(erroDetalhado||'erro desconhecido')+'. Rode o SQL sql_rpc_fantasmas_v2.sql no Supabase.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'👻 Fantasmas', valor:0, cor:'#5DCAA5' }]
+    };
+  }
+  
+  if(fantasmasRaw.length === 0){
+    return {
+      id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas',
+      descricao:'⚡ Supabase · Empresas ATIVAS cadastradas há '+diasMinCad+'+ dias com 0-'+maxPedidos+' pedidos (janela '+diasLookback+'d) · ordenadas da mais recente pra mais antiga<br><em style="color:var(--text3);font-size:11px">Nenhuma empresa encontrada com esses critérios em <strong>'+slug+'</strong>. Tenta diminuir o filtro "Cadastradas há" ou aumentar "Pedidos máx".</em>',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'👻 Fantasmas', valor:0, cor:'#5DCAA5' }],
+      filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+        +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Cadastradas há:</strong>'
+          +'<select onchange="_RL.diasMinCad=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+            +'<option value="15"'+(diasMinCad===15?' selected':'')+'>15+ dias</option>'
+            +'<option value="30"'+(diasMinCad===30?' selected':'')+'>30+ dias</option>'
+            +'<option value="60"'+(diasMinCad===60?' selected':'')+'>60+ dias</option>'
+            +'<option value="90"'+(diasMinCad===90?' selected':'')+'>90+ dias</option>'
+          +'</select>'
+        +'</label>'
+        +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Pedidos máx:</strong>'
+          +'<select onchange="_RL.maxPedidos=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+            +'<option value="0"'+(maxPedidos===0?' selected':'')+'>0 pedidos</option>'
+            +'<option value="1"'+(maxPedidos===1?' selected':'')+'>0-1 pedidos</option>'
+            +'<option value="2"'+(maxPedidos===2?' selected':'')+'>0-2 pedidos</option>'
+            +'<option value="5"'+(maxPedidos===5?' selected':'')+'>0-5 pedidos</option>'
+          +'</select>'
+        +'</label>'
+      +'</div>'
+    };
+  }
+  
   var colunas = ['Empresa','Bairro','Cadastro','Há quanto tempo','Pedidos','📞 Telefone'];
   var linhas = fantasmasRaw.map(function(f){
-    // Icone baseado em quanto tempo está fantasma (mais antigo = mais grave)
     var diasCad = parseInt(f.dias_cadastrado) || 0;
     var icone = diasCad >= 180 ? '🔴' : diasCad >= 90 ? '🟠' : '🟡';
     
-    // Telefone com link WhatsApp
     var tel = f.telefone || '';
     var telLimpo = tel.replace(/\D/g, '');
     var telCell;
@@ -12255,7 +12309,6 @@ async function _sb_empresas_fantasmas(){
       telCell = '<span style="color:#999;font-size:11px">—</span>';
     }
     
-    // Badge de pedidos
     var qtd = parseInt(f.qtd_pedidos) || 0;
     var pedBadge;
     if(qtd === 0){
@@ -12264,7 +12317,6 @@ async function _sb_empresas_fantasmas(){
       pedBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FAEEDA;color:#854F0B;font-weight:700">'+qtd+' pedidos</span>';
     }
     
-    // Formata data
     var dtFmt = '—';
     if(f.data_cadastro){
       var dt = new Date(f.data_cadastro);
@@ -13193,7 +13245,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'empresas_alta':      return temSupa ? await _sb_empresas_alta() : (window._gen_empresas_alta ? _gen_empresas_alta(dados) : { id:'empresas_alta', icone:'📈', titulo:'Empresas em alta', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] });
     case 'clientes_novos':     return temSupa ? await _sb_clientes_novos() : _gen_clientes_novos(dados);
     case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
-    case 'empresas_fantasmas': return temSupa ? await _sb_empresas_fantasmas() : { id:'empresas_fantasmas', icone:'👻', titulo:'Empresas fantasmas', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
+    case 'empresas_fantasmas': return await _sb_empresas_fantasmas();  // sempre tenta — RPC funciona em qualquer cidade sincronizada
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
     case 'motoboys_queda':     return temSupa ? await _sb_motoboys_queda() : { id:'motoboys_queda', icone:'📉', titulo:'Motoboys em queda', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
     case 'top_motoboys':       return temSupa ? await _sb_top_motoboys() : _gen_top_motoboys(dados);
