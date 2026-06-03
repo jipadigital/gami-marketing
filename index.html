@@ -1,4 +1,4 @@
-<!-- v23.99 - Seletor de ordenação em Empresas/Motoboys sumidos - 02/06/2026 -->
+<!-- v24.00 - Frequência com badges descritivos (Diária/Regular/Frequente/Esporádica) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11283,6 +11283,21 @@ async function _rlSupaQuery(path){
   return await r.json();
 }
 
+/* Helper: formata frequência de atividade em rótulo visual amigável
+   Em vez de "26/30d", mostra "🔥 Diária (26d)" */
+function _rlFmtFrequencia(diasDistintos, janela){
+  if(diasDistintos === undefined || diasDistintos === null) return '—';
+  var d = parseInt(diasDistintos) || 0;
+  var j = janela || 30;
+  // Categoria por percentual de presença na janela
+  var pct = d / j;
+  if(pct >= 0.83) return '🔥 Diária ('+d+'d)';       // 25+/30 (83%+)
+  if(pct >= 0.50) return '⭐ Regular ('+d+'d)';      // 15+/30 (50%+)
+  if(pct >= 0.33) return '📅 Frequente ('+d+'d)';    // 10+/30 (33%+)
+  if(pct >= 0.17) return '🌱 Esporádica ('+d+'d)';   // 5+/30 (17%+)
+  return '💤 Rara ('+d+'d)';                         // <5/30
+}
+
 /* Pega corridas de HOJE da Machine (em tempo real)
    Tenta cache primeiro pra economizar chamada */
 async function _rlPegarCorridasHoje(slug){
@@ -11548,13 +11563,13 @@ async function _sb_empresas_sumidas(){
   if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa', 'Atividade', 'Último pedido', 'Sem pedir há', 'Corridas', 'Paradas', '✅ Fin', '❌ Canc'];
+  var colunas = ['Empresa', 'Frequência', 'Último pedido', 'Sem pedir há', 'Corridas', 'Paradas', '✅ Fin', '❌ Canc'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = sumidas.map(function(e){
     var icone = e.dias_sem_pedir >= 30 ? '🔴' : e.dias_sem_pedir >= 15 ? '🟠' : '🟡';
     var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
-    var atividade = e.dias_distintos !== undefined ? (e.dias_distintos+'/'+diasLookback+'d') : '—';
+    var atividade = _rlFmtFrequencia(e.dias_distintos, diasLookback);
     var row = [
       icone+' '+e.nome_passageiro,
       atividade,
@@ -11967,13 +11982,13 @@ async function _sb_motoboys_ausentes(){
   console.log('[Motoboys Sumidos]', slug, '· Total:', lista.length, '· Sumidos ativos:', sumidos.length);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Motoboy','Atividade','Última','Sem rodar há','Corridas','Paradas','✅ Fin','❌ Canc'];
+  var colunas = ['Motoboy','Frequência','Última','Sem rodar há','Corridas','Paradas','✅ Fin','❌ Canc'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = sumidos.map(function(m){
     var icone = m.dias_sem_rodar >= 14 ? '🔴' : m.dias_sem_rodar >= 7 ? '🟠' : '🟡';
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
-    var ativ = m.dias_distintos+'/'+diasLookback+'d';
+    var ativ = _rlFmtFrequencia(m.dias_distintos, diasLookback);
     var row = [icone+' '+m.nome_condutor, ativ, ultFmt, m.dias_sem_rodar+' dias',
                (parseInt(m.total_corridas)||0), (parseInt(m.total_paradas)||0),
                (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0)];
@@ -12117,7 +12132,7 @@ async function _sb_motoboys_queda(){
   console.log('[Motoboys Em Queda] '+slug+' · '+emQueda.length+' regulares em queda ≥'+quedaMin+'%');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Motoboy','Atividade','Última','Corridas → Paradas','Queda %'];
+  var colunas = ['Motoboy','Frequência','Última','Corridas → Paradas','Queda %'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = emQueda.map(function(m){
@@ -19930,7 +19945,7 @@ function empRenderSumidas(corridas45d, empresasGeral, hojeStr){
       + '<span style="font-size:14px">🏪</span>'
       + '<div style="flex:1;min-width:0;cursor:pointer" onclick="empVerEmpresa(\''+encodeURIComponent(e.nome)+'\')">'
         + '<div style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
-        + '<div style="font-size:10px;color:var(--text3)">Último: '+e.ultima.split('-').reverse().join('/')+' · '+e.total+' pedidos · <strong>'+e.diasDistintos+'/'+JANELA_REGULAR+'d ativa</strong>'+(e.bairro?' · '+e.bairro:'')+'</div>'
+        + '<div style="font-size:10px;color:var(--text3)">Último: '+e.ultima.split('-').reverse().join('/')+' · '+e.total+' pedidos · <strong>'+_rlFmtFrequencia(e.diasDistintos, JANELA_REGULAR)+'</strong>'+(e.bairro?' · '+e.bairro:'')+'</div>'
       + '</div>'
       + '<span style="font-size:11px;font-weight:700;color:white;background:'+corBadge+';padding:3px 8px;border-radius:8px;white-space:nowrap">'+e.dias+' dias</span>'
       + (telLimpo ? '<a href="https://wa.me/55'+telLimpo+'" target="_blank" style="padding:4px 9px;border-radius:6px;background:#25D366;color:white;font-size:10px;text-decoration:none;font-weight:600;white-space:nowrap">📱</a>' : '')
