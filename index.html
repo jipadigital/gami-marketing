@@ -1,4 +1,4 @@
-<!-- v23.93 - Fix meta tag deprecated + SQL para tabelas opcionais - 02/06/2026 -->
+<!-- v23.94 - Fix sync condutores/empresas em lotes de 500 (era único, estourava 10MB) - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -14672,11 +14672,12 @@ async function iniciarSincronizacaoSupabase(cidadeId){
     if(_SYNC.cancelar) throw new Error('Cancelado pelo usuário');
     _syncLog('✓ Corridas: '+corridasSalvas.toLocaleString('pt-BR')+' salvas'+(corridasErro?' · '+corridasErro+' erros':''));
     
-    // ====== 5) Upsert condutores ======
+    // ====== 5) Upsert condutores (em lotes de 500 pra não estourar) ======
     _syncProgresso(92, 'Salvando condutores...', '');
     var condutoresOk = 0;
+    var condutoresErro = 0;
     if(condutores.length){
-      var loteCond = condutores.map(function(x){
+      var lotesCond = condutores.map(function(x){
         return {
           cidade_slug: slug, id: String(x.id),
           nome: x.nome || null,
@@ -14684,18 +14685,28 @@ async function iniciarSincronizacaoSupabase(cidadeId){
           status: x.status || null, raw: x
         };
       }).filter(function(r){ return r.id; });
-      try {
-        await _syncEscrever({ tabela: 'machine_condutores', operacao: 'upsert', dados: loteCond });
-        condutoresOk = loteCond.length;
-        _syncLog('✓ '+loteCond.length+' condutores salvos');
-      } catch(e){ _syncLog('✗ Erro condutores: '+e.message); }
+      
+      var BATCH_CD = 500;
+      for(var ic = 0; ic < lotesCond.length && !_SYNC.cancelar; ic += BATCH_CD){
+        var loteAtualCd = lotesCond.slice(ic, ic + BATCH_CD);
+        try {
+          await _syncEscrever({ tabela: 'machine_condutores', operacao: 'upsert', dados: loteAtualCd });
+          condutoresOk += loteAtualCd.length;
+        } catch(e){
+          condutoresErro += loteAtualCd.length;
+          _syncLog('✗ Lote condutores '+(Math.floor(ic/BATCH_CD)+1)+' falhou: '+e.message.substring(0,150));
+        }
+        _syncProgresso(92, 'Salvando condutores...', 'Salvos: <strong>'+condutoresOk.toLocaleString('pt-BR')+'</strong> de '+lotesCond.length.toLocaleString('pt-BR'));
+      }
+      _syncLog('✓ '+condutoresOk.toLocaleString('pt-BR')+' condutores salvos'+(condutoresErro?' · '+condutoresErro+' erros':''));
     }
     
-    // ====== 6) Upsert empresas ======
+    // ====== 6) Upsert empresas (em lotes de 500 pra não estourar) ======
     _syncProgresso(96, 'Salvando empresas...', '');
     var empresasOk = 0;
+    var empresasErro = 0;
     if(empresas.length){
-      var loteEmp = empresas.map(function(x){
+      var lotesEmp = empresas.map(function(x){
         return {
           cidade_slug: slug, id: String(x.id),
           nome: x.nome || null,
@@ -14703,11 +14714,20 @@ async function iniciarSincronizacaoSupabase(cidadeId){
           status_empresa: x.status_empresa || x.status || null, raw: x
         };
       }).filter(function(r){ return r.id; });
-      try {
-        await _syncEscrever({ tabela: 'machine_empresas', operacao: 'upsert', dados: loteEmp });
-        empresasOk = loteEmp.length;
-        _syncLog('✓ '+loteEmp.length+' empresas salvas');
-      } catch(e){ _syncLog('✗ Erro empresas: '+e.message); }
+      
+      var BATCH_EM = 500;
+      for(var ie = 0; ie < lotesEmp.length && !_SYNC.cancelar; ie += BATCH_EM){
+        var loteAtualEm = lotesEmp.slice(ie, ie + BATCH_EM);
+        try {
+          await _syncEscrever({ tabela: 'machine_empresas', operacao: 'upsert', dados: loteAtualEm });
+          empresasOk += loteAtualEm.length;
+        } catch(e){
+          empresasErro += loteAtualEm.length;
+          _syncLog('✗ Lote empresas '+(Math.floor(ie/BATCH_EM)+1)+' falhou: '+e.message.substring(0,150));
+        }
+        _syncProgresso(96, 'Salvando empresas...', 'Salvas: <strong>'+empresasOk.toLocaleString('pt-BR')+'</strong> de '+lotesEmp.length.toLocaleString('pt-BR'));
+      }
+      _syncLog('✓ '+empresasOk.toLocaleString('pt-BR')+' empresas salvas'+(empresasErro?' · '+empresasErro+' erros':''));
     }
     
     // ====== 7) Refresh das materialized views ======
