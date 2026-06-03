@@ -1,4 +1,4 @@
-<!-- v24.20 - Em queda: tabela com datas nos headers + números destacados - 03/06/2026 -->
+<!-- v24.21 - Em queda: filtro de mínimo de pedidos no mês anterior (default 5) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11902,9 +11902,10 @@ async function _sb_empresas_queda(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var quedaMin = _RL.quedaMin || 20;
+  var minAntes = _RL.minPedidosAntesQueda !== undefined ? _RL.minPedidosAntesQueda : 5;
   
   console.log('═══════════════════════════════════════════════════');
-  console.log('[📉 Em Queda] slug:', slug, '| queda min:', quedaMin);
+  console.log('[📉 Em Queda] slug:', slug, '| queda min:', quedaMin, '| min antes:', minAntes);
   
   if(!slug){
     return {
@@ -11974,7 +11975,7 @@ async function _sb_empresas_queda(){
     var qtd_recente = mapRecente[k] || 0;
     var qtd_antigo = qtd_total - qtd_recente;
     
-    if(qtd_antigo < 1) return; // precisa ter pedidos no período anterior pra comparar
+    if(qtd_antigo < minAntes) return; // precisa ter pedidos suficientes no período anterior
     
     var queda = Math.round(((qtd_antigo - qtd_recente) / qtd_antigo) * 100);
     if(queda < quedaMin) return;
@@ -12032,7 +12033,7 @@ async function _sb_empresas_queda(){
   
   return {
     id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
-    descricao:'⚡ Supabase · Comparando <strong>mês anterior ('+periodoAnterior+') vs mês atual ('+periodoAtual+')</strong> · queda ≥'+quedaMin+'%',
+    descricao:'⚡ Supabase · Comparando <strong>mês anterior ('+periodoAnterior+') vs mês atual ('+periodoAtual+')</strong> · queda ≥'+quedaMin+'% · mín. '+minAntes+' pedidos no mês anterior',
     cidade:c, colunas:colunas, linhas:linhas, vazio: emQueda.length === 0,
     kpis:[
       { label:'📉 Lojas em queda', valor:emQueda.length, cor:'#EF9F27' },
@@ -12046,6 +12047,15 @@ async function _sb_empresas_queda(){
           +'<option value="30"'+(quedaMin===30?' selected':'')+'>30%+</option>'
           +'<option value="50"'+(quedaMin===50?' selected':'')+'>50%+</option>'
           +'<option value="70"'+(quedaMin===70?' selected':'')+'>70%+</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Mín. pedidos antes:</strong>'
+        +'<select onchange="_RL.minPedidosAntesQueda=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="3"'+(minAntes===3?' selected':'')+'>3+ pedidos</option>'
+          +'<option value="5"'+(minAntes===5?' selected':'')+'>5+ pedidos</option>'
+          +'<option value="10"'+(minAntes===10?' selected':'')+'>10+ pedidos</option>'
+          +'<option value="20"'+(minAntes===20?' selected':'')+'>20+ pedidos</option>'
+          +'<option value="50"'+(minAntes===50?' selected':'')+'>50+ pedidos</option>'
         +'</select>'
       +'</label>'
     +'</div>'
