@@ -1,4 +1,4 @@
-<!-- v25.02 - Ranking com comparação justa (mesmos dias do mês ant) - 03/06/2026 -->
+<!-- v25.03 - Ranking PREMIUM no Dashboard: top 3 cards + broches destacados + fotos gestores - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -25549,7 +25549,7 @@ async function renderRankingCidades(forceRefresh){
   var nomeMes = meses[hoje.getMonth()] + ' de ' + hoje.getFullYear();
   if(label) label.textContent = nomeMes;
   
-  // Tenta cache primeiro (mesmo cache da aba Ranking)
+  // Tenta cache primeiro
   var cache = forceRefresh ? null : _rankingPegarCache();
   var lista = cache ? cache.data : null;
   
@@ -25579,67 +25579,149 @@ async function renderRankingCidades(forceRefresh){
     });
   }
   
-  // Monta lista com dados reais
+  // Slug pra montar URL do broche
+  function slugCidade(nome){
+    return nome.toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+  }
+  
+  // Monta dados
   var dados = lista.map(function(r){
     var info = RANKING_CIDADES_MAP[r.cidade_slug] || { nome: r.cidade_slug, uf: '?' };
     return {
       slug: r.cidade_slug,
       cidade: info.nome,
       uf: info.uf,
+      cidadeCompleta: info.nome + '/' + info.uf,
       paradas: parseInt(r.total_paradas) || 0,
       corridas: parseInt(r.corridas_finalizadas) || 0,
+      pctFin: parseFloat(r.pct_finalizadas) || 0,
       variacao: parseInt(r.variacao_pct) || 0,
       gestor: gestorDaCidade(info.nome)
     };
   });
   
-  var maxParadas = dados.length > 0 ? dados[0].paradas : 1;
-  var medalhas = ['🥇','🥈','🥉'];
+  if(dados.length === 0){
+    host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Nenhuma cidade com corridas neste mês.</div>';
+    return;
+  }
   
-  host.innerHTML = dados.map(function(item, idx){
-    var medalha = medalhas[idx] || '';
-    var pos = idx + 1;
-    var pct = maxParadas > 0 ? (item.paradas / maxParadas * 100) : 0;
-    var corBarra = idx === 0 ? '#FFD700' 
-                 : idx === 1 ? '#C0C0C0' 
-                 : idx === 2 ? '#CD7F32'
-                 : 'var(--gami-blue)';
-    var bgRow = idx < 3 ? 'linear-gradient(90deg, rgba(255,215,0,.06), transparent)' : 'transparent';
-    
-    // Broche da cidade (PNG)
-    var brocheCidade = (typeof brochCidadeHTML === 'function') 
-      ? brochCidadeHTML(item.cidade) 
-      : '';
-    
-    // Foto/avatar do gestor
-    var gestorHTML = '';
-    if(item.gestor){
-      var g = item.gestor;
-      var iniciais = (g.nome||'').split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
-      var avatarConteudo = (g.foto || g.foto_url)
-        ? '<img src="'+(g.foto || g.foto_url)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>'
-        : '<span style="font-size:10px;font-weight:700;color:#0E7AB8">'+iniciais+'</span>';
-      gestorHTML = '<div title="Gestor: '+g.nome+'" style="display:flex;align-items:center;gap:5px">'
-        + '<div style="width:24px;height:24px;border-radius:50%;background:#E6F6FE;border:2px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.08);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'+avatarConteudo+'</div>'
-        + '<span style="font-size:10px;color:var(--text3);white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis">'+(g.nome||'').split(' ')[0]+'</span>'
+  // Helper: avatar do gestor
+  function avatarGestor(g, tamanho){
+    if(!g){
+      return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;background:#f0f0f0;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:'+(tamanho/3)+'px;color:#bbb">?</div>';
+    }
+    var iniciais = (g.nome||'').split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase();
+    var fotoUrl = g.foto || g.foto_url;
+    if(fotoUrl){
+      return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;background:#E6F6FE;border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);overflow:hidden;flex-shrink:0">'
+        + '<img src="'+fotoUrl+'" style="width:100%;height:100%;object-fit:cover;display:block"/>'
         + '</div>';
     }
-    
-    // Variação
-    var varHTML = '';
-    if(item.variacao > 5) varHTML = '<span style="font-size:9px;color:#1D9E75;font-weight:700;margin-left:4px">+'+item.variacao+'%</span>';
-    else if(item.variacao < -5) varHTML = '<span style="font-size:9px;color:#E24B4A;font-weight:700;margin-left:4px">'+item.variacao+'%</span>';
-    
-    return '<div class="rk-row" style="background:'+bgRow+'">'
-      + '<span class="rk-pos" style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:800;color:var(--text2);text-align:center">'+pos+'°</span>'
-      + '<span class="rk-medalha" style="font-size:18px">'+medalha+'</span>'
-      + '<span class="rk-broche">'+brocheCidade+'</span>'
-      + '<span class="rk-cidade" style="font-size:13px;font-weight:600;color:var(--text)">'+item.cidade+'</span>'
-      + '<div class="rk-gestor">'+gestorHTML+'</div>'
-      + '<div class="rk-bar"><div style="height:100%;width:'+pct+'%;background:'+corBarra+';border-radius:3px;transition:width 0.5s"></div></div>'
-      + '<span class="rk-num" style="font-weight:700;color:var(--text);text-align:right">'+item.paradas.toLocaleString('pt-BR')+varHTML+'</span>'
-      + '</div>';
+    return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:center;font-size:'+(tamanho/2.5)+'px;font-weight:800;color:#0E7AB8;flex-shrink:0">'+iniciais+'</div>';
+  }
+  
+  // Helper: broche da cidade  
+  function brocheCidadeBg(nome, tamanho){
+    var slug = slugCidade(nome);
+    return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;background-image:url(\'/broches-gami/cidades/'+slug+'.png\');background-size:contain;background-repeat:no-repeat;background-position:center;flex-shrink:0;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.15))"></div>';
+  }
+  
+  // Helper: badge variação
+  function variacaoBadge(v, tamanhoFonte){
+    var fonte = tamanhoFonte || 11;
+    if(v > 5) return '<span style="font-size:'+fonte+'px;font-weight:800;color:#1D9E75;background:rgba(29,158,117,0.1);padding:2px 8px;border-radius:10px;white-space:nowrap">🌟 +'+v+'%</span>';
+    if(v < -5) return '<span style="font-size:'+fonte+'px;font-weight:800;color:#E24B4A;background:rgba(226,75,74,0.1);padding:2px 8px;border-radius:10px;white-space:nowrap">📉 '+v+'%</span>';
+    return '<span style="font-size:'+fonte+'px;color:#666;background:rgba(0,0,0,0.05);padding:2px 8px;border-radius:10px;white-space:nowrap">📊 estável</span>';
+  }
+  
+  // ─── TOP 3 — Cards Premium ───
+  var top3 = dados.slice(0, 3);
+  var medalhas = ['🥇','🥈','🥉'];
+  var bordas = ['#FFD700','#C0C0C0','#CD7F32'];
+  var gradientes = [
+    'linear-gradient(135deg, #FFF9E6 0%, #FFE99E 100%)',  // ouro
+    'linear-gradient(135deg, #F5F5F5 0%, #DCDCDC 100%)',  // prata
+    'linear-gradient(135deg, #FFE9D9 0%, #FFCBA4 100%)'   // bronze
+  ];
+  
+  var top3HTML = top3.map(function(c, i){
+    var nomeCurto = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : 'Sem gestor';
+    return '<div style="position:relative;border:2.5px solid '+bordas[i]+';border-radius:14px;padding:14px 10px;background:'+gradientes[i]+';text-align:center;box-shadow:0 4px 14px rgba(0,0,0,0.08);transition:transform .2s">'
+      + '<div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-size:30px;line-height:1">'+medalhas[i]+'</div>'
+      // Broche grande
+      + '<div style="display:flex;justify-content:center;margin:8px 0 6px 0">'+brocheCidadeBg(c.cidade, 56)+'</div>'
+      // Nome da cidade
+      + '<div style="font-size:14px;font-weight:800;color:#1a1a1a;margin-bottom:6px;line-height:1.1">'+c.cidadeCompleta+'</div>'
+      // Gestor com foto destacada
+      + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:6px 0 10px 0;padding:5px 8px;background:rgba(255,255,255,0.6);border-radius:20px">'
+        + avatarGestor(c.gestor, 26)
+        + '<span style="font-size:11px;color:#333;font-weight:700">'+nomeCurto+'</span>'
+      + '</div>'
+      // Número GRANDE
+      + '<div style="font-size:26px;font-weight:900;color:#1a1a1a;line-height:1">'+c.paradas.toLocaleString('pt-BR')+'</div>'
+      + '<div style="font-size:9px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">📦 entregas</div>'
+      // Variação
+      + '<div style="margin-top:8px">'+variacaoBadge(c.variacao, 11)+'</div>'
+    + '</div>';
   }).join('');
+  
+  // ─── RESTO (4º+) — Lista visual ───
+  var resto = dados.slice(3);
+  var maxPar = resto.length > 0 ? resto[0].paradas : 1;
+  
+  var restoHTML = resto.map(function(c, idx){
+    var pos = idx + 4;
+    var pct = maxPar > 0 ? (c.paradas / maxPar * 100) : 0;
+    var nomeCurto = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : 'Sem gestor';
+    
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:6px;transition:all .2s" '
+      + 'onmouseover="this.style.transform=\'translateX(2px)\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.08)\'" '
+      + 'onmouseout="this.style.transform=\'translateX(0)\';this.style.boxShadow=\'none\'">'
+      // Posição
+      + '<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#999;width:32px;text-align:center;flex-shrink:0">'+pos+'°</div>'
+      // Broche médio
+      + brocheCidadeBg(c.cidade, 36)
+      // Cidade + gestor
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px">'+c.cidadeCompleta+'</div>'
+        + '<div style="display:flex;align-items:center;gap:5px">'
+          + avatarGestor(c.gestor, 18)
+          + '<span style="font-size:10px;color:var(--text3);font-weight:600">'+nomeCurto+'</span>'
+        + '</div>'
+      + '</div>'
+      // Barra horizontal
+      + '<div style="flex:0 0 50px;height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">'
+        + '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);border-radius:3px;transition:width 0.5s"></div>'
+      + '</div>'
+      // Número + variação
+      + '<div style="text-align:right;min-width:75px;flex-shrink:0">'
+        + '<div style="font-size:15px;font-weight:800;color:var(--text);line-height:1">'+c.paradas.toLocaleString('pt-BR')+'</div>'
+        + '<div style="font-size:9px;color:var(--text3);margin-top:1px">📦 entregas</div>'
+      + '</div>'
+      + '<div style="min-width:75px;text-align:right">'+variacaoBadge(c.variacao, 10)+'</div>'
+    + '</div>';
+  }).join('');
+  
+  // Total geral pra mostrar embaixo
+  var totalParadas = dados.reduce(function(s,c){return s + c.paradas;}, 0);
+  var totalCorridas = dados.reduce(function(s,c){return s + c.corridas;}, 0);
+  
+  host.innerHTML = ''
+    // TOP 3
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;padding-top:8px">'+top3HTML+'</div>'
+    // RESTO
+    + (resto.length > 0 ? '<div style="margin-top:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px">Demais cidades</div>'
+        + restoHTML
+      + '</div>' : '')
+    // Total geral
+    + '<div style="margin-top:14px;padding:12px;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border-radius:10px;display:flex;justify-content:space-around;text-align:center">'
+      + '<div><div style="font-size:18px;font-weight:900;color:#0E7AB8">'+totalParadas.toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:#555;font-weight:600">📦 Total entregas</div></div>'
+      + '<div><div style="font-size:18px;font-weight:900;color:#0E7AB8">'+totalCorridas.toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:#555;font-weight:600">🚖 Corridas finalizadas</div></div>'
+      + '<div><div style="font-size:18px;font-weight:900;color:#0E7AB8">'+dados.length+'</div><div style="font-size:10px;color:#555;font-weight:600">🏙️ Cidades ativas</div></div>'
+    + '</div>';
 }
 
 function abrirModalRanking(){
