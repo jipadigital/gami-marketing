@@ -1,4 +1,4 @@
-<!-- v24.00 - Frequência com badges descritivos (Diária/Regular/Frequente/Esporádica) - 02/06/2026 -->
+<!-- v24.03 - Telefone explícito em PDF/CSV/print + emoji como link separado - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11423,6 +11423,21 @@ async function _sb_empresas_sumidas(){
   var ativaMin = _RL.ativaMin !== undefined ? _RL.ativaMin : 10;  // dias distintos mínimos pra ser "ativa"
   var diasLookback = 30;  // janela curta (30 dias) — foco em padrão recente
   
+  // 📞 Busca telefones das empresas em PARALELO com a RPC (não atrasa)
+  var mapTelefones = {};
+  var promiseTelefones = fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone,bairro,status_empresa&limit=10000', {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+  }).then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(emps){
+      (emps || []).forEach(function(e){
+        var key = (e.nome||'').toLowerCase().trim();
+        if(key && (e.telefone || e.bairro)){
+          mapTelefones[key] = { telefone: e.telefone || '', bairro: e.bairro || '', status: e.status_empresa || '' };
+        }
+      });
+      console.log('[Sumidas] '+Object.keys(mapTelefones).length+' empresas com telefone/bairro');
+    }).catch(function(){});
+  
   // 🎯 Usa RPC nova que retorna paradas + finalizadas + canceladas agrupado por LOWER
   var lista = null;
   try {
@@ -11562,42 +11577,91 @@ async function _sb_empresas_sumidas(){
   console.log('[Sumidas]', c, '· Total empresas:', lista.length, '· Sumidas ATIVAS ('+ativaMin+'+ dias na janela + '+semHa+'+ sem pedir):', sumidas.length);
   if(sumidas.length > 0) console.log('[Sumidas] Detalhes:', sumidas);
   
+  // 🎯 PROJEÇÃO DE PERDAS: estima quanto cada empresa DEIXOU DE PEDIR desde que sumiu
+  // Fórmula: (volume_histórico / dias_distintos_ativos) × dias_sem_pedir
+  // Usa dias_distintos (dias EFETIVOS) — não a janela total — pra projetar com base no ritmo REAL da empresa
+  sumidas.forEach(function(e){
+    var diasDist = parseInt(e.dias_distintos) || 1;
+    var diasSem = parseInt(e.dias_sem_pedir) || 0;
+    e.corridas_proj_perdidas = Math.round(((parseInt(e.total_corridas) || 0) / diasDist) * diasSem);
+    e.paradas_proj_perdidas = Math.round(((parseInt(e.total_paradas) || 0) / diasDist) * diasSem);
+    e.valor_proj_perdido = (parseFloat(e.valor_total) || 0) / diasDist * diasSem;
+  });
+  
+  // 📞 Garante que telefones foram carregados antes de renderizar
+  await promiseTelefones;
+  
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa', 'Frequência', 'Último pedido', 'Sem pedir há', 'Corridas', 'Paradas', '✅ Fin', '❌ Canc'];
-  if(podeValor) colunas.push('Faturamento','Ticket/parada');
+  var colunas = ['Empresa', 'Frequência', 'Último pedido', 'Sem pedir há', 'Paradas 30d', '🔻 Paradas perdidas'];
+  if(podeValor) colunas.push('Faturamento 30d','🔻 R$ perdido');
+  colunas.push('📞 Telefone');
   
   var linhas = sumidas.map(function(e){
     var icone = e.dias_sem_pedir >= 30 ? '🔴' : e.dias_sem_pedir >= 15 ? '🟠' : '🟡';
     var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
     var atividade = _rlFmtFrequencia(e.dias_distintos, diasLookback);
+    
+    // Pega telefone do mapa (LOWER+TRIM como chave)
+    var nomeKey = (e.nome_passageiro||'').toLowerCase().trim();
+    var info = mapTelefones[nomeKey] || {};
+    var tel = info.telefone || '';
+    var telLimpo = tel.replace(/\D/g, '');
+    var telCell;
+    if(telLimpo && telLimpo.length >= 10){
+      // Número EXPLÍCITO em texto preto (aparece no PDF) + ícone WhatsApp como link
+      telCell = '<span style="font-weight:600;color:#1a1a1a">'+tel+'</span> '
+        + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
+    } else {
+      telCell = '<span style="color:#999;font-size:11px">—</span>';
+    }
+    
     var row = [
       icone+' '+e.nome_passageiro,
       atividade,
       ultFmt,
       e.dias_sem_pedir+' dias',
-      (e.total_corridas||0),
       (e.total_paradas||0),
-      (e.total_finalizadas||0),
-      (e.total_canceladas||0)
+      e.paradas_proj_perdidas,
     ];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
-      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
+      row.push('R$ '+e.valor_proj_perdido.toFixed(2));
     }
+    row.push(telCell);
     return row;
   });
   
+  // Totais agregados
+  var totParadasHist = sumidas.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0);
+  var totParadasProj = sumidas.reduce(function(s,e){return s+e.paradas_proj_perdidas;},0);
+  var totValorHist = sumidas.reduce(function(s,e){return s+parseFloat(e.valor_total||0);},0);
+  var totValorProj = sumidas.reduce(function(s,e){return s+e.valor_proj_perdido;},0);
+  
   var ordemTxt = {urgencia:'URGÊNCIA (regularidade × tempo sumida)', recente:'mais recentes (acabaram de sumir)', antiga:'mais antigas (sumidas há mais tempo)', valor:'maior faturamento perdido', paradas:'mais paradas perdidas'}[ordem] || 'urgência';
+  
+  var kpis = [
+    { label:'🏪 Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' },
+    { label:'📊 Paradas histórico (30d)', valor:totParadasHist.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+    { label:'🔻 Paradas projetadas perdidas', valor:totParadasProj.toLocaleString('pt-BR'), cor:'#E24B4A' }
+  ];
+  if(podeValor){
+    kpis.push({ label:'💰 Faturamento histórico (30d)', valor:'R$ '+totValorHist.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' });
+    kpis.push({ label:'💸 Faturamento projetado perdido', valor:'R$ '+totValorProj.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#E24B4A' });
+  }
+  
+  // Explicação informativa
+  var explicacao = '<div style="background:#F5F8FB;padding:10px 12px;border-left:3px solid #1AB8F0;border-radius:6px;margin-top:10px;font-size:11px;color:#56627a;line-height:1.55">'
+    +'<strong style="color:#0B2542">📖 Como ler:</strong><br>'
+    +'<strong>📊 Histórico (30d)</strong>: o que essas empresas <em>FIZERAM</em> nos últimos 30 dias (volume real). Mostra o "tamanho" do conjunto sumido.<br>'
+    +'<strong>🔻 Projetadas perdidas</strong>: o que essas empresas <em>TERIAM FEITO</em> desde que sumiram (ritmo médio × dias sem pedir). Mostra o custo de cada dia parado.<br>'
+    +'<strong style="color:#1D9E75">Exemplo:</strong> Padaria A faz ~3 paradas/dia ativo. Sumiu há 5 dias = projeção: 15 paradas perdidas. Cada dia adicional sem ligação aumenta a perda.'
+    +'</div>';
   
   return {
     id:'empresas_sumidas', icone:'🚨', titulo:'Empresas sumidas',
-    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por '+ordemTxt,
+    descricao:'⚡ Supabase · Empresas REGULARES ('+ativaMin+'+ dias dos últimos '+diasLookback+') que pararam há '+semHa+'+ dias · ordenadas por '+ordemTxt + explicacao,
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidas.length === 0,
-    kpis:[
-      { label:'Lojas sumidas', valor:sumidas.length, cor:'#E24B4A' },
-      { label:'Corridas perdidas', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total_corridas||0);},0), cor:'#EF9F27' },
-      { label:'Paradas perdidas', valor:sumidas.reduce(function(s,e){return s+parseInt(e.total_paradas||0);},0), cor:'#E24B4A' }
-    ],
+    kpis: kpis,
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem pedir há:</strong>'
         +'<select onchange="_RL.semPedirHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
@@ -11944,6 +12008,20 @@ async function _sb_motoboys_ausentes(){
   var ativaMin = _RL.ativaMinMot !== undefined ? _RL.ativaMinMot : 10;
   var diasLookback = 30;
   
+  // 📞 Busca telefones dos condutores em paralelo
+  var mapTelMot = {};
+  var promiseTelMot = fetch(SUPA_URL+'/rest/v1/machine_condutores?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=id,nome,telefone_celular,status&limit=10000', {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+  }).then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(conds){
+      (conds || []).forEach(function(cn){
+        if(cn.id && cn.telefone_celular){
+          mapTelMot[String(cn.id)] = { telefone: cn.telefone_celular, nome: cn.nome || '', status: cn.status || '' };
+        }
+      });
+      console.log('[Motoboys Sumidos] '+Object.keys(mapTelMot).length+' motoboys com telefone');
+    }).catch(function(){});
+  
   var lista = [];
   try {
     var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_atividade_real', {
@@ -11981,33 +12059,78 @@ async function _sb_motoboys_ausentes(){
   
   console.log('[Motoboys Sumidos]', slug, '· Total:', lista.length, '· Sumidos ativos:', sumidos.length);
   
+  // 🎯 PROJEÇÃO DE PERDAS pra motoboys
+  sumidos.forEach(function(m){
+    var diasDist = parseInt(m.dias_distintos) || 1;
+    var diasSem = parseInt(m.dias_sem_rodar) || 0;
+    m.corridas_proj_perdidas = Math.round(((parseInt(m.total_corridas) || 0) / diasDist) * diasSem);
+    m.paradas_proj_perdidas = Math.round(((parseInt(m.total_paradas) || 0) / diasDist) * diasSem);
+    m.valor_proj_perdido = (parseFloat(m.valor_total) || 0) / diasDist * diasSem;
+  });
+  
+  // 📞 Aguarda telefones antes de renderizar
+  await promiseTelMot;
+  
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Motoboy','Frequência','Última','Sem rodar há','Corridas','Paradas','✅ Fin','❌ Canc'];
-  if(podeValor) colunas.push('Faturamento','Ticket/parada');
+  var colunas = ['Motoboy','Frequência','Última','Sem rodar há','Paradas 30d','🔻 Paradas perdidas'];
+  if(podeValor) colunas.push('Faturamento 30d','🔻 R$ perdido');
+  colunas.push('📞 Telefone');
   
   var linhas = sumidos.map(function(m){
     var icone = m.dias_sem_rodar >= 14 ? '🔴' : m.dias_sem_rodar >= 7 ? '🟠' : '🟡';
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
     var ativ = _rlFmtFrequencia(m.dias_distintos, diasLookback);
+    
+    // Pega telefone do mapa por condutor_id
+    var info = mapTelMot[String(m.condutor_id||'')] || {};
+    var tel = info.telefone || '';
+    var telLimpo = tel.replace(/\D/g, '');
+    var telCell;
+    if(telLimpo && telLimpo.length >= 10){
+      telCell = '<span style="font-weight:600;color:#1a1a1a">'+tel+'</span> '
+        + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
+    } else {
+      telCell = '<span style="color:#999;font-size:11px">—</span>';
+    }
+    
     var row = [icone+' '+m.nome_condutor, ativ, ultFmt, m.dias_sem_rodar+' dias',
-               (parseInt(m.total_corridas)||0), (parseInt(m.total_paradas)||0),
-               (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0)];
+               (parseInt(m.total_paradas)||0), m.paradas_proj_perdidas];
     if(podeValor){
       row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
-      row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
+      row.push('R$ '+m.valor_proj_perdido.toFixed(2));
     }
+    row.push(telCell);
     return row;
   });
   
+  // Totais
+  var totParadasHistM = sumidos.reduce(function(s,m){return s+parseInt(m.total_paradas||0);},0);
+  var totParadasProjM = sumidos.reduce(function(s,m){return s+m.paradas_proj_perdidas;},0);
+  var totValorHistM = sumidos.reduce(function(s,m){return s+parseFloat(m.valor_total||0);},0);
+  var totValorProjM = sumidos.reduce(function(s,m){return s+m.valor_proj_perdido;},0);
+  
+  var kpisM = [
+    { label:'🏍️ Motoboys sumidos', valor:sumidos.length, cor:'#E24B4A' },
+    { label:'📊 Paradas histórico (30d)', valor:totParadasHistM.toLocaleString('pt-BR'), cor:'#1AB8F0' },
+    { label:'🔻 Paradas projetadas perdidas', valor:totParadasProjM.toLocaleString('pt-BR'), cor:'#E24B4A' }
+  ];
+  if(podeValor){
+    kpisM.push({ label:'💰 Faturamento histórico (30d)', valor:'R$ '+totValorHistM.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#1D9E75' });
+    kpisM.push({ label:'💸 Faturamento projetado perdido', valor:'R$ '+totValorProjM.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}), cor:'#E24B4A' });
+  }
+  
+  var explicacaoM = '<div style="background:#F5F8FB;padding:10px 12px;border-left:3px solid #1AB8F0;border-radius:6px;margin-top:10px;font-size:11px;color:#56627a;line-height:1.55">'
+    +'<strong style="color:#0B2542">📖 Como ler:</strong><br>'
+    +'<strong>📊 Histórico (30d)</strong>: o que esses motoboys <em>FIZERAM</em> nos últimos 30 dias (volume real). Mostra a "produtividade" do conjunto sumido.<br>'
+    +'<strong>🔻 Projetadas perdidas</strong>: o que esses motoboys <em>TERIAM ENTREGUE</em> desde que sumiram (ritmo médio × dias sem rodar). Mostra o custo de cada dia parado.<br>'
+    +'<strong style="color:#1D9E75">Exemplo:</strong> Motoboy João faz ~12 paradas/dia ativo. Sumiu há 4 dias = projeção: 48 paradas perdidas. Cada dia sem ele aumenta a perda da operação.'
+    +'</div>';
+  
   return {
     id:'motoboys_ausentes', icone:'😴', titulo:'Motoboys sumidos ativos',
-    descricao:'⚡ Supabase · Motoboys com '+ativaMin+'+ dias rodando nos últimos '+diasLookback+' que estão há '+semHa+'+ dias sem rodar',
+    descricao:'⚡ Supabase · Motoboys com '+ativaMin+'+ dias rodando nos últimos '+diasLookback+' que estão há '+semHa+'+ dias sem rodar'+explicacaoM,
     cidade:c, colunas:colunas, linhas:linhas, vazio: sumidos.length === 0,
-    kpis:[
-      { label:'Motoboys sumidos', valor:sumidos.length, cor:'#E24B4A' },
-      { label:'Corridas perdidas', valor:sumidos.reduce(function(s,m){return s+parseInt(m.total_corridas||0);},0), cor:'#EF9F27' },
-      { label:'Paradas perdidas', valor:sumidos.reduce(function(s,m){return s+parseInt(m.total_paradas||0);},0), cor:'#E24B4A' }
-    ],
+    kpis: kpisM,
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Sem rodar há:</strong>'
         +'<select onchange="_RL.semRodarHa=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
@@ -15899,6 +16022,8 @@ function _rlBaixarCSV(){
   
   function csvEscape(v){
     var s = String(v == null ? '' : v);
+    // 🔧 Remove tags HTML (mantém só o texto) — útil pra telefones que vêm com <a> e <span>
+    s = s.replace(/<[^>]*>/g, '').replace(/\s+/g,' ').trim();
     if(s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0){
       return '"'+s.replace(/"/g,'""')+'"';
     }
@@ -15964,6 +16089,9 @@ function _rlBaixarPDF(){
       +'.kpi { padding:10px 12px; background:white; border:1px solid #E5E7EB; border-radius:8px }'
       +'.kpi-label { font-size:9px; color:#6B7280; font-weight:700; text-transform:uppercase }'
       +'.kpi-val { font-family:Syne,sans-serif; font-size:20px; font-weight:800; line-height:1.1; margin-top:2px }'
+      +'/* No PDF: links com cores neutras + texto preto pra telefones */'
+      +'td a { color:#1a1a1a !important; text-decoration:none !important }'
+      +'td span { color:#1a1a1a !important }'
     +'</style></head><body>'
     +'<button class="btn-print no-print" onclick="window.print()">🖨️ Baixar PDF</button>'
     +'<div class="brand">'
