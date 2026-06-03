@@ -1,4 +1,4 @@
-<!-- v23.97 - Volta default empresas/motoboys sumidas pra 3 dias - 02/06/2026 -->
+<!-- v23.98 - FIX CRÍTICO: relatórios sempre caíam no legado por causa de view inexistente + slug sem hífen - 02/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11253,7 +11253,8 @@ var _rlSupabaseCache = {};
 async function _rlCidadeTemSupabase(slug){
   if(_rlSupabaseCache[slug] !== undefined) return _rlSupabaseCache[slug];
   try {
-    var r = await fetch(SUPA_URL+'/rest/v1/mv_empresas_atividade?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=cidade_slug&limit=1', {
+    // 🔧 Verifica machine_corridas (tabela que SEMPRE existe) em vez de mv_empresas_atividade (view inexistente)
+    var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=cidade_slug&limit=1', {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
     });
     if(!r.ok){ _rlSupabaseCache[slug] = false; return false; }
@@ -11266,7 +11267,12 @@ async function _rlCidadeTemSupabase(slug){
 function _rlSlug(){
   var c = _rlGetCidade();
   if(!c) return null;
-  return (typeof _slugify === 'function') ? _slugify(c.nome) : c.nome.toLowerCase().replace(/\s/g,'-');
+  // 🔧 Usa _vgSlug (com hífen: "campo-grande") em vez de _slugify (sem: "campogrande")
+  if(typeof _vgSlug === 'function') return _vgSlug(c.nome);
+  return c.nome.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'-')
+    .replace(/[^a-z0-9-]/g,'');
 }
 
 async function _rlSupaQuery(path){
