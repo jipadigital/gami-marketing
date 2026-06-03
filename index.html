@@ -1,4 +1,4 @@
-<!-- v24.21 - Em queda: filtro de mínimo de pedidos no mês anterior (default 5) - 03/06/2026 -->
+<!-- v25.00 - Ranking de Cidades REAL com RPC + cache 5min + auto-refresh - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4024,13 +4024,13 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <!-- =========== VISÃO GERAL =========== -->
   <div id="rank-tab-visao" class="rank-tab-content">
     
-    <!-- TOP 3 CIDADES (cards premium) -->
+    <!-- RANKING DE CIDADES (dados reais Supabase) -->
     <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div class="card-title" style="margin:0">🏙️ Top 3 Cidades — Ranking de Corridas</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px">
+        <div class="card-title" style="margin:0">🏙️ Ranking de Cidades — Entregas do mês</div>
         <span style="font-size:10px;color:var(--text3);font-style:italic" id="rank-cidades-mes">—</span>
       </div>
-      <div id="rank-top-cidades" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
+      <div id="rank-top-cidades"></div>
     </div>
     
     <!-- TOP 10 INDIVIDUAL -->
@@ -31062,36 +31062,223 @@ function renderRankingVisaoGeral(){
   renderRankingPorCargo();
 }
 
-function renderTop3Cidades(){
+// ============================================================
+// RANKING DE CIDADES — Dados reais do Supabase
+// v25.00 — Usa RPC ranking_cidades_mes
+// ============================================================
+
+// Mapa slug → {nome formal, UF}
+var RANKING_CIDADES_MAP = {
+  'maceio':       { nome: 'Maceió', uf: 'AL' },
+  'fortaleza':    { nome: 'Fortaleza', uf: 'CE' },
+  'joao-pessoa':  { nome: 'João Pessoa', uf: 'PB' },
+  'recife':       { nome: 'Recife', uf: 'PE' },
+  'natal':        { nome: 'Natal', uf: 'RN' },
+  'aracaju':      { nome: 'Aracaju', uf: 'SE' },
+  'sao-luis':     { nome: 'São Luís', uf: 'MA' },
+  'cuiaba':       { nome: 'Cuiabá', uf: 'MT' },
+  'teresina':     { nome: 'Teresina', uf: 'PI' },
+  'vitoria':      { nome: 'Vitória', uf: 'ES' },
+  'campo-grande': { nome: 'Campo Grande', uf: 'MS' }
+};
+
+var _RANKING_CACHE_KEY = 'gami_ranking_cidades_v1';
+var _RANKING_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 minutos
+var _RANKING_AUTO_REFRESH_INTERVAL = null;
+
+function _rankingPegarCache(){
+  try {
+    var raw = localStorage.getItem(_RANKING_CACHE_KEY);
+    if(!raw) return null;
+    var p = JSON.parse(raw);
+    if(!p || !p.ts || (Date.now() - p.ts) > _RANKING_CACHE_TTL_MS) return null;
+    return p;
+  } catch(e){ return null; }
+}
+
+function _rankingSalvarCache(dados){
+  try {
+    localStorage.setItem(_RANKING_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: dados }));
+  } catch(e){}
+}
+
+async function _rankingBuscarSupabase(){
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/ranking_cidades_mes', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer '+SUPA_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})  // sem params = mês atual
+    });
+    if(!rpcResp.ok){
+      console.warn('[Ranking] RPC erro HTTP', rpcResp.status);
+      return null;
+    }
+    var lista = await rpcResp.json();
+    return Array.isArray(lista) ? lista : null;
+  } catch(e){
+    console.warn('[Ranking] erro:', e.message);
+    return null;
+  }
+}
+
+function renderTop3Cidades(forceRefresh){
+  _renderRankingCidadesReal(forceRefresh);
+}
+
+async function _renderRankingCidadesReal(forceRefresh){
   var el = document.getElementById('rank-top-cidades');
   if(!el) return;
-  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
-  var cidades = typeof getCidadesData === 'function' ? getCidadesData() : [];
-  var scores = cidades.map(function(c){
-    return {
-      nome: c.nome, uf: c.uf || '',
-      score: typeof calcScore === 'function' ? calcScore(c) : 70,
-      gestor: pessoas.find(function(p){ return p.cidade === c.nome && p.cargo && p.cargo.indexOf('Gestor') >= 0; }) || {}
-    };
-  }).sort(function(a,b){ return b.score - a.score; });
-  var top3 = scores.slice(0, 3);
-  var medals = ['🥇','🥈','🥉'];
-  var colors = ['#FFD700','#C0C0C0','#CD7F32'];
+  
+  // Tenta cache primeiro (se não forçar refresh)
+  var cache = forceRefresh ? null : _rankingPegarCache();
+  var lista = cache ? cache.data : null;
+  var ts = cache ? cache.ts : null;
+  
+  if(!lista){
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:11px">⏳ Carregando ranking de cidades...</div>';
+    lista = await _rankingBuscarSupabase();
+    if(lista){
+      _rankingSalvarCache(lista);
+      ts = Date.now();
+    }
+  }
+  
+  if(!Array.isArray(lista) || lista.length === 0){
+    el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px">'
+      + '⚠️ Sem dados disponíveis.<br>'
+      + '<span style="font-size:10px">Rode o SQL <code>sql_ranking_cidades.sql</code> no Supabase pra criar a RPC.</span>'
+      + '</div>';
+    return;
+  }
+  
+  // Atualiza label do mês
+  var hoje = new Date();
+  var meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  var nomeMes = meses[hoje.getMonth()] + '/' + hoje.getFullYear();
   var elMes = document.getElementById('rank-cidades-mes');
-  if(elMes) elMes.textContent = new Date().toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-  el.innerHTML = top3.map(function(c,i){
-    var pct = c.score;
-    var barCor = pct >= 75 ? '#1D9E75' : pct >= 50 ? '#EF9F27' : '#E24B4A';
-    return '<div style="border:2px solid '+colors[i]+';border-radius:12px;padding:14px;background:var(--surface);text-align:center">'
-      + '<div style="font-size:28px;margin-bottom:4px">'+medals[i]+'</div>'
-      + '<div style="font-size:15px;font-weight:800;margin-bottom:2px">'+c.nome+'</div>'
-      + '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">Gestor: '+(c.gestor.nome||'—')+'</div>'
-      + '<div style="font-size:24px;font-weight:800;color:'+barCor+'">'+c.score+'</div>'
-      + '<div style="font-size:10px;color:var(--text3);margin-bottom:6px">score corridas</div>'
-      + '<div style="height:5px;background:var(--surface2);border-radius:3px;overflow:hidden">'
-      + '<div style="height:100%;width:'+pct+'%;background:'+barCor+';border-radius:3px"></div></div>'
+  if(elMes){
+    var minAtras = ts ? Math.floor((Date.now() - ts) / 60000) : 0;
+    var infoTempo = minAtras === 0 ? 'agora' : ('há '+minAtras+' min');
+    elMes.innerHTML = nomeMes + ' · atualizado ' + infoTempo + ' · <a href="javascript:_renderRankingCidadesReal(true)" style="color:#1AB8F0;text-decoration:none">🔄 atualizar</a>';
+  }
+  
+  // Busca pessoas pra achar gestor
+  var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
+  
+  function acharGestor(nomeCidadeFormal){
+    return pessoas.find(function(p){
+      var ehGestor = /Gestor/i.test(p.cargo||'') || (p.categoria||'') === 'Gestor';
+      if(!ehGestor) return false;
+      var cs = (typeof pessoaCidades==='function') ? pessoaCidades(p) : [p.cidade];
+      return cs && cs.some(function(c){ return c && c.toLowerCase().indexOf(nomeCidadeFormal.toLowerCase()) >= 0; });
+    });
+  }
+  
+  // Monta dados com info de gestor
+  var dados = lista.map(function(r){
+    var info = RANKING_CIDADES_MAP[r.cidade_slug] || { nome: r.cidade_slug, uf: '?' };
+    return {
+      slug: r.cidade_slug,
+      nome: info.nome,
+      uf: info.uf,
+      nomeCompleto: info.nome + '/' + info.uf,
+      paradas: parseInt(r.total_paradas) || 0,
+      corridas: parseInt(r.corridas_finalizadas) || 0,
+      canceladas: parseInt(r.corridas_canceladas) || 0,
+      pctFin: parseFloat(r.pct_finalizadas) || 0,
+      paradasAnt: parseInt(r.paradas_mes_anterior) || 0,
+      variacao: parseInt(r.variacao_pct) || 0,
+      pos: parseInt(r.posicao) || 0,
+      gestor: acharGestor(info.nome)
+    };
+  });
+  
+  // Top 3 — cards grandes
+  var top3 = dados.slice(0, 3);
+  var medals = ['🥇','🥈','🥉'];
+  var coresMedalha = ['#FFD700','#C0C0C0','#CD7F32'];
+  var coresBg = ['linear-gradient(135deg,#FFF8E1,#FFE082)','linear-gradient(135deg,#F5F5F5,#E0E0E0)','linear-gradient(135deg,#FFE0B2,#FFAB91)'];
+  
+  function variacaoBadge(v){
+    if(v > 5) return '<span style="font-size:11px;font-weight:700;color:#1D9E75">🌟 +'+v+'%</span>';
+    if(v < -5) return '<span style="font-size:11px;font-weight:700;color:#E24B4A">📉 '+v+'%</span>';
+    return '<span style="font-size:11px;color:#666">📊 estável</span>';
+  }
+  
+  function avatarGestor(g, tamanho){
+    if(!g) return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;background:#E6F6FE;border:2px solid white;display:flex;align-items:center;justify-content:center;font-size:9px;color:#999">—</div>';
+    var iniciais = (g.nome||'').split(' ').slice(0,2).map(function(w){return (w[0]||'');}).join('').toUpperCase();
+    var conteudo = g.foto || g.foto_url
+      ? '<img src="'+(g.foto || g.foto_url)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>'
+      : '<span style="font-size:'+(tamanho < 40 ? '10' : '14')+'px;font-weight:700;color:#0E7AB8">'+iniciais+'</span>';
+    return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;background:#E6F6FE;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'+conteudo+'</div>';
+  }
+  
+  var top3HTML = top3.map(function(c, i){
+    var nomeGestor = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : '—';
+    return '<div style="border:2px solid '+coresMedalha[i]+';border-radius:14px;padding:14px;background:'+coresBg[i]+';text-align:center;position:relative">'
+      + '<div style="font-size:34px;line-height:1;margin-bottom:6px">'+medals[i]+'</div>'
+      + '<div style="font-size:16px;font-weight:800;color:#1a1a1a;margin-bottom:2px">'+c.nomeCompleto+'</div>'
+      + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:6px 0 10px 0">'+avatarGestor(c.gestor, 32)+'<span style="font-size:11px;color:#555;font-weight:600">'+nomeGestor+'</span></div>'
+      + '<div style="font-size:28px;font-weight:900;color:#1a1a1a;line-height:1">'+c.paradas.toLocaleString('pt-BR')+'</div>'
+      + '<div style="font-size:10px;color:#666;margin-top:-2px">📦 entregas (paradas)</div>'
+      + '<div style="font-size:11px;color:#444;margin-top:6px">🚖 '+c.corridas.toLocaleString('pt-BR')+' corridas finalizadas · ✅ '+c.pctFin+'%</div>'
+      + '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,0.1)">'+variacaoBadge(c.variacao)+'</div>'
       + '</div>';
   }).join('');
+  
+  // Resto da lista (4º em diante) — tabela
+  var resto = dados.slice(3);
+  var restoHTML = '';
+  if(resto.length > 0){
+    restoHTML = '<div style="margin-top:14px"><div style="font-size:11px;color:#666;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Demais cidades</div>'
+      + '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden">'
+      + resto.map(function(c, idx){
+        var pos = idx + 4;
+        var nomeGestor = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : '—';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;'+(idx < resto.length-1 ? 'border-bottom:1px solid var(--border);' : '')+'">'
+          + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#999;width:28px;text-align:center">'+pos+'°</div>'
+          + avatarGestor(c.gestor, 28)
+          + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:13px;font-weight:700;color:var(--text)">'+c.nomeCompleto+'</div>'
+            + '<div style="font-size:10px;color:var(--text3)">'+nomeGestor+' · ✅ '+c.pctFin+'%</div>'
+          + '</div>'
+          + '<div style="text-align:right">'
+            + '<div style="font-size:16px;font-weight:800;color:var(--text)">'+c.paradas.toLocaleString('pt-BR')+'</div>'
+            + '<div style="font-size:9px;color:var(--text3)">entregas</div>'
+          + '</div>'
+          + '<div style="text-align:right;min-width:55px">'+variacaoBadge(c.variacao)+'</div>'
+        + '</div>';
+      }).join('')
+      + '</div></div>';
+  }
+  
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">'+top3HTML+'</div>'+restoHTML;
+  
+  // Ativa auto-refresh se ainda não estiver ativo
+  _rankingIniciarAutoRefresh();
+}
+
+function _rankingIniciarAutoRefresh(){
+  if(_RANKING_AUTO_REFRESH_INTERVAL) return; // já tá rolando
+  _RANKING_AUTO_REFRESH_INTERVAL = setInterval(function(){
+    // Só refresh se aba ranking aberta E sub-aba visão geral ativa
+    var pgRanking = document.getElementById('pg-ranking');
+    if(!pgRanking || !pgRanking.classList.contains('active')){
+      clearInterval(_RANKING_AUTO_REFRESH_INTERVAL);
+      _RANKING_AUTO_REFRESH_INTERVAL = null;
+      return;
+    }
+    var tabVisao = document.getElementById('rank-tab-visao');
+    if(!tabVisao || tabVisao.style.display === 'none') return;
+    
+    console.log('[Ranking] Auto-refresh 5min');
+    _renderRankingCidadesReal(true); // força refresh
+  }, _RANKING_CACHE_TTL_MS);
 }
 
 async function renderRankingIndividual(){
