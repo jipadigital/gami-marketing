@@ -1,4 +1,4 @@
-<!-- v24.10 - Reativa Step 2 (Função) no cadastro de pessoa - 03/06/2026 -->
+<!-- v24.11 - Recuperação automática de PIN por email + cadastro de 3 prospectoras - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -7882,6 +7882,7 @@ function mostrarTelaLogin(){
     + '<button type="submit" id="login-btn" style="width:100%;padding:13px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Entrar →</button>'
     + '</form>'
     + '<div style="text-align:center;margin-top:18px;padding-top:14px;border-top:1px solid #EEF2F7">'
+    + '<button type="button" onclick="abrirEsqueciPin()" style="background:none;border:none;color:#0E7AB8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline;padding:4px 8px;margin-bottom:8px">🔑 Esqueci meu PIN</button>'
     + '<div style="font-size:10px;color:#9DB4D6">🙏 <em>"Fé com Respeito" — Gâmi Delivery</em></div>'
     + '</div>'
     + '</div>'
@@ -7889,6 +7890,160 @@ function mostrarTelaLogin(){
     + '<style>@keyframes loginFadeIn{from{opacity:0}to{opacity:1}}</style>';
   
   document.body.insertAdjacentHTML('beforeend', html);
+  
+  // 🔧 v24.11: detecta URL de recuperação ?reset_pin=TOKEN&email=EMAIL
+  var url = new URL(window.location.href);
+  var resetToken = url.searchParams.get('reset_pin');
+  var resetEmail = url.searchParams.get('email');
+  if(resetToken && resetEmail){
+    setTimeout(function(){ abrirResetarPin(resetToken, resetEmail); }, 200);
+  }
+}
+
+/* Modal: Esqueci meu PIN */
+function abrirEsqueciPin(){
+  var antigo = document.getElementById('modal-esqueci-pin');
+  if(antigo) antigo.remove();
+  
+  var html = '<div id="modal-esqueci-pin" style="position:fixed;inset:0;background:rgba(11,37,66,0.7);z-index:100000;display:flex;align-items:center;justify-content:center;padding:14px">'
+    +'<div style="background:white;border-radius:14px;max-width:380px;width:100%;padding:26px 22px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">'
+      +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#0B2542;margin-bottom:6px">🔑 Esqueci meu PIN</div>'
+      +'<div style="font-size:12px;color:#56627a;margin-bottom:18px;line-height:1.5">Digite seu email cadastrado. Você vai receber um link pra criar um PIN novo.</div>'
+      +'<form onsubmit="return enviarRecuperacaoPin(event)">'
+        +'<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Email cadastrado</label>'
+        +'<input type="email" id="esqueci-email" required autofocus style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" placeholder="seu@email.com">'
+        +'<div id="esqueci-msg" style="display:none;padding:10px;border-radius:8px;font-size:12px;margin-top:12px;text-align:center"></div>'
+        +'<div style="display:flex;gap:8px;margin-top:16px">'
+          +'<button type="button" onclick="document.getElementById(\'modal-esqueci-pin\').remove()" style="flex:1;padding:11px;background:#E5E7EB;color:#333;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancelar</button>'
+          +'<button type="submit" id="esqueci-btn" style="flex:1;padding:11px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Enviar email</button>'
+        +'</div>'
+      +'</form>'
+    +'</div>'
+  +'</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function enviarRecuperacaoPin(ev){
+  ev.preventDefault();
+  var btn = document.getElementById('esqueci-btn');
+  var msg = document.getElementById('esqueci-msg');
+  var email = document.getElementById('esqueci-email').value;
+  
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  msg.style.display = 'none';
+  
+  try {
+    var r = await fetch('/.netlify/functions/recuperar-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    });
+    var data = await r.json();
+    
+    msg.style.display = 'block';
+    if(r.ok){
+      msg.style.background = '#E1F5EE';
+      msg.style.color = '#0F6E56';
+      msg.innerHTML = '✓ '+(data.message || 'Email enviado! Verifique sua caixa de entrada e spam.');
+      btn.style.display = 'none';
+    } else {
+      msg.style.background = '#FEE';
+      msg.style.color = '#C02020';
+      msg.innerHTML = '✗ '+(data.error || 'Erro ao enviar');
+      btn.disabled = false;
+      btn.textContent = 'Enviar email';
+    }
+  } catch(e){
+    msg.style.display = 'block';
+    msg.style.background = '#FEE';
+    msg.style.color = '#C02020';
+    msg.innerHTML = '✗ Erro de conexão. Tente de novo.';
+    btn.disabled = false;
+    btn.textContent = 'Enviar email';
+  }
+  return false;
+}
+
+/* Modal: Resetar PIN com token (acessado via link do email) */
+function abrirResetarPin(token, email){
+  var antigo = document.getElementById('modal-resetar-pin');
+  if(antigo) antigo.remove();
+  
+  var html = '<div id="modal-resetar-pin" style="position:fixed;inset:0;background:rgba(11,37,66,0.85);z-index:100000;display:flex;align-items:center;justify-content:center;padding:14px">'
+    +'<div style="background:white;border-radius:14px;max-width:380px;width:100%;padding:26px 22px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">'
+      +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#0B2542;margin-bottom:6px">🔐 Criar novo PIN</div>'
+      +'<div style="font-size:12px;color:#56627a;margin-bottom:18px;line-height:1.5">Email: <strong>'+email+'</strong><br>Crie um PIN de 4 a 6 dígitos numéricos.</div>'
+      +'<form onsubmit="return executarResetarPin(event,\''+token+'\',\''+email+'\')">'
+        +'<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Novo PIN</label>'
+        +'<input type="password" id="reset-pin1" required autofocus pattern="[0-9]{4,6}" minlength="4" maxlength="6" inputmode="numeric" style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit;letter-spacing:6px;text-align:center" placeholder="••••">'
+        +'<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;margin-top:12px;text-transform:uppercase;letter-spacing:0.5px">Confirmar PIN</label>'
+        +'<input type="password" id="reset-pin2" required pattern="[0-9]{4,6}" minlength="4" maxlength="6" inputmode="numeric" style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit;letter-spacing:6px;text-align:center" placeholder="••••">'
+        +'<div id="reset-msg" style="display:none;padding:10px;border-radius:8px;font-size:12px;margin-top:12px;text-align:center"></div>'
+        +'<button type="submit" id="reset-btn" style="width:100%;padding:13px;background:linear-gradient(135deg,#1D9E75,#56C597);color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:16px">Salvar novo PIN →</button>'
+      +'</form>'
+    +'</div>'
+  +'</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function executarResetarPin(ev, token, email){
+  ev.preventDefault();
+  var btn = document.getElementById('reset-btn');
+  var msg = document.getElementById('reset-msg');
+  var pin1 = document.getElementById('reset-pin1').value;
+  var pin2 = document.getElementById('reset-pin2').value;
+  
+  if(pin1 !== pin2){
+    msg.style.display = 'block';
+    msg.style.background = '#FEE';
+    msg.style.color = '#C02020';
+    msg.innerHTML = '✗ Os PINs não conferem';
+    return false;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+  msg.style.display = 'none';
+  
+  try {
+    var r = await fetch('/.netlify/functions/resetar-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, token: token, pin_novo: pin1 })
+    });
+    var data = await r.json();
+    
+    if(r.ok){
+      msg.style.display = 'block';
+      msg.style.background = '#E1F5EE';
+      msg.style.color = '#0F6E56';
+      msg.innerHTML = '✓ '+(data.message || 'PIN atualizado!');
+      btn.textContent = 'Pronto! Redirecionando...';
+      setTimeout(function(){
+        // Remove query da URL e recarrega
+        var u = new URL(window.location.href);
+        u.searchParams.delete('reset_pin');
+        u.searchParams.delete('email');
+        window.location.href = u.pathname + u.hash;
+      }, 1800);
+    } else {
+      msg.style.display = 'block';
+      msg.style.background = '#FEE';
+      msg.style.color = '#C02020';
+      msg.innerHTML = '✗ '+(data.error || 'Erro ao salvar');
+      btn.disabled = false;
+      btn.textContent = 'Salvar novo PIN →';
+    }
+  } catch(e){
+    msg.style.display = 'block';
+    msg.style.background = '#FEE';
+    msg.style.color = '#C02020';
+    msg.innerHTML = '✗ Erro de conexão. Tente de novo.';
+    btn.disabled = false;
+    btn.textContent = 'Salvar novo PIN →';
+  }
+  return false;
 }
 
 async function handleLoginSubmit(ev){
