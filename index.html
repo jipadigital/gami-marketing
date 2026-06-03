@@ -1,4 +1,4 @@
-<!-- v24.19 - Em queda simplificado: só contagem de corridas 30d vs 30d - 03/06/2026 -->
+<!-- v24.20 - Em queda: tabela com datas nos headers + números destacados - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11993,7 +11993,13 @@ async function _sb_empresas_queda(){
   console.log('[📉 Em Queda] '+slug+' · '+emQueda.length+' empresas em queda ≥'+quedaMin+'%');
   console.log('═══════════════════════════════════════════════════');
   
-  var colunas = ['Empresa','Mês anterior','Mês atual','Queda %','📞 Telefone'];
+  var colunas = [
+    'Empresa',
+    '📅 '+fmt(d60)+' a '+fmt(d30),
+    '📆 '+fmt(d30)+' a '+fmt(hoje),
+    'Variação',
+    '📞 Telefone'
+  ];
   var linhas = emQueda.map(function(e){
     var icone = e.queda_pct >= 60 ? '🔴' : e.queda_pct >= 40 ? '🟠' : '🟡';
     
@@ -12007,11 +12013,19 @@ async function _sb_empresas_queda(){
       telCell = '<span style="color:#999;font-size:11px">—</span>';
     }
     
+    // Células destacadas com volume
+    var antigoCell = '<div style="text-align:center"><span style="font-size:16px;font-weight:800;color:#0E7AB8">'+e.count_antigo+'</span><div style="font-size:9px;color:#56627a;margin-top:-2px">pedidos</div></div>';
+    var recenteCell = '<div style="text-align:center"><span style="font-size:16px;font-weight:800;color:#E24B4A">'+e.count_recente+'</span><div style="font-size:9px;color:#56627a;margin-top:-2px">pedidos</div></div>';
+    
+    // Variação com seta visual
+    var perdaAbs = e.count_antigo - e.count_recente;
+    var variacaoCell = '<div style="text-align:center"><span style="font-size:14px;font-weight:800;color:#E24B4A">↓ '+e.queda_pct+'%</span><div style="font-size:9px;color:#56627a;margin-top:-2px">-'+perdaAbs+' pedidos</div></div>';
+    
     return [
       icone+' '+e.nome,
-      e.count_antigo+' corridas',
-      e.count_recente+' corridas',
-      '-'+e.queda_pct+'%',
+      antigoCell,
+      recenteCell,
+      variacaoCell,
       telCell
     ];
   });
