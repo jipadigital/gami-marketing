@@ -1,4 +1,4 @@
-<!-- v24.16 - Novo relatório: Empresas ativas por períodos 15/30/45d com telefone - 03/06/2026 -->
+<!-- v24.17 - Em queda agora compara 30d vs 30d (mês anterior vs atual) + telefone WhatsApp - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11045,7 +11045,7 @@ var RELATORIOS = {
         descricao:'Lojas regulares (10+ dias/mês) que estão há 3+ dias sem pedir — reativação urgente',
         temValor:false, fase:1 },
       { id:'empresas_queda', icone:'📉', nome:'Empresas em queda',
-        descricao:'Lojas regulares que reduziram 20%+ comparando 1ª vs 2ª metade dos últimos 30 dias',
+        descricao:'Lojas que reduziram 20%+ comparando mês anterior (30-60d) vs mês atual (30d)',
         temValor:false, fase:1 },
       { id:'empresas_alta', icone:'📈', nome:'Empresas em alta',
         descricao:'Empresas que cresceram 30%+ comparando 1ª vs 2ª metade dos últimos 30 dias',
@@ -11897,25 +11897,58 @@ async function _sb_empresas_sumidas(){
 }
 
 /* ─── 2) EMPRESAS EM QUEDA (Supabase + hoje) ─── */
+/* v24.17: agora compara 30d x 30d (mês atual vs mês anterior) ao invés de 15d x 15d */
 async function _sb_empresas_queda(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
   var quedaMin = _RL.quedaMin || 20;
   var ativaMin = _RL.ativaMinQueda !== undefined ? _RL.ativaMinQueda : 10;
-  var diasTotal = 30;
   
-  // Usa RPC empresas_periodo_comparado (compara metades)
-  var lista = [];
+  console.log('═══════════════════════════════════════════════════');
+  console.log('[📉 Em Queda 30x30] slug:', slug, '| queda min:', quedaMin, '| ativa min:', ativaMin);
+  
+  if(!slug){
+    return {
+      id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
+      descricao:'⚠️ Selecione uma cidade primeiro.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'Lojas em queda', valor:0, cor:'#EF9F27' }]
+    };
+  }
+  
+  // Usa NOVA RPC empresas_periodo_30x30 (mês atual vs mês anterior)
+  var lista = null;
+  var erroDetalhado = null;
   try {
-    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_periodo_comparado', {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_periodo_30x30', {
       method:'POST',
       headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-      body: JSON.stringify({ p_cidade_slug: slug, p_dias_total: diasTotal })
+      body: JSON.stringify({ p_cidade_slug: slug })
     });
-    if(rpcResp.ok) lista = await rpcResp.json();
-  } catch(e){ console.warn('[Em Queda] RPC erro:', e.message); }
+    console.log('[📉 Em Queda] HTTP:', rpcResp.status);
+    if(rpcResp.ok){
+      lista = await rpcResp.json();
+      console.log('[📉 Em Queda] ✓', lista.length, 'empresas no período');
+    } else {
+      erroDetalhado = 'HTTP '+rpcResp.status+': '+(await rpcResp.text()).substring(0,200);
+      console.error('[📉 Em Queda] ❌', erroDetalhado);
+    }
+  } catch(e){ 
+    erroDetalhado = e.message;
+    console.warn('[📉 Em Queda] RPC erro:', e.message); 
+  }
+  console.log('═══════════════════════════════════════════════════');
   
-  // Filtra: REGULAR (dias_distintos >= ativaMin) + ainda ativa (<5d sem pedir) + queda >= min
+  if(!Array.isArray(lista)){
+    return {
+      id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
+      descricao:'⚠️ RPC falhou: '+(erroDetalhado||'erro')+'. Rode sql_rpc_queda_30x30.sql no Supabase.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'Lojas em queda', valor:0, cor:'#EF9F27' }]
+    };
+  }
+  
+  // Filtra: ainda ativa (<5d sem pedir) + tinha pedidos antes + queda >= min
   var emQueda = lista.filter(function(e){
     if(parseInt(e.dias_sem_pedir||0) >= 5) return false;
     if(parseInt(e.dias_distintos||0) < ativaMin) return false;
@@ -11925,34 +11958,49 @@ async function _sb_empresas_queda(){
   
   emQueda.sort(function(a,b){ return parseInt(b.queda_pct) - parseInt(a.queda_pct); });
   
-  console.log('[Em Queda] '+slug+' · '+emQueda.length+' empresas regulares em queda ≥'+quedaMin+'%');
+  console.log('[📉 Em Queda] '+slug+' · '+emQueda.length+' empresas em queda ≥'+quedaMin+'%');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','Atividade','Último','Corridas','Paradas','Queda %'];
-  if(podeValor) colunas.push('Faturamento','Ticket/parada');
+  var colunas = ['Empresa','Atividade 30d','Último','Mês ant. → Mês atual','Queda %','📞 Telefone'];
+  if(podeValor) colunas.push('Faturamento');
   
   var linhas = emQueda.map(function(e){
     var queda = parseInt(e.queda_pct||0);
     var icone = queda >= 60 ? '🔴' : queda >= 40 ? '🟠' : '🟡';
-    var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR') + ' ('+e.dias_sem_pedir+'d)';
-    var ativ = e.dias_distintos+'/'+diasTotal+'d';
-    var variacao = e.count_antigo+' → '+e.count_recente+' corr · '+e.paradas_antigo+' → '+e.paradas_recente+' par';
-    var row = [icone+' '+e.nome_passageiro, ativ, ultFmt, variacao, parseInt(e.total_paradas||0), '-'+queda+'%'];
+    var ultFmt = '—';
+    if(e.ultima_corrida){
+      var dt = new Date(e.ultima_corrida);
+      if(!isNaN(dt.getTime())) ultFmt = dt.toLocaleDateString('pt-BR') + ' ('+e.dias_sem_pedir+'d)';
+    }
+    var ativ = (e.dias_distintos||0)+'/30d';
+    var variacao = (e.count_antigo||0)+' → '+(e.count_recente||0)+' corr';
+    
+    // Telefone com WhatsApp
+    var tel = e.telefone || '';
+    var telLimpo = tel.replace(/\D/g, '');
+    var telCell;
+    if(telLimpo && telLimpo.length >= 10){
+      telCell = '<span style="font-weight:600;color:#1a1a1a">'+tel+'</span> '
+        + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
+    } else {
+      telCell = '<span style="color:#999;font-size:11px">—</span>';
+    }
+    
+    var row = [icone+' '+e.nome_passageiro, ativ, ultFmt, variacao, '-'+queda+'%', telCell];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
-      row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
     }
     return row;
   });
   
   return {
     id:'empresas_queda', icone:'📉', titulo:'Empresas em queda',
-    descricao:'⚡ Supabase · Lojas regulares ('+ativaMin+'+ dias) que reduziram '+quedaMin+'%+ comparando 1ª vs 2ª metade dos últimos '+diasTotal+' dias',
+    descricao:'⚡ Supabase · Lojas ativas ('+ativaMin+'+ dias) que reduziram '+quedaMin+'%+ comparando <strong>mês anterior (30-60d) vs mês atual (30d)</strong>',
     cidade:c, colunas:colunas, linhas:linhas, vazio: emQueda.length === 0,
     kpis:[
       { label:'Lojas em queda', valor:emQueda.length, cor:'#EF9F27' },
       { label:'Maior queda', valor:emQueda.length ? '-'+emQueda[0].queda_pct+'%' : '—', cor:'#E24B4A' },
-      { label:'Paradas perdidas', valor:emQueda.reduce(function(s,e){return s+parseInt(e.paradas_antigo||0)-parseInt(e.paradas_recente||0);},0), cor:'#E24B4A' }
+      { label:'Corridas perdidas', valor:emQueda.reduce(function(s,e){return s+Math.max(0,parseInt(e.count_antigo||0)-parseInt(e.count_recente||0));},0), cor:'#E24B4A' }
     ],
     filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
       +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Queda mín:</strong>'
