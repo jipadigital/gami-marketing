@@ -1,4 +1,4 @@
-<!-- v25.14 - Auto-update SEGURO: 15min ocioso + detector de trabalho aberto - 03/06/2026 -->
+<!-- v25.15 - Nova aba Indicadores com filtro período e gráficos SVG - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3528,6 +3528,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <div class="tabs" style="margin-bottom:14px">
       <button class="tab active" onclick="setCidadeTab(this,'overview')">📊 Visão geral</button>
+      <button class="tab" onclick="setCidadeTab(this,'indicadores')">📈 Indicadores</button>
       <button class="tab" onclick="setCidadeTab(this,'motoboys')">🏍️ Motoboys</button>
       <button class="tab" onclick="setCidadeTab(this,'empresas')">🏪 Empresas</button>
       <button class="tab" onclick="setCidadeTab(this,'equipe')">👥 Equipe</button>
@@ -3579,6 +3580,46 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
 
     </div><!-- /ctab-overview -->
+
+    <!-- ============== ABA INDICADORES ============== -->
+    <div id="ctab-indicadores" style="display:none">
+      <!-- Header com filtro de período -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:var(--text)">📈 Indicadores</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Estatísticas da operação</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text3);font-weight:600">📅 Período</span>
+          <select id="ind-periodo" onchange="onIndicadoresPeriodoChange()" style="padding:8px 14px;border-radius:8px;background:#0F1F3D;color:white;border:1px solid #2a3656;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600">
+            <option value="hoje">Hoje</option>
+            <option value="ontem">Ontem</option>
+            <option value="semana_passada">Semana passada</option>
+            <option value="mes_passado">Mês passado</option>
+            <option value="ult7">Últimos 7 dias</option>
+            <option value="ult30" selected>Últimos 30 dias</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+          <div id="ind-personalizado" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="ind-data-inicio" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
+            <span style="font-size:11px;color:var(--text3)">até</span>
+            <input type="date" id="ind-data-fim" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
+            <button onclick="renderIndicadoresCidade()" style="padding:6px 12px;border:none;border-radius:6px;background:#14b8a6;color:white;font-weight:700;cursor:pointer;font-size:11px">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Label do período -->
+      <div id="ind-periodo-label" style="font-size:11px;color:var(--text3);margin-bottom:14px;padding:8px 12px;background:var(--surface2);border-radius:8px;display:inline-block"></div>
+
+      <!-- Conteúdo: cards de indicadores -->
+      <div id="ind-conteudo">
+        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
+          <div style="font-size:32px;margin-bottom:10px">📊</div>
+          <div style="font-size:13px">Carregando indicadores...</div>
+        </div>
+      </div>
+    </div><!-- /ctab-indicadores -->
 
     <!-- ===== ABA MOTOBOYS ===== -->
     <div id="ctab-motoboys" style="display:none">
@@ -23492,10 +23533,559 @@ function renderVisaoGeralCidade(){
   if(alertas){ alertas.innerHTML = ''; }
 }
 
+// ============================================================
+// 📈 INDICADORES — Estatísticas da operação da cidade
+// ============================================================
+var _indCacheCorridas = {};  // cache: { cidadeSlug-dataInicio-dataFim: corridas[] }
+
+// Mapeia forma de pagamento (código → nome)
+var FORMAS_PAGAMENTO = {
+  'D': 'Dinheiro',
+  'B': 'Débito (máquina)',
+  'C': 'Crédito (máquina)',
+  'T': 'eTicket',
+  'V': 'Voucher',
+  'X': 'Pix',
+  'P': 'Picpay',
+  'H': 'Whatsapp',
+  'A': 'Cartão via app',
+  'F': 'Faturado',
+  'I': 'Pix via app',
+  'R': 'Carteira de créditos'
+};
+
+// Paleta de cores
+var IND_PALETA = ['#14b8a6','#e6397f','#f0b952','#99e0db','#0E7AB8','#8B5CF6','#EF9F27','#1D9E75','#E24B4A','#56627a','#854F0B','#22C55E'];
+
+function onIndicadoresPeriodoChange(){
+  var sel = document.getElementById('ind-periodo');
+  var personalizado = document.getElementById('ind-personalizado');
+  if(sel.value === 'personalizado'){
+    personalizado.style.display = 'flex';
+    // Define datas default no personalizado: últimos 7 dias
+    var hoje = new Date();
+    var diniInput = document.getElementById('ind-data-inicio');
+    var dfimInput = document.getElementById('ind-data-fim');
+    if(!diniInput.value){
+      diniInput.value = _vgData(new Date(hoje.getTime() - 7*86400000));
+      dfimInput.value = _vgData(hoje);
+    }
+    return; // espera usuário clicar OK
+  }
+  personalizado.style.display = 'none';
+  renderIndicadoresCidade();
+}
+
+function _indPegarPeriodo(){
+  var hoje = new Date();
+  var hojeStr = _vgData(hoje);
+  var sel = document.getElementById('ind-periodo');
+  var p = sel ? sel.value : 'ult30';
+  
+  var inicio, fim, label;
+  
+  function ddmmaaaa(d){ return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear(); }
+  
+  if(p === 'hoje'){
+    inicio = hojeStr;
+    fim = hojeStr;
+    label = 'Hoje · '+ddmmaaaa(hoje);
+  } else if(p === 'ontem'){
+    var ontem = new Date(hoje.getTime() - 86400000);
+    inicio = _vgData(ontem);
+    fim = _vgData(ontem);
+    label = 'Ontem · '+ddmmaaaa(ontem);
+  } else if(p === 'semana_passada'){
+    // semana anterior = segunda à domingo da semana passada
+    var diaSem = hoje.getDay(); // 0=domingo
+    var domAtual = new Date(hoje); domAtual.setDate(hoje.getDate() - diaSem);
+    var segAtual = new Date(domAtual); segAtual.setDate(domAtual.getDate() - 6);
+    var segPassada = new Date(segAtual); segPassada.setDate(segAtual.getDate() - 7);
+    var domPassado = new Date(segPassada); domPassado.setDate(segPassada.getDate() + 6);
+    inicio = _vgData(segPassada);
+    fim = _vgData(domPassado);
+    label = 'Semana passada · '+ddmmaaaa(segPassada)+' a '+ddmmaaaa(domPassado);
+  } else if(p === 'mes_passado'){
+    var ano = hoje.getFullYear(), mes = hoje.getMonth();
+    var iniMesPassado = new Date(ano, mes-1, 1);
+    var fimMesPassado = new Date(ano, mes, 0); // último dia do mes anterior
+    inicio = _vgData(iniMesPassado);
+    fim = _vgData(fimMesPassado);
+    label = 'Mês passado · '+ddmmaaaa(iniMesPassado)+' a '+ddmmaaaa(fimMesPassado);
+  } else if(p === 'ult7'){
+    inicio = _vgData(new Date(hoje.getTime() - 7*86400000));
+    fim = hojeStr;
+    label = 'Últimos 7 dias';
+  } else if(p === 'ult30'){
+    inicio = _vgData(new Date(hoje.getTime() - 30*86400000));
+    fim = hojeStr;
+    label = 'Últimos 30 dias';
+  } else if(p === 'personalizado'){
+    var dini = document.getElementById('ind-data-inicio');
+    var dfim = document.getElementById('ind-data-fim');
+    inicio = (dini && dini.value) ? dini.value : _vgData(new Date(hoje.getTime() - 7*86400000));
+    fim = (dfim && dfim.value) ? dfim.value : hojeStr;
+    var d1 = new Date(inicio+'T00:00:00');
+    var d2 = new Date(fim+'T00:00:00');
+    label = 'Personalizado · '+ddmmaaaa(d1)+' a '+ddmmaaaa(d2);
+  } else {
+    inicio = _vgData(new Date(hoje.getTime() - 30*86400000));
+    fim = hojeStr;
+    label = 'Últimos 30 dias';
+  }
+  
+  // Calcula período ANTERIOR equivalente (pra comparações)
+  var d1 = new Date(inicio+'T00:00:00');
+  var d2 = new Date(fim+'T00:00:00');
+  var duracaoDias = Math.floor((d2 - d1) / 86400000) + 1;
+  var dAnt2 = new Date(d1.getTime() - 86400000);
+  var dAnt1 = new Date(dAnt2.getTime() - (duracaoDias - 1)*86400000);
+  
+  return {
+    inicio: inicio,
+    fim: fim,
+    label: label,
+    duracaoDias: duracaoDias,
+    inicioAnterior: _vgData(dAnt1),
+    fimAnterior: _vgData(dAnt2)
+  };
+}
+
+async function renderIndicadoresCidade(){
+  if(!window.__cidadeAtual) return;
+  var c = window.__cidadeAtual;
+  var slug = c.id;
+  var conteudo = document.getElementById('ind-conteudo');
+  var labelEl = document.getElementById('ind-periodo-label');
+  if(!conteudo) return;
+  
+  var periodo = _indPegarPeriodo();
+  if(labelEl) labelEl.innerHTML = '📅 ' + periodo.label;
+  
+  // Loading
+  conteudo.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">'
+    + '<div style="font-size:32px;margin-bottom:10px">⏳</div>'
+    + '<div style="font-size:13px">Carregando indicadores de '+c.nome+'...</div>'
+    + '</div>';
+  
+  try {
+    // Busca corridas do período atual + anterior em paralelo
+    var [corridasAtual, corridasAnterior] = await Promise.all([
+      _vgBuscarCorridasPeriodo(slug, periodo.inicio, periodo.fim, false),
+      _vgBuscarCorridasPeriodo(slug, periodo.inicioAnterior, periodo.fimAnterior, false)
+    ]);
+    
+    // Se trocou de cidade enquanto carregava, abortar
+    if(!window.__cidadeAtual || window.__cidadeAtual.id !== c.id) return;
+    
+    _indRenderizar(corridasAtual, corridasAnterior);
+    
+  } catch(e){
+    console.error('[Indicadores] erro:', e);
+    conteudo.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#E24B4A">'
+      + '<div style="font-size:32px;margin-bottom:10px">⚠️</div>'
+      + '<div style="font-size:13px">Erro ao carregar indicadores</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:6px">'+e.message+'</div>'
+      + '</div>';
+  }
+}
+
+function _indRenderizar(corridas, corridasAnt){
+  var conteudo = document.getElementById('ind-conteudo');
+  if(!conteudo) return;
+  
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+  
+  // ============================================================
+  // CÁLCULOS — Período atual
+  // ============================================================
+  var total = corridas.length;
+  var finalizadas = corridas.filter(function(x){ return x.status_solicitacao === 'F'; });
+  var canceladas = corridas.filter(function(x){ return x.status_solicitacao === 'C'; });
+  var totalFin = finalizadas.length;
+  var totalCanc = canceladas.length;
+  
+  // Total paradas (todas as finalizadas)
+  var totalParadas = 0;
+  finalizadas.forEach(function(x){
+    if(Array.isArray(x.paradas)) totalParadas += x.paradas.length;
+  });
+  
+  // Entregadores únicos (que pegaram pelo menos 1 corrida)
+  var entregadoresSet = {};
+  finalizadas.forEach(function(x){
+    var cid = (x.raw && (x.raw.condutor_id || x.raw.taxista_id)) || '';
+    if(cid) entregadoresSet[cid] = true;
+  });
+  var entregadoresAtivos = Object.keys(entregadoresSet).length;
+  
+  // Faturamento total
+  var fatTotal = 0;
+  finalizadas.forEach(function(x){ fatTotal += parseFloat(x.valor_corrida || 0); });
+  
+  // Carteira de créditos (forma_pagamento = R)
+  var fatCarteira = 0;
+  var fatFaturado = 0;
+  finalizadas.forEach(function(x){
+    var fp = (x.raw && (x.raw.forma_pagamento || x.raw.meio_pagamento || '')) || '';
+    var v = parseFloat(x.valor_corrida || 0);
+    if(fp === 'R') fatCarteira += v;
+    else fatFaturado += v;
+  });
+  
+  // Solicitações por entregador
+  var solPorEntreg = entregadoresAtivos > 0 ? (total / entregadoresAtivos) : 0;
+  
+  // Ticket médio
+  var ticketOS = totalFin > 0 ? (fatTotal / totalFin) : 0;
+  var ticketParada = totalParadas > 0 ? (fatTotal / totalParadas) : 0;
+  
+  // Média de paradas por OS
+  var paradasPorOS = totalFin > 0 ? (totalParadas / totalFin) : 0;
+  
+  // Origem das solicitações (bandeira_chamada_id ou origem)
+  // TODO: mapeamento exato dos IDs precisa ser confirmado com Machine
+  // Por enquanto, usa um mapa heurístico baseado em ID
+  // Exemplo de mapeamento (a ajustar): { '1244': 'Aplicativo', '1245': 'Site', '1246': 'Integração', '1247': 'Maçaneta' }
+  var origemMap = { 'Aplicativo': 0, 'Site': 0, 'Integração': 0, 'Maçaneta': 0, 'Outros': 0 };
+  corridas.forEach(function(x){
+    var bid = (x.raw && x.raw.bandeira_chamada_id) || '';
+    // TODO: ajustar este mapeamento conforme IDs reais da Machine
+    var origem = 'Outros'; // fallback
+    if(bid === '1244') origem = 'Aplicativo';
+    else if(bid === '1245') origem = 'Site';
+    else if(bid === '1246') origem = 'Integração';
+    else if(bid === '1247') origem = 'Maçaneta';
+    origemMap[origem]++;
+  });
+  
+  // Forma de pagamento
+  var formasPag = {};
+  finalizadas.forEach(function(x){
+    var fp = (x.raw && (x.raw.forma_pagamento || x.raw.meio_pagamento || '')) || '?';
+    var label = FORMAS_PAGAMENTO[fp] || ('Outro ('+fp+')');
+    formasPag[label] = (formasPag[label] || 0) + 1;
+  });
+  
+  // ============================================================
+  // CÁLCULOS — Período anterior (pra variações)
+  // ============================================================
+  var totalAnt = corridasAnt.length;
+  var finalizadasAnt = corridasAnt.filter(function(x){ return x.status_solicitacao === 'F'; });
+  var totalFinAnt = finalizadasAnt.length;
+  
+  var entregadoresAntSet = {};
+  finalizadasAnt.forEach(function(x){
+    var cid = (x.raw && (x.raw.condutor_id || x.raw.taxista_id)) || '';
+    if(cid) entregadoresAntSet[cid] = true;
+  });
+  var entregadoresAntAtivos = Object.keys(entregadoresAntSet).length;
+  var solPorEntregAnt = entregadoresAntAtivos > 0 ? (totalAnt / entregadoresAntAtivos) : 0;
+  
+  // ============================================================
+  // VARIAÇÕES (vs período anterior)
+  // ============================================================
+  function variacao(atual, anterior){
+    if(!anterior) return atual > 0 ? 100 : 0;
+    return ((atual - anterior) / anterior) * 100;
+  }
+  
+  var varTotal = variacao(total, totalAnt);
+  var varEntreg = variacao(entregadoresAtivos, entregadoresAntAtivos);
+  var varSolPorEntreg = variacao(solPorEntreg, solPorEntregAnt);
+  
+  // ============================================================
+  // RENDERIZAÇÃO
+  // ============================================================
+  var html = '';
+  
+  // Helper: badge variação
+  function badge(v){
+    if(Math.abs(v) < 0.5) return '<span style="font-size:10px;font-weight:700;color:#666;background:rgba(0,0,0,.05);padding:2px 8px;border-radius:10px">— 0%</span>';
+    var positivo = v > 0;
+    var cor = positivo ? '#1D9E75' : '#E24B4A';
+    var bg = positivo ? 'rgba(29,158,117,0.1)' : 'rgba(226,75,74,0.1)';
+    var seta = positivo ? '↗' : '↘';
+    return '<span style="font-size:10px;font-weight:700;color:'+cor+';background:'+bg+';padding:2px 8px;border-radius:10px;white-space:nowrap">'+seta+' '+fmtPct(Math.abs(v))+'</span>';
+  }
+  
+  // ============================================================
+  // LINHA 1 — 3 cards grandes com gráfico
+  // ============================================================
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">';
+  
+  // CARD 1: Solicitações (OSs) — pizza
+  html += _indCardGrande({
+    icone: '📦',
+    titulo: 'Solicitações (OSs)',
+    badge: badge(varTotal),
+    valor: fmtNum(total),
+    grafico: _indPizzaSVG([
+      { label: 'Finalizadas', valor: totalFin, cor: '#14b8a6' },
+      { label: 'Canceladas', valor: totalCanc, cor: '#e6397f' }
+    ]),
+    legenda: [
+      { cor: '#14b8a6', label: 'Finalizadas', valor: totalFin, total: total },
+      { cor: '#e6397f', label: 'Canceladas', valor: totalCanc, total: total }
+    ]
+  });
+  
+  // CARD 2: Origem das solicitações — donut
+  var origemArr = Object.keys(origemMap).map(function(k, i){
+    return { label: k, valor: origemMap[k], cor: ['#14b8a6','#0E7AB8','#99e0db','#56627a','#bbb'][i] };
+  }).filter(function(o){ return o.valor > 0; });
+  
+  html += _indCardGrande({
+    icone: '📡',
+    titulo: "Origem das solicitações (OS's)",
+    badge: '',
+    valor: fmtNum(total),
+    grafico: origemArr.length > 0 ? _indDonutSVG(origemArr) : _indSemDados(),
+    legenda: origemArr.map(function(o){
+      return { cor: o.cor, label: o.label, valor: o.valor, total: total };
+    }),
+    obs: origemArr.length === 1 && origemArr[0].label === 'Outros' ? '⚠️ Mapeamento de origem ainda não configurado' : ''
+  });
+  
+  // CARD 3: Ganhos gerais — donut (só pra quem pode ver faturamento)
+  if(verFin){
+    html += _indCardGrande({
+      icone: '💰',
+      titulo: 'Ganhos gerais',
+      badge: '',
+      valor: fmtBRL(fatTotal),
+      grafico: _indDonutSVG([
+        { label: 'Faturado', valor: fatFaturado, cor: '#f0b952' },
+        { label: 'Carteira de créditos', valor: fatCarteira, cor: '#fdd87a' }
+      ]),
+      legenda: [
+        { cor: '#f0b952', label: 'Faturado', valor: fatFaturado, total: fatTotal, moeda: true },
+        { cor: '#fdd87a', label: 'Carteira de créditos', valor: fatCarteira, total: fatTotal, moeda: true }
+      ]
+    });
+  } else {
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-height:240px">'
+      + '<div style="font-size:36px;margin-bottom:8px">🔒</div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--text)">Ganhos gerais</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:4px">Visível somente pra Diretoria/Gestor</div>'
+      + '</div>';
+  }
+  
+  html += '</div>';
+  
+  // ============================================================
+  // LINHA 2 — 4 cards pequenos
+  // ============================================================
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">';
+  
+  html += _indCardPequeno({
+    icone: '🏍️',
+    titulo: 'Entregadores ativos',
+    valor: fmtNum(entregadoresAtivos),
+    badge: badge(varEntreg)
+  });
+  
+  html += _indCardPequeno({
+    icone: '📊',
+    titulo: 'Solicitações por entregador',
+    valor: fmtDec(solPorEntreg, 2),
+    badge: badge(varSolPorEntreg)
+  });
+  
+  html += _indCardPequeno({
+    icone: '💵',
+    titulo: 'Ticket médio por OS',
+    valor: verFin ? fmtBRL(ticketOS) : '🔒',
+    badge: ''
+  });
+  
+  html += _indCardPequeno({
+    icone: '🎯',
+    titulo: 'Ticket médio por parada',
+    valor: verFin ? fmtBRL(ticketParada) : '🔒',
+    badge: ''
+  });
+  
+  html += '</div>';
+  
+  // ============================================================
+  // LINHA 3 — 2 cards pequenos
+  // ============================================================
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">';
+  
+  html += _indCardPequeno({
+    icone: '📍',
+    titulo: 'Total de paradas',
+    valor: fmtNum(totalParadas),
+    badge: ''
+  });
+  
+  html += _indCardPequeno({
+    icone: '🔢',
+    titulo: 'Média de paradas por OS',
+    valor: fmtDec(paradasPorOS, 2),
+    badge: ''
+  });
+  
+  html += '</div>';
+  
+  // ============================================================
+  // LINHA 4 — Forma de pagamento (donut)
+  // ============================================================
+  var pagamentoArr = Object.keys(formasPag).map(function(k, i){
+    return { label: k, valor: formasPag[k], cor: IND_PALETA[i % IND_PALETA.length] };
+  }).filter(function(o){ return o.valor > 0; }).sort(function(a,b){ return b.valor - a.valor; });
+  
+  if(pagamentoArr.length > 0){
+    html += '<div style="background:white;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04)">'
+      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:18px">💳</span><span style="font-size:13px;font-weight:700;color:var(--text)">Forma de pagamento</span></div>'
+      + '<div style="display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center">'
+        + '<div>'+_indDonutSVG(pagamentoArr)+'</div>'
+        + '<div style="display:flex;flex-direction:column;gap:6px">'
+          + pagamentoArr.map(function(p){
+            var pct = totalFin > 0 ? ((p.valor / totalFin) * 100) : 0;
+            return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
+              + '<span style="width:10px;height:10px;border-radius:50%;background:'+p.cor+';flex-shrink:0"></span>'
+              + '<span style="font-weight:700;color:var(--text)">'+fmtPct(pct)+'</span>'
+              + '<span style="color:var(--text3)">'+p.label+'</span>'
+              + '<span style="color:var(--text3);margin-left:auto">'+fmtNum(p.valor)+'</span>'
+            + '</div>';
+          }).join('')
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  }
+  
+  conteudo.innerHTML = html;
+}
+
+// Helpers de formatação
+function fmtNum(n){ return Math.round(n).toLocaleString('pt-BR'); }
+function fmtDec(n, casas){ return n.toFixed(casas || 2).replace('.', ','); }
+function fmtPct(n){ return n.toFixed(1).replace('.', ',') + '%'; }
+function fmtBRL(v){ return 'R$ ' + (v||0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+// Helper: card grande com gráfico
+function _indCardGrande(opts){
+  return '<div style="background:white;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04);display:flex;flex-direction:column">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">'+opts.icone+'</span><span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">'+opts.titulo+'</span></div>'
+      + (opts.badge || '')
+    + '</div>'
+    + '<div style="font-size:28px;font-weight:900;color:var(--text);margin-bottom:14px;line-height:1">'+opts.valor+'</div>'
+    + '<div style="display:flex;align-items:center;gap:16px;flex:1">'
+      + '<div style="flex-shrink:0">'+opts.grafico+'</div>'
+      + '<div style="flex:1;display:flex;flex-direction:column;gap:6px">'
+        + opts.legenda.map(function(l){
+          var pct = l.total > 0 ? ((l.valor / l.total) * 100) : 0;
+          var valFmt = l.moeda ? fmtBRL(l.valor) : fmtNum(l.valor);
+          return '<div style="display:flex;align-items:center;gap:6px;font-size:11px">'
+            + '<span style="width:8px;height:8px;border-radius:50%;background:'+l.cor+';flex-shrink:0"></span>'
+            + '<span style="font-weight:700;color:var(--text)">'+fmtPct(pct)+'</span>'
+            + '<span style="color:var(--text3)">'+l.label+'</span>'
+            + '<span style="color:var(--text3);margin-left:auto;font-size:10px">'+valFmt+'</span>'
+          + '</div>';
+        }).join('')
+      + '</div>'
+    + '</div>'
+    + (opts.obs ? '<div style="font-size:10px;color:#EF9F27;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">'+opts.obs+'</div>' : '')
+  + '</div>';
+}
+
+// Helper: card pequeno
+function _indCardPequeno(opts){
+  return '<div style="background:white;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.04);min-height:100px;display:flex;flex-direction:column">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'
+      + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">'+opts.icone+'</span><span style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.4px;line-height:1.2">'+opts.titulo+'</span></div>'
+      + (opts.badge || '')
+    + '</div>'
+    + '<div style="font-size:24px;font-weight:900;color:var(--text);margin-top:auto;line-height:1">'+opts.valor+'</div>'
+  + '</div>';
+}
+
+// Helper: pizza SVG
+function _indPizzaSVG(slices){
+  var total = slices.reduce(function(s,x){return s+x.valor;}, 0);
+  if(total === 0) return _indSemDados();
+  
+  var size = 110, radius = 50, cx = size/2, cy = size/2;
+  var anguloAtual = -Math.PI / 2; // começa no topo
+  
+  var paths = slices.map(function(s){
+    var pct = s.valor / total;
+    var angulo = pct * 2 * Math.PI;
+    var endAngulo = anguloAtual + angulo;
+    
+    var x1 = cx + radius * Math.cos(anguloAtual);
+    var y1 = cy + radius * Math.sin(anguloAtual);
+    var x2 = cx + radius * Math.cos(endAngulo);
+    var y2 = cy + radius * Math.sin(endAngulo);
+    var largeArc = angulo > Math.PI ? 1 : 0;
+    
+    var d;
+    if(slices.length === 1){
+      // Apenas 1 fatia: desenha círculo completo
+      d = 'M '+cx+' '+(cy-radius)+' A '+radius+' '+radius+' 0 1 1 '+(cx-0.01)+' '+(cy-radius)+' Z';
+    } else {
+      d = 'M '+cx+' '+cy+' L '+x1+' '+y1+' A '+radius+' '+radius+' 0 '+largeArc+' 1 '+x2+' '+y2+' Z';
+    }
+    
+    anguloAtual = endAngulo;
+    return '<path d="'+d+'" fill="'+s.cor+'" stroke="white" stroke-width="2"/>';
+  }).join('');
+  
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+paths+'</svg>';
+}
+
+// Helper: donut SVG (pizza com furo)
+function _indDonutSVG(slices){
+  var total = slices.reduce(function(s,x){return s+x.valor;}, 0);
+  if(total === 0) return _indSemDados();
+  
+  var size = 110, radiusOut = 50, radiusIn = 32, cx = size/2, cy = size/2;
+  var anguloAtual = -Math.PI / 2;
+  
+  var paths = slices.map(function(s){
+    var pct = s.valor / total;
+    var angulo = pct * 2 * Math.PI;
+    var endAngulo = anguloAtual + angulo;
+    
+    var d;
+    if(slices.length === 1){
+      // Donut completo (uma só cor)
+      d = 'M '+cx+' '+(cy-radiusOut)+' A '+radiusOut+' '+radiusOut+' 0 1 1 '+(cx-0.01)+' '+(cy-radiusOut)+' Z '
+        + 'M '+cx+' '+(cy-radiusIn)+' A '+radiusIn+' '+radiusIn+' 0 1 0 '+(cx-0.01)+' '+(cy-radiusIn)+' Z';
+    } else {
+      var x1o = cx + radiusOut * Math.cos(anguloAtual);
+      var y1o = cy + radiusOut * Math.sin(anguloAtual);
+      var x2o = cx + radiusOut * Math.cos(endAngulo);
+      var y2o = cy + radiusOut * Math.sin(endAngulo);
+      var x1i = cx + radiusIn * Math.cos(endAngulo);
+      var y1i = cy + radiusIn * Math.sin(endAngulo);
+      var x2i = cx + radiusIn * Math.cos(anguloAtual);
+      var y2i = cy + radiusIn * Math.sin(anguloAtual);
+      var largeArc = angulo > Math.PI ? 1 : 0;
+      
+      d = 'M '+x1o+' '+y1o+' A '+radiusOut+' '+radiusOut+' 0 '+largeArc+' 1 '+x2o+' '+y2o
+        + ' L '+x1i+' '+y1i
+        + ' A '+radiusIn+' '+radiusIn+' 0 '+largeArc+' 0 '+x2i+' '+y2i+' Z';
+    }
+    
+    anguloAtual = endAngulo;
+    return '<path d="'+d+'" fill="'+s.cor+'" fill-rule="evenodd" stroke="white" stroke-width="1.5"/>';
+  }).join('');
+  
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+paths+'</svg>';
+}
+
+function _indSemDados(){
+  return '<div style="width:110px;height:110px;border-radius:50%;background:#f5f5f5;display:flex;align-items:center;justify-content:center;color:#999;font-size:11px;text-align:center;padding:8px;box-sizing:border-box">Sem dados</div>';
+}
+
 function setCidadeTab(btn, tab){
   document.querySelectorAll('#pg-cidades .tab').forEach(t=>t.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  ['overview','motoboys','empresas','equipe','insights','calendario'].forEach(t=>{
+  ['overview','indicadores','motoboys','empresas','equipe','insights','calendario'].forEach(t=>{
     const el = document.getElementById('ctab-'+t);
     if(el) el.style.display = t===tab ? 'block' : 'none';
   });
@@ -23503,6 +24093,7 @@ function setCidadeTab(btn, tab){
   if(tab === 'motoboys' && typeof renderMotoboysAba === 'function') renderMotoboysAba();
   if(tab === 'empresas' && typeof renderEmpresasAba === 'function') renderEmpresasAba();
   if(tab === 'overview' && typeof renderVisaoGeralCidade === 'function') renderVisaoGeralCidade();
+  if(tab === 'indicadores' && typeof renderIndicadoresCidade === 'function') renderIndicadoresCidade();
   if(tab === 'equipe' && typeof renderEquipeCidade === 'function') renderEquipeCidade();
   if(tab === 'insights' && typeof renderAnotacoesCidade === 'function') renderAnotacoesCidade();
   if(tab === 'calendario' && typeof renderDatasCidadeAba === 'function') renderDatasCidadeAba();
