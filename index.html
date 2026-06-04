@@ -1,4 +1,4 @@
-<!-- v25.22 - RPC v2 otimizada + chunks 3 dias - 03/06/2026 -->
+<!-- v25.23 - Indicadores corrigidos: entregadores totais + nao atendidas - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -23769,16 +23769,19 @@ function _indRenderizarRPC(dados, periodo){
   var total = parseInt(a.total) || 0;
   var totalFin = parseInt(a.finalizadas) || 0;
   var totalCanc = parseInt(a.canceladas) || 0;
+  var totalNaoAtend = parseInt(a.nao_atendidas) || 0;
   var totalParadas = parseInt(a.total_paradas) || 0;
   var fatTotal = parseFloat(a.faturamento) || 0;
   var entregadoresAtivos = parseInt(a.entregadores_ativos) || 0;
   var bandeiras = a.bandeiras || {};
   
   var totalAnt = parseInt(ant.total) || 0;
+  var totalFinAnt = parseInt(ant.finalizadas) || 0;
   var entregadoresAntAtivos = parseInt(ant.entregadores_ativos) || 0;
   
-  var solPorEntreg = entregadoresAtivos > 0 ? (total / entregadoresAtivos) : 0;
-  var solPorEntregAnt = entregadoresAntAtivos > 0 ? (totalAnt / entregadoresAntAtivos) : 0;
+  // CORREÇÃO: Sol/entregador = finalizadas / entregadores (igual à Machine)
+  var solPorEntreg = entregadoresAtivos > 0 ? (totalFin / entregadoresAtivos) : 0;
+  var solPorEntregAnt = entregadoresAntAtivos > 0 ? (totalFinAnt / entregadoresAntAtivos) : 0;
   var ticketOS = totalFin > 0 ? (fatTotal / totalFin) : 0;
   var ticketParada = totalParadas > 0 ? (fatTotal / totalParadas) : 0;
   var paradasPorOS = totalFin > 0 ? (totalParadas / totalFin) : 0;
@@ -23813,12 +23816,14 @@ function _indRenderizarRPC(dados, periodo){
     valor: fmtNum(total),
     grafico: _indPizzaSVG([
       { label: 'Finalizadas', valor: totalFin, cor: '#14b8a6' },
-      { label: 'Canceladas', valor: totalCanc, cor: '#e6397f' }
-    ]),
+      { label: 'Canceladas', valor: totalCanc, cor: '#e6397f' },
+      { label: 'Não atendidas', valor: totalNaoAtend, cor: '#f0b952' }
+    ].filter(function(s){ return s.valor > 0; })),
     legenda: [
       { cor: '#14b8a6', label: 'Finalizadas', valor: totalFin, total: total },
-      { cor: '#e6397f', label: 'Canceladas', valor: totalCanc, total: total }
-    ]
+      { cor: '#e6397f', label: 'Canceladas', valor: totalCanc, total: total },
+      { cor: '#f0b952', label: 'Não atendidas', valor: totalNaoAtend, total: total }
+    ].filter(function(s){ return s.valor > 0; })
   });
   
   // Origem (bandeiras)
