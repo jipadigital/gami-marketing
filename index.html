@@ -1,4 +1,4 @@
-<!-- v25.07 - Broches sem fundo branco (img + blend mode) - 03/06/2026 -->
+<!-- v25.12 - Ranking: stale-while-revalidate + cache em memória - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -19528,6 +19528,29 @@ function abrirCidade(id){
 
   document.getElementById('cidades-lista').style.display='none';
   document.getElementById('cidade-painel').style.display='block';
+  
+  // 🧹 LIMPA dados da cidade anterior IMEDIATAMENTE pra não mostrar stale data
+  try {
+    var conteudoVG = document.getElementById('vg-painel-conteudo');
+    if(conteudoVG){
+      conteudoVG.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">'
+        + '<div style="font-size:32px;margin-bottom:12px">⏳</div>'
+        + '<div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:4px">Carregando '+c.nome+'...</div>'
+        + '<div style="font-size:11px;color:var(--text3)">Buscando dados operacionais</div>'
+        + '</div>';
+    }
+    // Reseta o banner pro estado inicial enquanto carrega
+    var banner = document.getElementById('vg-painel-banner');
+    if(banner) banner.style.display = 'flex';
+    
+    // Limpa elementos comuns que podem mostrar dados velhos
+    ['vg-grafico-corridas','vg-grafico-status','vg-top-empresas','vg-top-motoboys',
+     'vg-comparativo','vg-alertas-ia','vg-aniversarios-cidade'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.innerHTML = '';
+    });
+  } catch(e){ console.warn('limpeza visual:', e); }
+  
   setTimeout(function(){ if(typeof initMachineTab === 'function') initMachineTab(); }, 200);
 
   // Mostra botão sync Supabase só pra super_admin
@@ -22874,57 +22897,60 @@ function podeVerFaturamentoCidade(){
    Quando o periodo eh grande (>10 dias), divide em chunks de ~7 dias rodando
    em paralelo, pra evitar timeout do Netlify em queries muito grandes. */
 async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
-  var base = '/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao';
-  var nc = forcado ? '&nocache=1' : '';
-  var dIni = new Date(dataInicio+'T00:00:00');
-  var dFim = new Date(dataFim+'T00:00:00');
-  var dias = Math.floor((dFim - dIni) / 86400000) + 1;
-
-  // Periodo pequeno (ate 4 dias): 1 fetch so
-  if(dias <= 4){
-    var r = await fetch(base+'&data_inicio='+dataInicio+'&data_fim='+dataFim+nc).then(function(r){return r.json();});
-    return (r && r.response) ? r.response : [];
-  }
-
-  // Periodo grande: chunks de 3 dias em paralelo (Machine separada pode ser lenta)
-  var chunks = [];
-  var atual = new Date(dIni);
-  while(atual <= dFim){
-    var fim = new Date(atual.getTime() + 2*86400000);
-    if(fim > dFim) fim = new Date(dFim);
-    chunks.push({ini: _vgData(atual), fim: _vgData(fim)});
-    atual = new Date(fim.getTime() + 86400000);
-  }
-
-  // Retry 1x se falhar
-  var buscarChunk = async function(c, tentativa){
-    try{
-      var r = await fetch(base+'&data_inicio='+c.ini+'&data_fim='+c.fim+nc).then(function(r){
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        return r.json();
-      });
-      return r || {response:[]};
-    }catch(e){
-      if(!tentativa){
-        await new Promise(function(res){ setTimeout(res, 800); });
-        return buscarChunk(c, 1);
-      }
-      console.warn('[Machine] Chunk falhou apos retry: '+c.ini+' a '+c.fim, e.message);
-      return {response:[], _falhou:true, _periodo: c.ini+' a '+c.fim};
-    }
-  };
-
-  var promessas = chunks.map(function(c){ return buscarChunk(c, 0); });
-  var resultados = await Promise.all(promessas);
+  // 🔧 v25.09: busca do Supabase com paginação (sem limite de 3400 da Machine)
+  // Vantagens: sem truncamento, mais rápido, dados sempre completos
   var todas = [];
-  var falhas = [];
-  resultados.forEach(function(r){
-    if(r && r.response) todas = todas.concat(r.response);
-    if(r && r._falhou) falhas.push(r._periodo);
-  });
-  if(falhas.length){
-    console.warn('[Machine] '+falhas.length+' chunks falharam: '+falhas.join(', '));
+  var offset = 0;
+  var LIMIT_PAGE = 1000;
+  var MAX_ITER = 100; // até 100k corridas (Campo Grande)
+  
+  console.log('[vgBuscar] '+slug+' '+dataInicio+' → '+dataFim+' (Supabase paginado)');
+  
+  for(var i = 0; i < MAX_ITER; i++){
+    var url = SUPA_URL+'/rest/v1/machine_corridas'
+      + '?cidade_slug=eq.'+encodeURIComponent(slug)
+      + '&data_hora_solicitacao=gte.'+dataInicio+'T00:00:00'
+      + '&data_hora_solicitacao=lte.'+dataFim+'T23:59:59'
+      + '&select=raw,data_hora_solicitacao,status_solicitacao,nome_passageiro,valor_corrida'
+      + '&order=data_hora_solicitacao.asc'
+      + '&limit='+LIMIT_PAGE
+      + '&offset='+offset;
+    
+    try {
+      var r = await fetch(url, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+      });
+      
+      if(!r.ok){ 
+        console.warn('[vgBuscar] HTTP '+r.status+' offset '+offset); 
+        break; 
+      }
+      
+      var pagina = await r.json();
+      if(!Array.isArray(pagina) || pagina.length === 0) break;
+      
+      // Mapeia pro formato esperado (com paradas extraídas do raw)
+      pagina.forEach(function(row){
+        var paradas = (row.raw && Array.isArray(row.raw.paradas)) ? row.raw.paradas : [];
+        todas.push({
+          data_hora_solicitacao: row.data_hora_solicitacao,
+          status_solicitacao: row.status_solicitacao,
+          nome_passageiro: row.nome_passageiro || (row.raw && row.raw.nome_passageiro) || '',
+          valor_corrida: row.valor_corrida || (row.raw && row.raw.valor_corrida) || 0,
+          paradas: paradas,
+          raw: row.raw
+        });
+      });
+      
+      if(pagina.length < LIMIT_PAGE) break; // última página
+      offset += LIMIT_PAGE;
+    } catch(e){
+      console.warn('[vgBuscar] erro:', e.message);
+      break;
+    }
   }
+  
+  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas');
   return todas;
 }
 
@@ -24976,13 +25002,110 @@ function renderMuralVivo(){
 /* ============================
    1) MINHA AGENDA HOJE
    ============================ */
-function _agendaKey(){ return 'gami_agenda_'+new Date().toISOString().split('T')[0]; }
+// Storage de itens manuais da agenda
+// v25.12: agora unificado em UMA key só com data por item (não some quando vira o dia)
+var _AGENDA_KEY = 'gami_agenda_manuais_v2';
 
-function getAgendaItensManuais(){
-  try { return JSON.parse(localStorage.getItem(_agendaKey())||'[]'); } catch(e){ return []; }
+function _agendaKey(){ 
+  // Mantida pra compat (storage antigo por dia). Migração lê dela.
+  return 'gami_agenda_'+new Date().toISOString().split('T')[0]; 
 }
-function saveAgendaItensManuais(arr){
-  try { localStorage.setItem(_agendaKey(), JSON.stringify(arr)); } catch(e){}
+
+// Migra storage antigo (gami_agenda_YYYY-MM-DD) pro novo (lista única com data)
+function _migrarAgendaAntiga(){
+  try {
+    var jaMigrado = localStorage.getItem('gami_agenda_migrado_v2');
+    if(jaMigrado) return;
+    var keys = Object.keys(localStorage).filter(function(k){ 
+      return /^gami_agenda_\d{4}-\d{2}-\d{2}$/.test(k); 
+    });
+    if(keys.length === 0){ 
+      localStorage.setItem('gami_agenda_migrado_v2','1'); 
+      return; 
+    }
+    var unificada = [];
+    try { unificada = JSON.parse(localStorage.getItem(_AGENDA_KEY) || '[]'); } catch(e){}
+    keys.forEach(function(k){
+      var data = k.replace('gami_agenda_','');
+      try {
+        var antigos = JSON.parse(localStorage.getItem(k) || '[]');
+        antigos.forEach(function(item){
+          if(!item.data) item.data = data;
+          unificada.push(item);
+        });
+      } catch(e){}
+    });
+    localStorage.setItem(_AGENDA_KEY, JSON.stringify(unificada));
+    localStorage.setItem('gami_agenda_migrado_v2', '1');
+    console.log('[Agenda] migrou '+unificada.length+' compromissos da estrutura antiga');
+  } catch(e){ console.warn('[Agenda] erro migração:', e); }
+}
+_migrarAgendaAntiga();
+
+function getAgendaItensManuais(filtroData){
+  // filtroData: 'hoje' (default), 'todos', ou string YYYY-MM-DD específica
+  try {
+    var todos = JSON.parse(localStorage.getItem(_AGENDA_KEY)||'[]');
+    if(!Array.isArray(todos)) todos = [];
+    
+    if(filtroData === 'todos') return todos;
+    
+    var alvo;
+    if(filtroData && /^\d{4}-\d{2}-\d{2}$/.test(filtroData)){
+      alvo = filtroData;
+    } else {
+      alvo = new Date().toISOString().split('T')[0];
+    }
+    
+    // Compatibilidade: items SEM data são considerados de hoje
+    return todos.filter(function(i){ 
+      return (i.data || new Date().toISOString().split('T')[0]) === alvo;
+    });
+  } catch(e){ return []; }
+}
+
+function getAgendaItensAtrasados(){
+  // Compromissos de dias passados que ainda estão NÃO feitos
+  try {
+    var todos = JSON.parse(localStorage.getItem(_AGENDA_KEY)||'[]');
+    if(!Array.isArray(todos)) return [];
+    var hojeStr = new Date().toISOString().split('T')[0];
+    return todos.filter(function(i){
+      if(i.feito) return false;
+      var d = i.data;
+      if(!d) return false;
+      return d < hojeStr;
+    });
+  } catch(e){ return []; }
+}
+
+function saveAgendaItensManuais(arr, filtroData){
+  // Salva uma lista filtrada (de UMA data). Mantém outras datas intactas.
+  try {
+    var todos = JSON.parse(localStorage.getItem(_AGENDA_KEY)||'[]');
+    if(!Array.isArray(todos)) todos = [];
+    
+    if(filtroData === 'todos'){
+      localStorage.setItem(_AGENDA_KEY, JSON.stringify(arr));
+      return;
+    }
+    
+    var alvo;
+    if(filtroData && /^\d{4}-\d{2}-\d{2}$/.test(filtroData)){
+      alvo = filtroData;
+    } else {
+      alvo = new Date().toISOString().split('T')[0];
+    }
+    
+    var outros = todos.filter(function(i){
+      return (i.data || new Date().toISOString().split('T')[0]) !== alvo;
+    });
+    var novosArr = (arr || []).map(function(i){
+      if(!i.data) i.data = alvo;
+      return i;
+    });
+    localStorage.setItem(_AGENDA_KEY, JSON.stringify(outros.concat(novosArr)));
+  } catch(e){}
 }
 
 /* Coleta tudo de tarefas + posts + calendário + manuais */
@@ -25039,11 +25162,29 @@ function coletarItensAgendaHoje(){
            });
   } catch(e){}
   
-  // 4. Itens manuais (adicionados direto na agenda)
+  // 4. Itens manuais (adicionados direto na agenda) — só os de hoje
   var manuais = getAgendaItensManuais();
   manuais.forEach(function(m, idx){
     itens.push(Object.assign({tipo:'manual', icone:m.icone||'⭐', cor:'#1AB8F0', origem:'manual', manualIdx:idx, feito:!!m.feito}, m));
   });
+  
+  // 4.5 Atrasados (de dias passados não-feitos) — aparecem com flag
+  try {
+    var atrasados = getAgendaItensAtrasados();
+    atrasados.forEach(function(m){
+      var diasAtraso = Math.round((new Date(hojeStr) - new Date(m.data)) / 86400000);
+      itens.push(Object.assign({}, m, {
+        tipo:'manual', 
+        icone:'⏰', 
+        cor:'#E24B4A', 
+        origem:'manual',
+        atrasado: true,
+        diasAtraso: diasAtraso,
+        titulo: (m.titulo || 'Sem título') + ' (atrasado '+diasAtraso+'d)',
+        feito: false
+      }));
+    });
+  } catch(e){ console.warn('atrasados:', e); }
   
   // Ordena: pendentes por hora primeiro, feitos no fim
   itens.sort(function(a,b){
@@ -25173,23 +25314,28 @@ function agendaToggleManual(idx){
 function adicionarItemAgenda(){
   var existing = document.getElementById('modal-quicktask');
   if(existing) existing.remove();
+  var hojeStr = new Date().toISOString().split('T')[0];
   var modal = document.createElement('div');
   modal.id = 'modal-quicktask';
   modal.className = 'modal-overlay open';
   modal.innerHTML =
-    '<div class="modal" style="width:440px;max-width:92vw">'+
+    '<div class="modal" style="width:460px;max-width:92vw">'+
       '<div class="modal-head">'+
-        '<div class="modal-title">+ Nova tarefa de hoje</div>'+
+        '<div class="modal-title">+ Novo compromisso</div>'+
         '<button class="modal-close" onclick="document.getElementById(\'modal-quicktask\').remove()">×</button>'+
       '</div>'+
       '<div style="display:flex;flex-direction:column;gap:12px;padding:6px 0">'+
         '<div>'+
           '<div class="field-label" style="margin-bottom:6px">O que precisa ser feito?</div>'+
-          '<input id="qt-titulo" class="inp" placeholder="Ex: Postar carrossel de Maceió, ligar pro Talis..." autofocus/>'+
+          '<input id="qt-titulo" class="inp" placeholder="Ex: Reunião com Talis, ligar pra Maceió..." autofocus/>'+
         '</div>'+
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'+
           '<div>'+
-            '<div class="field-label" style="margin-bottom:6px">Horário (opcional)</div>'+
+            '<div class="field-label" style="margin-bottom:6px">📅 Data</div>'+
+            '<input id="qt-data" class="inp" type="date" value="'+hojeStr+'"/>'+
+          '</div>'+
+          '<div>'+
+            '<div class="field-label" style="margin-bottom:6px">🕐 Horário</div>'+
             '<input id="qt-hora" class="inp" type="time"/>'+
           '</div>'+
           '<div>'+
@@ -25200,9 +25346,10 @@ function adicionarItemAgenda(){
         '<div>'+
           '<div class="field-label" style="margin-bottom:6px">Tipo</div>'+
           '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="tarefa" checked/> 📋 Tarefa (aparece também em Tarefas)</label>'+
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="agenda"/> 📌 Só agenda (rápido)</label>'+
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="tarefa" checked/> 📋 Tarefa</label>'+
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="agenda"/> 📌 Compromisso</label>'+
           '</div>'+
+          '<div style="font-size:10px;color:var(--text3);margin-top:6px">📌 Compromissos aparecem no calendário e ficam guardados pra sempre.</div>'+
         '</div>'+
         '<div style="display:flex;gap:8px;margin-top:6px">'+
           '<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'modal-quicktask\').remove()">Cancelar</button>'+
@@ -25212,7 +25359,6 @@ function adicionarItemAgenda(){
     '</div>';
   document.body.appendChild(modal);
   setTimeout(function(){ var i=document.getElementById('qt-titulo'); if(i) i.focus(); }, 50);
-  // Enter pra salvar
   modal.addEventListener('keydown', function(e){
     if(e.key === 'Enter' && document.activeElement && document.activeElement.id === 'qt-titulo') salvarQuickTask();
     if(e.key === 'Escape') modal.remove();
@@ -25224,6 +25370,7 @@ function salvarQuickTask(){
   titulo = titulo.trim();
   if(!titulo){ alert('Digite o que precisa ser feito.'); return; }
   var hora  = (document.getElementById('qt-hora')||{}).value || '';
+  var data  = (document.getElementById('qt-data')||{}).value || new Date().toISOString().split('T')[0];
   var prio  = (document.getElementById('qt-prio')||{}).value || 'media';
   var tipoEl = document.querySelector('input[name="qt-tipo"]:checked');
   var tipo  = tipoEl ? tipoEl.value : 'tarefa';
@@ -25236,7 +25383,7 @@ function salvarQuickTask(){
         texto: titulo,
         prio: prio,
         cat: 'Outro',
-        prazo: '',
+        prazo: data,
         hora: hora,
         feito: false,
         criadaEm: new Date().toISOString()
@@ -25245,12 +25392,28 @@ function salvarQuickTask(){
       if(typeof tfRenderDiario === 'function') try { tfRenderDiario(); } catch(e){}
     }
   } else {
-    var manuais = (typeof getAgendaItensManuais === 'function') ? getAgendaItensManuais() : [];
-    manuais.push({titulo:titulo, hora:hora, icone:'⭐', feito:false});
-    if(typeof saveAgendaItensManuais === 'function') saveAgendaItensManuais(manuais);
+    // Compromisso: salva no storage unificado COM data + também cria evento no calendário
+    var manuaisData = getAgendaItensManuais(data);
+    manuaisData.push({titulo:titulo, hora:hora, data:data, icone:'📌', feito:false, criadoEm: new Date().toISOString()});
+    saveAgendaItensManuais(manuaisData, data);
+    
+    // Também salva no calendário pra aparecer lá
+    try {
+      var eventos = JSON.parse(localStorage.getItem('gami_cal')||'[]');
+      eventos.push({
+        id: 'evt_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        titulo: titulo,
+        data: data,
+        hora: hora,
+        tipo: 'compromisso',
+        origem: 'agenda'
+      });
+      localStorage.setItem('gami_cal', JSON.stringify(eventos));
+    } catch(e){ console.warn('cal save:', e); }
   }
   document.getElementById('modal-quicktask').remove();
   if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda();
+  if(typeof renderCalendario === 'function') try { renderCalendario(); } catch(e){}
 }
 
 function removerItemAgenda(manualIdx){
@@ -25574,25 +25737,57 @@ async function renderRankingCidades(forceRefresh){
   var nomeMes = meses[hoje.getMonth()] + ' de ' + hoje.getFullYear();
   if(label) label.textContent = nomeMes;
   
-  // Tenta cache primeiro
-  var cache = forceRefresh ? null : _rankingPegarCache();
+  // Pega cache (mesmo se expirado — stale-while-revalidate)
+  var cache = _rankingPegarCache();
   var lista = cache ? cache.data : null;
+  var precisaBuscar = forceRefresh || !cache || _rankingCacheExpirado(cache);
   
-  if(!lista){
-    host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando ranking...</div>';
-    lista = await _rankingBuscarSupabase();
-    if(lista) _rankingSalvarCache(lista);
-  }
-  
-  if(!Array.isArray(lista) || lista.length === 0){
-    host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">'
-      + '⚠️ Sem dados de corridas em '+nomeMes+'.<br>'
-      + '<span style="font-size:10px">Rode <code>sql_ranking_cidades.sql</code> no Supabase pra criar a RPC.</span>'
-      + '</div>';
+  // Se tem dados (mesmo stale), renderiza IMEDIATAMENTE
+  if(Array.isArray(lista) && lista.length > 0){
+    _renderRankingHTML(host, lista, nomeMes);
+    host.dataset.rankingLoaded = '1';
+    
+    // Se precisa atualizar, busca em BACKGROUND (sem destruir UI)
+    if(precisaBuscar){
+      _rankingBuscarSupabase().then(function(nova){
+        if(Array.isArray(nova) && nova.length > 0){
+          _rankingSalvarCache(nova);
+          _renderRankingHTML(host, nova, nomeMes);
+        }
+        // Se falhou, mantém o que tá no DOM (stale-while-revalidate)
+      });
+    }
     return;
   }
   
-  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  // Sem dados em lugar nenhum: mostra loading e busca
+  if(!host.dataset.rankingLoaded){
+    host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando ranking...</div>';
+  }
+  
+  var listaNova = await _rankingBuscarSupabase();
+  if(Array.isArray(listaNova) && listaNova.length > 0){
+    _rankingSalvarCache(listaNova);
+    _renderRankingHTML(host, listaNova, nomeMes);
+    host.dataset.rankingLoaded = '1';
+    return;
+  }
+  
+  // SE chegou aqui = nunca teve dados E busca falhou
+  // SE host JÁ TINHA ranking renderizado, NÃO destrói
+  if(host.dataset.rankingLoaded === '1') return;
+  
+  var erroExtra = window._rankingErroDetalhe || '';
+  host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">'
+    + '⚠️ Sem dados de corridas em '+nomeMes+'.<br>'
+    + (erroExtra ? '<span style="font-size:10px;color:#E24B4A;display:block;margin-top:4px">Erro: '+erroExtra+'</span>' : '')
+    + '<span style="font-size:10px;display:block;margin-top:8px">Abra F12 → Console pra ver detalhes técnicos.</span>'
+    + '<button onclick="localStorage.removeItem(\'gami_ranking_cidades_v1\'); _RANKING_LISTA_MEMORIA=null; renderRankingCidades(true)" style="margin-top:10px;padding:6px 14px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);font-size:11px;cursor:pointer;font-weight:600">🔄 Limpar cache e tentar de novo</button>'
+    + '</div>';
+}
+
+// Função auxiliar — só renderiza HTML sem buscar dados
+function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
   
   function gestorDaCidade(nomeCidade){
     // OVERRIDE: Campo Grande sempre tem João Duarte como gestor visível no ranking
@@ -25656,15 +25851,120 @@ async function renderRankingCidades(forceRefresh){
     return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:flex;align-items:center;justify-content:center;font-size:'+(tamanho/2.5)+'px;font-weight:800;color:#0E7AB8;flex-shrink:0">'+iniciais+'</div>';
   }
   
-  // Helper: broche da cidade — usa <img> com mix-blend-mode pra remover branco do PNG
+  // Helper: broche da cidade — processa via canvas pra remover SÓ o branco do fundo
+  // (preserva branco interno da logo via flood fill das bordas)
   function brocheCidadeBg(nome, tamanho){
     var slug = slugCidade(nome);
-    return '<img src="/broches-gami/cidades/'+slug+'.png" alt="'+nome+'" '
+    var src = '/broches-gami/cidades/'+slug+'.png';
+    var uid = 'br_'+slug+'_'+tamanho+'_'+Math.random().toString(36).slice(2,7);
+    
+    // Verifica cache global de imagens processadas
+    if(!window._brocheCache) window._brocheCache = {};
+    var cached = window._brocheCache[slug];
+    
+    var srcInicial = cached || src;
+    
+    // Se não tem cache, processa em background
+    if(!cached){
+      _processarBrocheBranco(src, slug, uid);
+    }
+    
+    return '<img id="'+uid+'" src="'+srcInicial+'" alt="'+nome+'" data-slug="'+slug+'" '
       + 'style="width:'+tamanho+'px;height:'+tamanho+'px;object-fit:contain;flex-shrink:0;'
-      + 'mix-blend-mode:multiply;'
       + 'filter:drop-shadow(0 2px 6px rgba(0,0,0,0.18)) contrast(1.05) saturate(1.1);'
       + 'background:transparent" '
       + 'onerror="this.style.display=\'none\'"/>';
+  }
+  
+  // Processa PNG removendo branco do FUNDO (conectado às bordas)
+  // Usa fetch+blob pra evitar problemas de CORS no canvas
+  function _processarBrocheBranco(src, slug, primeiroId){
+    // Estratégia: fetch como blob → cria URL local → carrega no canvas
+    // Isso evita problemas de tainted canvas
+    fetch(src)
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.blob(); })
+      .then(function(blob){
+        var blobUrl = URL.createObjectURL(blob);
+        var img = new Image();
+        img.onload = function(){
+          try {
+            var canvas = document.createElement('canvas');
+            var w = img.naturalWidth, h = img.naturalHeight;
+            canvas.width = w; canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(blobUrl);
+            
+            var imageData = ctx.getImageData(0, 0, w, h);
+            var data = imageData.data;
+            
+            // Flood fill das BORDAS pra dentro, removendo só branco conectado
+            var visited = new Uint8Array(w * h);
+            var stack = [];
+            
+            // Adiciona todos os pixels das 4 bordas
+            for(var x = 0; x < w; x++){
+              stack.push(x);              // topo
+              stack.push((h-1)*w + x);    // baixo
+            }
+            for(var y = 0; y < h; y++){
+              stack.push(y * w);          // esquerda
+              stack.push(y * w + w - 1);  // direita
+            }
+            
+            // Tolerância mais permissiva — captura branco quase-puro
+            // Considera "branco do fundo" se R, G, B todos >= 200 E saturação baixa
+            var TOL = 200;
+            
+            while(stack.length > 0){
+              var idx = stack.pop();
+              if(idx < 0 || idx >= w * h) continue;
+              if(visited[idx]) continue;
+              visited[idx] = 1;
+              
+              var i = idx * 4;
+              var r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+              
+              if(a === 0) continue; // já transparente
+              
+              // É branco/quase-branco se todos os canais >= TOL
+              // E a saturação é baixa (não é cor vibrante clara)
+              var ehBranco = r >= TOL && g >= TOL && b >= TOL;
+              if(!ehBranco) continue;
+              
+              // Torna transparente
+              data[i+3] = 0;
+              
+              // Adiciona vizinhos
+              var px = idx % w, py = Math.floor(idx / w);
+              if(px > 0)     stack.push(idx - 1);
+              if(px < w - 1) stack.push(idx + 1);
+              if(py > 0)     stack.push(idx - w);
+              if(py < h - 1) stack.push(idx + w);
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            var dataUrl = canvas.toDataURL('image/png');
+            window._brocheCache[slug] = dataUrl;
+            
+            // Atualiza TODAS as <img> dessa cidade no DOM
+            var imgs = document.querySelectorAll('img[data-slug="'+slug+'"]');
+            imgs.forEach(function(el){ el.src = dataUrl; });
+            console.log('[broche] '+slug+' processado: '+imgs.length+' elementos atualizados');
+            
+          } catch(e){
+            console.warn('[broche] erro no canvas '+slug+':', e.message);
+          }
+        };
+        img.onerror = function(){
+          console.warn('[broche] falha ao carregar blob '+slug);
+          URL.revokeObjectURL(blobUrl);
+        };
+        img.src = blobUrl;
+      })
+      .catch(function(e){
+        console.warn('[broche] falha no fetch '+slug+':', e.message);
+      });
   }
   
   // Helper: badge variação — esconde negativos, mostra motivação
@@ -31231,20 +31531,37 @@ var RANKING_CIDADES_MAP = {
 var _RANKING_CACHE_KEY = 'gami_ranking_cidades_v1';
 var _RANKING_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 minutos
 var _RANKING_AUTO_REFRESH_INTERVAL = null;
+var _RANKING_LISTA_MEMORIA = null;  // cache em memória (sem expirar na sessão)
+var _RANKING_LISTA_TS = null;
 
 function _rankingPegarCache(){
+  // 1. Tenta memória primeiro (instantâneo)
+  if(_RANKING_LISTA_MEMORIA){
+    return { ts: _RANKING_LISTA_TS, data: _RANKING_LISTA_MEMORIA };
+  }
+  // 2. Cai pra localStorage
   try {
     var raw = localStorage.getItem(_RANKING_CACHE_KEY);
     if(!raw) return null;
     var p = JSON.parse(raw);
-    if(!p || !p.ts || (Date.now() - p.ts) > _RANKING_CACHE_TTL_MS) return null;
+    if(!p || !p.ts) return null;
+    // Mesmo que TTL tenha passado, retorna pra usar como stale-while-revalidate
+    _RANKING_LISTA_MEMORIA = p.data;
+    _RANKING_LISTA_TS = p.ts;
     return p;
   } catch(e){ return null; }
 }
 
+function _rankingCacheExpirado(cache){
+  if(!cache || !cache.ts) return true;
+  return (Date.now() - cache.ts) > _RANKING_CACHE_TTL_MS;
+}
+
 function _rankingSalvarCache(dados){
   try {
-    localStorage.setItem(_RANKING_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: dados }));
+    _RANKING_LISTA_MEMORIA = dados;
+    _RANKING_LISTA_TS = Date.now();
+    localStorage.setItem(_RANKING_CACHE_KEY, JSON.stringify({ ts: _RANKING_LISTA_TS, data: dados }));
   } catch(e){}
 }
 
@@ -31259,14 +31576,24 @@ async function _rankingBuscarSupabase(){
       },
       body: JSON.stringify({})  // sem params = mês atual
     });
+    console.log('[Ranking RPC] status:', rpcResp.status);
+    
     if(!rpcResp.ok){
-      console.warn('[Ranking] RPC erro HTTP', rpcResp.status);
+      var txtErr = await rpcResp.text();
+      console.error('[Ranking RPC] HTTP '+rpcResp.status+':', txtErr);
+      window._rankingErroDetalhe = 'HTTP '+rpcResp.status+': '+txtErr.substring(0,200);
       return null;
     }
+    
     var lista = await rpcResp.json();
+    console.log('[Ranking RPC] ✓ retornou', lista && lista.length, 'linhas');
+    if(Array.isArray(lista) && lista.length > 0){
+      console.log('[Ranking RPC] amostra:', lista[0]);
+    }
     return Array.isArray(lista) ? lista : null;
   } catch(e){
-    console.warn('[Ranking] erro:', e.message);
+    console.error('[Ranking RPC] exceção:', e);
+    window._rankingErroDetalhe = e.message;
     return null;
   }
 }
