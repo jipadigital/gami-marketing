@@ -1,4 +1,4 @@
-<!-- v25.16 - Fix Indicadores: usa _vgSlug pra converter nome em slug do Supabase - 03/06/2026 -->
+<!-- v25.17 - Paginação PARALELA (batches de 10) - bem mais rápido - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -22938,39 +22938,70 @@ function podeVerFaturamentoCidade(){
    Quando o periodo eh grande (>10 dias), divide em chunks de ~7 dias rodando
    em paralelo, pra evitar timeout do Netlify em queries muito grandes. */
 async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
-  // 🔧 v25.09: busca do Supabase com paginação (sem limite de 3400 da Machine)
-  // Vantagens: sem truncamento, mais rápido, dados sempre completos
-  var todas = [];
-  var offset = 0;
+  // 🚀 v25.17: Paginação PARALELA — bem mais rápido
+  // 1. Descobre o total via count
+  // 2. Busca todas as páginas em paralelo (batches de 10)
+  
+  var headers = { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY };
+  var filtroUrl = '?cidade_slug=eq.'+encodeURIComponent(slug)
+    + '&data_hora_solicitacao=gte.'+dataInicio+'T00:00:00'
+    + '&data_hora_solicitacao=lte.'+dataFim+'T23:59:59';
+  
+  console.log('[vgBuscar] '+slug+' '+dataInicio+' → '+dataFim);
+  var t0 = Date.now();
+  
+  // 1. Pega COUNT total via header Content-Range
+  var total = 0;
+  try {
+    var countResp = await fetch(SUPA_URL+'/rest/v1/machine_corridas'+filtroUrl+'&select=cidade_slug&limit=1', {
+      headers: Object.assign({}, headers, { 
+        'Prefer': 'count=exact',
+        'Range-Unit': 'items',
+        'Range': '0-0'
+      })
+    });
+    var contentRange = countResp.headers.get('Content-Range');
+    if(contentRange){
+      var m = contentRange.match(/\/(\d+)/);
+      if(m) total = parseInt(m[1]);
+    }
+  } catch(e){ console.warn('[vgBuscar] count erro:', e); }
+  
+  if(total === 0){
+    console.log('[vgBuscar] '+slug+' SEM dados no período');
+    return [];
+  }
+  
+  // 2. Calcula número de páginas
   var LIMIT_PAGE = 1000;
-  var MAX_ITER = 100; // até 100k corridas (Campo Grande)
+  var numPages = Math.ceil(total / LIMIT_PAGE);
+  var BATCH_SIZE = 10; // máximo de 10 requests simultâneos
   
-  console.log('[vgBuscar] '+slug+' '+dataInicio+' → '+dataFim+' (Supabase paginado)');
+  // 3. Busca todas as páginas em paralelo, em batches
+  var todas = [];
   
-  for(var i = 0; i < MAX_ITER; i++){
-    var url = SUPA_URL+'/rest/v1/machine_corridas'
-      + '?cidade_slug=eq.'+encodeURIComponent(slug)
-      + '&data_hora_solicitacao=gte.'+dataInicio+'T00:00:00'
-      + '&data_hora_solicitacao=lte.'+dataFim+'T23:59:59'
-      + '&select=raw,data_hora_solicitacao,status_solicitacao,nome_passageiro,valor_corrida'
-      + '&order=data_hora_solicitacao.asc'
-      + '&limit='+LIMIT_PAGE
-      + '&offset='+offset;
+  for(var batchStart = 0; batchStart < numPages; batchStart += BATCH_SIZE){
+    var batchEnd = Math.min(batchStart + BATCH_SIZE, numPages);
+    var promessas = [];
     
-    try {
-      var r = await fetch(url, {
-        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
-      });
+    for(var i = batchStart; i < batchEnd; i++){
+      var offset = i * LIMIT_PAGE;
+      var pageUrl = SUPA_URL+'/rest/v1/machine_corridas'+filtroUrl
+        + '&select=raw,data_hora_solicitacao,status_solicitacao,nome_passageiro,valor_corrida'
+        + '&order=data_hora_solicitacao.asc'
+        + '&limit='+LIMIT_PAGE
+        + '&offset='+offset;
       
-      if(!r.ok){ 
-        console.warn('[vgBuscar] HTTP '+r.status+' offset '+offset); 
-        break; 
-      }
-      
-      var pagina = await r.json();
-      if(!Array.isArray(pagina) || pagina.length === 0) break;
-      
-      // Mapeia pro formato esperado (com paradas extraídas do raw)
+      promessas.push(
+        fetch(pageUrl, { headers: headers })
+          .then(function(r){ return r.ok ? r.json() : []; })
+          .catch(function(){ return []; })
+      );
+    }
+    
+    var resultados = await Promise.all(promessas);
+    resultados.forEach(function(pagina){
+      if(!Array.isArray(pagina)) return;
       pagina.forEach(function(row){
         var paradas = (row.raw && Array.isArray(row.raw.paradas)) ? row.raw.paradas : [];
         todas.push({
@@ -22982,16 +23013,11 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
           raw: row.raw
         });
       });
-      
-      if(pagina.length < LIMIT_PAGE) break; // última página
-      offset += LIMIT_PAGE;
-    } catch(e){
-      console.warn('[vgBuscar] erro:', e.message);
-      break;
-    }
+    });
   }
   
-  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas');
+  var tFim = Date.now() - t0;
+  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas em '+tFim+'ms ('+numPages+' páginas paralelas)');
   return todas;
 }
 
