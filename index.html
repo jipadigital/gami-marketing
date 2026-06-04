@@ -1,4 +1,4 @@
-<!-- v25.20 - Indicadores ajustados: origem com IDs reais, sem forma pagamento (não há no raw) - 03/06/2026 -->
+<!-- v25.21 - Nível 2: RPC indicadores_cidade + cache 10min - de 6s pra 1s - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -23672,10 +23672,13 @@ function _indPegarPeriodo(){
   };
 }
 
+// Cache em memória pra Indicadores (TTL 10 min por cidade+período)
+var _IND_CACHE = {};
+var _IND_CACHE_TTL_MS = 10 * 60 * 1000;
+
 async function renderIndicadoresCidade(){
   if(!window.__cidadeAtual) return;
   var c = window.__cidadeAtual;
-  // c.id é 'c1', 'c2'... — precisa converter pra slug do Supabase
   var slug = (typeof _vgSlug === 'function') ? _vgSlug(c.nome) : c.id;
   var conteudo = document.getElementById('ind-conteudo');
   var labelEl = document.getElementById('ind-periodo-label');
@@ -23684,36 +23687,192 @@ async function renderIndicadoresCidade(){
   var periodo = _indPegarPeriodo();
   if(labelEl) labelEl.innerHTML = '📅 ' + periodo.label;
   
+  // Chave do cache: cidade + período
+  var cacheKey = slug + '|' + periodo.inicio + '|' + periodo.fim;
+  var cached = _IND_CACHE[cacheKey];
+  
+  // Se cache válido (<10min), renderiza imediato
+  if(cached && (Date.now() - cached.ts) < _IND_CACHE_TTL_MS){
+    console.log('[Indicadores] cache hit '+slug);
+    _indRenderizarRPC(cached.dados, periodo);
+    return;
+  }
+  
   // Loading
   conteudo.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">'
     + '<div style="font-size:32px;margin-bottom:10px">⏳</div>'
     + '<div style="font-size:13px">Carregando indicadores de '+c.nome+'...</div>'
     + '</div>';
   
-  console.log('[Indicadores] cidade='+c.nome+' slug='+slug+' periodo:', periodo);
+  console.log('[Indicadores] '+c.nome+' slug='+slug+' periodo:', periodo.inicio, '→', periodo.fim);
+  var t0 = Date.now();
   
   try {
-    // Busca corridas do período atual + anterior em paralelo
-    var [corridasAtual, corridasAnterior] = await Promise.all([
-      _vgBuscarCorridasPeriodo(slug, periodo.inicio, periodo.fim, false),
-      _vgBuscarCorridasPeriodo(slug, periodo.inicioAnterior, periodo.fimAnterior, false)
-    ]);
+    // Chama a RPC indicadores_cidade
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/indicadores_cidade', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer '+SUPA_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        p_cidade_slug: slug,
+        p_data_inicio: periodo.inicio,
+        p_data_fim: periodo.fim
+      })
+    });
     
-    console.log('[Indicadores] '+slug+' · atual='+corridasAtual.length+' · anterior='+corridasAnterior.length);
+    if(!rpcResp.ok){
+      var txt = await rpcResp.text();
+      console.warn('[Indicadores] RPC HTTP '+rpcResp.status+':', txt);
+      throw new Error('RPC HTTP '+rpcResp.status);
+    }
+    
+    var dados = await rpcResp.json();
+    var tFim = Date.now() - t0;
+    console.log('[Indicadores] '+slug+' carregou em '+tFim+'ms via RPC', dados);
     
     // Se trocou de cidade enquanto carregava, abortar
     if(!window.__cidadeAtual || window.__cidadeAtual.id !== c.id) return;
     
-    _indRenderizar(corridasAtual, corridasAnterior);
+    // Salva no cache
+    _IND_CACHE[cacheKey] = { ts: Date.now(), dados: dados };
+    
+    _indRenderizarRPC(dados, periodo);
     
   } catch(e){
-    console.error('[Indicadores] erro:', e);
+    console.error('[Indicadores] erro RPC:', e);
     conteudo.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#E24B4A">'
       + '<div style="font-size:32px;margin-bottom:10px">⚠️</div>'
       + '<div style="font-size:13px">Erro ao carregar indicadores</div>'
       + '<div style="font-size:11px;color:var(--text3);margin-top:6px">'+e.message+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:10px">Verifique se a RPC <code>indicadores_cidade</code> foi criada no Supabase.</div>'
+      + '<button onclick="renderIndicadoresCidade()" style="margin-top:14px;padding:8px 16px;border:1px solid var(--gami-blue);border-radius:8px;background:transparent;color:var(--gami-blue);font-weight:600;cursor:pointer">🔄 Tentar de novo</button>'
       + '</div>';
   }
+}
+
+// Renderiza usando os dados da RPC (estrutura JSON pronta)
+function _indRenderizarRPC(dados, periodo){
+  var conteudo = document.getElementById('ind-conteudo');
+  if(!conteudo) return;
+  if(!dados || !dados.atual){
+    conteudo.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text3)">Sem dados retornados</div>';
+    return;
+  }
+  
+  var verFin = (typeof podeVerFaturamentoCidade === 'function') ? podeVerFaturamentoCidade() : false;
+  var a = dados.atual;
+  var ant = dados.anterior || {};
+  
+  var total = parseInt(a.total) || 0;
+  var totalFin = parseInt(a.finalizadas) || 0;
+  var totalCanc = parseInt(a.canceladas) || 0;
+  var totalParadas = parseInt(a.total_paradas) || 0;
+  var fatTotal = parseFloat(a.faturamento) || 0;
+  var entregadoresAtivos = parseInt(a.entregadores_ativos) || 0;
+  var bandeiras = a.bandeiras || {};
+  
+  var totalAnt = parseInt(ant.total) || 0;
+  var entregadoresAntAtivos = parseInt(ant.entregadores_ativos) || 0;
+  
+  var solPorEntreg = entregadoresAtivos > 0 ? (total / entregadoresAtivos) : 0;
+  var solPorEntregAnt = entregadoresAntAtivos > 0 ? (totalAnt / entregadoresAntAtivos) : 0;
+  var ticketOS = totalFin > 0 ? (fatTotal / totalFin) : 0;
+  var ticketParada = totalParadas > 0 ? (fatTotal / totalParadas) : 0;
+  var paradasPorOS = totalFin > 0 ? (totalParadas / totalFin) : 0;
+  
+  function variacao(atual, anterior){
+    if(!anterior) return atual > 0 ? 100 : 0;
+    return ((atual - anterior) / anterior) * 100;
+  }
+  
+  var varTotal = variacao(total, totalAnt);
+  var varEntreg = variacao(entregadoresAtivos, entregadoresAntAtivos);
+  var varSolPorEntreg = variacao(solPorEntreg, solPorEntregAnt);
+  
+  var html = '';
+  
+  function badge(v){
+    if(Math.abs(v) < 0.5) return '<span style="font-size:10px;font-weight:700;color:#666;background:rgba(0,0,0,.05);padding:2px 8px;border-radius:10px">— 0%</span>';
+    var positivo = v > 0;
+    var cor = positivo ? '#1D9E75' : '#E24B4A';
+    var bg = positivo ? 'rgba(29,158,117,0.1)' : 'rgba(226,75,74,0.1)';
+    var seta = positivo ? '↗' : '↘';
+    return '<span style="font-size:10px;font-weight:700;color:'+cor+';background:'+bg+';padding:2px 8px;border-radius:10px;white-space:nowrap">'+seta+' '+fmtPct(Math.abs(v))+'</span>';
+  }
+  
+  // LINHA 1
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px">';
+  
+  html += _indCardGrande({
+    icone: '📦',
+    titulo: 'Solicitações (OSs)',
+    badge: badge(varTotal),
+    valor: fmtNum(total),
+    grafico: _indPizzaSVG([
+      { label: 'Finalizadas', valor: totalFin, cor: '#14b8a6' },
+      { label: 'Canceladas', valor: totalCanc, cor: '#e6397f' }
+    ]),
+    legenda: [
+      { cor: '#14b8a6', label: 'Finalizadas', valor: totalFin, total: total },
+      { cor: '#e6397f', label: 'Canceladas', valor: totalCanc, total: total }
+    ]
+  });
+  
+  // Origem (bandeiras)
+  var origemArr = Object.keys(bandeiras).map(function(k, i){
+    return { label: 'Bandeira '+k, valor: parseInt(bandeiras[k]) || 0, cor: IND_PALETA[i % IND_PALETA.length] };
+  }).filter(function(o){ return o.valor > 0; }).sort(function(a,b){ return b.valor - a.valor; });
+  
+  html += _indCardGrande({
+    icone: '📡',
+    titulo: "Origem das solicitações (OS's)",
+    badge: '',
+    valor: fmtNum(total),
+    grafico: origemArr.length > 0 ? _indDonutSVG(origemArr) : _indSemDados(),
+    legenda: origemArr.slice(0, 4).map(function(o){
+      return { cor: o.cor, label: o.label, valor: o.valor, total: total };
+    }),
+    obs: '💡 '+origemArr.length+' bandeira(s) detectada(s). Veja no painel Machine pra identificar Site/App/Integração/Maçaneta.'
+  });
+  
+  // Ganhos gerais
+  if(verFin){
+    html += '<div style="background:white;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04);display:flex;flex-direction:column;justify-content:space-between;min-height:240px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
+        + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">💰</span><span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Ganhos gerais</span></div>'
+      + '</div>'
+      + '<div style="font-size:32px;font-weight:900;color:#1D9E75;line-height:1;margin:14px 0">'+fmtBRL(fatTotal)+'</div>'
+      + '<div style="font-size:11px;color:var(--text3);line-height:1.4">Total arrecadado em <strong style="color:var(--text)">'+fmtNum(totalFin)+'</strong> solicitações finalizadas no período</div>'
+      + '<div style="font-size:10px;color:#EF9F27;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">⚠️ Breakdown Faturado/Carteira não disponível no sync atual da Machine</div>'
+    + '</div>';
+  } else {
+    html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-height:240px">'
+      + '<div style="font-size:36px;margin-bottom:8px">🔒</div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--text)">Ganhos gerais</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:4px">Visível somente pra Diretoria/Gestor</div>'
+      + '</div>';
+  }
+  
+  html += '</div>';
+  
+  // LINHA 2 (4 cards)
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">';
+  html += _indCardPequeno({ icone: '🏍️', titulo: 'Entregadores ativos', valor: fmtNum(entregadoresAtivos), badge: badge(varEntreg) });
+  html += _indCardPequeno({ icone: '📊', titulo: 'Solicitações por entregador', valor: fmtDec(solPorEntreg, 2), badge: badge(varSolPorEntreg) });
+  html += _indCardPequeno({ icone: '💵', titulo: 'Ticket médio por OS', valor: verFin ? fmtBRL(ticketOS) : '🔒', badge: '' });
+  html += _indCardPequeno({ icone: '🎯', titulo: 'Ticket médio por parada', valor: verFin ? fmtBRL(ticketParada) : '🔒', badge: '' });
+  html += '</div>';
+  
+  // LINHA 3 (2 cards)
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px">';
+  html += _indCardPequeno({ icone: '📍', titulo: 'Total de paradas', valor: fmtNum(totalParadas), badge: '' });
+  html += _indCardPequeno({ icone: '🔢', titulo: 'Média de paradas por OS', valor: fmtDec(paradasPorOS, 2), badge: '' });
+  html += '</div>';
+  
+  conteudo.innerHTML = html;
 }
 
 function _indRenderizar(corridas, corridasAnt){
