@@ -1,4 +1,4 @@
-<!-- v25.18 - Paginação paralela com fallback + logs detalhados - 03/06/2026 -->
+<!-- v25.20 - Indicadores ajustados: origem com IDs reais, sem forma pagamento (não há no raw) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -22938,98 +22938,81 @@ function podeVerFaturamentoCidade(){
    Quando o periodo eh grande (>10 dias), divide em chunks de ~7 dias rodando
    em paralelo, pra evitar timeout do Netlify em queries muito grandes. */
 async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
-  // 🚀 v25.18: paginação paralela com fallback robusto
+  // 🚀 v25.19: Busca por CHUNKS DE DATA (não offset)
+  // PostgREST tem limite de offset alto — usar offset > 10k começa a falhar.
+  // Solução: dividir o período em chunks pequenos por data e usar gte/lte.
+  
   var headers = { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY };
-  var filtroUrl = '?cidade_slug=eq.'+encodeURIComponent(slug)
-    + '&data_hora_solicitacao=gte.'+dataInicio+'T00:00:00'
-    + '&data_hora_solicitacao=lte.'+dataFim+'T23:59:59';
+  var dIni = new Date(dataInicio+'T00:00:00');
+  var dFim = new Date(dataFim+'T23:59:59');
   
   console.log('[vgBuscar] '+slug+' '+dataInicio+' → '+dataFim);
   var t0 = Date.now();
   
-  // 1. Pega o COUNT (header Content-Range)
-  var total = -1;
-  try {
-    var countResp = await fetch(SUPA_URL+'/rest/v1/machine_corridas'+filtroUrl+'&select=cidade_slug&limit=1', {
-      headers: Object.assign({}, headers, { 'Prefer': 'count=exact' })
-    });
-    var contentRange = countResp.headers.get('Content-Range') || countResp.headers.get('content-range');
-    console.log('[vgBuscar] Content-Range:', contentRange);
-    if(contentRange){
-      var m = contentRange.match(/\/(\d+|\*)/);
-      if(m && m[1] !== '*') total = parseInt(m[1]);
-    }
-    if(!countResp.ok){
-      console.warn('[vgBuscar] count HTTP', countResp.status, await countResp.text());
-    }
-  } catch(e){ console.warn('[vgBuscar] count exception:', e.message); }
-  
-  console.log('[vgBuscar] '+slug+' total='+total);
-  
-  if(total === 0){
-    console.log('[vgBuscar] '+slug+' SEM dados no período');
-    return [];
+  // Divide o período em chunks de N dias
+  // 1 dia = ~2-3k corridas pra cidades grandes (Campo Grande)
+  // 3 dias = ~6-9k (mas Postgrest limita em 1000/page → 3-9 páginas por chunk)
+  // Melhor: 1 dia por chunk pra garantir
+  var DIAS_POR_CHUNK = 1;
+  var chunks = [];
+  var atual = new Date(dIni);
+  while(atual <= dFim){
+    var fim = new Date(atual.getTime() + (DIAS_POR_CHUNK - 1)*86400000);
+    if(fim > dFim) fim = new Date(dFim);
+    chunks.push({ ini: _vgData(atual), fim: _vgData(fim) });
+    atual = new Date(fim.getTime() + 86400000);
   }
   
-  // 2. Define limite de páginas
-  var LIMIT_PAGE = 1000;
-  var numPages;
-  if(total > 0){
-    numPages = Math.ceil(total / LIMIT_PAGE);
-  } else {
-    // Fallback: tenta até 50 páginas (50k corridas) se count falhou
-    numPages = 50;
-    console.warn('[vgBuscar] sem count, fallback pra '+numPages+' páginas');
-  }
+  console.log('[vgBuscar] '+slug+' '+chunks.length+' chunks de '+DIAS_POR_CHUNK+' dia(s)');
   
-  // 3. Busca em batches paralelos
-  var BATCH_SIZE = 8;
-  var todas = [];
-  var encontrouVazia = false;
-  
-  for(var batchStart = 0; batchStart < numPages && !encontrouVazia; batchStart += BATCH_SIZE){
-    var batchEnd = Math.min(batchStart + BATCH_SIZE, numPages);
-    var promessas = [];
-    
-    for(var i = batchStart; i < batchEnd; i++){
-      var offset = i * LIMIT_PAGE;
-      var pageUrl = SUPA_URL+'/rest/v1/machine_corridas'+filtroUrl
+  // Busca cada chunk (com paginação interna se passar de 1000)
+  async function buscarChunk(ini, fim){
+    var dados = [];
+    var offset = 0;
+    for(var p = 0; p < 10; p++){ // até 10k corridas por chunk (10 páginas)
+      var url = SUPA_URL+'/rest/v1/machine_corridas'
+        + '?cidade_slug=eq.'+encodeURIComponent(slug)
+        + '&data_hora_solicitacao=gte.'+ini+'T00:00:00'
+        + '&data_hora_solicitacao=lte.'+fim+'T23:59:59'
         + '&select=raw,data_hora_solicitacao,status_solicitacao,nome_passageiro,valor_corrida'
         + '&order=data_hora_solicitacao.asc'
-        + '&limit='+LIMIT_PAGE
-        + '&offset='+offset;
-      
-      promessas.push(
-        fetch(pageUrl, { headers: headers })
-          .then(function(r){ 
-            if(!r.ok){ console.warn('[vgBuscar] page HTTP', r.status); return []; }
-            return r.json(); 
-          })
-          .catch(function(e){ console.warn('[vgBuscar] page erro:', e.message); return []; })
-      );
-    }
-    
-    var resultados = await Promise.all(promessas);
-    
-    resultados.forEach(function(pagina){
-      if(!Array.isArray(pagina)) return;
-      if(pagina.length === 0){ encontrouVazia = true; return; }
-      pagina.forEach(function(row){
-        var paradas = (row.raw && Array.isArray(row.raw.paradas)) ? row.raw.paradas : [];
-        todas.push({
-          data_hora_solicitacao: row.data_hora_solicitacao,
-          status_solicitacao: row.status_solicitacao,
-          nome_passageiro: row.nome_passageiro || (row.raw && row.raw.nome_passageiro) || '',
-          valor_corrida: row.valor_corrida || (row.raw && row.raw.valor_corrida) || 0,
-          paradas: paradas,
-          raw: row.raw
+        + '&limit=1000&offset='+offset;
+      try {
+        var r = await fetch(url, { headers: headers });
+        if(!r.ok){ break; }
+        var pagina = await r.json();
+        if(!Array.isArray(pagina) || pagina.length === 0) break;
+        pagina.forEach(function(row){
+          var paradas = (row.raw && Array.isArray(row.raw.paradas)) ? row.raw.paradas : [];
+          dados.push({
+            data_hora_solicitacao: row.data_hora_solicitacao,
+            status_solicitacao: row.status_solicitacao,
+            nome_passageiro: row.nome_passageiro || (row.raw && row.raw.nome_passageiro) || '',
+            valor_corrida: row.valor_corrida || (row.raw && row.raw.valor_corrida) || 0,
+            paradas: paradas,
+            raw: row.raw
+          });
         });
-      });
-    });
+        if(pagina.length < 1000) break;
+        offset += 1000;
+      } catch(e){ break; }
+    }
+    return dados;
+  }
+  
+  // Processa chunks em batches paralelos
+  var BATCH = 6;
+  var todas = [];
+  
+  for(var b = 0; b < chunks.length; b += BATCH){
+    var sliceChunks = chunks.slice(b, b + BATCH);
+    var promessas = sliceChunks.map(function(ch){ return buscarChunk(ch.ini, ch.fim); });
+    var resultados = await Promise.all(promessas);
+    resultados.forEach(function(arr){ todas = todas.concat(arr); });
   }
   
   var tFim = Date.now() - t0;
-  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas em '+tFim+'ms');
+  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas em '+tFim+'ms ('+chunks.length+' chunks)');
   return todas;
 }
 
@@ -23786,29 +23769,16 @@ function _indRenderizar(corridas, corridasAnt){
   // Média de paradas por OS
   var paradasPorOS = totalFin > 0 ? (totalParadas / totalFin) : 0;
   
-  // Origem das solicitações (bandeira_chamada_id ou origem)
-  // TODO: mapeamento exato dos IDs precisa ser confirmado com Machine
-  // Por enquanto, usa um mapa heurístico baseado em ID
-  // Exemplo de mapeamento (a ajustar): { '1244': 'Aplicativo', '1245': 'Site', '1246': 'Integração', '1247': 'Maçaneta' }
-  var origemMap = { 'Aplicativo': 0, 'Site': 0, 'Integração': 0, 'Maçaneta': 0, 'Outros': 0 };
+  // Origem das solicitações — usa bandeira_chamada_id REAL (sem mapeamento)
+  // O usuário pode mapear os IDs vendo o painel da Machine
+  var origemMap = {};
   corridas.forEach(function(x){
-    var bid = (x.raw && x.raw.bandeira_chamada_id) || '';
-    // TODO: ajustar este mapeamento conforme IDs reais da Machine
-    var origem = 'Outros'; // fallback
-    if(bid === '1244') origem = 'Aplicativo';
-    else if(bid === '1245') origem = 'Site';
-    else if(bid === '1246') origem = 'Integração';
-    else if(bid === '1247') origem = 'Maçaneta';
-    origemMap[origem]++;
+    var bid = (x.raw && x.raw.bandeira_chamada_id) || 'sem-id';
+    origemMap['Bandeira '+bid] = (origemMap['Bandeira '+bid] || 0) + 1;
   });
   
-  // Forma de pagamento
-  var formasPag = {};
-  finalizadas.forEach(function(x){
-    var fp = (x.raw && (x.raw.forma_pagamento || x.raw.meio_pagamento || '')) || '?';
-    var label = FORMAS_PAGAMENTO[fp] || ('Outro ('+fp+')');
-    formasPag[label] = (formasPag[label] || 0) + 1;
-  });
+  // Forma de pagamento — NÃO disponível no raw atual da Machine
+  // A API /solicitacao não retorna forma_pagamento, então não conseguimos calcular
   
   // ============================================================
   // CÁLCULOS — Período anterior (pra variações)
@@ -23873,10 +23843,10 @@ function _indRenderizar(corridas, corridasAnt){
     ]
   });
   
-  // CARD 2: Origem das solicitações — donut
+  // CARD 2: Origem das solicitações — donut com IDs reais
   var origemArr = Object.keys(origemMap).map(function(k, i){
-    return { label: k, valor: origemMap[k], cor: ['#14b8a6','#0E7AB8','#99e0db','#56627a','#bbb'][i] };
-  }).filter(function(o){ return o.valor > 0; });
+    return { label: k, valor: origemMap[k], cor: IND_PALETA[i % IND_PALETA.length] };
+  }).filter(function(o){ return o.valor > 0; }).sort(function(a,b){ return b.valor - a.valor; });
   
   html += _indCardGrande({
     icone: '📡',
@@ -23884,28 +23854,22 @@ function _indRenderizar(corridas, corridasAnt){
     badge: '',
     valor: fmtNum(total),
     grafico: origemArr.length > 0 ? _indDonutSVG(origemArr) : _indSemDados(),
-    legenda: origemArr.map(function(o){
+    legenda: origemArr.slice(0, 4).map(function(o){
       return { cor: o.cor, label: o.label, valor: o.valor, total: total };
     }),
-    obs: origemArr.length === 1 && origemArr[0].label === 'Outros' ? '⚠️ Mapeamento de origem ainda não configurado' : ''
+    obs: '💡 Mapeamento: '+origemArr.length+' bandeira(s) detectada(s). Veja no painel Machine pra identificar Site/App/Integração/Maçaneta.'
   });
   
-  // CARD 3: Ganhos gerais — donut (só pra quem pode ver faturamento)
+  // CARD 3: Ganhos gerais — só valor total (forma de pagamento não disponível no raw)
   if(verFin){
-    html += _indCardGrande({
-      icone: '💰',
-      titulo: 'Ganhos gerais',
-      badge: '',
-      valor: fmtBRL(fatTotal),
-      grafico: _indDonutSVG([
-        { label: 'Faturado', valor: fatFaturado, cor: '#f0b952' },
-        { label: 'Carteira de créditos', valor: fatCarteira, cor: '#fdd87a' }
-      ]),
-      legenda: [
-        { cor: '#f0b952', label: 'Faturado', valor: fatFaturado, total: fatTotal, moeda: true },
-        { cor: '#fdd87a', label: 'Carteira de créditos', valor: fatCarteira, total: fatTotal, moeda: true }
-      ]
-    });
+    html += '<div style="background:white;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04);display:flex;flex-direction:column;justify-content:space-between;min-height:240px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
+        + '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">💰</span><span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.4px">Ganhos gerais</span></div>'
+      + '</div>'
+      + '<div style="font-size:32px;font-weight:900;color:#1D9E75;line-height:1;margin:14px 0">'+fmtBRL(fatTotal)+'</div>'
+      + '<div style="font-size:11px;color:var(--text3);line-height:1.4">Total arrecadado em <strong style="color:var(--text)">'+fmtNum(totalFin)+'</strong> solicitações finalizadas no período</div>'
+      + '<div style="font-size:10px;color:#EF9F27;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">⚠️ Breakdown Faturado/Carteira não disponível no sync atual da Machine</div>'
+    + '</div>';
   } else {
     html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;min-height:240px">'
       + '<div style="font-size:36px;margin-bottom:8px">🔒</div>'
@@ -23973,31 +23937,10 @@ function _indRenderizar(corridas, corridasAnt){
   html += '</div>';
   
   // ============================================================
-  // LINHA 4 — Forma de pagamento (donut)
+  // LINHA 4 — Forma de pagamento (removida: dados não disponíveis no raw)
+  // A Machine API /solicitacao não retorna forma de pagamento no JSON.
+  // Pra recuperar isso, seria necessário um endpoint adicional ou outro sync.
   // ============================================================
-  var pagamentoArr = Object.keys(formasPag).map(function(k, i){
-    return { label: k, valor: formasPag[k], cor: IND_PALETA[i % IND_PALETA.length] };
-  }).filter(function(o){ return o.valor > 0; }).sort(function(a,b){ return b.valor - a.valor; });
-  
-  if(pagamentoArr.length > 0){
-    html += '<div style="background:white;border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,0.04)">'
-      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><span style="font-size:18px">💳</span><span style="font-size:13px;font-weight:700;color:var(--text)">Forma de pagamento</span></div>'
-      + '<div style="display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center">'
-        + '<div>'+_indDonutSVG(pagamentoArr)+'</div>'
-        + '<div style="display:flex;flex-direction:column;gap:6px">'
-          + pagamentoArr.map(function(p){
-            var pct = totalFin > 0 ? ((p.valor / totalFin) * 100) : 0;
-            return '<div style="display:flex;align-items:center;gap:8px;font-size:12px">'
-              + '<span style="width:10px;height:10px;border-radius:50%;background:'+p.cor+';flex-shrink:0"></span>'
-              + '<span style="font-weight:700;color:var(--text)">'+fmtPct(pct)+'</span>'
-              + '<span style="color:var(--text3)">'+p.label+'</span>'
-              + '<span style="color:var(--text3);margin-left:auto">'+fmtNum(p.valor)+'</span>'
-            + '</div>';
-          }).join('')
-        + '</div>'
-      + '</div>'
-    + '</div>';
-  }
   
   conteudo.innerHTML = html;
 }
