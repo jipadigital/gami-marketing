@@ -1,4 +1,4 @@
-<!-- v25.23 - Indicadores corrigidos: entregadores totais + nao atendidas - 03/06/2026 -->
+<!-- v25.24 - Botão Atualizar Indicadores + cache curto 60s + refresh ao trocar período - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3604,8 +3604,9 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
             <input type="date" id="ind-data-inicio" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
             <span style="font-size:11px;color:var(--text3)">até</span>
             <input type="date" id="ind-data-fim" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px"/>
-            <button onclick="renderIndicadoresCidade()" style="padding:6px 12px;border:none;border-radius:6px;background:#14b8a6;color:white;font-weight:700;cursor:pointer;font-size:11px">OK</button>
+            <button onclick="renderIndicadoresCidade(true)" style="padding:6px 12px;border:none;border-radius:6px;background:#14b8a6;color:white;font-weight:700;cursor:pointer;font-size:11px">OK</button>
           </div>
+          <button onclick="renderIndicadoresCidade(true)" title="Atualizar dados agora" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:white;color:var(--text);font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:4px">🔄 <span style="font-size:11px">Atualizar</span></button>
         </div>
       </div>
 
@@ -23583,7 +23584,6 @@ function onIndicadoresPeriodoChange(){
   var personalizado = document.getElementById('ind-personalizado');
   if(sel.value === 'personalizado'){
     personalizado.style.display = 'flex';
-    // Define datas default no personalizado: últimos 7 dias
     var hoje = new Date();
     var diniInput = document.getElementById('ind-data-inicio');
     var dfimInput = document.getElementById('ind-data-fim');
@@ -23591,10 +23591,10 @@ function onIndicadoresPeriodoChange(){
       diniInput.value = _vgData(new Date(hoje.getTime() - 7*86400000));
       dfimInput.value = _vgData(hoje);
     }
-    return; // espera usuário clicar OK
+    return;
   }
   personalizado.style.display = 'none';
-  renderIndicadoresCidade();
+  renderIndicadoresCidade(true);  // força refresh ao trocar período
 }
 
 function _indPegarPeriodo(){
@@ -23672,11 +23672,11 @@ function _indPegarPeriodo(){
   };
 }
 
-// Cache em memória pra Indicadores (TTL 10 min por cidade+período)
+// Cache em memória pra Indicadores (TTL curto - só pra evitar duplicate requests)
 var _IND_CACHE = {};
-var _IND_CACHE_TTL_MS = 10 * 60 * 1000;
+var _IND_CACHE_TTL_MS = 60 * 1000;  // 1 minuto
 
-async function renderIndicadoresCidade(){
+async function renderIndicadoresCidade(forceRefresh){
   if(!window.__cidadeAtual) return;
   var c = window.__cidadeAtual;
   var slug = (typeof _vgSlug === 'function') ? _vgSlug(c.nome) : c.id;
@@ -23687,11 +23687,10 @@ async function renderIndicadoresCidade(){
   var periodo = _indPegarPeriodo();
   if(labelEl) labelEl.innerHTML = '📅 ' + periodo.label;
   
-  // Chave do cache: cidade + período
+  // Cache só vale se NÃO for force refresh
   var cacheKey = slug + '|' + periodo.inicio + '|' + periodo.fim;
-  var cached = _IND_CACHE[cacheKey];
+  var cached = forceRefresh ? null : _IND_CACHE[cacheKey];
   
-  // Se cache válido (<10min), renderiza imediato
   if(cached && (Date.now() - cached.ts) < _IND_CACHE_TTL_MS){
     console.log('[Indicadores] cache hit '+slug);
     _indRenderizarRPC(cached.dados, periodo);
