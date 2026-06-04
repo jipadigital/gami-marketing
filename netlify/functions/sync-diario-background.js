@@ -4,6 +4,8 @@
 // Pega so corridas NOVAS (desde a ultima sincronizacao)
 // Salva com slug correto (hifen) - NUNCA underscore
 // 
+// 🆕 v2: popula paradas_count e bandeira_chamada_id pra performance da RPC indicadores_cidade
+// 
 // Background Functions tem timeout de 15 minutos
 // ============================================================
 
@@ -146,6 +148,7 @@ async function syncCidade(cidade){
     console.log('[SYNC] '+cidade.slug+' Machine: '+corridas.length+' corridas, '+condutores.length+' condutores, '+empresas.length+' empresas');
     
     // 3) Prepara corridas pra inserir (com slug CORRETO)
+    // 🆕 v2: extrai paradas_count e bandeira_chamada_id pra performance da RPC
     const corridasFmt = corridas.map(c => ({
       cidade_slug: cidade.slug, // SEMPRE COM HIFEN
       id_solicitacao: String(c.id || c.id_solicitacao || ''),
@@ -153,7 +156,10 @@ async function syncCidade(cidade){
       nome_passageiro: c.nome_passageiro || '',
       valor_corrida: parseFloat(c.valor_corrida || c.valor || 0),
       status_solicitacao: c.status_solicitacao || c.status || '',
-      condutor_id: c.condutor_id ? String(c.condutor_id) : null,
+      condutor_id: (c.condutor_id && String(c.condutor_id).trim() !== '') ? String(c.condutor_id) : null,
+      // 🆕 NOVAS COLUNAS pra acelerar a RPC indicadores_cidade
+      paradas_count: Array.isArray(c.paradas) ? c.paradas.length : 0,
+      bandeira_chamada_id: (c.bandeira_chamada_id && String(c.bandeira_chamada_id).trim() !== '') ? String(c.bandeira_chamada_id) : null,
       raw: c
     })).filter(x => x.id_solicitacao && x.data_hora_solicitacao);
     
