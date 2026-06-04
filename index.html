@@ -1,4 +1,4 @@
-<!-- v25.03 - Ranking PREMIUM no Dashboard: top 3 cards + broches destacados + fotos gestores - 03/06/2026 -->
+<!-- v25.05 - João Duarte=Campo Grande, sem % negativa, auto-load com retry - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4005,7 +4005,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 <!-- ==================== RANKING ==================== -->
 <div class="page" id="pg-ranking">
   <div class="page-header">
-    <div><div class="page-title">Ranking Gâmi</div><div class="page-sub">Gamificação, conquistas e cultura</div></div>
+    <div><div class="page-title">Ranking Gâmi</div><div class="page-sub">Gamificação interna · pontos da equipe</div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button id="btn-admin-pontos" class="btn btn-ghost" onclick="toggleAdminPontos()" style="font-size:11px" title="Modo admin (Cleyton)">🎛️ Admin</button>
       <button class="btn btn-primary" onclick="openAI('Crie um post de ranking mensal para o Instagram da Gâmi Delivery, celebrando os top 3 do mês com números e mensagem motivacional.')">📤 Gerar post ↗</button>
@@ -4024,21 +4024,24 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <!-- =========== VISÃO GERAL =========== -->
   <div id="rank-tab-visao" class="rank-tab-content">
     
-    <!-- RANKING DE CIDADES (dados reais Supabase) -->
-    <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px">
-        <div class="card-title" style="margin:0">🏙️ Ranking de Cidades — Entregas do mês</div>
-        <span style="font-size:10px;color:var(--text3);font-style:italic" id="rank-cidades-mes">—</span>
+    <!-- INTRO: explica o sistema de gamificação interna -->
+    <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,#FFF8E7,#FFE99E);border:1.5px solid #F5C518">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:36px">🏆</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;color:#1a1a1a;margin-bottom:2px">Ranking Gâmi — Sistema de Pontos</div>
+          <div style="font-size:11px;color:#555;line-height:1.4">Cada ação do dia a dia vale pontos: tarefas concluídas, mensagens respondidas no Inbox, reconhecimentos recebidos, ajudas a colegas, recuperação de clientes e mais. Quem somar mais pontos no mês vira destaque público.</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="font-size:11px;white-space:nowrap" onclick="setRankTab('regras')">💎 Ver regras</button>
       </div>
-      <div id="rank-top-cidades"></div>
     </div>
     
     <!-- TOP 10 INDIVIDUAL -->
     <div class="card" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
         <div>
-          <div class="card-title" style="margin:0">🏆 Top 10 Individual</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">Pontos acumulados — sistema interno</div>
+          <div class="card-title" style="margin:0">🏆 Top 10 do mês</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Pontos acumulados pela equipe Gâmi</div>
         </div>
         <select id="rank-individual-filtro" class="sel" style="font-size:11px;padding:4px 8px" onchange="renderRankingIndividual()">
           <option value="mensal">Mês atual</option>
@@ -4053,6 +4056,14 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div class="card" style="margin-bottom:14px">
       <div class="card-title" style="margin-bottom:10px">📋 Ranking por Cargo (mês atual)</div>
       <div id="rank-por-cargo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
+    </div>
+    
+    <!-- LINK PRO DASHBOARD -->
+    <div class="card" style="margin-bottom:14px;text-align:center;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border:1px dashed #0E7AB8">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:11px;color:#0E7AB8;font-weight:600">🏙️ Procurando ranking de cidades?</span>
+        <button onclick="nav(document.querySelector('.nav-item[onclick*=&quot;dashboard&quot;]'),'dashboard')" style="font-size:11px;padding:6px 14px;border:none;border-radius:8px;background:#0E7AB8;color:white;font-weight:700;cursor:pointer;font-family:inherit">Ver no Dashboard →</button>
+      </div>
     </div>
     
     <!-- DESTAQUES DA SEMANA -->
@@ -24590,7 +24601,21 @@ function initDashboard(){
   try { renderMinhaAgenda(); } catch(e){ console.warn('renderMinhaAgenda:', e); }
   try { renderReconhecimento(); } catch(e){ console.warn('renderReconhecimento:', e); }
   try { renderAniversariantesMes(); } catch(e){ console.warn('renderAniversariantesMes:', e); }
-  try { renderRankingCidades(); } catch(e){ console.warn('renderRankingCidades:', e); }
+  // Ranking de cidades — async, com retry automático
+  (function loadRankingComRetry(){
+    var tentativas = 0;
+    function carregar(){
+      tentativas++;
+      var p = renderRankingCidades();
+      if(p && typeof p.catch === 'function'){
+        p.catch(function(e){
+          console.warn('renderRankingCidades tentativa '+tentativas+':', e);
+          if(tentativas < 3) setTimeout(carregar, 1500); // retry após 1.5s
+        });
+      }
+    }
+    carregar();
+  })();
   // Existentes (mantidos)
   try { renderValorCultura(); } catch(e){}
   try { renderRecadosNoDash(); } catch(e){}
@@ -25570,6 +25595,15 @@ async function renderRankingCidades(forceRefresh){
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
   
   function gestorDaCidade(nomeCidade){
+    // OVERRIDE: Campo Grande sempre tem João Duarte como gestor visível no ranking
+    // (mesmo que ele esteja cadastrado como Diretor)
+    if(/campo\s*grande/i.test(nomeCidade)){
+      var jd = pessoas.find(function(p){
+        var n = (p.nome||'').toLowerCase();
+        return n.indexOf('joão duarte') >= 0 || n.indexOf('joao duarte') >= 0;
+      });
+      if(jd) return jd;
+    }
     return pessoas.find(function(p){
       var temNivelGestor = (typeof pessoaTemNivel === 'function') && pessoaTemNivel(p, 'Gestor');
       var ehGestor = /Gestor/i.test(p.cargo||'') || (p.categoria||'') === 'Gestor' || temNivelGestor;
@@ -25628,12 +25662,16 @@ async function renderRankingCidades(forceRefresh){
     return '<div style="width:'+tamanho+'px;height:'+tamanho+'px;background-image:url(\'/broches-gami/cidades/'+slug+'.png\');background-size:contain;background-repeat:no-repeat;background-position:center;flex-shrink:0;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.15))"></div>';
   }
   
-  // Helper: badge variação
+  // Helper: badge variação — esconde negativos, mostra motivação
   function variacaoBadge(v, tamanhoFonte){
     var fonte = tamanhoFonte || 11;
     if(v > 5) return '<span style="font-size:'+fonte+'px;font-weight:800;color:#1D9E75;background:rgba(29,158,117,0.1);padding:2px 8px;border-radius:10px;white-space:nowrap">🌟 +'+v+'%</span>';
-    if(v < -5) return '<span style="font-size:'+fonte+'px;font-weight:800;color:#E24B4A;background:rgba(226,75,74,0.1);padding:2px 8px;border-radius:10px;white-space:nowrap">📉 '+v+'%</span>';
-    return '<span style="font-size:'+fonte+'px;color:#666;background:rgba(0,0,0,0.05);padding:2px 8px;border-radius:10px;white-space:nowrap">📊 estável</span>';
+    if(v >= -5 && v <= 5) return '<span style="font-size:'+fonte+'px;color:#666;background:rgba(0,0,0,0.05);padding:2px 8px;border-radius:10px;white-space:nowrap">📊 estável</span>';
+    // Variação negativa: mostra motivação ao invés de número desanimador
+    // Mensagens rotativas baseadas em quão "negativa" (na verdade só significa: mês em andamento)
+    var msgsAtivo = ['🚀 Em ação', '⚡ Acelerando', '🔥 No ritmo', '💪 Em curso'];
+    var msg = msgsAtivo[Math.abs(v) % msgsAtivo.length];
+    return '<span style="font-size:'+fonte+'px;font-weight:700;color:#1AB8F0;background:rgba(26,184,240,0.12);padding:2px 8px;border-radius:10px;white-space:nowrap">'+msg+'</span>';
   }
   
   // ─── TOP 3 — Cards Premium ───
@@ -31159,7 +31197,8 @@ function renderRanking(){
 }
 
 function renderRankingVisaoGeral(){
-  renderTop3Cidades();
+  // Aba Ranking foca em pontos internos da equipe
+  // Ranking de cidades agora vive APENAS no Dashboard
   renderRankingIndividual();
   renderRankingPorCargo();
 }
@@ -31309,8 +31348,9 @@ async function _renderRankingCidadesReal(forceRefresh){
   
   function variacaoBadge(v){
     if(v > 5) return '<span style="font-size:11px;font-weight:700;color:#1D9E75">🌟 +'+v+'%</span>';
-    if(v < -5) return '<span style="font-size:11px;font-weight:700;color:#E24B4A">📉 '+v+'%</span>';
-    return '<span style="font-size:11px;color:#666">📊 estável</span>';
+    if(v >= -5 && v <= 5) return '<span style="font-size:11px;color:#666">📊 estável</span>';
+    var msgs = ['🚀 Em ação','⚡ Acelerando','🔥 No ritmo','💪 Em curso'];
+    return '<span style="font-size:11px;font-weight:700;color:#1AB8F0">'+msgs[Math.abs(v) % msgs.length]+'</span>';
   }
   
   function avatarGestor(g, tamanho){
