@@ -1,4 +1,4 @@
-<!-- v25.15 - Nova aba Indicadores com filtro período e gráficos SVG - 03/06/2026 -->
+<!-- v25.16 - Fix Indicadores: usa _vgSlug pra converter nome em slug do Supabase - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -23654,7 +23654,8 @@ function _indPegarPeriodo(){
 async function renderIndicadoresCidade(){
   if(!window.__cidadeAtual) return;
   var c = window.__cidadeAtual;
-  var slug = c.id;
+  // c.id é 'c1', 'c2'... — precisa converter pra slug do Supabase
+  var slug = (typeof _vgSlug === 'function') ? _vgSlug(c.nome) : c.id;
   var conteudo = document.getElementById('ind-conteudo');
   var labelEl = document.getElementById('ind-periodo-label');
   if(!conteudo) return;
@@ -23668,12 +23669,16 @@ async function renderIndicadoresCidade(){
     + '<div style="font-size:13px">Carregando indicadores de '+c.nome+'...</div>'
     + '</div>';
   
+  console.log('[Indicadores] cidade='+c.nome+' slug='+slug+' periodo:', periodo);
+  
   try {
     // Busca corridas do período atual + anterior em paralelo
     var [corridasAtual, corridasAnterior] = await Promise.all([
       _vgBuscarCorridasPeriodo(slug, periodo.inicio, periodo.fim, false),
       _vgBuscarCorridasPeriodo(slug, periodo.inicioAnterior, periodo.fimAnterior, false)
     ]);
+    
+    console.log('[Indicadores] '+slug+' · atual='+corridasAtual.length+' · anterior='+corridasAnterior.length);
     
     // Se trocou de cidade enquanto carregava, abortar
     if(!window.__cidadeAtual || window.__cidadeAtual.id !== c.id) return;
