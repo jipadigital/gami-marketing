@@ -1,4 +1,4 @@
-<!-- v25.17 - Paginação PARALELA (batches de 10) - bem mais rápido - 03/06/2026 -->
+<!-- v25.18 - Paginação paralela com fallback + logs detalhados - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -22938,10 +22938,7 @@ function podeVerFaturamentoCidade(){
    Quando o periodo eh grande (>10 dias), divide em chunks de ~7 dias rodando
    em paralelo, pra evitar timeout do Netlify em queries muito grandes. */
 async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
-  // 🚀 v25.17: Paginação PARALELA — bem mais rápido
-  // 1. Descobre o total via count
-  // 2. Busca todas as páginas em paralelo (batches de 10)
-  
+  // 🚀 v25.18: paginação paralela com fallback robusto
   var headers = { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY };
   var filtroUrl = '?cidade_slug=eq.'+encodeURIComponent(slug)
     + '&data_hora_solicitacao=gte.'+dataInicio+'T00:00:00'
@@ -22950,37 +22947,47 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
   console.log('[vgBuscar] '+slug+' '+dataInicio+' → '+dataFim);
   var t0 = Date.now();
   
-  // 1. Pega COUNT total via header Content-Range
-  var total = 0;
+  // 1. Pega o COUNT (header Content-Range)
+  var total = -1;
   try {
     var countResp = await fetch(SUPA_URL+'/rest/v1/machine_corridas'+filtroUrl+'&select=cidade_slug&limit=1', {
-      headers: Object.assign({}, headers, { 
-        'Prefer': 'count=exact',
-        'Range-Unit': 'items',
-        'Range': '0-0'
-      })
+      headers: Object.assign({}, headers, { 'Prefer': 'count=exact' })
     });
-    var contentRange = countResp.headers.get('Content-Range');
+    var contentRange = countResp.headers.get('Content-Range') || countResp.headers.get('content-range');
+    console.log('[vgBuscar] Content-Range:', contentRange);
     if(contentRange){
-      var m = contentRange.match(/\/(\d+)/);
-      if(m) total = parseInt(m[1]);
+      var m = contentRange.match(/\/(\d+|\*)/);
+      if(m && m[1] !== '*') total = parseInt(m[1]);
     }
-  } catch(e){ console.warn('[vgBuscar] count erro:', e); }
+    if(!countResp.ok){
+      console.warn('[vgBuscar] count HTTP', countResp.status, await countResp.text());
+    }
+  } catch(e){ console.warn('[vgBuscar] count exception:', e.message); }
+  
+  console.log('[vgBuscar] '+slug+' total='+total);
   
   if(total === 0){
     console.log('[vgBuscar] '+slug+' SEM dados no período');
     return [];
   }
   
-  // 2. Calcula número de páginas
+  // 2. Define limite de páginas
   var LIMIT_PAGE = 1000;
-  var numPages = Math.ceil(total / LIMIT_PAGE);
-  var BATCH_SIZE = 10; // máximo de 10 requests simultâneos
+  var numPages;
+  if(total > 0){
+    numPages = Math.ceil(total / LIMIT_PAGE);
+  } else {
+    // Fallback: tenta até 50 páginas (50k corridas) se count falhou
+    numPages = 50;
+    console.warn('[vgBuscar] sem count, fallback pra '+numPages+' páginas');
+  }
   
-  // 3. Busca todas as páginas em paralelo, em batches
+  // 3. Busca em batches paralelos
+  var BATCH_SIZE = 8;
   var todas = [];
+  var encontrouVazia = false;
   
-  for(var batchStart = 0; batchStart < numPages; batchStart += BATCH_SIZE){
+  for(var batchStart = 0; batchStart < numPages && !encontrouVazia; batchStart += BATCH_SIZE){
     var batchEnd = Math.min(batchStart + BATCH_SIZE, numPages);
     var promessas = [];
     
@@ -22994,14 +23001,19 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
       
       promessas.push(
         fetch(pageUrl, { headers: headers })
-          .then(function(r){ return r.ok ? r.json() : []; })
-          .catch(function(){ return []; })
+          .then(function(r){ 
+            if(!r.ok){ console.warn('[vgBuscar] page HTTP', r.status); return []; }
+            return r.json(); 
+          })
+          .catch(function(e){ console.warn('[vgBuscar] page erro:', e.message); return []; })
       );
     }
     
     var resultados = await Promise.all(promessas);
+    
     resultados.forEach(function(pagina){
       if(!Array.isArray(pagina)) return;
+      if(pagina.length === 0){ encontrouVazia = true; return; }
       pagina.forEach(function(row){
         var paradas = (row.raw && Array.isArray(row.raw.paradas)) ? row.raw.paradas : [];
         todas.push({
@@ -23017,7 +23029,7 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
   }
   
   var tFim = Date.now() - t0;
-  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas em '+tFim+'ms ('+numPages+' páginas paralelas)');
+  console.log('[vgBuscar] '+slug+' carregou '+todas.length+' corridas em '+tFim+'ms');
   return todas;
 }
 
