@@ -1,4 +1,4 @@
-<!-- v25.12 - Ranking: stale-while-revalidate + cache em memória - 03/06/2026 -->
+<!-- v25.14 - Auto-update SEGURO: 15min ocioso + detector de trabalho aberto - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -34597,6 +34597,83 @@ function recarregarPortal(){
       .then(function(reg){
         console.log('[PWA] SW registrado');
         
+        // ============================================================
+        // 🎯 AUTO-UPDATE seguro
+        // - Verifica nova versão a cada 5 min
+        // - SÓ atualiza silenciosamente se TODAS essas condições:
+        //   1. Usuário ocioso há 15+ minutos
+        //   2. NÃO há trabalho aberto (modais, textos digitados, forms)
+        // - Caso contrário: mostra banner pra ele decidir
+        // ============================================================
+        var ULTIMA_ATIVIDADE = Date.now();
+        var BANNER_MOSTRADO = false;
+        var OCIOSO_MIN_MS = 15 * 60 * 1000;   // 15 min de ociosidade (era 3)
+        var CHECK_INTERVAL_MS = 5 * 60 * 1000; // verifica a cada 5 min
+        
+        // Tracker de atividade
+        ['mousemove', 'keydown', 'touchstart', 'scroll', 'click'].forEach(function(ev){
+          window.addEventListener(ev, function(){
+            ULTIMA_ATIVIDADE = Date.now();
+          }, { passive: true });
+        });
+        
+        // 🛡️ Detector de TRABALHO NÃO SALVO
+        // Retorna true se houver algo que o usuário possa perder
+        function temTrabalhoAberto(){
+          try {
+            // 1. Modais abertos
+            var modaisAbertos = document.querySelectorAll('.modal.open, .modal.show, [class*="modal"][style*="display: flex"], [class*="modal"][style*="display: block"]');
+            for(var i = 0; i < modaisAbertos.length; i++){
+              var m = modaisAbertos[i];
+              if(m.offsetParent !== null){ // visível mesmo?
+                console.log('[PWA] trabalho aberto: modal', m.id || m.className);
+                return true;
+              }
+            }
+            
+            // 2. Textareas com texto significativo (>15 chars)
+            var textareas = document.querySelectorAll('textarea');
+            for(var i = 0; i < textareas.length; i++){
+              if((textareas[i].value || '').trim().length > 15){
+                console.log('[PWA] trabalho aberto: textarea com', textareas[i].value.length, 'chars');
+                return true;
+              }
+            }
+            
+            // 3. Inputs de texto com conteúdo digitado (>10 chars)
+            var inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="search"]:not([readonly]), input:not([type])');
+            for(var i = 0; i < inputs.length; i++){
+              var inp = inputs[i];
+              if(inp.offsetParent === null) continue; // só visíveis
+              var val = (inp.value || '').trim();
+              // Ignora valores que parecem ser placeholders ou defaults curtos
+              if(val.length > 10 && val !== inp.defaultValue){
+                console.log('[PWA] trabalho aberto: input com', val.length, 'chars');
+                return true;
+              }
+            }
+            
+            // 4. Elemento com focus em campo editável
+            var focado = document.activeElement;
+            if(focado && (focado.tagName === 'TEXTAREA' || focado.tagName === 'INPUT' || focado.isContentEditable)){
+              console.log('[PWA] trabalho aberto: usuário focado em input');
+              return true;
+            }
+            
+            // 5. Marcadores customizados de "trabalho em andamento"
+            if(window._trabalhoEmAndamento === true){
+              console.log('[PWA] trabalho aberto: window._trabalhoEmAndamento === true');
+              return true;
+            }
+            
+            return false;
+          } catch(e){
+            // Se der erro, melhor prevenir e assumir que TEM trabalho
+            console.warn('[PWA] erro ao detectar trabalho:', e);
+            return true;
+          }
+        }
+        
         // Detecta atualização disponível
         reg.addEventListener('updatefound', function(){
           var nw = reg.installing;
@@ -34604,13 +34681,58 @@ function recarregarPortal(){
           nw.addEventListener('statechange', function(){
             if (nw.state === 'installed' && navigator.serviceWorker.controller) {
               console.log('[PWA] Nova versão disponível');
-              mostrarBannerAtualizar(reg);
+              
+              var tempoOcioso = Date.now() - ULTIMA_ATIVIDADE;
+              var ocioso = tempoOcioso > OCIOSO_MIN_MS;
+              var temTrabalho = temTrabalhoAberto();
+              
+              console.log('[PWA] ocioso há '+Math.round(tempoOcioso/60000)+' min · trabalho aberto:', temTrabalho);
+              
+              if(ocioso && !temTrabalho){
+                // SEGURO: usuário ocioso 15+ min e sem trabalho aberto
+                console.log('[PWA] atualizando silenciosamente (seguro)');
+                if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                setTimeout(function(){ location.reload(); }, 500);
+              } else {
+                // Sempre mostra banner se há qualquer chance de perda
+                mostrarBannerAtualizar(reg);
+              }
             }
           });
         });
         
-        // Checa por update a cada 30 min
-        setInterval(function(){ reg.update().catch(function(){}); }, 30 * 60 * 1000);
+        // Verifica novas versões a cada 5 min
+        setInterval(function(){ 
+          reg.update().catch(function(){});
+          
+          // Auto-update tardio: banner aberto + usuário ficou ocioso 15min + sem trabalho
+          if(BANNER_MOSTRADO){
+            var tempoOcioso2 = Date.now() - ULTIMA_ATIVIDADE;
+            if(tempoOcioso2 > OCIOSO_MIN_MS && !temTrabalhoAberto()){
+              console.log('[PWA] banner aberto + ocioso + sem trabalho, atualizando');
+              if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+              location.reload();
+            }
+          }
+        }, CHECK_INTERVAL_MS);
+        
+        // Verifica imediatamente ao voltar pra aba (foco na janela)
+        window.addEventListener('focus', function(){ 
+          reg.update().catch(function(){}); 
+        });
+        document.addEventListener('visibilitychange', function(){
+          if(document.visibilityState === 'visible'){
+            reg.update().catch(function(){});
+          }
+        });
+        
+        // Expõe globalmente
+        window._AUTO_UPDATE = { 
+          getBannerMostrado: function(){ return BANNER_MOSTRADO; },
+          setBannerMostrado: function(v){ BANNER_MOSTRADO = v; },
+          temTrabalhoAberto: temTrabalhoAberto,  // expõe pra debug
+          getTempoOcioso: function(){ return Math.round((Date.now() - ULTIMA_ATIVIDADE)/60000) + ' min'; }
+        };
       })
       .catch(function(err){
         console.warn('[PWA] SW falhou (não bloqueante):', err);
@@ -34649,18 +34771,41 @@ function recarregarPortal(){
   // 🔄 Banner "Nova versão disponível"
   function mostrarBannerAtualizar(reg){
     if (document.getElementById('pwa-update-banner')) return;
+    if(window._AUTO_UPDATE) window._AUTO_UPDATE.setBannerMostrado(true);
+    
+    // CSS de animação
+    if(!document.getElementById('pwa-banner-animations')){
+      var style = document.createElement('style');
+      style.id = 'pwa-banner-animations';
+      style.textContent = '@keyframes pwaBannerSlideDown { from { transform: translate(-50%, -120%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }'
+        + '@keyframes pwaBannerPulse { 0%, 100% { box-shadow: 0 8px 24px rgba(245, 197, 24, .35); } 50% { box-shadow: 0 8px 32px rgba(245, 197, 24, .6); } }';
+      document.head.appendChild(style);
+    }
+    
     var banner = document.createElement('div');
     banner.id = 'pwa-update-banner';
-    banner.innerHTML = '<span>✨ Nova versão disponível</span> <button id="pwa-update-btn" style="margin-left:10px;background:#1AB8F0;color:#0F1F3D;border:none;padding:6px 14px;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer">Atualizar</button> <button id="pwa-update-close" style="margin-left:6px;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.3);padding:6px 10px;border-radius:6px;font-size:12px;cursor:pointer">×</button>';
-    banner.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;background:#0F1F3D;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;display:flex;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.25);font-family:inherit';
+    banner.innerHTML = '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center">'
+      + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<span style="font-size:20px">🎉</span>'
+        + '<div>'
+          + '<div style="font-weight:800;font-size:13px;color:#1a1a1a">Nova versão disponível!</div>'
+          + '<div style="font-size:10px;color:#555;margin-top:1px">Atualize pra ver as últimas melhorias</div>'
+        + '</div>'
+      + '</div>'
+      + '<button id="pwa-update-btn" style="background:#1a1a1a;color:white;border:none;padding:8px 16px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.25)">🔄 Atualizar agora</button>'
+      + '<button id="pwa-update-close" style="background:transparent;color:#555;border:1.5px solid rgba(0,0,0,.25);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap" title="Será atualizado automaticamente quando você ficar ocioso">Mais tarde</button>'
+    + '</div>';
+    banner.style.cssText = 'position:fixed;top:16px;left:50%;transform:translate(-50%, 0);z-index:99999;background:linear-gradient(135deg,#FFE99E,#FFD700);color:#1a1a1a;padding:12px 18px;border-radius:14px;font-size:13px;font-family:inherit;animation:pwaBannerSlideDown .4s ease-out, pwaBannerPulse 2.5s ease-in-out infinite;border:2px solid rgba(0,0,0,.1);max-width:calc(100vw - 32px)';
     document.body.appendChild(banner);
     
     document.getElementById('pwa-update-btn').onclick = function(){
       if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      setTimeout(function(){ location.reload(); }, 300);
+      banner.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:4px"><span style="font-size:16px">⏳</span> <span style="font-weight:700">Atualizando...</span></div>';
+      setTimeout(function(){ location.reload(); }, 400);
     };
     document.getElementById('pwa-update-close').onclick = function(){
       banner.parentNode.removeChild(banner);
+      if(window._AUTO_UPDATE) window._AUTO_UPDATE.setBannerMostrado(false);
     };
   }
   
