@@ -1,4 +1,4 @@
-<!-- v25.37 - Emojis em todos itens da sidebar - 03/06/2026 -->
+<!-- v25.39 - Retry automatico + sequencial + max_tokens reduzido - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1377,6 +1377,12 @@ function aplicarPermissoesVisuais(){
   
   var nivel = detectarNivelPermissao(u);
   var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
+  
+  // 🆕 Garantia: super_admin SEMPRE vê todos os itens
+  if(nivel === 'super_admin'){
+    var navClima = document.getElementById('nav-clima');
+    if(navClima) navClima.style.display = '';
+  }
   
   // Mapeamento aba → texto no sidebar pra esconder itens
   var navItems = document.querySelectorAll('.nav-item[onclick*="nav("]');
@@ -18168,7 +18174,7 @@ async function relatorioMensalCidades(forceNew){
       try {
         var r = await fetch('/.netlify/functions/blog-ai', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 3000 })
+          body: JSON.stringify({ prompt: prompt, max_tokens: 2200 })
         });
         if(r.ok){ resp = r; break; }
         ultimoErro = 'HTTP '+r.status;
@@ -19718,11 +19724,13 @@ function renderCidadesGrid(){
   if(typeof renderCidadesStatsTopo === 'function') renderCidadesStatsTopo();
   if(typeof renderCidadesAniversarios === 'function') renderCidadesAniversarios();
   
-  // 🆕 Carrega Top motoboys e Top empresas da rede (lazy — em background)
-  setTimeout(function(){
+  // 🆕 Carrega Top motoboys/empresas/Calendário SEQUENCIALMENTE (evita rate limit Supabase)
+  setTimeout(async function(){
     if(typeof renderTopRede === 'function'){
-      renderTopRede('motoboys', _topRedeTabAtual.motoboys || 'volume');
-      renderTopRede('empresas', _topRedeTabAtual.empresas || 'volume');
+      await renderTopRede('motoboys', _topRedeTabAtual.motoboys || 'volume');
+      await new Promise(function(r){ setTimeout(r, 200); });
+      await renderTopRede('empresas', _topRedeTabAtual.empresas || 'volume');
+      await new Promise(function(r){ setTimeout(r, 200); });
     }
     if(typeof renderCalendarioDemanda === 'function'){
       renderCalendarioDemanda(_calDemandaDiasAtual || 30);
@@ -26792,7 +26800,7 @@ async function renderTopRede(tipo, aba, forceRefresh){
     host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando top '+tipo+'...</div>';
   }
   
-  // Busca fresh
+  // Busca fresh com retry automático em caso de 500/503
   try {
     var nomeRPC;
     if(tipo === 'motoboys'){
@@ -26801,13 +26809,31 @@ async function renderTopRede(tipo, aba, forceRefresh){
       nomeRPC = aba === 'volume' ? 'top_empresas_rede_volume' : 'top_empresas_rede_crescimento';
     }
     
-    var r = await fetch(SUPA_URL+'/rest/v1/rpc/'+nomeRPC, {
-      method: 'POST',
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ p_limite: 10 })
-    });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    var lista = await r.json();
+    var lista = null;
+    var ultimoErro = null;
+    // Tenta até 3 vezes com backoff (0, 1s, 2.5s)
+    for(var tentativa = 0; tentativa < 3 && !lista; tentativa++){
+      if(tentativa > 0){
+        var delay = tentativa === 1 ? 1000 : 2500;
+        await new Promise(function(r){ setTimeout(r, delay); });
+        console.log('[TopRede '+tipo+'/'+aba+'] retry '+tentativa+' após '+delay+'ms');
+      }
+      try {
+        var r = await fetch(SUPA_URL+'/rest/v1/rpc/'+nomeRPC, {
+          method: 'POST',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+          body: JSON.stringify({ p_limite: 10 })
+        });
+        if(r.ok){
+          lista = await r.json();
+        } else {
+          ultimoErro = 'HTTP '+r.status;
+          if(r.status !== 500 && r.status !== 502 && r.status !== 503 && r.status !== 504) break;
+        }
+      } catch(e){ ultimoErro = e.message; }
+    }
+    
+    if(!lista) throw new Error(ultimoErro || 'Sem resposta');
     
     _topRedeCache[cacheKey] = lista;
     _topRedeCacheTs[cacheKey] = agora;
@@ -26815,7 +26841,7 @@ async function renderTopRede(tipo, aba, forceRefresh){
   } catch(e){
     console.warn('[TopRede '+tipo+'/'+aba+']', e);
     if(!cache){
-      host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro ao carregar dados.<br><span style="font-size:10px">'+e.message+'</span></div>';
+      host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro ao carregar dados.<br><span style="font-size:10px">'+e.message+'</span><br><button onclick="renderTopRede(\''+tipo+'\',\''+aba+'\',true)" style="margin-top:10px;padding:5px 10px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);font-size:11px;cursor:pointer;font-weight:600">🔄 Tentar novamente</button></div>';
     }
   }
 }
@@ -26928,20 +26954,36 @@ async function renderCalendarioDemanda(dias, forceRefresh){
   }
   
   try {
-    var r = await fetch(SUPA_URL+'/rest/v1/rpc/calendario_demanda_rede', {
-      method: 'POST',
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ p_dias: dias })
-    });
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    var lista = await r.json();
+    var lista = null;
+    var ultimoErro = null;
+    for(var tent = 0; tent < 3 && !lista; tent++){
+      if(tent > 0){
+        var delayCal = tent === 1 ? 1000 : 2500;
+        await new Promise(function(rs){ setTimeout(rs, delayCal); });
+        console.log('[CalDemanda] retry '+tent);
+      }
+      try {
+        var r = await fetch(SUPA_URL+'/rest/v1/rpc/calendario_demanda_rede', {
+          method: 'POST',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+          body: JSON.stringify({ p_dias: dias })
+        });
+        if(r.ok){
+          lista = await r.json();
+        } else {
+          ultimoErro = 'HTTP '+r.status;
+          if(r.status !== 500 && r.status !== 502 && r.status !== 503 && r.status !== 504) break;
+        }
+      } catch(e){ ultimoErro = e.message; }
+    }
+    if(!lista) throw new Error(ultimoErro || 'Sem resposta');
     
     _calDemandaCache[cacheKey] = { ts: agora, data: lista };
     _renderCalendarioHTML(host, lista);
   } catch(e){
     console.warn('[CalDemanda]', e);
     if(!cache){
-      host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro: '+e.message+'</div>';
+      host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro: '+e.message+'<br><button onclick="renderCalendarioDemanda('+dias+',true)" style="margin-top:10px;padding:5px 10px;border:1px solid var(--gami-blue);border-radius:6px;background:transparent;color:var(--gami-blue);font-size:11px;cursor:pointer;font-weight:600">🔄 Tentar novamente</button></div>';
     }
   }
 }
