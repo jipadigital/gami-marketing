@@ -1,4 +1,4 @@
-<!-- v25.40 - Sem nav-dots na sidebar, so emojis - 03/06/2026 -->
+<!-- v25.42 - Relatorio mensal prompt enxuto + max_tokens 1500 - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18074,17 +18074,47 @@ async function relatorioMensalCidades(forceNew){
   
   var anoMes = { ano: range.inicio.getFullYear(), mes: range.inicio.getMonth() + 1 };
   
-  // Busca TODAS as cidades em paralelo (1 RPC cada)
-  var resultados = await Promise.all(cidadesPermitidas.map(function(c){
+  // Busca métrica de UMA cidade com retry automático
+  async function buscarMetricaCidade(c){
     var slug = slugCidade(c);
-    return fetch(SUPA_URL+'/rest/v1/rpc/metricas_mensais_cidade', {
-      method:'POST',
-      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-      body: JSON.stringify({ p_slug: slug, p_ano: anoMes.ano, p_mes: anoMes.mes })
-    }).then(function(r){return r.ok ? r.json() : null;})
-      .then(function(m){ return { cidade:c, metricas:m }; })
-      .catch(function(){ return { cidade:c, metricas:null }; });
-  }));
+    var ultimoErro = null;
+    for(var t = 0; t < 3; t++){
+      if(t > 0){
+        var delay = t === 1 ? 800 : 2000;
+        await new Promise(function(rs){ setTimeout(rs, delay); });
+      }
+      try {
+        var r = await fetch(SUPA_URL+'/rest/v1/rpc/metricas_mensais_cidade', {
+          method:'POST',
+          headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+          body: JSON.stringify({ p_slug: slug, p_ano: anoMes.ano, p_mes: anoMes.mes })
+        });
+        if(r.ok){
+          var m = await r.json();
+          return { cidade:c, metricas: m };
+        }
+        ultimoErro = 'HTTP '+r.status;
+        if(r.status !== 500 && r.status !== 502 && r.status !== 503 && r.status !== 504) break;
+      } catch(e){ ultimoErro = e.message; }
+    }
+    console.warn('[Relatório Mensal] '+slug+' falhou após 3 tentativas:', ultimoErro);
+    return { cidade:c, metricas: null };
+  }
+  
+  // 🆕 Busca cidades em BATCHES de 3 (em vez de 11 em paralelo)
+  var resultados = [];
+  var BATCH_SIZE = 3;
+  for(var i = 0; i < cidadesPermitidas.length; i += BATCH_SIZE){
+    var batch = cidadesPermitidas.slice(i, i + BATCH_SIZE);
+    var statusEl = document.getElementById('cid-prefetch-status');
+    if(statusEl) statusEl.textContent = 'Cidade '+(i+1)+' a '+Math.min(i+BATCH_SIZE, cidadesPermitidas.length)+' de '+cidadesPermitidas.length+'...';
+    var batchResults = await Promise.all(batch.map(buscarMetricaCidade));
+    resultados = resultados.concat(batchResults);
+    // Pequena pausa entre batches
+    if(i + BATCH_SIZE < cidadesPermitidas.length){
+      await new Promise(function(rs){ setTimeout(rs, 300); });
+    }
+  }
   
   // Separa cidades com/sem dados
   var comDados = resultados.filter(function(r){ return r.metricas && r.metricas.total_corridas > 0; });
@@ -18115,51 +18145,42 @@ async function relatorioMensalCidades(forceNew){
       var m = r.metricas;
       var crescTxt = (m.crescimento_corridas_pct !== null && m.crescimento_corridas_pct !== undefined) 
                     ? (m.crescimento_corridas_pct>=0?'+':'')+m.crescimento_corridas_pct+'%' : '~';
-      var top2Mot = (m.top_motoboys||[]).slice(0,2).map(function(mb){return mb.nome;}).join('/') || '—';
-      var top2Emp = (m.top_empresas||[]).slice(0,2).map(function(e){return e.nome;}).join('/') || '—';
-      var dM = m.motoboys_distribuicao || {};
-      return '• '+c.nome+'/'+c.uf+': '+m.total_corridas+' corr '+crescTxt
+      var top1Mot = ((m.top_motoboys||[])[0]||{}).nome || '—';
+      var top1Emp = ((m.top_empresas||[])[0]||{}).nome || '—';
+      return c.nome+'/'+c.uf+': '+m.total_corridas+' corr '+crescTxt
         +' | R$'+parseFloat(m.receita||0).toFixed(0)
-        +' | '+(m.taxa_conclusao||0)+'%conc'
+        +' | '+(m.taxa_conclusao||0)+'% conv'
         +' | tkt R$'+parseFloat(m.ticket_medio||0).toFixed(2)
-        +' | '+(m.motoboys_ativos||0)+'/'+(m.motoboys_cadastrados||0)+'mb (top:'+top2Mot+')'
-        +' | dist:'+(dM.ate_5||0)+'/'+(dM.de_5_a_20||0)+'/'+(dM.de_20_a_50||0)+'/'+(dM.mais_50||0)
-        +' | '+(m.empresas_com_pedido||0)+'/'+(m.empresas_cadastradas||0)+'emp (top:'+top2Emp+', conc'+(m.concentracao_top5_pct||0)+'%)'
+        +' | '+(m.motoboys_ativos||0)+'/'+(m.motoboys_cadastrados||0)+'mb top:'+top1Mot
+        +' | '+(m.empresas_com_pedido||0)+'/'+(m.empresas_cadastradas||0)+'emp top:'+top1Emp+' (conc'+(m.concentracao_top5_pct||0)+'%)'
         +' | gestor:'+(c.gestor||'?');
     }).join('\n');
     
-    // Top 10 motoboys consolidado
+    // Top 5 motoboys consolidado
     var todosMotoboys = [];
     grupo.forEach(function(r){
-      (r.metricas.top_motoboys||[]).forEach(function(mb){
+      (r.metricas.top_motoboys||[]).slice(0,3).forEach(function(mb){
         todosMotoboys.push({ nome: mb.nome, corridas: mb.corridas, cidade: r.cidade.nome });
       });
     });
     todosMotoboys.sort(function(a,b){return b.corridas - a.corridas;});
-    var top10Txt = todosMotoboys.slice(0,10).map(function(mb,i){
-      return '  '+(i+1)+'. '+mb.nome+' ('+mb.cidade+') — '+mb.corridas+' corridas';
-    }).join('\n') || '  (sem dados)';
+    var top5Txt = todosMotoboys.slice(0,5).map(function(mb,i){
+      return (i+1)+'. '+mb.nome+' ('+mb.cidade+') — '+mb.corridas+' corr';
+    }).join('\n') || '(sem dados)';
     
-    return 'Consultor sênior de operação da Gâmi Delivery. '
-      +'Gere RELATÓRIO MENSAL EXECUTIVO de '+range.label+' '+(titulo||'pra rede')+' pra diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte) e gerência (Leomara, Thiago). '
-      +'NÃO mencione marketing/posts/redes sociais. Foco em operação, receita, motoboys, empresas, riscos.\n\n'
-      +'TOTAIS DO MÊS:\n'
-      +'• '+totalCorr+' corridas · receita R$ '+totalRec.toFixed(0)+(crescGeral !== null ? ' ('+(crescGeral>=0?'+':'')+crescGeral+'% vs mês anterior)' : '')+' · '+grupo.length+' cidade(s)\n\n'
-      +'TOP 10 MOTOBOYS:\n'+top10Txt+'\n\n'
+    return 'Consultor sênior da Gâmi Delivery. Relatório mensal '+range.label+' '+(titulo||'')+'. Diretoria: Rafhael, Tainara, João Duarte. Sem markdown, sem marketing. Foco operação.\n\n'
+      +'TOTAIS: '+totalCorr+' corridas · R$'+totalRec.toFixed(0)+(crescGeral !== null ? ' ('+(crescGeral>=0?'+':'')+crescGeral+'%)' : '')+' · '+grupo.length+' cidade(s)\n\n'
+      +'TOP 5 MOTOBOYS DA REDE:\n'+top5Txt+'\n\n'
       +'DADOS POR CIDADE:\n'+linhas+'\n\n'
-      +'Estrutura OBRIGATÓRIA (11 seções, sem markdown):\n\n'
-      +'RESUMO EXECUTIVO DO MÊS\n(3-4 bullets curtos: números-chave + veredito)\n\n'
-      +'RESUMO FINANCEIRO\n• Receita total e variação\n• Top 3 por receita\n• Oportunidades não capturadas\n\n'
-      +'EVOLUÇÃO E TENDÊNCIAS\n(acelerando vs desacelerando — 2-3 frases)\n\n'
-      +'RANKING DE CIDADES\n• Top 3 por volume\n• Top 3 por crescimento %\n• Cidades em queda\n\n'
-      +'PONTOS DE ATENÇÃO E RISCOS\n• 3-4 cidades preocupantes com diagnóstico breve\n\n'
-      +'SAÚDE DA REDE OPERACIONAL\n• % médio motoboys ativos/cadastrados\n• Gargalo ou ociosidade\n• % empresas que efetivamente pediram\n\n'
-      +'MOTOBOYS DA REDE\n• Cite os NOMES dos top 5 (com cidade e corridas)\n• Análise da distribuição\n\n'
-      +'CONCENTRAÇÃO E DEPENDÊNCIA\n(cidades com alta concentração nas top 5 empresas — risco)\n\n'
-      +'RECONHECIMENTOS DO MÊS\n• NOMES dos top 3 motoboys (com cidade e corridas)\n• 1-2 destaques de cidades ou gestores\n\n'
-      +'AÇÕES ESTRATÉGICAS PRO PRÓXIMO MÊS\n• 5 ações concretas (cidade + responsável)\n\n'
-      +'APOSTA DO MÊS\n(prioridade #1 em 3-4 frases — onde focar + meta esperada)\n\n'
-      +'Tom executivo, direto. Números específicos. Português Brasil. Seções separadas por linha em branco.';
+      +'Gere EXATAMENTE estas 7 seções (curtas, sem markdown, separadas por linha em branco):\n\n'
+      +'RESUMO EXECUTIVO\n(3 bullets: números-chave + veredito geral)\n\n'
+      +'DESTAQUES FINANCEIROS\n• Receita total e variação\n• Top 3 por receita\n• Cidade com melhor ticket médio\n\n'
+      +'CRESCIMENTO E DECLÍNIO\n• Top 3 cidades acelerando (com %)\n• Top 2 cidades em queda (com gestor)\n\n'
+      +'PONTOS DE ATENÇÃO\n• 3 cidades que preocupam: taxa conv baixa, ticket caindo, concentração alta\n\n'
+      +'RECONHECIMENTOS\n• Top 3 motoboys da rede (NOMES e cidades)\n• 1 gestor destaque\n\n'
+      +'AÇÕES PRO PRÓXIMO MÊS\n• 4 ações específicas (cidade + responsável + meta)\n\n'
+      +'APOSTA DO MÊS\n(3 frases — prioridade #1, gestor, meta)\n\n'
+      +'Tom executivo. Números específicos. Português Brasil.';
   }
   
   // Helper: chama API e retorna texto
@@ -18169,7 +18190,7 @@ async function relatorioMensalCidades(forceNew){
       try {
         var r = await fetch('/.netlify/functions/blog-ai', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 2200 })
+          body: JSON.stringify({ prompt: prompt, max_tokens: 1500 })
         });
         if(r.ok){ resp = r; break; }
         ultimoErro = 'HTTP '+r.status;
