@@ -1,4 +1,4 @@
-<!-- v25.24 - Botão Atualizar Indicadores + cache curto 60s + refresh ao trocar período - 03/06/2026 -->
+<!-- v25.25 - Ranking otimizado (RPC v4) + forceRefresh limpa cache - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -26477,8 +26477,16 @@ async function renderRankingCidades(forceRefresh){
   var nomeMes = meses[hoje.getMonth()] + ' de ' + hoje.getFullYear();
   if(label) label.textContent = nomeMes;
   
+  // forceRefresh limpa cache em memória pra garantir dados frescos
+  if(forceRefresh){
+    _RANKING_LISTA_MEMORIA = null;
+    _RANKING_LISTA_TS = null;
+    try { localStorage.removeItem(_RANKING_CACHE_KEY); } catch(e){}
+    console.log('[Ranking] forceRefresh — cache limpo');
+  }
+  
   // Pega cache (mesmo se expirado — stale-while-revalidate)
-  var cache = _rankingPegarCache();
+  var cache = forceRefresh ? null : _rankingPegarCache();
   var lista = cache ? cache.data : null;
   var precisaBuscar = forceRefresh || !cache || _rankingCacheExpirado(cache);
   
@@ -26493,8 +26501,8 @@ async function renderRankingCidades(forceRefresh){
         if(Array.isArray(nova) && nova.length > 0){
           _rankingSalvarCache(nova);
           _renderRankingHTML(host, nova, nomeMes);
+          console.log('[Ranking] atualizado em background');
         }
-        // Se falhou, mantém o que tá no DOM (stale-while-revalidate)
       });
     }
     return;
