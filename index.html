@@ -1,4 +1,4 @@
-<!-- v25.28 - Saudação personalizada + avatar + última sync + RPC rel_rede - 03/06/2026 -->
+<!-- v25.29 - Indicador saúde sync + botão Sincronizar agora (admin) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -25023,7 +25023,7 @@ function initDashboardHero(){
   _atualizarUltimaSync();
 }
 
-// 🆕 Busca timestamp do último sync e mostra
+// 🆕 Busca timestamp do último sync e mostra com indicador visual de saúde
 async function _atualizarUltimaSync(){
   try {
     var r = await fetch(SUPA_URL+'/rest/v1/machine_sync_log?status=eq.concluido&select=finalizado_em&order=finalizado_em.desc&limit=1', {
@@ -25035,15 +25035,71 @@ async function _atualizarUltimaSync(){
     var ts = new Date(arr[0].finalizado_em);
     var agora = new Date();
     var diffMin = Math.floor((agora - ts) / 60000);
+    
+    // Texto humano
     var texto;
     if(diffMin < 1) texto = 'agora mesmo';
-    else if(diffMin < 60) texto = diffMin+' min atrás';
-    else if(diffMin < 1440) texto = Math.floor(diffMin/60)+'h atrás';
-    else texto = Math.floor(diffMin/1440)+' dias atrás';
+    else if(diffMin < 60) texto = 'há '+diffMin+' min';
+    else if(diffMin < 1440) texto = 'há '+Math.floor(diffMin/60)+'h';
+    else texto = 'há '+Math.floor(diffMin/1440)+' dias';
+    
+    // Cor baseada na "saúde" do sync
+    var cor, emoji;
+    if(diffMin < 240){ cor = '#1D9E75'; emoji = '🟢'; } // < 4h = verde
+    else if(diffMin < 720){ cor = '#EF9F27'; emoji = '🟡'; } // 4-12h = amarelo
+    else { cor = '#E24B4A'; emoji = '🔴'; } // > 12h = vermelho
+    
+    // Verifica se usuário pode forçar sync (super_admin ou diretoria)
+    var podeForcar = false;
+    try {
+      var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+      if(u && typeof detectarNivelPermissao === 'function'){
+        var nivel = detectarNivelPermissao(u);
+        podeForcar = nivel === 'super_admin' || nivel === 'diretoria';
+      }
+    } catch(e){}
+    
+    // Tooltip explicativo
+    var tooltip = 'Última sincronização com a Machine: '+ts.toLocaleString('pt-BR')
+      +' — os dados são sincronizados automaticamente todos os dias.';
+    
+    // Monta HTML
+    var btnSync = podeForcar 
+      ? '<button onclick="forcarSyncAgora()" style="margin-left:8px;padding:3px 9px;border:1px solid rgba(255,255,255,.4);border-radius:6px;background:rgba(255,255,255,.18);color:white;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Forçar sincronização agora">🔄 Sincronizar agora</button>'
+      : '';
     
     var el = document.getElementById('dash-ultima-sync');
-    if(el) el.innerHTML = '🔄 Dados atualizados '+texto;
+    if(el){
+      el.innerHTML = '<span title="'+tooltip+'" style="background:'+cor+'33;padding:2px 8px;border-radius:8px;border:1px solid '+cor+'55;display:inline-block">'
+        + emoji + ' Dados atualizados '+texto
+      + '</span>' + btnSync;
+    }
   } catch(e){}
+}
+
+// 🆕 Força sync manual (só admin/diretoria)
+function forcarSyncAgora(){
+  if(!confirm('🔄 Sincronizar todas as 11 cidades agora?\n\nO processo roda em segundo plano e leva 5-15 min.\nVocê pode continuar usando o app normalmente.')) return;
+  
+  // Dispara em background
+  fetch('/.netlify/functions/sync-diario-background', { method: 'GET' })
+    .then(function(){ console.log('[sync] disparado'); })
+    .catch(function(e){ console.warn('[sync] erro:', e); });
+  
+  // Feedback imediato
+  if(typeof toast === 'function'){
+    toast('✅ Sincronização iniciada! Os dados serão atualizados em 5-15 minutos.', 'success', 6000);
+  } else {
+    alert('✅ Sincronização iniciada!\n\nOs dados serão atualizados em 5-15 minutos.\nVocê pode continuar usando o app normalmente.');
+  }
+  
+  // Atualiza o status visual a cada 30s pelos próximos 15 min
+  var tentativas = 0;
+  var interval = setInterval(function(){
+    tentativas++;
+    _atualizarUltimaSync();
+    if(tentativas >= 30){ clearInterval(interval); }
+  }, 30000);
 }
 
 // --- VERSÍCULOS ---
