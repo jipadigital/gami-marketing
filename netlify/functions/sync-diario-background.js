@@ -4,7 +4,9 @@
 // Pega so corridas NOVAS (desde a ultima sincronizacao)
 // Salva com slug correto (hifen) - NUNCA underscore
 // 
-// 🆕 v2: popula paradas_count e bandeira_chamada_id pra performance da RPC indicadores_cidade
+// 🆕 v3: 
+//   - popula paradas_count e bandeira_chamada_id pra performance da RPC
+//   - corrige nomes de colunas em machine_sync_log
 // 
 // Background Functions tem timeout de 15 minutos
 // ============================================================
@@ -14,25 +16,30 @@ const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 
 // Cidades com slug CORRETO (com hifen)
 const CIDADES = [
-  { slug: 'maceio',       envSufixo: 'MACEIO' },
-  { slug: 'fortaleza',    envSufixo: 'FORTALEZA' },
-  { slug: 'joao-pessoa',  envSufixo: 'JOAO_PESSOA' },
-  { slug: 'recife',       envSufixo: 'RECIFE' },
-  { slug: 'natal',        envSufixo: 'NATAL' },
-  { slug: 'aracaju',      envSufixo: 'ARACAJU' },
-  { slug: 'sao-luis',     envSufixo: 'SAO_LUIS' },
-  { slug: 'cuiaba',       envSufixo: 'CUIABA' },
-  { slug: 'teresina',     envSufixo: 'TERESINA' },
-  { slug: 'vitoria',      envSufixo: 'VITORIA' },
-  { slug: 'campo-grande', envSufixo: 'CAMPO_GRANDE' }
+  { slug: 'maceio',       nome: 'Maceió/AL',         envSufixo: 'MACEIO' },
+  { slug: 'fortaleza',    nome: 'Fortaleza/CE',      envSufixo: 'FORTALEZA' },
+  { slug: 'joao-pessoa',  nome: 'João Pessoa/PB',    envSufixo: 'JOAO_PESSOA' },
+  { slug: 'recife',       nome: 'Recife/PE',         envSufixo: 'RECIFE' },
+  { slug: 'natal',        nome: 'Natal/RN',          envSufixo: 'NATAL' },
+  { slug: 'aracaju',      nome: 'Aracaju/SE',        envSufixo: 'ARACAJU' },
+  { slug: 'sao-luis',     nome: 'São Luís/MA',       envSufixo: 'SAO_LUIS' },
+  { slug: 'cuiaba',       nome: 'Cuiabá/MT',         envSufixo: 'CUIABA' },
+  { slug: 'teresina',     nome: 'Teresina/PI',       envSufixo: 'TERESINA' },
+  { slug: 'vitoria',      nome: 'Vitória/ES',        envSufixo: 'VITORIA' },
+  { slug: 'campo-grande', nome: 'Campo Grande/MS',   envSufixo: 'CAMPO_GRANDE' }
 ];
 
 // ====================================================================
 // Helpers
 // ====================================================================
 
-async function logSync(cidade_slug, status, detalhes){
+async function logSync(cidade, status, detalhes){
+  // 🆕 v3: usa os nomes corretos das colunas
   try {
+    const duracaoSeg = detalhes.iniciado_em 
+      ? Math.round((new Date() - new Date(detalhes.iniciado_em)) / 1000)
+      : null;
+    
     await fetch(SUPA_URL+'/rest/v1/machine_sync_log', {
       method: 'POST',
       headers: {
@@ -42,13 +49,19 @@ async function logSync(cidade_slug, status, detalhes){
         'Prefer': 'return=minimal'
       },
       body: JSON.stringify({
-        cidade_slug: cidade_slug,
+        cidade_slug: cidade.slug,
+        cidade_nome: cidade.nome,
         status: status,
         iniciado_em: detalhes.iniciado_em || new Date().toISOString(),
         finalizado_em: new Date().toISOString(),
-        total_corridas: detalhes.total_corridas || 0,
-        total_inseridas: detalhes.total_inseridas || 0,
-        observacoes: (detalhes.obs || '') + ' [automatico]'
+        duracao_segundos: duracaoSeg,
+        dias_solicitados: detalhes.dias_solicitados || null,
+        corridas_inseridas: detalhes.corridas_inseridas || 0,
+        corridas_erro: detalhes.corridas_erro || 0,
+        condutores_inseridos: detalhes.condutores_inseridos || 0,
+        empresas_inseridas: detalhes.empresas_inseridas || 0,
+        mensagem_erro: detalhes.mensagem_erro || null,
+        usuario: 'sync-automatico'
       })
     });
   } catch(e){ console.error('[log] erro:', e.message); }
@@ -122,8 +135,11 @@ async function salvarLote(tabela, dados){
 
 async function syncCidade(cidade){
   const inicio = new Date();
+  const inicioISO = inicio.toISOString();
   console.log('\n========================================');
-  console.log('[SYNC] '+cidade.slug+' iniciado em', inicio.toISOString());
+  console.log('[SYNC] '+cidade.slug+' iniciado em', inicioISO);
+  
+  let diasSolicitados = null;
   
   try {
     // 1) Pega ultimo timestamp pra fazer incremental
@@ -131,10 +147,12 @@ async function syncCidade(cidade){
     if(!dataInicio){
       // Primeira sync: pega ultimos 60 dias
       dataInicio = new Date(Date.now() - 60*24*60*60*1000);
+      diasSolicitados = 60;
       console.log('[SYNC] '+cidade.slug+' - primeira sync, pegando 60 dias');
     } else {
       // Volta 2 dias pra garantir overlap (idempotente devido ao on_conflict)
       dataInicio = new Date(dataInicio.getTime() - 2*24*60*60*1000);
+      diasSolicitados = Math.ceil((Date.now() - dataInicio.getTime()) / (24*60*60*1000));
       console.log('[SYNC] '+cidade.slug+' - incremental desde', dataInicio.toISOString().split('T')[0]);
     }
     
@@ -148,7 +166,7 @@ async function syncCidade(cidade){
     console.log('[SYNC] '+cidade.slug+' Machine: '+corridas.length+' corridas, '+condutores.length+' condutores, '+empresas.length+' empresas');
     
     // 3) Prepara corridas pra inserir (com slug CORRETO)
-    // 🆕 v2: extrai paradas_count e bandeira_chamada_id pra performance da RPC
+    // 🆕 v3: extrai paradas_count e bandeira_chamada_id pra performance da RPC
     const corridasFmt = corridas.map(c => ({
       cidade_slug: cidade.slug, // SEMPRE COM HIFEN
       id_solicitacao: String(c.id || c.id_solicitacao || ''),
@@ -189,20 +207,23 @@ async function syncCidade(cidade){
     
     console.log('[SYNC] '+cidade.slug+' OK: '+totalCorridas+' corridas, '+totalCondutores+' condutores, '+totalEmpresas+' empresas salvos');
     
-    await logSync(cidade.slug, 'concluido', {
-      iniciado_em: inicio.toISOString(),
-      total_corridas: corridas.length,
-      total_inseridas: totalCorridas,
-      obs: 'Corridas: '+totalCorridas+', Condutores: '+totalCondutores+', Empresas: '+totalEmpresas
+    await logSync(cidade, 'concluido', {
+      iniciado_em: inicioISO,
+      dias_solicitados: diasSolicitados,
+      corridas_inseridas: totalCorridas,
+      corridas_erro: corridas.length - totalCorridas,
+      condutores_inseridos: totalCondutores,
+      empresas_inseridas: totalEmpresas
     });
     
     return { slug: cidade.slug, ok: true, corridas: totalCorridas, condutores: totalCondutores, empresas: totalEmpresas };
     
   } catch(err) {
     console.error('[SYNC] '+cidade.slug+' ERRO:', err.message);
-    await logSync(cidade.slug, 'erro', {
-      iniciado_em: inicio.toISOString(),
-      obs: 'ERRO: '+err.message
+    await logSync(cidade, 'erro', {
+      iniciado_em: inicioISO,
+      dias_solicitados: diasSolicitados,
+      mensagem_erro: err.message
     });
     return { slug: cidade.slug, ok: false, erro: err.message };
   }
