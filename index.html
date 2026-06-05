@@ -1,4 +1,4 @@
-<!-- v25.43 - Campo Grande analise individual sem comparativo - 03/06/2026 -->
+<!-- v25.44 - Relatorio mensal executivo completo: insights+tabela+saude+top10 - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18284,7 +18284,24 @@ async function relatorioMensalCidades(forceNew){
       total_corridas: totalCorridas + (cg ? (cg.metricas.total_corridas||0) : 0),
       receita_total: totalReceita + (cg ? parseFloat(cg.metricas.receita||0) : 0),
       tipo_relatorio: 'mensal_geral',
-      fonte: 'supabase'
+      fonte: 'supabase',
+      // 🆕 Dados brutos pra renderização rica (tabela, insights, top 10s)
+      dados_rede: rede.map(function(r){
+        return {
+          slug: slugCidade(r.cidade),
+          nome: r.cidade.nome,
+          uf: r.cidade.uf,
+          gestor: r.cidade.gestor || '',
+          metricas: r.metricas
+        };
+      }),
+      dados_cg: cg ? {
+        slug: slugCidade(cg.cidade),
+        nome: cg.cidade.nome,
+        uf: cg.cidade.uf,
+        gestor: cg.cidade.gestor || '',
+        metricas: cg.metricas
+      } : null
     };
     try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
     try { localStorage.setItem('gami_lembrete_relmensal_'+range.chave, '1'); } catch(e){}
@@ -18475,6 +18492,220 @@ async function relatorioMensalCidade(cidadeId, forceNew){
 }
 
 /* Render do relatório mensal GERAL */
+// ============================================================
+// 🆕 RELATÓRIO MENSAL — RENDERIZAÇÃO RICA (cards, tabela, top 10)
+// ============================================================
+
+// Helper: formata número com sufixo (1.5k, 12.3k)
+function _relFmtNum(n){
+  n = parseInt(n || 0);
+  if(n >= 1000) return (n/1000).toFixed(1).replace('.0','') + 'k';
+  return n.toLocaleString('pt-BR');
+}
+
+function _relFmtMoney(v){
+  v = parseFloat(v || 0);
+  if(v >= 1000) return 'R$ ' + (v/1000).toFixed(1).replace('.0','') + 'k';
+  return 'R$ ' + v.toFixed(0);
+}
+
+// CARDS DE INSIGHTS DO MÊS (6 cards automáticos)
+function _renderInsightsCards(dadosRede, dadosCG){
+  if(!dadosRede || !dadosRede.length) return '';
+  var todas = dadosRede.slice();
+  if(dadosCG) todas.push(dadosCG);
+  
+  // Calcula insights
+  var melhorVolume = todas.reduce(function(a,b){return (b.metricas.total_corridas||0) > (a.metricas.total_corridas||0) ? b : a;}, todas[0]);
+  var maiorCresc = todas.filter(function(c){return c.metricas.crescimento_corridas_pct !== null;})
+                       .sort(function(a,b){return (b.metricas.crescimento_corridas_pct||0) - (a.metricas.crescimento_corridas_pct||0);})[0] || todas[0];
+  var maiorTicket = todas.reduce(function(a,b){return (parseFloat(b.metricas.ticket_medio)||0) > (parseFloat(a.metricas.ticket_medio)||0) ? b : a;}, todas[0]);
+  var maiorQueda = todas.filter(function(c){return c.metricas.crescimento_corridas_pct !== null && c.metricas.crescimento_corridas_pct < 0;})
+                       .sort(function(a,b){return (a.metricas.crescimento_corridas_pct||0) - (b.metricas.crescimento_corridas_pct||0);})[0];
+  var melhorConv = todas.reduce(function(a,b){return (parseFloat(b.metricas.taxa_conclusao)||0) > (parseFloat(a.metricas.taxa_conclusao)||0) ? b : a;}, todas[0]);
+  var menorConv = todas.filter(function(c){return parseFloat(c.metricas.taxa_conclusao) > 0;})
+                      .reduce(function(a,b){return (parseFloat(b.metricas.taxa_conclusao)||999) < (parseFloat(a.metricas.taxa_conclusao)||999) ? b : a;}, todas[0]);
+  
+  function card(emoji, label, titulo, valor, cor, bgCor){
+    return '<div style="padding:12px 14px;background:'+bgCor+';border:1px solid '+cor+'33;border-radius:10px;border-left:4px solid '+cor+'">'
+      +'<div style="display:flex;align-items:center;gap:6px;font-size:9px;font-weight:700;color:'+cor+';text-transform:uppercase;letter-spacing:.5px">'+emoji+' '+label+'</div>'
+      +'<div style="font-size:15px;font-weight:800;color:var(--text);margin-top:4px;line-height:1.15">'+titulo+'</div>'
+      +'<div style="font-size:11px;color:var(--text2);margin-top:2px;font-weight:600">'+valor+'</div>'
+    +'</div>';
+  }
+  
+  return '<div style="margin-top:18px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif">🎯 INSIGHTS DO MÊS</div><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:18px">'
+      + card('🥇', 'Maior volume', melhorVolume.nome+'/'+melhorVolume.uf, _relFmtNum(melhorVolume.metricas.total_corridas)+' corridas', '#1D9E75', 'linear-gradient(135deg,#EAF7F1,#FFFFFF)')
+      + card('🔥', 'Maior crescimento', maiorCresc.nome+'/'+maiorCresc.uf, (maiorCresc.metricas.crescimento_corridas_pct>=0?'+':'')+maiorCresc.metricas.crescimento_corridas_pct+'%', '#EF9F27', 'linear-gradient(135deg,#FFF8E1,#FFFFFF)')
+      + card('💎', 'Maior ticket', maiorTicket.nome+'/'+maiorTicket.uf, 'R$ '+parseFloat(maiorTicket.metricas.ticket_medio||0).toFixed(2), '#1AB8F0', 'linear-gradient(135deg,#E6F6FE,#FFFFFF)')
+      + (maiorQueda ? card('📉', 'Maior queda', maiorQueda.nome+'/'+maiorQueda.uf, maiorQueda.metricas.crescimento_corridas_pct+'%', '#E24B4A', 'linear-gradient(135deg,#FCEBEB,#FFFFFF)') : '')
+      + card('🎯', 'Melhor conversão', melhorConv.nome+'/'+melhorConv.uf, parseFloat(melhorConv.metricas.taxa_conclusao||0)+'%', '#1D9E75', 'linear-gradient(135deg,#EAF7F1,#FFFFFF)')
+      + (menorConv && menorConv.metricas.taxa_conclusao < 85 ? card('⚠️', 'Atenção conversão', menorConv.nome+'/'+menorConv.uf, parseFloat(menorConv.metricas.taxa_conclusao)+'%', '#E24B4A', 'linear-gradient(135deg,#FCEBEB,#FFFFFF)') : '')
+    +'</div>';
+}
+
+// TABELA EXECUTIVA — todas as cidades em 1 view
+function _renderTabelaExecutiva(dadosRede, dadosCG){
+  if(!dadosRede || !dadosRede.length) return '';
+  var todas = dadosRede.slice();
+  if(dadosCG) todas.push(dadosCG);
+  todas.sort(function(a,b){return (b.metricas.total_corridas||0) - (a.metricas.total_corridas||0);});
+  
+  var medalhas = ['🥇','🥈','🥉'];
+  
+  var linhas = todas.map(function(c, i){
+    var m = c.metricas;
+    var pos = i < 3 ? medalhas[i] : (i+1)+'°';
+    var cresc = m.crescimento_corridas_pct;
+    var crescBg, crescCor;
+    if(cresc === null || cresc === undefined){ crescBg='#F5F5F5'; crescCor='#999'; cresc='—'; }
+    else if(cresc >= 20){ crescBg='#EAF7F1'; crescCor='#1D9E75'; cresc='+'+cresc+'%'; }
+    else if(cresc > 0){ crescBg='#F4FBF7'; crescCor='#1B7B5B'; cresc='+'+cresc+'%'; }
+    else if(cresc >= -10){ crescBg='#F5F5F5'; crescCor='#666'; cresc=cresc+'%'; }
+    else { crescBg='#FCEBEB'; crescCor='#E24B4A'; cresc=cresc+'%'; }
+    
+    var taxa = parseFloat(m.taxa_conclusao || 0);
+    var taxaCor = taxa >= 90 ? '#1D9E75' : taxa >= 75 ? '#EF9F27' : '#E24B4A';
+    var taxaEmoji = taxa >= 90 ? '🟢' : taxa >= 75 ? '🟡' : '🔴';
+    
+    return '<tr style="border-bottom:1px solid var(--border);transition:background .15s" onmouseover="this.style.background=\'rgba(26,184,240,0.04)\'" onmouseout="this.style.background=\'transparent\'">'
+      +'<td style="padding:8px 6px;font-weight:800;font-size:13px;color:var(--text);white-space:nowrap">'+pos+'</td>'
+      +'<td style="padding:8px 8px;font-weight:700;font-size:12px;color:var(--text);white-space:nowrap">'+c.nome+'/'+c.uf+'<div style="font-size:10px;color:var(--text3);font-weight:500;margin-top:1px">'+(c.gestor||'—')+'</div></td>'
+      +'<td style="padding:8px 6px;text-align:right;font-weight:700;font-size:12px;color:var(--text);font-variant-numeric:tabular-nums">'+_relFmtNum(m.total_corridas)+'</td>'
+      +'<td style="padding:8px 6px;text-align:right;font-weight:700;font-size:12px;color:var(--text);font-variant-numeric:tabular-nums">'+_relFmtMoney(m.receita)+'</td>'
+      +'<td style="padding:8px 6px;text-align:right;font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums">R$ '+parseFloat(m.ticket_medio||0).toFixed(2)+'</td>'
+      +'<td style="padding:8px 6px;text-align:center;font-size:11px;color:'+taxaCor+';font-weight:700;white-space:nowrap">'+taxaEmoji+' '+taxa+'%</td>'
+      +'<td style="padding:8px 6px;text-align:right;font-size:11px;color:var(--text2);font-variant-numeric:tabular-nums">'+m.motoboys_ativos+'/'+m.motoboys_cadastrados+'</td>'
+      +'<td style="padding:8px 6px;text-align:center;white-space:nowrap"><span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:'+crescBg+';color:'+crescCor+'">'+cresc+'</span></td>'
+    +'</tr>';
+  }).join('');
+  
+  return '<div style="margin-top:18px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif">📋 TABELA EXECUTIVA</div><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
+    +'<div style="overflow-x:auto;margin-bottom:18px;border:1px solid var(--border);border-radius:10px"><table style="width:100%;border-collapse:collapse;min-width:680px;background:var(--surface);font-family:inherit">'
+      +'<thead><tr style="background:linear-gradient(135deg,#E6F6FE,#FFFFFF)">'
+        +'<th style="padding:10px 6px;text-align:left;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">#</th>'
+        +'<th style="padding:10px 8px;text-align:left;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Cidade</th>'
+        +'<th style="padding:10px 6px;text-align:right;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Corridas</th>'
+        +'<th style="padding:10px 6px;text-align:right;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Receita</th>'
+        +'<th style="padding:10px 6px;text-align:right;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Ticket</th>'
+        +'<th style="padding:10px 6px;text-align:center;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Conv.</th>'
+        +'<th style="padding:10px 6px;text-align:right;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Mot.At/Cad</th>'
+        +'<th style="padding:10px 6px;text-align:center;font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.5px">Cresc.</th>'
+      +'</tr></thead>'
+      +'<tbody>'+linhas+'</tbody>'
+    +'</table></div>';
+}
+
+// SAÚDE DA REDE — KPIs operacionais consolidados
+function _renderSaudeRede(dadosRede, dadosCG){
+  if(!dadosRede || !dadosRede.length) return '';
+  var todas = dadosRede.slice();
+  if(dadosCG) todas.push(dadosCG);
+  
+  var motoboysAtivos = todas.reduce(function(s,c){return s + (c.metricas.motoboys_ativos||0);}, 0);
+  var motoboysCad = todas.reduce(function(s,c){return s + (c.metricas.motoboys_cadastrados||0);}, 0);
+  var empresasAtivas = todas.reduce(function(s,c){return s + (c.metricas.empresas_com_pedido||0);}, 0);
+  var empresasCad = todas.reduce(function(s,c){return s + (c.metricas.empresas_cadastradas||0);}, 0);
+  var totalParadas = todas.reduce(function(s,c){return s + (parseInt(c.metricas.paradas)||0);}, 0);
+  var totalFinalizadas = todas.reduce(function(s,c){return s + (c.metricas.finalizadas||0);}, 0);
+  var mediaParadasOS = totalFinalizadas > 0 ? (totalParadas/totalFinalizadas).toFixed(2) : '0';
+  
+  var pctMot = motoboysCad > 0 ? Math.round((motoboysAtivos/motoboysCad)*100) : 0;
+  var pctEmp = empresasCad > 0 ? Math.round((empresasAtivas/empresasCad)*100) : 0;
+  
+  function kpi(emoji, label, valor, sub, cor){
+    return '<div style="flex:1;min-width:170px;padding:14px;background:linear-gradient(135deg,'+cor+'22,'+cor+'08);border:1px solid '+cor+'33;border-radius:10px;text-align:center">'
+      +'<div style="font-size:22px;line-height:1">'+emoji+'</div>'
+      +'<div style="font-size:9px;font-weight:700;color:'+cor+';text-transform:uppercase;letter-spacing:.5px;margin-top:6px">'+label+'</div>'
+      +'<div style="font-size:18px;font-weight:900;color:var(--text);margin-top:3px;line-height:1.1">'+valor+'</div>'
+      +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+sub+'</div>'
+    +'</div>';
+  }
+  
+  return '<div style="margin-top:18px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif">🛵 SAÚDE OPERACIONAL DA REDE</div><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px">'
+      + kpi('🛵', 'Motoboys ativos', pctMot+'%', motoboysAtivos.toLocaleString('pt-BR')+' / '+motoboysCad.toLocaleString('pt-BR'), '#1AB8F0')
+      + kpi('🏪', 'Empresas pedindo', pctEmp+'%', empresasAtivas.toLocaleString('pt-BR')+' / '+empresasCad.toLocaleString('pt-BR'), '#7F77DD')
+      + kpi('📦', 'Total de paradas', _relFmtNum(totalParadas), 'média '+mediaParadasOS+' por OS', '#EF9F27')
+      + kpi('🚖', 'Corridas finalizadas', _relFmtNum(totalFinalizadas), 'da rede no mês', '#1D9E75')
+    +'</div>';
+}
+
+// TOP 10 MOTOBOYS DA REDE (consolidado de todas as cidades)
+function _renderTop10MotoboysRede(dadosRede){
+  if(!dadosRede || !dadosRede.length) return '';
+  var todos = [];
+  dadosRede.forEach(function(c){
+    (c.metricas.top_motoboys||[]).forEach(function(mb){
+      todos.push({ nome: mb.nome, corridas: parseInt(mb.corridas)||0, cidade: c.nome, uf: c.uf });
+    });
+  });
+  todos.sort(function(a,b){return b.corridas - a.corridas;});
+  var top10 = todos.slice(0, 10);
+  if(!top10.length) return '';
+  
+  var maxCorridas = top10[0].corridas;
+  var medalhas = ['🥇','🥈','🥉'];
+  
+  var linhas = top10.map(function(mb, i){
+    var pos = i < 3 ? medalhas[i] : (i+1)+'°';
+    var pctBarra = maxCorridas > 0 ? (mb.corridas / maxCorridas * 100) : 0;
+    return '<div style="display:flex;align-items:center;gap:12px;padding:9px 10px;border-bottom:1px solid var(--border)">'
+      +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;width:30px;text-align:center;flex-shrink:0">'+pos+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+mb.nome+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:1px">📍 '+mb.cidade+'/'+mb.uf+'</div>'
+      +'</div>'
+      +'<div style="flex:0 0 100px;height:6px;background:rgba(0,0,0,0.05);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pctBarra+'%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);border-radius:3px"></div></div>'
+      +'<div style="text-align:right;min-width:64px;flex-shrink:0">'
+        +'<div style="font-size:15px;font-weight:800;color:var(--text);line-height:1">'+mb.corridas+'</div>'
+        +'<div style="font-size:9px;color:var(--text3)">corridas</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+  
+  return '<div style="margin-top:18px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif">🏆 TOP 10 MOTOBOYS DA REDE</div><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
+    +'<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px">'+linhas+'</div>';
+}
+
+// TOP 10 EMPRESAS/LOJAS DA REDE (consolidado de todas as cidades)
+function _renderTop10EmpresasRede(dadosRede){
+  if(!dadosRede || !dadosRede.length) return '';
+  var todas = [];
+  dadosRede.forEach(function(c){
+    (c.metricas.top_empresas||[]).forEach(function(e){
+      todas.push({ nome: e.nome, pedidos: parseInt(e.pedidos)||0, cidade: c.nome, uf: c.uf });
+    });
+  });
+  todas.sort(function(a,b){return b.pedidos - a.pedidos;});
+  var top10 = todas.slice(0, 10);
+  if(!top10.length) return '';
+  
+  var maxPedidos = top10[0].pedidos;
+  var medalhas = ['🥇','🥈','🥉'];
+  
+  var linhas = top10.map(function(e, i){
+    var pos = i < 3 ? medalhas[i] : (i+1)+'°';
+    var pctBarra = maxPedidos > 0 ? (e.pedidos / maxPedidos * 100) : 0;
+    return '<div style="display:flex;align-items:center;gap:12px;padding:9px 10px;border-bottom:1px solid var(--border)">'
+      +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;width:30px;text-align:center;flex-shrink:0">'+pos+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:1px">📍 '+e.cidade+'/'+e.uf+'</div>'
+      +'</div>'
+      +'<div style="flex:0 0 100px;height:6px;background:rgba(0,0,0,0.05);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pctBarra+'%;background:linear-gradient(90deg,#7F77DD,#5C53C7);border-radius:3px"></div></div>'
+      +'<div style="text-align:right;min-width:64px;flex-shrink:0">'
+        +'<div style="font-size:15px;font-weight:800;color:var(--text);line-height:1">'+e.pedidos+'</div>'
+        +'<div style="font-size:9px;color:var(--text3)">pedidos</div>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+  
+  return '<div style="margin-top:18px;margin-bottom:8px;display:flex;align-items:center;gap:8px"><div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif">🏪 TOP 10 LOJAS/EMPRESAS DA REDE</div><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
+    +'<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:18px">'+linhas+'</div>';
+}
+
 function _renderRelatorioMensal(diagObj, fromCache){
   var painel = document.getElementById('cid-diagnostico-ia');
   if(!painel) return;
@@ -18543,6 +18774,18 @@ function _renderRelatorioMensal(diagObj, fromCache){
     +'</div>';
   }
   
+  // 🆕 Seções visuais (cards, tabela, saúde, top 10s) — só se tiver dados brutos
+  var seccoesVisuais = '';
+  if(diagObj.dados_rede){
+    try {
+      seccoesVisuais += _renderInsightsCards(diagObj.dados_rede, diagObj.dados_cg);
+      seccoesVisuais += _renderTabelaExecutiva(diagObj.dados_rede, diagObj.dados_cg);
+      seccoesVisuais += _renderSaudeRede(diagObj.dados_rede, diagObj.dados_cg);
+      seccoesVisuais += _renderTop10MotoboysRede(diagObj.dados_rede);
+      seccoesVisuais += _renderTop10EmpresasRede(diagObj.dados_rede);
+    } catch(e){ console.warn('[Render rico]', e); }
+  }
+  
   painel.innerHTML = ''
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
       +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">'
@@ -18566,8 +18809,9 @@ function _renderRelatorioMensal(diagObj, fromCache){
     +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Relatório deste mês — todos veem o mesmo. Próximo no dia 01 do próximo mês.</div>' : '')
     +avisoSemDados
     +kpisHtml
-    +'<div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:6px">📊 Análise da REDE Gâmi <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--text3)">('+(diagObj.cidades_analisadas - (diagObj.texto_campo_grande?1:0))+' cidades, sem Campo Grande)</span></div>'
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +seccoesVisuais
+    +'<div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif;margin:18px 0 8px 0;display:flex;align-items:center;gap:8px">📊 ANÁLISE EXECUTIVA DA REDE <span style="font-weight:500;font-family:inherit;color:var(--text3);font-size:11px">('+(diagObj.cidades_analisadas - (diagObj.texto_campo_grande?1:0))+' cidades, sem Campo Grande)</span><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
     +apostaHtml
     +blocoCG;
   window._cidDiagnosticoTexto = (diagObj.texto || '') + (diagObj.texto_campo_grande ? '\n\n\n=== CAMPO GRANDE ===\n\n'+diagObj.texto_campo_grande : '');
