@@ -1,4 +1,4 @@
-<!-- v25.30 - Top motoboys + Top empresas da rede na aba Cidades - 03/06/2026 -->
+<!-- v25.31 - Calendário visual de demanda (heatmap 7x24) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3546,6 +3546,23 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         </div>
       </div>
       <div id="top-rede-empresas"></div>
+    </div>
+
+    <!-- 🆕 CALENDÁRIO VISUAL DE DEMANDA -->
+    <div class="card" style="margin-top:14px;padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="card-title" style="margin:0;display:flex;align-items:center;gap:8px">📅 Calendário de demanda</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Quando as 11 cidades mais pedem entregas — últimos <span id="cal-demanda-dias">30</span> dias</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="renderCalendarioDemanda(7)" id="btn-cal-7" class="btnCalPeriodo" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">7 dias</button>
+          <button onclick="renderCalendarioDemanda(30)" id="btn-cal-30" class="btnCalPeriodo" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--gami-blue);background:var(--gami-blue);color:white;cursor:pointer;font-family:inherit;font-weight:600">30 dias</button>
+          <button onclick="renderCalendarioDemanda(90)" id="btn-cal-90" class="btnCalPeriodo" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">90 dias</button>
+          <button onclick="renderCalendarioDemanda(_calDemandaDiasAtual, true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--gami-blue);border-radius:18px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600" title="Atualizar">🔄</button>
+        </div>
+      </div>
+      <div id="calendario-demanda-host"></div>
     </div>
 
     <!-- STATUS DAS INTEGRAÇÕES (só super_admin, no rodapé) -->
@@ -19604,6 +19621,9 @@ function renderCidadesGrid(){
       renderTopRede('motoboys', _topRedeTabAtual.motoboys || 'volume');
       renderTopRede('empresas', _topRedeTabAtual.empresas || 'volume');
     }
+    if(typeof renderCalendarioDemanda === 'function'){
+      renderCalendarioDemanda(_calDemandaDiasAtual || 30);
+    }
   }, 300);
 }
 
@@ -26762,11 +26782,191 @@ function _renderTopRedeHTML(host, lista, tipo, aba){
   host.innerHTML = html;
 }
 
-// Hook: quando entrar na aba Cidades, carregar os tops
-(function(){
-  var origPanel = window.nav;
-  // Vai disparar via setTimeout quando a aba abrir — abaixo
-})();
+// ============================================================
+// 🆕 CALENDÁRIO VISUAL DE DEMANDA (mapa de calor 7×24)
+// ============================================================
+var _calDemandaCache = {};
+var _calDemandaDiasAtual = 30;
+var _CAL_DEMANDA_TTL = 10 * 60 * 1000; // 10 min
+
+async function renderCalendarioDemanda(dias, forceRefresh){
+  var host = document.getElementById('calendario-demanda-host');
+  if(!host) return;
+  
+  _calDemandaDiasAtual = dias;
+  var lbl = document.getElementById('cal-demanda-dias');
+  if(lbl) lbl.textContent = dias;
+  
+  // Atualiza visual dos botões de período
+  ['7','30','90'].forEach(function(d){
+    var btn = document.getElementById('btn-cal-'+d);
+    if(!btn) return;
+    if(parseInt(d) === dias){
+      btn.style.background = 'var(--gami-blue)';
+      btn.style.color = 'white';
+      btn.style.borderColor = 'var(--gami-blue)';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--text2)';
+      btn.style.borderColor = 'var(--border)';
+    }
+  });
+  
+  var cacheKey = 'cal_'+dias;
+  var agora = Date.now();
+  var cache = _calDemandaCache[cacheKey];
+  var expirado = !cache || (agora - cache.ts) > _CAL_DEMANDA_TTL;
+  
+  if(cache && !forceRefresh){
+    _renderCalendarioHTML(host, cache.data);
+    if(!expirado) return;
+  } else {
+    host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando padrões de demanda...</div>';
+  }
+  
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/rpc/calendario_demanda_rede', {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify({ p_dias: dias })
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var lista = await r.json();
+    
+    _calDemandaCache[cacheKey] = { ts: agora, data: lista };
+    _renderCalendarioHTML(host, lista);
+  } catch(e){
+    console.warn('[CalDemanda]', e);
+    if(!cache){
+      host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro: '+e.message+'</div>';
+    }
+  }
+}
+
+function _renderCalendarioHTML(host, lista){
+  if(!Array.isArray(lista) || lista.length === 0){
+    host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sem dados.</div>';
+    return;
+  }
+  
+  // Cria matriz 7×24 com paradas
+  var matriz = {};
+  for(var d = 0; d < 7; d++){
+    matriz[d] = {};
+    for(var h = 0; h < 24; h++) matriz[d][h] = 0;
+  }
+  var max = 0;
+  lista.forEach(function(item){
+    var d = parseInt(item.dia_semana);
+    var h = parseInt(item.hora);
+    var v = parseInt(item.total_paradas) || 0;
+    matriz[d][h] = v;
+    if(v > max) max = v;
+  });
+  
+  // Calcula insights (pico, dia mais movimentado, etc)
+  var totalPorDia = {};
+  var totalPorHora = {};
+  for(var d2 = 0; d2 < 7; d2++){
+    totalPorDia[d2] = 0;
+    for(var h2 = 0; h2 < 24; h2++){
+      totalPorDia[d2] += matriz[d2][h2];
+      if(!totalPorHora[h2]) totalPorHora[h2] = 0;
+      totalPorHora[h2] += matriz[d2][h2];
+    }
+  }
+  var diaPico = 0, maxDia = 0;
+  for(var d3 = 0; d3 < 7; d3++){
+    if(totalPorDia[d3] > maxDia){ maxDia = totalPorDia[d3]; diaPico = d3; }
+  }
+  var horaPico = 0, maxHora = 0;
+  for(var h3 = 0; h3 < 24; h3++){
+    if(totalPorHora[h3] > maxHora){ maxHora = totalPorHora[h3]; horaPico = h3; }
+  }
+  
+  var diasLabels = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  var diasNomes = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+  
+  // Função pra cor baseada em intensidade (gradient azul Gâmi)
+  function corCelula(v, max){
+    if(v === 0) return 'rgba(0,0,0,0.04)';
+    var pct = v / max;
+    if(pct < 0.15) return 'rgba(26,184,240,0.15)';
+    if(pct < 0.35) return 'rgba(26,184,240,0.35)';
+    if(pct < 0.55) return 'rgba(26,184,240,0.55)';
+    if(pct < 0.75) return 'rgba(14,122,184,0.75)';
+    return 'rgba(13,43,92,0.95)';
+  }
+  function corTexto(v, max){
+    if(v === 0) return 'transparent';
+    var pct = v / max;
+    return pct > 0.5 ? 'white' : '#0D2B5C';
+  }
+  
+  // Insights bonitos no topo
+  var insights = ''
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:12px">'
+      + '<div style="padding:10px 12px;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border-radius:8px;border:1px solid #1AB8F033">'
+        +'<div style="font-size:10px;color:#0E7AB8;font-weight:700;text-transform:uppercase;letter-spacing:.5px">📅 Dia mais movimentado</div>'
+        +'<div style="font-size:16px;font-weight:800;color:#0D2B5C;margin-top:2px">'+diasNomes[diaPico]+'</div>'
+        +'<div style="font-size:10px;color:#0E7AB8">'+maxDia.toLocaleString('pt-BR')+' paradas no período</div>'
+      +'</div>'
+      + '<div style="padding:10px 12px;background:linear-gradient(135deg,#FFF8E1,#FFE082);border-radius:8px;border:1px solid #EF9F2733">'
+        +'<div style="font-size:10px;color:#A8741A;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🕐 Hora de pico</div>'
+        +'<div style="font-size:16px;font-weight:800;color:#3D2700;margin-top:2px">'+String(horaPico).padStart(2,'0')+':00</div>'
+        +'<div style="font-size:10px;color:#A8741A">'+maxHora.toLocaleString('pt-BR')+' paradas no período</div>'
+      +'</div>'
+      + '<div style="padding:10px 12px;background:linear-gradient(135deg,#E8F5E9,#C8E6C9);border-radius:8px;border:1px solid #1D9E7533">'
+        +'<div style="font-size:10px;color:#1B7B5B;font-weight:700;text-transform:uppercase;letter-spacing:.5px">🔥 Maior pico</div>'
+        +'<div style="font-size:16px;font-weight:800;color:#0D3D2A;margin-top:2px">'+max.toLocaleString('pt-BR')+' paradas/hora</div>'
+        +'<div style="font-size:10px;color:#1B7B5B">No período analisado</div>'
+      +'</div>'
+    +'</div>';
+  
+  // Heatmap: grid responsivo com scroll horizontal em mobile
+  var heatmap = '<div style="overflow-x:auto;margin-bottom:8px"><div style="min-width:560px">';
+  
+  // Header (horas 0-23)
+  heatmap += '<div style="display:grid;grid-template-columns:40px repeat(24,1fr);gap:2px;margin-bottom:4px">';
+  heatmap += '<div></div>';
+  for(var h4 = 0; h4 < 24; h4++){
+    var destaque = h4 === horaPico ? 'background:#FFD93D33;border-radius:3px;font-weight:800' : '';
+    heatmap += '<div style="font-size:9px;color:var(--text3);text-align:center;padding:2px 0;'+destaque+'">'+String(h4).padStart(2,'0')+'</div>';
+  }
+  heatmap += '</div>';
+  
+  // Linhas (dias)
+  for(var d4 = 0; d4 < 7; d4++){
+    var destaqueDia = d4 === diaPico ? 'color:#0D2B5C;font-weight:800' : 'color:var(--text2)';
+    heatmap += '<div style="display:grid;grid-template-columns:40px repeat(24,1fr);gap:2px;margin-bottom:2px">';
+    heatmap += '<div style="font-size:11px;font-weight:600;'+destaqueDia+';display:flex;align-items:center">'+diasLabels[d4]+'</div>';
+    for(var h5 = 0; h5 < 24; h5++){
+      var v = matriz[d4][h5];
+      var bg = corCelula(v, max);
+      var cor = corTexto(v, max);
+      var titulo = diasNomes[d4]+' '+String(h5).padStart(2,'0')+':00 — '+v.toLocaleString('pt-BR')+' paradas';
+      heatmap += '<div title="'+titulo+'" style="aspect-ratio:1;background:'+bg+';border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:600;color:'+cor+';cursor:default;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.4)\';this.style.zIndex=\'2\';this.style.position=\'relative\';this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.2)\'" onmouseout="this.style.transform=\'scale(1)\';this.style.zIndex=\'\';this.style.boxShadow=\'\'">'+(v > 0 ? (v >= 1000 ? Math.round(v/100)/10+'k' : v) : '')+'</div>';
+    }
+    heatmap += '</div>';
+  }
+  
+  heatmap += '</div></div>';
+  
+  // Legenda
+  var legenda = '<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;font-size:10px;color:var(--text3)">'
+    +'<span>Menos</span>'
+    +'<div style="width:18px;height:14px;border-radius:3px;background:rgba(0,0,0,0.04)"></div>'
+    +'<div style="width:18px;height:14px;border-radius:3px;background:rgba(26,184,240,0.15)"></div>'
+    +'<div style="width:18px;height:14px;border-radius:3px;background:rgba(26,184,240,0.35)"></div>'
+    +'<div style="width:18px;height:14px;border-radius:3px;background:rgba(26,184,240,0.55)"></div>'
+    +'<div style="width:18px;height:14px;border-radius:3px;background:rgba(14,122,184,0.75)"></div>'
+    +'<div style="width:18px;height:14px;border-radius:3px;background:rgba(13,43,92,0.95)"></div>'
+    +'<span>Mais</span>'
+  +'</div>';
+  
+  host.innerHTML = insights + heatmap + legenda;
+}
+
 
 async function renderRankingCidades(forceRefresh){
   var host = document.getElementById('dash-ranking-cidades');
