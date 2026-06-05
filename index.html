@@ -1,4 +1,4 @@
-<!-- v25.31 - Calendário visual de demanda (heatmap 7x24) - 03/06/2026 -->
+<!-- v25.32 - Onboarding + Atalhos teclado + Pesquisa global (Ctrl+K) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -92,6 +92,38 @@
   /* === Status (semantica) === */
   --green:#1D9E75;--blue:#378ADD;--purple:#7F77DD;--amber:#BA7517;--red:#E24B4A;
 }
+
+/* 🆕 MODO ESCURO */
+[data-theme="dark"]{
+  --gami-blue-l:#1A3D6B;
+  --bg:#0F1419;--surface:#1A2129;--surface2:#222C36;
+  --text:#E8EEF5;--text2:#A6B3C2;--text3:#6B7A8E;
+  --border:#2C3947;--border2:#3D4E60;
+}
+[data-theme="dark"] body{background:var(--bg);color:var(--text)}
+[data-theme="dark"] .card{background:var(--surface);border-color:var(--border)}
+[data-theme="dark"] input,[data-theme="dark"] textarea,[data-theme="dark"] select{background:var(--surface2);color:var(--text);border-color:var(--border)}
+[data-theme="dark"] input::placeholder,[data-theme="dark"] textarea::placeholder{color:var(--text3)}
+[data-theme="dark"] .modal{background:var(--surface)}
+[data-theme="dark"] .modal-overlay{background:rgba(0,0,0,.7)}
+[data-theme="dark"] .btn-ghost{background:transparent;color:var(--text2);border-color:var(--border)}
+[data-theme="dark"] .nav-item{color:var(--text2)}
+[data-theme="dark"] .nav-item.active,[data-theme="dark"] .nav-item:hover{background:var(--surface2);color:var(--text)}
+[data-theme="dark"] .tab{color:var(--text2);background:transparent}
+[data-theme="dark"] .tab.active{color:var(--gami-blue);background:var(--gami-blue-l)}
+[data-theme="dark"] table{color:var(--text)}
+[data-theme="dark"] th{color:var(--text2);background:var(--surface2)}
+[data-theme="dark"] td{border-color:var(--border)}
+/* Sombras menos pesadas em dark */
+[data-theme="dark"] .card{box-shadow:0 1px 3px rgba(0,0,0,0.5)}
+/* Cards de gradiente claros viram escuros */
+[data-theme="dark"] [style*="linear-gradient(135deg,#E6F6FE"]{background:linear-gradient(135deg,#1A3D6B,#0E7AB8)!important;color:#E8EEF5!important}
+[data-theme="dark"] [style*="linear-gradient(135deg,#FFF8E1"]{background:linear-gradient(135deg,#3D2700,#5C3A00)!important;color:#FFD93D!important}
+[data-theme="dark"] [style*="linear-gradient(135deg,#E8F5E9"]{background:linear-gradient(135deg,#0D3D2A,#1B7B5B)!important;color:#A8E6C2!important}
+[data-theme="dark"] [style*="linear-gradient(135deg,#FCEBEB"]{background:linear-gradient(135deg,#4A1A1A,#7B2A2A)!important;color:#FFB8B8!important}
+[data-theme="dark"] [style*="linear-gradient(135deg,#FFF9E6"]{background:linear-gradient(135deg,#3D2D00,#5C4400)!important}
+[data-theme="dark"] [style*="linear-gradient(135deg,#F5F5F5"]{background:linear-gradient(135deg,#2A2A2A,#444)!important;color:#E8EEF5!important}
+[data-theme="dark"] [style*="linear-gradient(135deg,#FFE9D9"]{background:linear-gradient(135deg,#5C2D0D,#8B4513)!important;color:#FFC68F!important}
 html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
 h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 
@@ -1618,6 +1650,11 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div id="sb-user-info" style="font-size:10px;color:#9DB4D6;letter-spacing:.3px">Clica pra entrar</div>
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
+    </div>
+    <!-- 🆕 Botão de Modo Claro/Escuro -->
+    <div onclick="toggleTema()" id="btn-tema" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;margin:6px 12px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(157,180,214,.18);cursor:pointer;color:#9DB4D6;font-size:11px;font-weight:600;transition:all .2s" onmouseover="this.style.background='rgba(255,255,255,.12)'" onmouseout="this.style.background='rgba(255,255,255,.06)'" title="Alternar tema claro/escuro">
+      <span id="btn-tema-icone" style="font-size:14px">🌙</span>
+      <span id="btn-tema-label">Modo escuro</span>
     </div>
     <div onclick="if(typeof verAuditLog==='function')verAuditLog()" style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px;cursor:pointer" title="Versão do dashboard">v13.0</div>
   </div>
@@ -27412,6 +27449,40 @@ function renderPulse(){
 
 // --- MODO FOCO ---
 var _modoFoco = false;
+// ============================================================
+// 🆕 MODO ESCURO / MODO CLARO
+// ============================================================
+function aplicarTema(tema){
+  document.documentElement.setAttribute('data-theme', tema);
+  var icone = document.getElementById('btn-tema-icone');
+  var label = document.getElementById('btn-tema-label');
+  if(icone) icone.textContent = tema === 'dark' ? '☀️' : '🌙';
+  if(label) label.textContent = tema === 'dark' ? 'Modo claro' : 'Modo escuro';
+  try { localStorage.setItem('gami_tema', tema); } catch(e){}
+}
+
+function toggleTema(){
+  var atual = document.documentElement.getAttribute('data-theme') || 'light';
+  aplicarTema(atual === 'dark' ? 'light' : 'dark');
+}
+
+// Carrega tema salvo ao inicializar (executa imediatamente)
+(function(){
+  try {
+    var salvo = localStorage.getItem('gami_tema');
+    if(salvo === 'dark'){
+      document.documentElement.setAttribute('data-theme', 'dark');
+      // Atualiza o ícone + label quando o DOM carregar
+      document.addEventListener('DOMContentLoaded', function(){
+        var icone = document.getElementById('btn-tema-icone');
+        var label = document.getElementById('btn-tema-label');
+        if(icone) icone.textContent = '☀️';
+        if(label) label.textContent = 'Modo claro';
+      });
+    }
+  } catch(e){}
+})();
+
 function toggleModoFoco(){
   _modoFoco = !_modoFoco;
   const dashboard = document.getElementById('pg-dashboard');
@@ -36310,6 +36381,364 @@ function _manualSetLido(id, lido){
     if(lido) localStorage.setItem('gami_manual_lido_'+id, '1');
     else localStorage.removeItem('gami_manual_lido_'+id);
   } catch(e){}
+}
+
+// ============================================================
+// 🆕 ONBOARDING - Tour guiado em 5 passos pros novos usuários
+// ============================================================
+var _ONBOARDING_PASSOS = [
+  {
+    emoji: '👋',
+    titulo: 'Bem-vindo ao Gâmi Marketing!',
+    texto: 'Vamos te dar um tour rápido em 5 passos pra você se sentir em casa. Pode pular a qualquer momento.',
+    botao: 'Começar tour'
+  },
+  {
+    emoji: '🏠',
+    titulo: 'Dashboard — sua visão geral',
+    texto: 'Aqui você vê o ranking das cidades, aniversariantes do mês, foco do dia e o time Gâmi. É a página inicial que aparece sempre que entra.',
+    botao: 'Próximo'
+  },
+  {
+    emoji: '🏙️',
+    titulo: 'Cidades — gestão completa',
+    texto: 'Acesse as 11 cidades operacionais. Cada cidade tem aba de visão geral, indicadores, motoboys, empresas, equipe e mais. Top motoboys e empresas da rede também aparecem aqui.',
+    botao: 'Próximo'
+  },
+  {
+    emoji: '✅',
+    titulo: 'Tarefas — sua agenda pessoal',
+    texto: 'Anote suas tarefas, defina foco do dia e delegue pro time. Tudo sincronizado em tempo real.',
+    botao: 'Próximo'
+  },
+  {
+    emoji: '⌨️',
+    titulo: 'Atalhos rápidos',
+    texto: 'Use atalhos pra navegar mais rápido:<br><br>• <kbd>D</kbd> = Dashboard<br>• <kbd>T</kbd> = Tarefas<br>• <kbd>C</kbd> = Cidades<br>• <kbd>Ctrl+K</kbd> = Pesquisa global<br>• <kbd>/</kbd> = Pesquisar nesta página',
+    botao: 'Próximo'
+  },
+  {
+    emoji: '🎉',
+    titulo: 'Tudo pronto!',
+    texto: 'Você já pode usar o app à vontade. Se precisar de ajuda, vai em <strong>📘 Manual</strong> no menu. Bom trabalho!',
+    botao: 'Começar a usar'
+  }
+];
+var _onboardingPasso = 0;
+
+function iniciarOnboarding(force){
+  // Só roda se nunca completou (ou force=true)
+  try {
+    if(!force && localStorage.getItem('gami_onboarding_completo') === '1') return;
+  } catch(e){}
+  
+  _onboardingPasso = 0;
+  _renderOnboarding();
+}
+
+function _renderOnboarding(){
+  var passo = _ONBOARDING_PASSOS[_onboardingPasso];
+  if(!passo) return _fecharOnboarding(true);
+  
+  var modal = document.getElementById('onboarding-modal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'onboarding-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,43,92,.6);backdrop-filter:blur(8px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;animation:onbFadeIn .3s ease';
+    modal.innerHTML = '<style>@keyframes onbFadeIn{from{opacity:0}to{opacity:1}}@keyframes onbSlide{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}#onboarding-card kbd{display:inline-block;padding:2px 7px;background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:11px;font-weight:600;color:var(--text)}[data-theme="dark"] #onboarding-card kbd{background:rgba(255,255,255,0.08);border-color:var(--border2);color:var(--text)}</style>';
+    document.body.appendChild(modal);
+  }
+  
+  var pct = ((_onboardingPasso + 1) / _ONBOARDING_PASSOS.length) * 100;
+  var ehUltimo = _onboardingPasso === _ONBOARDING_PASSOS.length - 1;
+  var ehPrimeiro = _onboardingPasso === 0;
+  
+  modal.innerHTML = modal.querySelector('style').outerHTML + 
+    '<div id="onboarding-card" style="background:var(--surface);border-radius:18px;padding:36px 32px 28px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:onbSlide .35s ease;position:relative;border:1px solid var(--border)">'
+      // Indicador de progresso
+      +'<div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(0,0,0,.06);border-radius:18px 18px 0 0;overflow:hidden">'
+        +'<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);transition:width .4s ease"></div>'
+      +'</div>'
+      // Botão X (pular)
+      +'<button onclick="_fecharOnboarding(false)" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border:none;background:transparent;font-size:18px;cursor:pointer;color:var(--text3);border-radius:50%;display:flex;align-items:center;justify-content:center" title="Pular tour" onmouseover="this.style.background=\'rgba(0,0,0,0.05)\'" onmouseout="this.style.background=\'transparent\'">✕</button>'
+      // Emoji
+      +'<div style="font-size:60px;text-align:center;margin:8px 0 16px;line-height:1">'+passo.emoji+'</div>'
+      // Título
+      +'<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:var(--text);text-align:center;margin-bottom:12px;line-height:1.2">'+passo.titulo+'</div>'
+      // Texto
+      +'<div style="font-size:14px;color:var(--text2);text-align:center;line-height:1.6;margin-bottom:28px">'+passo.texto+'</div>'
+      // Indicador de passo (bolinhas)
+      +'<div style="display:flex;justify-content:center;gap:6px;margin-bottom:20px">'
+        + _ONBOARDING_PASSOS.map(function(_,i){
+          var ativo = i === _onboardingPasso;
+          var passado = i < _onboardingPasso;
+          var bg = ativo ? '#1AB8F0' : passado ? '#0E7AB8' : 'rgba(0,0,0,0.12)';
+          var size = ativo ? '24px' : '8px';
+          return '<div style="width:'+size+';height:8px;background:'+bg+';border-radius:4px;transition:all .3s"></div>';
+        }).join('')
+      +'</div>'
+      // Botões
+      +'<div style="display:flex;gap:8px;justify-content:space-between;align-items:center">'
+        + (ehPrimeiro 
+            ? '<button onclick="_fecharOnboarding(false)" style="padding:8px 16px;border:none;background:transparent;color:var(--text3);font-size:12px;cursor:pointer;font-family:inherit">Pular tour</button>'
+            : '<button onclick="_onboardingVoltar()" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit;font-weight:600">← Voltar</button>'
+          )
+        +'<button onclick="_onboardingAvancar()" style="padding:11px 22px;border:none;border-radius:9px;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(26,184,240,.3)">'+passo.botao+' '+(ehUltimo ? '🎉' : '→')+'</button>'
+      +'</div>'
+    +'</div>';
+}
+
+function _onboardingAvancar(){
+  _onboardingPasso++;
+  _renderOnboarding();
+}
+function _onboardingVoltar(){
+  _onboardingPasso--;
+  if(_onboardingPasso < 0) _onboardingPasso = 0;
+  _renderOnboarding();
+}
+function _fecharOnboarding(completou){
+  var modal = document.getElementById('onboarding-modal');
+  if(modal) modal.remove();
+  if(completou){
+    try { localStorage.setItem('gami_onboarding_completo', '1'); } catch(e){}
+  }
+}
+
+// Inicia automaticamente pra novos usuários (depois do login)
+setTimeout(function(){
+  iniciarOnboarding(false);  // false = só se nunca completou
+}, 1500);
+
+
+// ============================================================
+// 🆕 ATALHOS DE TECLADO GLOBAIS
+// ============================================================
+document.addEventListener('keydown', function(e){
+  // Ignora se está digitando em input/textarea
+  var tag = (e.target.tagName||'').toLowerCase();
+  var ehInput = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+  
+  // Ctrl+K (Cmd+K no Mac) - Pesquisa global (funciona MESMO em inputs)
+  if((e.ctrlKey || e.metaKey) && e.key === 'k'){
+    e.preventDefault();
+    abrirPesquisaGlobal();
+    return;
+  }
+  
+  // ESC fecha modais
+  if(e.key === 'Escape'){
+    var pesq = document.getElementById('pesquisa-global-modal');
+    if(pesq) pesq.remove();
+    var onb = document.getElementById('onboarding-modal');
+    if(onb) onb.remove();
+    return;
+  }
+  
+  // Atalhos de navegação - só se não estiver digitando
+  if(ehInput || e.ctrlKey || e.metaKey || e.altKey) return;
+  
+  var key = (e.key||'').toLowerCase();
+  
+  // / - foca no primeiro input de busca da página atual
+  if(key === '/'){
+    e.preventDefault();
+    var buscas = document.querySelectorAll('input[placeholder*="Buscar"], input[placeholder*="buscar"], input[placeholder*="Pesquisar"], input[placeholder*="pesquisar"]');
+    for(var i = 0; i < buscas.length; i++){
+      if(buscas[i].offsetParent !== null){  // só visíveis
+        buscas[i].focus();
+        return;
+      }
+    }
+    // Se não achou, abre pesquisa global
+    abrirPesquisaGlobal();
+    return;
+  }
+  
+  // Navegação rápida (só letras)
+  var nav = {
+    'd': 'dashboard',
+    't': 'tarefas',
+    'c': 'cidades',
+    'p': 'pessoas',
+    'r': 'ranking',
+    'm': 'marketing'
+  };
+  if(nav[key]){
+    e.preventDefault();
+    if(typeof window.nav === 'function'){
+      var el = document.querySelector('.nav-item[onclick*="\''+nav[key]+'\'"]');
+      if(el) el.click();
+    }
+  }
+});
+
+
+// ============================================================
+// 🆕 PESQUISA GLOBAL (Ctrl+K)
+// ============================================================
+var _PESQUISA_INDEX = null;  // cache do índice
+
+function _construirIndicePesquisa(){
+  var index = [];
+  
+  // 1. Páginas/Navegação
+  var pages = [
+    { tipo:'Navegação', emoji:'🏠', nome:'Dashboard', acao:"nav(null,'dashboard')" },
+    { tipo:'Navegação', emoji:'📅', nome:'Calendário', acao:"nav(null,'calendario')" },
+    { tipo:'Navegação', emoji:'✅', nome:'Tarefas', acao:"nav(null,'tarefas')" },
+    { tipo:'Navegação', emoji:'📣', nome:'Marketing', acao:"nav(null,'marketing')" },
+    { tipo:'Navegação', emoji:'📧', nome:'Inbox Instagram', acao:"nav(null,'inbox')" },
+    { tipo:'Navegação', emoji:'🏙️', nome:'Cidades', acao:"nav(null,'cidades')" },
+    { tipo:'Navegação', emoji:'👥', nome:'Pessoas', acao:"nav(null,'pessoas')" },
+    { tipo:'Navegação', emoji:'🏆', nome:'Ranking Gâmi', acao:"nav(null,'ranking')" },
+    { tipo:'Navegação', emoji:'📊', nome:'Relatórios', acao:"nav(null,'relatorios')" },
+    { tipo:'Navegação', emoji:'📘', nome:'Manual', acao:"nav(null,'manual')" }
+  ];
+  index = index.concat(pages);
+  
+  // 2. Cidades (do RANKING_CIDADES_MAP)
+  try {
+    if(typeof RANKING_CIDADES_MAP !== 'undefined'){
+      Object.keys(RANKING_CIDADES_MAP).forEach(function(slug){
+        var c = RANKING_CIDADES_MAP[slug];
+        index.push({
+          tipo:'Cidade', emoji:'🏙️',
+          nome: c.nome + '/' + c.uf,
+          desc: 'Abre painel da cidade',
+          acao: "if(typeof abrirCidadePorSlug==='function')abrirCidadePorSlug('"+slug+"');else nav(null,'cidades')"
+        });
+      });
+    }
+  } catch(e){}
+  
+  // 3. Pessoas
+  try {
+    if(typeof getPessoas === 'function'){
+      getPessoas().forEach(function(p){
+        index.push({
+          tipo:'Pessoa', emoji:'👤',
+          nome: p.nome,
+          desc: (p.cargo || '') + (p.cidade ? ' · '+p.cidade : ''),
+          acao: "nav(null,'pessoas');setTimeout(function(){var i=document.getElementById('pessoa-busca');if(i){i.value='"+(p.nome||'').replace(/'/g,'')+"';if(typeof filtrarPessoas==='function')filtrarPessoas()}},150)"
+        });
+      });
+    }
+  } catch(e){}
+  
+  // 4. Comandos rápidos
+  index.push({ tipo:'Comando', emoji:'🌙', nome:'Alternar tema claro/escuro', acao:'toggleTema()' });
+  index.push({ tipo:'Comando', emoji:'🎯', nome:'Ativar/desativar modo foco', acao:'toggleModoFoco()' });
+  index.push({ tipo:'Comando', emoji:'🎓', nome:'Reiniciar tour de boas-vindas', acao:'iniciarOnboarding(true)' });
+  
+  return index;
+}
+
+function abrirPesquisaGlobal(){
+  // Recria index se não existe
+  if(!_PESQUISA_INDEX){
+    _PESQUISA_INDEX = _construirIndicePesquisa();
+  }
+  
+  // Já tá aberto? fecha
+  var existente = document.getElementById('pesquisa-global-modal');
+  if(existente){ existente.remove(); return; }
+  
+  var modal = document.createElement('div');
+  modal.id = 'pesquisa-global-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(13,43,92,.5);backdrop-filter:blur(6px);z-index:99998;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;animation:onbFadeIn .2s ease';
+  modal.onclick = function(e){ if(e.target === modal) modal.remove(); };
+  modal.innerHTML = ''
+    +'<div style="background:var(--surface);border-radius:14px;width:560px;max-width:90vw;max-height:70vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35);overflow:hidden;border:1px solid var(--border)">'
+      // Input de busca
+      +'<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">'
+        +'<span style="font-size:18px">🔍</span>'
+        +'<input id="pesquisa-global-input" type="text" placeholder="Buscar cidades, pessoas, páginas... (ESC pra fechar)" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:14px;color:var(--text);outline:none;font-family:inherit"/>'
+        +'<kbd style="font-size:10px;padding:2px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text3);font-family:monospace">ESC</kbd>'
+      +'</div>'
+      // Resultados
+      +'<div id="pesquisa-global-resultados" style="flex:1;overflow-y:auto;padding:6px"></div>'
+      +'<div style="padding:8px 18px;border-top:1px solid var(--border);font-size:10px;color:var(--text3);display:flex;justify-content:space-between;align-items:center">'
+        +'<span>↑↓ navegar  ↵ selecionar</span>'
+        +'<span>Ctrl+K pra abrir</span>'
+      +'</div>'
+    +'</div>';
+  
+  document.body.appendChild(modal);
+  
+  var input = document.getElementById('pesquisa-global-input');
+  var selecionado = 0;
+  var resultadosAtuais = [];
+  
+  function renderResultados(query){
+    var host = document.getElementById('pesquisa-global-resultados');
+    if(!host) return;
+    var q = (query||'').toLowerCase().trim();
+    
+    if(!q){
+      // Mostra todos os tipos de navegação rápida
+      resultadosAtuais = _PESQUISA_INDEX.filter(function(x){ return x.tipo === 'Navegação' || x.tipo === 'Comando'; }).slice(0, 12);
+    } else {
+      // Busca em nome, desc e tipo
+      var palavras = q.split(/\s+/);
+      resultadosAtuais = _PESQUISA_INDEX.filter(function(x){
+        var texto = (x.nome + ' ' + (x.desc||'') + ' ' + x.tipo).toLowerCase();
+        return palavras.every(function(p){ return texto.indexOf(p) >= 0; });
+      }).slice(0, 30);
+    }
+    
+    if(resultadosAtuais.length === 0){
+      host.innerHTML = '<div style="padding:30px 18px;text-align:center;color:var(--text3);font-size:13px">Nenhum resultado pra "'+q+'"</div>';
+      return;
+    }
+    
+    selecionado = Math.min(selecionado, resultadosAtuais.length - 1);
+    if(selecionado < 0) selecionado = 0;
+    
+    host.innerHTML = resultadosAtuais.map(function(r, i){
+      var bg = i === selecionado ? 'var(--gami-blue-l)' : 'transparent';
+      return '<div data-pesquisa-idx="'+i+'" onclick="_pesquisaExecutar('+i+')" onmouseover="_pesquisaMover('+i+')" style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:8px;cursor:pointer;background:'+bg+';transition:background .1s">'
+        +'<div style="font-size:20px;width:28px;text-align:center;flex-shrink:0">'+r.emoji+'</div>'
+        +'<div style="flex:1;min-width:0">'
+          +'<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.nome+'</div>'
+          +(r.desc ? '<div style="font-size:11px;color:var(--text3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r.desc+'</div>' : '')
+        +'</div>'
+        +'<div style="font-size:9px;color:var(--text3);padding:2px 7px;border-radius:9px;background:var(--surface2);text-transform:uppercase;letter-spacing:.5px;font-weight:600;flex-shrink:0">'+r.tipo+'</div>'
+      +'</div>';
+    }).join('');
+  }
+  
+  window._pesquisaMover = function(idx){
+    selecionado = idx;
+    renderResultados(input.value);
+  };
+  window._pesquisaExecutar = function(idx){
+    if(resultadosAtuais[idx]){
+      try {
+        var fn = new Function(resultadosAtuais[idx].acao);
+        modal.remove();
+        setTimeout(fn, 50);
+      } catch(e){ console.error('Erro ao executar ação:', e); }
+    }
+  };
+  
+  input.addEventListener('input', function(){ selecionado = 0; renderResultados(input.value); });
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowDown'){
+      e.preventDefault();
+      selecionado = Math.min(selecionado + 1, resultadosAtuais.length - 1);
+      renderResultados(input.value);
+    } else if(e.key === 'ArrowUp'){
+      e.preventDefault();
+      selecionado = Math.max(0, selecionado - 1);
+      renderResultados(input.value);
+    } else if(e.key === 'Enter'){
+      e.preventDefault();
+      _pesquisaExecutar(selecionado);
+    }
+  });
+  
+  setTimeout(function(){ input.focus(); renderResultados(''); }, 50);
 }
 </script>
 
