@@ -1,4 +1,4 @@
-<!-- v25.33 - Clima do Time (Supabase + página) + reordenação Pulse - 03/06/2026 -->
+<!-- v25.34 - Toggle modo escuro (bolinhas) acima de Modo Foco + manual atualizado - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1652,11 +1652,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
       <span style="font-size:14px;color:#9DB4D6">⚙️</span>
     </div>
-    <!-- 🆕 Botão de Modo Claro/Escuro -->
-    <div onclick="toggleTema()" id="btn-tema" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;margin:6px 12px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(157,180,214,.18);cursor:pointer;color:#9DB4D6;font-size:11px;font-weight:600;transition:all .2s" onmouseover="this.style.background='rgba(255,255,255,.12)'" onmouseout="this.style.background='rgba(255,255,255,.06)'" title="Alternar tema claro/escuro">
-      <span id="btn-tema-icone" style="font-size:14px">🌙</span>
-      <span id="btn-tema-label">Modo escuro</span>
-    </div>
     <div onclick="if(typeof verAuditLog==='function')verAuditLog()" style="font-size:9px;color:rgba(157,180,214,.45);text-align:center;padding:6px 0 2px;font-family:monospace;letter-spacing:.5px;cursor:pointer" title="Versão do dashboard">v13.0</div>
   </div>
 </div>
@@ -1768,7 +1763,12 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           <div id="dash-frase-motivacional" style="font-size:14px;font-style:italic;line-height:1.5;opacity:.95;max-width:560px"></div>
         </div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-direction:column;flex-wrap:wrap">
+        <!-- 🆕 Toggle Modo Escuro (bolinhas) -->
+        <div id="btn-tema" onclick="toggleTema()" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);cursor:pointer;font-family:inherit;transition:all .2s;backdrop-filter:blur(10px)" onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.12)'" title="Alternar tema claro/escuro">
+          <span id="tema-bolinha-sol" style="width:22px;height:22px;border-radius:50%;background:#FFD93D;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 0 8px rgba(255,217,61,.6);transition:all .25s">☀️</span>
+          <span id="tema-bolinha-lua" style="width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:13px;opacity:.5;transition:all .25s">🌙</span>
+        </div>
         <button onclick="toggleModoFoco()" id="btn-foco" style="padding:9px 14px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.12);color:white;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;backdrop-filter:blur(10px)">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           Modo foco
@@ -27493,10 +27493,26 @@ var _modoFoco = false;
 // ============================================================
 function aplicarTema(tema){
   document.documentElement.setAttribute('data-theme', tema);
-  var icone = document.getElementById('btn-tema-icone');
-  var label = document.getElementById('btn-tema-label');
-  if(icone) icone.textContent = tema === 'dark' ? '☀️' : '🌙';
-  if(label) label.textContent = tema === 'dark' ? 'Modo claro' : 'Modo escuro';
+  // Atualiza bolinhas (sol/lua)
+  var sol = document.getElementById('tema-bolinha-sol');
+  var lua = document.getElementById('tema-bolinha-lua');
+  if(sol && lua){
+    if(tema === 'dark'){
+      sol.style.background = 'rgba(255,255,255,.12)';
+      sol.style.opacity = '.5';
+      sol.style.boxShadow = 'none';
+      lua.style.background = '#FFD93D';
+      lua.style.opacity = '1';
+      lua.style.boxShadow = '0 0 8px rgba(255,217,61,.6)';
+    } else {
+      sol.style.background = '#FFD93D';
+      sol.style.opacity = '1';
+      sol.style.boxShadow = '0 0 8px rgba(255,217,61,.6)';
+      lua.style.background = 'rgba(255,255,255,.12)';
+      lua.style.opacity = '.5';
+      lua.style.boxShadow = 'none';
+    }
+  }
   try { localStorage.setItem('gami_tema', tema); } catch(e){}
 }
 
@@ -27511,12 +27527,18 @@ function toggleTema(){
     var salvo = localStorage.getItem('gami_tema');
     if(salvo === 'dark'){
       document.documentElement.setAttribute('data-theme', 'dark');
-      // Atualiza o ícone + label quando o DOM carregar
+      // Atualiza bolinhas quando DOM carregar
       document.addEventListener('DOMContentLoaded', function(){
-        var icone = document.getElementById('btn-tema-icone');
-        var label = document.getElementById('btn-tema-label');
-        if(icone) icone.textContent = '☀️';
-        if(label) label.textContent = 'Modo claro';
+        var sol = document.getElementById('tema-bolinha-sol');
+        var lua = document.getElementById('tema-bolinha-lua');
+        if(sol && lua){
+          sol.style.background = 'rgba(255,255,255,.12)';
+          sol.style.opacity = '.5';
+          sol.style.boxShadow = 'none';
+          lua.style.background = '#FFD93D';
+          lua.style.opacity = '1';
+          lua.style.boxShadow = '0 0 8px rgba(255,217,61,.6)';
+        }
       });
     }
   } catch(e){}
@@ -36254,7 +36276,7 @@ window.MANUAL_CATEGORIAS = [
 window.MANUAL_ARTIGOS = [
 {id:'login-primeiro-acesso',categoria:'comecar',titulo:'Login e primeiro acesso',icone:'🔐',tags:['login','pin','senha','entrar','acesso','username','email'],conteudo:'<h2>🔐 Login e primeiro acesso</h2><p>O acesso ao Gâmi Marketing é feito com <strong>email ou username</strong> + <strong>PIN</strong>.</p><h3>Primeiro acesso (só na primeira vez)</h3><ol><li>Acesse <code>gami-marketing.netlify.app</code> no navegador.</li><li>No campo <strong>Email ou Username</strong>, digite o <strong>e-mail cadastrado</strong> pelo gestor.</li><li>No campo <strong>PIN</strong>, digite o PIN inicial padrão: <code>gami2026</code></li><li>Click em <strong>Entrar →</strong>.</li></ol><h3>Personalize seu acesso</h3><p>Logo após o primeiro login, abre uma tela de boas-vindas onde você vai:</p><ol><li><strong>Escolher seu username</strong> — 3 a 20 caracteres, só letras minúsculas, números, _ e . (exemplos: <code>joaobergue</code>, <code>maria_2026</code>, <code>thiago.s</code>). Click em "✓ Verificar disponibilidade" pra ver se já não tem alguém com esse nome.</li><li><strong>Criar um PIN novo</strong> — 4 a 8 caracteres. Escolha algo seguro mas fácil de lembrar.</li><li>Confirme o PIN novo no segundo campo.</li><li>Click em <strong>Salvar e entrar →</strong>.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> a partir daqui, você pode logar com <strong>email OU username</strong> (o que preferir) + seu PIN novo.</div><h3>Próximos acessos</h3><ol><li>Acesse o site.</li><li>Digite seu <strong>username</strong> (ou e-mail) + seu <strong>PIN</strong>.</li><li>Entra.</li></ol><h3>Seguir logado</h3><p>Depois do login, o app <strong>lembra de você por 24h</strong>. Se passar disso, pede o PIN novamente.</p><h3>Esqueci o PIN</h3><p>Manda mensagem pro seu gestor ou pro Cleyton. Eles resetam seu PIN pro padrão (<code>gami2026</code>) e você faz o processo de personalizar de novo.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> nunca compartilhe seu PIN. Cada pessoa usa o dela. O sistema rastreia quem fez cada ação no app.</div>'},
 {id:'navegacao-geral',categoria:'comecar',titulo:'Navegando pelo app',icone:'🧭',tags:['menu','navegação','sidebar','abas','ranking','dashboard','cidades'],conteudo:'<h2>🧭 Navegando pelo app</h2><p>O Gâmi Marketing é organizado em <strong>abas no menu lateral</strong>. Cada aba tem uma função específica. Vou explicar uma por uma.</p><h3>📊 Dashboard</h3><p>É a <strong>tela inicial</strong> do app. Mostra um resumo do dia: compromissos, recados pra ver, banner do dia, métricas-chave. Sempre que quiser voltar pra "casa", click aqui.</p><h3>📅 Calendário</h3><p>Visão de calendário com os <strong>eventos, posts agendados, datas importantes e aniversários</strong> do time. Útil pra planejar a semana e ver o que tá vindo.</p><h3>✅ Tarefas</h3><p>Sua <strong>lista pessoal de afazeres</strong>. Organizada em 4 baldes: <strong>Diário</strong> (faz hoje), <strong>Semana</strong> (faz essa semana), <strong>Mês</strong> (faz esse mês) e <strong>Projetos</strong> (coisas grandes/contínuas). Aqui você cria, edita, delega e marca como concluído.</p><h3>📩 Inbox Instagram</h3><p>Centraliza as <strong>mensagens diretas (DMs) das 9 contas Gâmi no Instagram</strong> em uma só tela. Você responde por aqui, ainda que cada conversa pertença a uma cidade diferente. Sem precisar abrir o app do Insta em 9 contas separadas.</p><h3>🏙️ Cidades</h3><p>O <strong>coração da operação</strong>. As 11 cidades onde a Gâmi atua. Click numa cidade pra abrir o painel completo dela: KPIs, relatórios operacionais, anotações, plano de ação, gestor responsável, time local.</p><h3>👥 Pessoas</h3><p>Lista de <strong>todo o time Gâmi</strong>. Vê quem trabalha onde, função, cidade, aniversariantes, online agora, reconhecimento da semana. Aqui também se cadastra gente nova (se você tem permissão).</p><h3>🏆 Ranking Gâmi</h3><p>O <strong>sistema de gamificação interno</strong>. Cada pessoa acumula pontos por ações da operação (cumprir tarefas, responder rápido no Inbox, ajudar colegas, recuperar empresas sumidas, contribuir com cultura, etc).</p><p>Os pontos viram <strong>medalhas, níveis e posição no ranking mensal</strong>. Cada mês é uma rodada nova — quem tá em 1º vira destaque na rede e ganha reconhecimento público. O sistema também valoriza consistência (estar entre os primeiros vários meses seguidos) mais que picos isolados.</p><div class="man-callout-dica">💡 <strong>O que é ranqueado:</strong> tarefas concluídas, qualidade das anotações, agilidade no Inbox, participação em desafios da semana, reconhecimentos recebidos de colegas, e ações operacionais (na rota, no atendimento, na recuperação de cliente). Tudo soma.</div><p>Você pode filtrar o ranking por <strong>cidade, setor, mês</strong> e ver o histórico do time todo. Diretoria usa pra acompanhar engajamento e identificar quem tá puxando o time pra cima.</p><h3>🎯 Culture Code</h3><p>Nossa <strong>cultura Gâmi documentada</strong>. Quem somos, missão, visão, valores, condutas, regras inegociáveis, sonhos. Mural de gratidão (reconhecer colegas publicamente), time Gâmi com fotos, e o compromisso "Eu sou Gâmi".</p><h3>🚀 Plano de Carreira</h3><p>Mostra os <strong>caminhos de crescimento dentro da Gâmi</strong>: trilhas de carreira, critérios de promoção, distribuição do time por nível e categoria. Ajuda cada um a saber o próximo passo profissional dele dentro da empresa.</p><h3>🚪 Portal Gâmi</h3><p>Hub central de <strong>links, ferramentas e recursos externos</strong> que o time usa no dia a dia (sistemas, planilhas, links importantes, materiais de treinamento). Tudo num só lugar pra não ficar caçando link no WhatsApp.</p><h3>📈 Relatórios</h3><p><strong>19 relatórios</strong> que mostram diferentes ângulos da operação: corridas, receita, ticket médio, motoboys ativos, empresas sumidas, comparativos entre cidades, ranking de gestores. Pode filtrar período (7/30/60 dias).</p><h3>📘 Manual</h3><p>Esta área que você tá lendo agora 😉. Aqui ficam os <strong>tutoriais</strong> de como usar cada parte do app, organizados em categorias.</p><h3>Como abrir o menu no celular</h3><p>No celular, o menu lateral fica <strong>escondido</strong>. Toque no <strong>botão azul no canto superior esquerdo</strong> pra abrir. Toque fora do menu pra fechar.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> nem todas as abas aparecem pra todo mundo. Cada papel (Diretoria, Gerência, Gestor, Colaborador) vê apenas o que faz sentido pra função. Se faltar alguma aba pra você, fala com seu gestor — pode ser ajuste de permissão.</div>'},
-{id:'modo-claro-escuro',categoria:'comecar',titulo:'Modo claro / escuro',icone:'🌓',tags:['tema','modo escuro','dark','cores'],conteudo:'<h2>🌓 Modo claro / escuro</h2><p>O app tem duas aparências: <strong>clara</strong> (padrão) e <strong>escura</strong> (poupa bateria à noite).</p><h3>Como alternar</h3><ol><li>No canto inferior esquerdo do menu, click no <strong>botão de tema</strong> (☀️ ou 🌙).</li><li>O app troca imediatamente.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> sua preferência fica salva.</div><p>Funciona em qualquer dispositivo. Você pode ter modo escuro no celular e claro no PC, por exemplo.</p>'},
+{id:'modo-claro-escuro',categoria:'comecar',titulo:'Modo claro / escuro',icone:'🌓',tags:['tema','modo escuro','dark','cores'],conteudo:'<h2>🌓 Modo claro / escuro</h2><p>O app tem duas aparências: <strong>clara</strong> (padrão) e <strong>escura</strong> (poupa bateria à noite).</p><h3>Como alternar</h3><ol><li>No <strong>Dashboard</strong>, no card de saudação azul do topo, procure o <strong>toggle ☀️ 🌙</strong> no canto superior direito (acima do botão "Modo foco").</li><li>Clique nas bolinhas pra alternar — a bolinha ativa fica amarela e brilhante.</li><li>O app troca imediatamente.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> sua preferência fica salva.</div><p>Funciona em qualquer dispositivo. Você pode ter modo escuro no celular e claro no PC, por exemplo.</p>'},
 {id:'modo-foco',categoria:'comecar',titulo:'Modo foco para concentração',icone:'🎯',tags:['foco','concentração','distração','minimalista'],conteudo:'<h2>🎯 Modo Foco</h2><p>O <strong>modo foco</strong> esconde tudo que não é essencial e deixa só o que importa pro trabalho do momento.</p><h3>Quando ele ajuda</h3><ul><li>Você tem muitas tarefas e quer só ver o essencial</li><li>Está em modo de execução pesada</li><li>Vai apresentar a tela pra alguém</li><li>Tá no celular com tela pequena</li></ul><h3>Como ativar</h3><ol><li>Vá pro <strong>Dashboard</strong>.</li><li>Procure o botão flutuante <strong>🎯 no canto inferior direito</strong>.</li><li>Click — a tela muda instantaneamente.</li></ol><h3>O que aparece em modo foco</h3><ul><li>Compromissos de hoje</li><li>Seus stickies pessoais (notinhas amarelas)</li><li>Recados que precisa ver</li></ul><div class="man-callout-dica">💡 <strong>Dica Gâmi:</strong> os <strong>stickies pessoais</strong> só aparecem no modo foco. É a forma de ter "lembretes" sem poluir o dashboard normal.</div><h3>Como sair</h3><p>Click no mesmo botão 🎯 — a tela volta ao normal.</p>'},
 {id:'criar-tarefa',categoria:'tarefas',titulo:'Criar uma tarefa',icone:'➕',tags:['tarefa','criar','adicionar','to-do'],conteudo:'<h2>➕ Criar uma tarefa</h2><p>Tarefas são suas anotações de "o que preciso fazer". Funcionam como um <strong>to-do list</strong>, mas com poderes extras (delegar, prazo, sincronizar com o time).</p><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Escolha o balde: <strong>Diário</strong> (hoje), <strong>Semana</strong>, <strong>Mês</strong>, <strong>Projetos</strong> (coisas grandes).</li><li>Click no campo <strong>"+ Nova tarefa"</strong>.</li><li>Digite o texto da tarefa.</li><li>Escolha prioridade: <strong>🔴 Alta · 🟡 Média · 🔵 Baixa</strong></li><li>Escolha categoria.</li><li>Defina prazo se precisar.</li><li>Click <strong>Salvar</strong>.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> tarefas com prazo aparecem em <strong>vermelho quando atrasam</strong>.</div><h3>Editar</h3><p>Click no <strong>ícone ✏️</strong> ao lado da tarefa.</p><h3>Concluir</h3><p>Click no <strong>checkbox</strong> ao lado. Vira "concluída". Pra ver as concluídas, click em "Mostrar concluídas".</p><h3>Apagar</h3><p>Click no <strong>ícone 🗑️</strong>.</p>'},
 {id:'delegar-tarefa',categoria:'tarefas',titulo:'Delegar tarefa pra alguém',icone:'📤',tags:['delegar','passar','time','colega'],conteudo:'<h2>📤 Delegar uma tarefa</h2><p>Delegar é <strong>passar uma tarefa pra outra pessoa do time</strong>. Ela recebe na lista dela.</p><h3>Quando delegar</h3><ul><li>Você é gestor e quer atribuir algo</li><li>Algo veio pra você mas é da especialidade de outro</li><li>Quer combinar uma data limite específica</li></ul><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Click em <strong>"+ Delegar tarefa"</strong>.</li><li>Preencha: <strong>pra quem · texto · prioridade · data · mensagem opcional</strong></li><li>Click <strong>Delegar</strong>.</li></ol><h3>O que acontece depois</h3><ul><li>A tarefa aparece na lista da pessoa imediatamente</li><li>Você também vê a tarefa marcada como "delegada"</li><li>Quando ela concluir, você é notificado</li></ul><div class="man-callout-dica">💡 <strong>Boa prática Gâmi:</strong> use mensagem clara. Evite vago ("vê isso") — descreva exatamente ("postar 3 stories sobre a parceria com a empresa X até sexta às 18h").</div><h3>Ver tarefas que delegaram pra mim</h3><p>Na aba <strong>✅ Tarefas</strong>, filtre por <strong>"Recebidas"</strong>.</p>'},
