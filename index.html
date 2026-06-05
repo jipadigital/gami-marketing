@@ -1,4 +1,4 @@
-<!-- v25.42 - Relatorio mensal prompt enxuto + max_tokens 1500 - 03/06/2026 -->
+<!-- v25.43 - Campo Grande analise individual sem comparativo - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18133,7 +18133,57 @@ async function relatorioMensalCidades(forceNew){
   
   painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📅</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando relatório mensal de '+range.label+'...</div><div id="rel-progresso" style="font-size:11px;color:var(--text3);margin-top:3px">Rede: '+rede.length+' cidades · Campo Grande: '+(cg?'separado':'sem dados')+' · 25-40s</div></div></div>';
   
-  // Helper: monta o prompt pra um GRUPO de cidades
+  // Helper: monta prompt INDIVIDUAL de uma cidade (sem comparação com rede)
+  function montarPromptCidadeIndividual(r){
+    var c = r.cidade;
+    var m = r.metricas;
+    
+    var top5Motoboys = (m.top_motoboys||[]).slice(0,5).map(function(mb,i){
+      return (i+1)+'. '+mb.nome+' — '+mb.corridas+' corridas';
+    }).join('\n') || '(sem dados)';
+    
+    var top5Empresas = (m.top_empresas||[]).slice(0,5).map(function(e,i){
+      return (i+1)+'. '+e.nome+' — '+e.pedidos+' pedidos';
+    }).join('\n') || '(sem dados)';
+    
+    var crescTxt = (m.crescimento_corridas_pct !== null && m.crescimento_corridas_pct !== undefined) 
+                  ? (m.crescimento_corridas_pct>=0?'+':'')+m.crescimento_corridas_pct+'%' : 'sem comparativo';
+    var crescReceitaTxt = (m.crescimento_receita_pct !== null && m.crescimento_receita_pct !== undefined) 
+                        ? (m.crescimento_receita_pct>=0?'+':'')+m.crescimento_receita_pct+'%' : 'sem comparativo';
+    
+    var dM = m.motoboys_distribuicao || {};
+    
+    return 'Consultor sênior da Gâmi Delivery. Análise mensal '+range.label+' da operação de '+c.nome+'/'+c.uf+'. '
+      +'Gestor: '+(c.gestor||'?')+'. Diretoria: Rafhael, Tainara, João Duarte. '
+      +'IMPORTANTE: esta é uma análise INDIVIDUAL desta cidade — NÃO compare com outras cidades da rede. '
+      +'Sem markdown, sem marketing. Foco operação.\n\n'
+      +'NÚMEROS DA OPERAÇÃO:\n'
+      +'• Solicitações: '+m.total_corridas+' (mês anterior: '+m.total_corridas_anterior+' · '+crescTxt+')\n'
+      +'• Finalizadas: '+m.finalizadas+' | Canceladas: '+m.canceladas+' | Taxa: '+(m.taxa_conclusao||0)+'%\n'
+      +'• Receita: R$ '+parseFloat(m.receita||0).toFixed(2)+' (vs R$ '+parseFloat(m.receita_anterior||0).toFixed(2)+' · '+crescReceitaTxt+')\n'
+      +'• Ticket médio: R$ '+parseFloat(m.ticket_medio||0).toFixed(2)+'\n'
+      +'• Paradas totais: '+(m.paradas||0)+'\n'
+      +'• Motoboys ativos: '+(m.motoboys_ativos||0)+' / '+(m.motoboys_cadastrados||0)+' cadastrados\n'
+      +'• Empresas que pediram: '+(m.empresas_com_pedido||0)+' / '+(m.empresas_cadastradas||0)+' cadastradas\n'
+      +'• Concentração top 5 empresas: '+(m.concentracao_top5_pct||0)+'%\n\n'
+      +'DISTRIBUIÇÃO DOS MOTOBOYS (por nº de corridas/mês):\n'
+      +'• Até 5 corridas: '+(dM.ate_5||0)+'\n'
+      +'• 5-20 corridas: '+(dM.de_5_a_20||0)+'\n'
+      +'• 20-50 corridas: '+(dM.de_20_a_50||0)+'\n'
+      +'• Mais de 50 corridas: '+(dM.mais_50||0)+'\n\n'
+      +'TOP 5 MOTOBOYS DO MÊS:\n'+top5Motoboys+'\n\n'
+      +'TOP 5 EMPRESAS DO MÊS:\n'+top5Empresas+'\n\n'
+      +'Gere EXATAMENTE estas 6 seções (curtas, sem markdown, separadas por linha em branco):\n\n'
+      +'RESUMO DA OPERAÇÃO\n(3 bullets: números-chave do mês + veredito sobre saúde da operação)\n\n'
+      +'PERFORMANCE FINANCEIRA\n• Receita e variação\n• Ticket médio (alto/baixo/saudável?)\n• Análise da relação receita vs volume\n\n'
+      +'EQUIPE OPERACIONAL\n• Análise da distribuição de motoboys\n• Há concentração em poucos? Muitos ociosos?\n• Top 3 destaques (NOMES com nº corridas)\n\n'
+      +'BASE DE CLIENTES\n• % de empresas que efetivamente pediram\n• Concentração (risco alto/médio/baixo?)\n• Top 3 empresas e dependência\n\n'
+      +'AÇÕES PRO PRÓXIMO MÊS\n• 4 ações específicas focadas em '+c.nome+' (com responsável e meta)\n\n'
+      +'APOSTA DO MÊS\n(prioridade #1 pra '+c.nome+' em 3 frases — onde focar + meta)\n\n'
+      +'Tom executivo. Números específicos. Português Brasil.';
+  }
+  
+  // Helper: monta o prompt pra um GRUPO de cidades (REDE)
   function montarPromptGrupo(grupo, titulo){
     var totalCorr = grupo.reduce(function(s,r){return s + (r.metricas.total_corridas||0);}, 0);
     var totalRec = grupo.reduce(function(s,r){return s + parseFloat(r.metricas.receita||0);}, 0);
@@ -18213,12 +18263,12 @@ async function relatorioMensalCidades(forceNew){
     if(prog) prog.textContent = '⏳ Gerando análise da rede ('+rede.length+' cidades)...';
     var textoRede = await gerarIA(montarPromptGrupo(rede, 'da REDE Gâmi (10 cidades, sem Campo Grande)'));
     
-    // Gera CAMPO GRANDE separado (se existir)
+    // Gera CAMPO GRANDE separado (se existir) — análise INDIVIDUAL sem comparar com rede
     var textoCG = null;
     if(cg){
-      if(prog) prog.textContent = '⏳ Gerando análise separada de Campo Grande...';
+      if(prog) prog.textContent = '⏳ Gerando análise individual de Campo Grande...';
       try {
-        textoCG = await gerarIA(montarPromptGrupo([cg], 'de Campo Grande/MS (operação separada)'));
+        textoCG = await gerarIA(montarPromptCidadeIndividual(cg));
       } catch(e){ console.warn('[CG]', e); }
     }
     

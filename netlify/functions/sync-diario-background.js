@@ -2,12 +2,11 @@
 // 
 // SYNC INCREMENTAL DIARIO - roda 1x ao dia via Netlify Scheduled Functions
 // 
-// 🆕 v4 (05/06/2026): 
-//   - Headers corretos (api-key no header, não na URL)
-//   - Filtro de data: data_hora_solicitacao_min/max (não data_inicio)
-//   - Paginação completa (segue o padrão do machine.js)
-//   - User/Pass com fallback global
-//   - Mantém paradas_count e bandeira_chamada_id
+// 🆕 v5 (05/06/2026): 
+//   - Aceita parâmetros via query string pra SYNC RETROATIVO
+//   - ?cidade=cuiaba         → roda só essa cidade
+//   - ?dias=120              → força buscar X dias (ignora incremental)
+//   - ?cidade=cuiaba&dias=180 → combina ambos
 //
 // Background Functions tem timeout de 15 minutos
 // ============================================================
@@ -61,7 +60,7 @@ async function logSync(cidade, status, detalhes){
         condutores_inseridos: detalhes.condutores_inseridos || 0,
         empresas_inseridas: detalhes.empresas_inseridas || 0,
         mensagem_erro: detalhes.mensagem_erro || null,
-        usuario: 'sync-automatico'
+        usuario: detalhes.usuario || 'sync-automatico'
       })
     });
   } catch(e){ console.error('[log] erro:', e.message); }
@@ -79,9 +78,7 @@ async function pegarUltimoTimestamp(cidade_slug){
   } catch(e){ return null; }
 }
 
-// 🆕 v4: Busca da Machine com PAGINAÇÃO (segue padrão do machine.js)
 async function buscarMachine(envSufixo, recurso, dataInicio){
-  // Tenta credenciais específicas da cidade, com fallback pras globais
   const apiKey = process.env['MACHINE_API_KEY_'+envSufixo];
   const user = process.env['MACHINE_USER_'+envSufixo] || process.env.MACHINE_USER;
   const pass = process.env['MACHINE_PASS_'+envSufixo] || process.env.MACHINE_PASS;
@@ -97,7 +94,7 @@ async function buscarMachine(envSufixo, recurso, dataInicio){
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'api-key': apiKey,  // 🔑 API key no HEADER (não na URL!)
+    'api-key': apiKey,
     'Authorization': 'Basic ' + Buffer.from(user + ':' + pass).toString('base64')
   };
   
@@ -110,7 +107,8 @@ async function buscarMachine(envSufixo, recurso, dataInicio){
   if(!path) throw new Error('Recurso inválido: '+recurso);
   
   const LIMITE = recurso === 'condutor' ? 200 : 100;
-  const MAX_PAGINAS = recurso === 'solicitacao' ? 100 : 50;
+  // 🆕 v5: aumentado pra 200 páginas (até 20k registros) pra sync retroativo
+  const MAX_PAGINAS = recurso === 'solicitacao' ? 200 : 50;
   
   let todos = [];
   let pagina = 1;
@@ -118,7 +116,6 @@ async function buscarMachine(envSufixo, recurso, dataInicio){
   while(pagina <= MAX_PAGINAS){
     let url = BASE_URL + path + '?pagina=' + pagina + '&limite=' + LIMITE;
     
-    // Filtro de data SÓ pra solicitação
     if(recurso === 'solicitacao' && dataInicio){
       const dIni = dataInicio.toISOString();
       url += '&data_hora_solicitacao_min=' + encodeURIComponent(dIni);
@@ -126,7 +123,6 @@ async function buscarMachine(envSufixo, recurso, dataInicio){
     
     const r = await fetch(url, { method: 'GET', headers: headers });
     if(!r.ok){
-      // Primeira página com erro = aborta. Outras páginas = só para
       if(pagina === 1){
         const txt = await r.text().catch(() => '');
         throw new Error('Machine '+recurso+' HTTP '+r.status+(txt ? ': '+txt.substring(0,200) : ''));
@@ -143,11 +139,10 @@ async function buscarMachine(envSufixo, recurso, dataInicio){
     const lote = data.response || [];
     if(!Array.isArray(lote) || lote.length === 0) break;
     
-    // Evita loop infinito se a paginação repetir
     if(pagina > 1 && lote.length && todos.some(x => x.id === lote[0].id)) break;
     
     todos = todos.concat(lote);
-    if(lote.length < LIMITE) break;  // última página
+    if(lote.length < LIMITE) break;
     pagina++;
   }
   
@@ -182,9 +177,10 @@ async function salvarLote(tabela, dados, onConflict){
 
 // ====================================================================
 // Sync de uma cidade
+// 🆕 v5: aceita parâmetro diasForcar pra sync retroativo
 // ====================================================================
 
-async function syncCidade(cidade){
+async function syncCidade(cidade, diasForcar){
   const inicio = new Date();
   const inicioISO = inicio.toISOString();
   console.log('\n========================================');
@@ -193,19 +189,27 @@ async function syncCidade(cidade){
   let diasSolicitados = null;
   
   try {
-    // 1) Pega ultimo timestamp pra fazer incremental
-    let dataInicio = await pegarUltimoTimestamp(cidade.slug);
-    if(!dataInicio){
-      dataInicio = new Date(Date.now() - 60*24*60*60*1000);
-      diasSolicitados = 60;
-      console.log('[SYNC] '+cidade.slug+' - primeira sync, pegando 60 dias');
+    let dataInicio;
+    
+    // 🆕 v5: se diasForcar passado, IGNORA o último timestamp e busca esse período
+    if(diasForcar){
+      dataInicio = new Date(Date.now() - diasForcar*24*60*60*1000);
+      diasSolicitados = diasForcar;
+      console.log('[SYNC] '+cidade.slug+' - RETROATIVO forçado '+diasForcar+' dias');
     } else {
-      dataInicio = new Date(dataInicio.getTime() - 2*24*60*60*1000);
-      diasSolicitados = Math.ceil((Date.now() - dataInicio.getTime()) / (24*60*60*1000));
-      console.log('[SYNC] '+cidade.slug+' - incremental desde', dataInicio.toISOString().split('T')[0]);
+      // Modo normal incremental
+      dataInicio = await pegarUltimoTimestamp(cidade.slug);
+      if(!dataInicio){
+        dataInicio = new Date(Date.now() - 60*24*60*60*1000);
+        diasSolicitados = 60;
+        console.log('[SYNC] '+cidade.slug+' - primeira sync, pegando 60 dias');
+      } else {
+        dataInicio = new Date(dataInicio.getTime() - 2*24*60*60*1000);
+        diasSolicitados = Math.ceil((Date.now() - dataInicio.getTime()) / (24*60*60*1000));
+        console.log('[SYNC] '+cidade.slug+' - incremental desde', dataInicio.toISOString().split('T')[0]);
+      }
     }
     
-    // 2) Busca da Machine (em paralelo)
     const [corridas, condutores, empresas] = await Promise.all([
       buscarMachine(cidade.envSufixo, 'solicitacao', dataInicio),
       buscarMachine(cidade.envSufixo, 'condutor', null),
@@ -214,7 +218,6 @@ async function syncCidade(cidade){
     
     console.log('[SYNC] '+cidade.slug+' Machine: '+corridas.length+' corridas, '+condutores.length+' condutores, '+empresas.length+' empresas');
     
-    // 3) Prepara corridas pra inserir
     const corridasFmt = corridas.map(c => ({
       cidade_slug: cidade.slug,
       id_solicitacao: String(c.id || c.id_solicitacao || ''),
@@ -247,7 +250,6 @@ async function syncCidade(cidade){
       raw: e
     })).filter(x => x.id);
     
-    // 4) Salva no Supabase
     const totalCorridas = await salvarLote('machine_corridas', corridasFmt, 'cidade_slug,id_solicitacao');
     const totalCondutores = await salvarLote('machine_condutores', condutoresFmt, 'cidade_slug,id');
     const totalEmpresas = await salvarLote('machine_empresas', empresasFmt, 'cidade_slug,id');
@@ -260,7 +262,8 @@ async function syncCidade(cidade){
       corridas_inseridas: totalCorridas,
       corridas_erro: corridas.length - totalCorridas,
       condutores_inseridos: totalCondutores,
-      empresas_inseridas: totalEmpresas
+      empresas_inseridas: totalEmpresas,
+      usuario: diasForcar ? 'sync-retroativo' : 'sync-automatico'
     });
     
     return { slug: cidade.slug, ok: true, corridas: totalCorridas, condutores: totalCondutores, empresas: totalEmpresas };
@@ -270,7 +273,8 @@ async function syncCidade(cidade){
     await logSync(cidade, 'erro', {
       iniciado_em: inicioISO,
       dias_solicitados: diasSolicitados,
-      mensagem_erro: err.message
+      mensagem_erro: err.message,
+      usuario: diasForcar ? 'sync-retroativo' : 'sync-automatico'
     });
     return { slug: cidade.slug, ok: false, erro: err.message };
   }
@@ -278,18 +282,38 @@ async function syncCidade(cidade){
 
 // ====================================================================
 // Handler principal (Background Function)
+// 🆕 v5: aceita ?cidade=X&dias=Y via query string pra sync retroativo
 // ====================================================================
 
 exports.handler = async function(event){
+  // 🆕 v5: parse de query params
+  const params = (event && event.queryStringParameters) || {};
+  const cidadeAlvo = params.cidade ? String(params.cidade).toLowerCase() : null;
+  const diasForcar = params.dias ? parseInt(params.dias) : null;
+  
   console.log('\n#####################################################');
-  console.log('# SYNC DIARIO AUTOMATICO v4');
+  console.log('# SYNC '+(diasForcar ? 'RETROATIVO ('+diasForcar+' dias)' : 'DIARIO AUTOMATICO v5'));
+  if(cidadeAlvo) console.log('# Cidade alvo: '+cidadeAlvo);
   console.log('# Inicio:', new Date().toISOString());
   console.log('#####################################################\n');
   
+  // Filtra cidades alvo (se especificou)
+  let cidadesPraRodar = CIDADES;
+  if(cidadeAlvo){
+    cidadesPraRodar = CIDADES.filter(c => c.slug === cidadeAlvo);
+    if(cidadesPraRodar.length === 0){
+      console.warn('[WARN] Cidade não encontrada: '+cidadeAlvo);
+      return { 
+        statusCode: 404, 
+        body: JSON.stringify({ ok: false, error: 'Cidade não encontrada', cidades_validas: CIDADES.map(c => c.slug) }) 
+      };
+    }
+  }
+  
   const resultados = [];
   
-  for(const cidade of CIDADES){
-    const r = await syncCidade(cidade);
+  for(const cidade of cidadesPraRodar){
+    const r = await syncCidade(cidade, diasForcar);
     resultados.push(r);
     await new Promise(rs => setTimeout(rs, 1000));
   }
@@ -308,10 +332,11 @@ exports.handler = async function(event){
   
   return { 
     statusCode: 200, 
-    body: JSON.stringify({ ok: true, resultados }) 
+    body: JSON.stringify({ ok: true, resultados, retroativo: !!diasForcar, dias: diasForcar }) 
   };
 };
 
+// Marca como Background Function (timeout 15min)
 exports.config = {
   schedule: '@daily'
 };
