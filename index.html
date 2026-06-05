@@ -1,4 +1,4 @@
-<!-- v25.25 - Ranking otimizado (RPC v4) + forceRefresh limpa cache - 03/06/2026 -->
+<!-- v25.27 - Dashboard ranking responsivo mobile + desktop - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -26485,8 +26485,22 @@ async function renderRankingCidades(forceRefresh){
     console.log('[Ranking] forceRefresh — cache limpo');
   }
   
-  // Pega cache (mesmo se expirado — stale-while-revalidate)
+  // 🆕 Verifica se tem sync mais novo que o cache (auto-invalidação)
   var cache = forceRefresh ? null : _rankingPegarCache();
+  if(cache && cache.ts){
+    // Em background, verifica se houve sync novo (sem bloquear render)
+    _rankingVerificarUltimoSync().then(function(syncTs){
+      if(syncTs && syncTs > cache.ts){
+        console.log('[Ranking] sync novo detectado — invalidando cache automaticamente');
+        _RANKING_LISTA_MEMORIA = null;
+        _RANKING_LISTA_TS = null;
+        try { localStorage.removeItem(_RANKING_CACHE_KEY); } catch(e){}
+        // Re-renderiza com dados frescos
+        renderRankingCidades(true);
+      }
+    });
+  }
+  
   var lista = cache ? cache.data : null;
   var precisaBuscar = forceRefresh || !cache || _rankingCacheExpirado(cache);
   
@@ -26739,22 +26753,22 @@ function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPes
   
   var top3HTML = top3.map(function(c, i){
     var nomeCurto = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : 'Sem gestor';
-    return '<div style="position:relative;border:3px solid '+bordas[i]+';border-radius:18px;padding:22px 14px 18px 14px;background:'+gradientes[i]+';text-align:center;box-shadow:0 6px 20px rgba(0,0,0,0.12);transition:transform .2s">'
-      + '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:42px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2))">'+medalhas[i]+'</div>'
-      // Broche bem grande
-      + '<div style="display:flex;justify-content:center;margin:14px 0 10px 0">'+brocheCidadeBg(c.cidade, 78)+'</div>'
-      // Nome da cidade
-      + '<div style="font-size:17px;font-weight:800;color:#1a1a1a;margin-bottom:10px;line-height:1.1">'+c.cidadeCompleta+'</div>'
-      // Gestor com foto destacada (maior)
-      + '<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin:10px 0 14px 0;padding:6px 12px;background:rgba(255,255,255,0.65);border-radius:24px">'
-        + avatarGestor(c.gestor, 34)
-        + '<span style="font-size:13px;color:#222;font-weight:700">'+nomeCurto+'</span>'
+    return '<div style="position:relative;border:3px solid '+bordas[i]+';border-radius:18px;padding:18px 10px 14px 10px;background:'+gradientes[i]+';text-align:center;box-shadow:0 6px 20px rgba(0,0,0,0.12);transition:transform .2s;min-width:0;overflow:hidden">'
+      + '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:38px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2))">'+medalhas[i]+'</div>'
+      // Broche
+      + '<div style="display:flex;justify-content:center;margin:12px 0 8px 0">'+brocheCidadeBg(c.cidade, 64)+'</div>'
+      // Nome da cidade — com overflow seguro
+      + '<div style="font-size:15px;font-weight:800;color:#1a1a1a;margin-bottom:8px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.cidadeCompleta+'</div>'
+      // Gestor
+      + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:8px 0 12px 0;padding:5px 8px;background:rgba(255,255,255,0.65);border-radius:20px;min-width:0">'
+        + avatarGestor(c.gestor, 28)
+        + '<span style="font-size:11px;color:#222;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nomeCurto+'</span>'
       + '</div>'
-      // Número MUITO grande
-      + '<div style="font-size:34px;font-weight:900;color:#1a1a1a;line-height:1;letter-spacing:-0.5px">'+c.paradas.toLocaleString('pt-BR')+'</div>'
-      + '<div style="font-size:10px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px">📦 entregas</div>'
+      // Número grande
+      + '<div style="font-size:28px;font-weight:900;color:#1a1a1a;line-height:1;letter-spacing:-0.5px">'+c.paradas.toLocaleString('pt-BR')+'</div>'
+      + '<div style="font-size:9px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;margin-top:4px">📦 entregas</div>'
       // Variação
-      + '<div style="margin-top:10px">'+variacaoBadge(c.variacao, 12)+'</div>'
+      + '<div style="margin-top:8px">'+variacaoBadge(c.variacao, 11)+'</div>'
     + '</div>';
   }).join('');
   
@@ -26767,31 +26781,27 @@ function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPes
     var pct = maxPar > 0 ? (c.paradas / maxPar * 100) : 0;
     var nomeCurto = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : 'Sem gestor';
     
-    return '<div style="display:flex;align-items:center;gap:14px;padding:14px 6px;background:transparent;border-bottom:1px solid rgba(0,0,0,0.06);transition:all .2s" '
+    return '<div style="display:flex;align-items:center;gap:10px;padding:12px 6px;background:transparent;border-bottom:1px solid rgba(0,0,0,0.06);transition:all .2s;flex-wrap:nowrap;min-width:0" '
       + 'onmouseover="this.style.transform=\'translateX(4px)\';this.style.background=\'rgba(26,184,240,0.04)\'" '
       + 'onmouseout="this.style.transform=\'translateX(0)\';this.style.background=\'transparent\'">'
-      // Posição grande
-      + '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:#999;width:42px;text-align:center;flex-shrink:0">'+pos+'°</div>'
-      // Broche maior
-      + brocheCidadeBg(c.cidade, 52)
-      // Cidade + gestor
-      + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:5px">'+c.cidadeCompleta+'</div>'
-        + '<div style="display:flex;align-items:center;gap:7px">'
-          + avatarGestor(c.gestor, 24)
-          + '<span style="font-size:12px;color:var(--text2);font-weight:600">'+nomeCurto+'</span>'
+      // Posição
+      + '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#999;width:32px;text-align:center;flex-shrink:0">'+pos+'°</div>'
+      // Broche
+      + '<div style="flex-shrink:0">'+brocheCidadeBg(c.cidade, 46)+'</div>'
+      // Cidade + gestor (flexível, com overflow seguro)
+      + '<div style="flex:1 1 100px;min-width:0;overflow:hidden">'
+        + '<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.cidadeCompleta+'</div>'
+        + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
+          + avatarGestor(c.gestor, 22)
+          + '<span style="font-size:11px;color:var(--text2);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nomeCurto+'</span>'
         + '</div>'
       + '</div>'
-      // Barra horizontal maior
-      + '<div style="flex:0 0 70px;height:7px;background:rgba(0,0,0,0.06);border-radius:4px;overflow:hidden">'
-        + '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);border-radius:4px;transition:width 0.5s"></div>'
+      // Número + variação (encolhe em mobile)
+      + '<div style="text-align:right;min-width:60px;flex-shrink:0">'
+        + '<div style="font-size:18px;font-weight:800;color:var(--text);line-height:1;white-space:nowrap">'+c.paradas.toLocaleString('pt-BR')+'</div>'
+        + '<div style="font-size:9px;color:var(--text3);margin-top:2px;font-weight:600;white-space:nowrap">📦 entregas</div>'
+        + '<div style="margin-top:5px">'+variacaoBadge(c.variacao, 10)+'</div>'
       + '</div>'
-      // Número + variação
-      + '<div style="text-align:right;min-width:90px;flex-shrink:0">'
-        + '<div style="font-size:20px;font-weight:800;color:var(--text);line-height:1">'+c.paradas.toLocaleString('pt-BR')+'</div>'
-        + '<div style="font-size:10px;color:var(--text3);margin-top:2px;font-weight:600">📦 entregas</div>'
-      + '</div>'
-      + '<div style="min-width:90px;text-align:right">'+variacaoBadge(c.variacao, 11)+'</div>'
     + '</div>';
   }).join('');
   
@@ -26800,18 +26810,18 @@ function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPes
   var totalCorridas = dados.reduce(function(s,c){return s + c.corridas;}, 0);
   
   host.innerHTML = ''
-    // TOP 3
-    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;padding-top:8px">'+top3HTML+'</div>'
+    // TOP 3 — responsivo: 3 col desktop, 2 col tablet, 1 col mobile
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:14px;padding-top:8px">'+top3HTML+'</div>'
     // RESTO
     + (resto.length > 0 ? '<div style="margin-top:14px">'
         + '<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding-left:4px">Demais cidades</div>'
         + restoHTML
       + '</div>' : '')
     // Total geral
-    + '<div style="margin-top:14px;padding:12px;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border-radius:10px;display:flex;justify-content:space-around;text-align:center">'
-      + '<div><div style="font-size:18px;font-weight:900;color:#0E7AB8">'+totalParadas.toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:#555;font-weight:600">📦 Total entregas</div></div>'
-      + '<div><div style="font-size:18px;font-weight:900;color:#0E7AB8">'+totalCorridas.toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:#555;font-weight:600">🚖 Corridas finalizadas</div></div>'
-      + '<div><div style="font-size:18px;font-weight:900;color:#0E7AB8">'+dados.length+'</div><div style="font-size:10px;color:#555;font-weight:600">🏙️ Cidades ativas</div></div>'
+    + '<div style="margin-top:14px;padding:12px;background:linear-gradient(135deg,#E6F6FE,#B3E5FC);border-radius:10px;display:flex;justify-content:space-around;text-align:center;flex-wrap:wrap;gap:8px">'
+      + '<div style="min-width:80px"><div style="font-size:17px;font-weight:900;color:#0E7AB8">'+totalParadas.toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:#555;font-weight:600">📦 Total entregas</div></div>'
+      + '<div style="min-width:80px"><div style="font-size:17px;font-weight:900;color:#0E7AB8">'+totalCorridas.toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:#555;font-weight:600">🚖 Corridas finalizadas</div></div>'
+      + '<div style="min-width:80px"><div style="font-size:17px;font-weight:900;color:#0E7AB8">'+dados.length+'</div><div style="font-size:10px;color:#555;font-weight:600">🏙️ Cidades ativas</div></div>'
     + '</div>';
 }
 
@@ -32277,10 +32287,24 @@ var RANKING_CIDADES_MAP = {
 };
 
 var _RANKING_CACHE_KEY = 'gami_ranking_cidades_v1';
-var _RANKING_CACHE_TTL_MS = 5 * 60 * 1000;  // 5 minutos
+var _RANKING_CACHE_TTL_MS = 2 * 60 * 1000;  // 2 min — atualiza mais rápido pro usuário
 var _RANKING_AUTO_REFRESH_INTERVAL = null;
-var _RANKING_LISTA_MEMORIA = null;  // cache em memória (sem expirar na sessão)
+var _RANKING_LISTA_MEMORIA = null;
 var _RANKING_LISTA_TS = null;
+var _RANKING_ULTIMO_SYNC_TS = null;  // 🆕 timestamp do último sync conhecido
+
+// 🆕 Verifica último sync no Supabase — se mais novo que cache, invalida
+async function _rankingVerificarUltimoSync(){
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/machine_sync_log?status=eq.concluido&select=finalizado_em&order=finalizado_em.desc&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY }
+    });
+    if(!r.ok) return null;
+    var arr = await r.json();
+    if(!Array.isArray(arr) || arr.length === 0) return null;
+    return new Date(arr[0].finalizado_em).getTime();
+  } catch(e){ return null; }
+}
 
 function _rankingPegarCache(){
   // 1. Tenta memória primeiro (instantâneo)
