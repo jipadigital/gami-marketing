@@ -1,4 +1,4 @@
-<!-- v25.32 - Onboarding + Atalhos teclado + Pesquisa global (Ctrl+K) - 03/06/2026 -->
+<!-- v25.33 - Clima do Time (Supabase + página) + reordenação Pulse - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1153,7 +1153,7 @@ function detectarNivelPermissao(usuario){
 /* Matriz de permissões — define quem vê o quê */
 var MATRIZ_PERMISSOES = {
   super_admin: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','manual'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
     pode_editar_pessoas: true,
     pode_admin_pontos: true,
     pode_criar_desafios: true,
@@ -1163,7 +1163,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   diretoria: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','manual'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1637,6 +1637,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'portal')"><span class="nav-dot" style="background:#378ADD"></span>Portal Gâmi</div>
     <div class="nav-item" onclick="nav(this,'relatorios')"><span class="nav-dot" style="background:#8B5CF6"></span>Relatórios</div>
     <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')"><span class="nav-dot" style="background:#1D9E75"></span>🩺 Saúde</div>
+    <div class="nav-item" data-permissao="clima" id="nav-clima" onclick="nav(this,'clima')" style="display:none"><span class="nav-dot" style="background:#D4537E"></span>💙 Clima do time</div>
     <div class="nav-item" onclick="nav(this,'manual')"><span class="nav-dot" style="background:#1AB8F0"></span>📘 Manual</div>
   </div>
 
@@ -5076,6 +5077,44 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div class="card" style="text-align:center;background:linear-gradient(135deg,#FFB300 0%,#1AB8F0 100%);border:none;color:white">
     <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px">Vamos juntos(as) conquistar novos níveis?</div>
     <div style="font-size:11px;opacity:.9;letter-spacing:.6px;text-transform:uppercase">Vem muito mais por aí...</div>
+  </div>
+</div>
+
+<!-- ==================== 💙 CLIMA DO TIME ==================== -->
+<div class="page" id="pg-clima">
+  <div class="page-header">
+    <div>
+      <div class="page-title">💙 Clima do time</div>
+      <div class="page-sub">Acompanhe o sentimento da equipe ao longo do tempo</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <button onclick="renderClimaTime('hoje', true)" id="btn-clima-hoje" class="btnClimaPeriodo" style="font-size:11px;padding:6px 14px;border-radius:18px;border:1px solid var(--gami-blue);background:var(--gami-blue);color:white;cursor:pointer;font-family:inherit;font-weight:600">Hoje</button>
+      <button onclick="renderClimaTime('semana')" id="btn-clima-semana" class="btnClimaPeriodo" style="font-size:11px;padding:6px 14px;border-radius:18px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">Últimos 7 dias</button>
+      <button onclick="renderClimaTime('mes')" id="btn-clima-mes" class="btnClimaPeriodo" style="font-size:11px;padding:6px 14px;border-radius:18px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">Últimos 30 dias</button>
+      <button onclick="renderClimaTime(_climaPeriodoAtual, true)" style="font-size:11px;padding:6px 12px;border:1px solid var(--gami-blue);border-radius:18px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600" title="Atualizar">🔄</button>
+    </div>
+  </div>
+
+  <!-- KPIs no topo -->
+  <div id="clima-kpis" style="margin-bottom:14px"></div>
+
+  <!-- Distribuição (donut + barras) -->
+  <div class="card" style="margin-bottom:14px;padding:18px">
+    <div class="card-title" style="margin:0 0 12px 0">📊 Distribuição dos sentimentos</div>
+    <div id="clima-distribuicao"></div>
+  </div>
+
+  <!-- Tendência (gráfico de linha) -->
+  <div class="card" style="margin-bottom:14px;padding:18px" id="clima-tendencia-card" style="display:none">
+    <div class="card-title" style="margin:0 0 12px 0">📈 Tendência diária</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;font-style:italic">Índice de positividade = (😊 + 💪 + 🙏) ÷ total. Quanto mais alto, melhor.</div>
+    <div id="clima-tendencia"></div>
+  </div>
+
+  <!-- Histórico simples -->
+  <div class="card" style="padding:18px">
+    <div class="card-title" style="margin:0 0 12px 0">📅 Histórico</div>
+    <div id="clima-historico"></div>
   </div>
 </div>
 
@@ -35072,6 +35111,26 @@ function votarPulse(emoji){
   p[emoji] = (p[emoji]||0) + 1;
   _pulseSetMeuVoto(emoji);
   try { localStorage.setItem(pulseKey(), JSON.stringify(p)); } catch(e){}
+  
+  // 🆕 Salva no Supabase (anônimo nos resultados, mas com user_id pra constraint de 1/dia)
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    var uid = u && u.id ? u.id : 'anon_'+Math.random().toString(36).slice(2);
+    fetch(SUPA_URL+'/rest/v1/pulse_votos', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer '+SUPA_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal,resolution=ignore-duplicates'
+      },
+      body: JSON.stringify({
+        usuario_id: uid,
+        emoji: emoji
+      })
+    }).catch(function(e){ console.warn('[pulse] sync supabase:', e); });
+  } catch(e){}
+  
   if(typeof toast === 'function') toast('Voto registrado · obrigado!', 'success');
   renderPulse();
 }
@@ -35081,10 +35140,10 @@ function renderPulse(){
   var countHost = document.getElementById('pulse-count');
   if(!host) return;
   var emojis = [
-    {e:'😢', label:'Triste'},
     {e:'😊', label:'Feliz'},
+    {e:'😢', label:'Triste'},
     {e:'🙏', label:'Abençoado'},
-    {e:'💪', label:'Determinado'},
+    {e:'💪', label:'Forte'},
     {e:'😴', label:'Cansado'},
   ];
   var p = getPulseHoje();
@@ -36384,8 +36443,294 @@ function _manualSetLido(id, lido){
 }
 
 // ============================================================
-// 🆕 ONBOARDING - Tour guiado em 5 passos pros novos usuários
+// 🆕 CLIMA DO TIME — Dashboard agregado (só super_admin + diretoria)
 // ============================================================
+var _climaPeriodoAtual = 'hoje';
+var _climaCache = {};
+var _CLIMA_TTL_MS = 60 * 1000; // 1 min
+
+var _CLIMA_EMOJIS = [
+  { e:'😊', label:'Feliz',     cor:'#FFD700', tipo:'positivo' },
+  { e:'💪', label:'Forte',     cor:'#1AB8F0', tipo:'positivo' },
+  { e:'🙏', label:'Abençoado', cor:'#A07BD2', tipo:'positivo' },
+  { e:'😴', label:'Cansado',   cor:'#9E9E9E', tipo:'negativo' },
+  { e:'😢', label:'Triste',    cor:'#E24B4A', tipo:'negativo' }
+];
+
+async function renderClimaTime(periodo, forceRefresh){
+  if(!periodo) periodo = _climaPeriodoAtual;
+  _climaPeriodoAtual = periodo;
+  
+  // Atualiza visual dos botões
+  ['hoje','semana','mes'].forEach(function(p){
+    var btn = document.getElementById('btn-clima-'+p);
+    if(!btn) return;
+    if(p === periodo){
+      btn.style.background = 'var(--gami-blue)';
+      btn.style.color = 'white';
+      btn.style.borderColor = 'var(--gami-blue)';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--text2)';
+      btn.style.borderColor = 'var(--border)';
+    }
+  });
+  
+  var dias = periodo === 'hoje' ? 1 : periodo === 'semana' ? 7 : 30;
+  var agora = Date.now();
+  var cacheKey = periodo;
+  var cache = _climaCache[cacheKey];
+  
+  if(cache && !forceRefresh && (agora - cache.ts) < _CLIMA_TTL_MS){
+    _renderClimaUI(cache.data, periodo);
+    return;
+  }
+  
+  // Loading
+  var kpisHost = document.getElementById('clima-kpis');
+  if(kpisHost) kpisHost.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando clima do time...</div>';
+  
+  try {
+    var dataHoje = new Date().toISOString().slice(0,10);
+    
+    var [resumoDia, kpis, indiceSaude, resumoPeriodo] = await Promise.all([
+      // Resumo do dia atual (mesmo no período semana/mês — pra mostrar "hoje")
+      fetch(SUPA_URL+'/rest/v1/rpc/pulse_resumo_dia', {
+        method: 'POST',
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+        body: JSON.stringify({ p_data: dataHoje })
+      }).then(function(r){return r.json();}).catch(function(){return [];}),
+      
+      // KPIs do período
+      fetch(SUPA_URL+'/rest/v1/rpc/pulse_kpis', {
+        method: 'POST',
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+        body: JSON.stringify({ p_dias: dias })
+      }).then(function(r){return r.json();}).catch(function(){return [];}),
+      
+      // Índice de positividade ao longo do período (gráfico)
+      dias > 1 ? fetch(SUPA_URL+'/rest/v1/rpc/pulse_indice_saude', {
+        method: 'POST',
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+        body: JSON.stringify({ p_dias: dias })
+      }).then(function(r){return r.json();}).catch(function(){return [];}) : Promise.resolve([]),
+      
+      // Resumo distribuído do período (cards)
+      fetch(SUPA_URL+'/rest/v1/rpc/pulse_resumo_periodo', {
+        method: 'POST',
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+        body: JSON.stringify({ p_dias: dias })
+      }).then(function(r){return r.json();}).catch(function(){return [];})
+    ]);
+    
+    var dados = { resumoDia: resumoDia, kpis: kpis, indiceSaude: indiceSaude, resumoPeriodo: resumoPeriodo };
+    _climaCache[cacheKey] = { ts: agora, data: dados };
+    _renderClimaUI(dados, periodo);
+  } catch(e){
+    console.error('[Clima]', e);
+    if(kpisHost) kpisHost.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro: '+e.message+'</div>';
+  }
+}
+
+function _renderClimaUI(dados, periodo){
+  var dias = periodo === 'hoje' ? 1 : periodo === 'semana' ? 7 : 30;
+  var kpis = (dados.kpis && dados.kpis[0]) || {};
+  
+  // ─── KPIs ───────────────────────────────────────
+  var kpiHost = document.getElementById('clima-kpis');
+  if(kpiHost){
+    var dominanteInfo = _CLIMA_EMOJIS.find(function(x){return x.e === kpis.emoji_dominante;}) || {label:'—', cor:'#999'};
+    var indice = parseFloat(kpis.indice_positividade || 0);
+    var corIndice = indice >= 70 ? '#1D9E75' : indice >= 50 ? '#EF9F27' : '#E24B4A';
+    var iconeIndice = indice >= 70 ? '🟢' : indice >= 50 ? '🟡' : '🔴';
+    
+    kpiHost.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">'
+      + '<div class="card" style="padding:14px;text-align:center">'
+        +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">📊 Total de votos</div>'
+        +'<div style="font-size:26px;font-weight:900;color:var(--text);margin-top:4px;line-height:1">'+(parseInt(kpis.total_votos)||0).toLocaleString('pt-BR')+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:2px">'+(periodo === 'hoje' ? 'hoje' : 'no período')+'</div>'
+      +'</div>'
+      + '<div class="card" style="padding:14px;text-align:center">'
+        +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">👥 Pessoas únicas</div>'
+        +'<div style="font-size:26px;font-weight:900;color:var(--text);margin-top:4px;line-height:1">'+(parseInt(kpis.pessoas_unicas)||0).toLocaleString('pt-BR')+'</div>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:2px">votaram '+(periodo === 'hoje' ? 'hoje' : 'no período')+'</div>'
+      +'</div>'
+      + '<div class="card" style="padding:14px;text-align:center;background:linear-gradient(135deg,'+dominanteInfo.cor+'22,'+dominanteInfo.cor+'11)">'
+        +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">🌡️ Sentimento dominante</div>'
+        +'<div style="font-size:30px;margin-top:2px;line-height:1">'+(kpis.emoji_dominante||'—')+'</div>'
+        +'<div style="font-size:13px;color:var(--text);margin-top:4px;font-weight:700">'+dominanteInfo.label+' · '+(parseFloat(kpis.percentual_dominante)||0)+'%</div>'
+      +'</div>'
+      + '<div class="card" style="padding:14px;text-align:center;background:linear-gradient(135deg,'+corIndice+'22,'+corIndice+'11)">'
+        +'<div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.5px">'+iconeIndice+' Índice positividade</div>'
+        +'<div style="font-size:28px;font-weight:900;color:'+corIndice+';margin-top:4px;line-height:1">'+indice+'%</div>'
+        +'<div style="font-size:10px;color:var(--text3);margin-top:2px">😊 + 💪 + 🙏</div>'
+      +'</div>'
+    +'</div>';
+  }
+  
+  // ─── DISTRIBUIÇÃO ────────────────────────────────
+  var distHost = document.getElementById('clima-distribuicao');
+  if(distHost){
+    // Usa resumo do dia (se periodo='hoje') ou agrega resumoPeriodo
+    var distribuicao;
+    if(periodo === 'hoje'){
+      distribuicao = dados.resumoDia || [];
+    } else {
+      // Agrega resumoPeriodo por emoji
+      var agg = {};
+      (dados.resumoPeriodo || []).forEach(function(r){
+        agg[r.emoji] = (agg[r.emoji] || 0) + parseInt(r.total || 0);
+      });
+      var total = Object.values(agg).reduce(function(a,b){return a+b;},0);
+      distribuicao = Object.keys(agg).map(function(e){
+        return {
+          emoji: e,
+          total: agg[e],
+          percentual: total > 0 ? Math.round((agg[e]/total)*1000)/10 : 0
+        };
+      }).sort(function(a,b){return b.total - a.total;});
+    }
+    
+    if(distribuicao.length === 0 || (distribuicao[0] && parseInt(distribuicao[0].total) === 0)){
+      distHost.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhum voto no período.</div>';
+    } else {
+      // Donut + barras lado a lado
+      var totalGeral = distribuicao.reduce(function(s,d){return s + parseInt(d.total||0);},0);
+      
+      // Donut SVG
+      var donut = '<svg viewBox="0 0 100 100" style="width:160px;height:160px"><circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(0,0,0,0.05)" stroke-width="18"/>';
+      var offset = 0;
+      distribuicao.forEach(function(d){
+        if(parseInt(d.total) === 0) return;
+        var info = _CLIMA_EMOJIS.find(function(x){return x.e === d.emoji;}) || {cor:'#999'};
+        var pct = totalGeral > 0 ? parseInt(d.total) / totalGeral : 0;
+        var dasharray = (pct * 251.2).toFixed(2) + ' 251.2';
+        var dashoffset = (-offset * 251.2).toFixed(2);
+        donut += '<circle cx="50" cy="50" r="40" fill="transparent" stroke="'+info.cor+'" stroke-width="18" stroke-dasharray="'+dasharray+'" stroke-dashoffset="'+dashoffset+'" transform="rotate(-90 50 50)"/>';
+        offset += pct;
+      });
+      donut += '<text x="50" y="48" text-anchor="middle" style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;fill:var(--text)">'+totalGeral+'</text><text x="50" y="60" text-anchor="middle" style="font-size:7px;fill:var(--text3);font-weight:600">votos</text></svg>';
+      
+      // Barras laterais
+      var barras = distribuicao.map(function(d){
+        var info = _CLIMA_EMOJIS.find(function(x){return x.e === d.emoji;}) || {label:'?', cor:'#999'};
+        var pct = parseFloat(d.percentual) || 0;
+        return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+          +'<div style="font-size:24px;width:32px;text-align:center;flex-shrink:0">'+d.emoji+'</div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">'
+              +'<span style="font-size:13px;font-weight:700;color:var(--text)">'+info.label+'</span>'
+              +'<span style="font-size:11px;color:var(--text2)"><strong>'+parseInt(d.total)+'</strong> · '+pct+'%</span>'
+            +'</div>'
+            +'<div style="height:8px;background:rgba(0,0,0,0.05);border-radius:4px;overflow:hidden">'
+              +'<div style="height:100%;width:'+pct+'%;background:'+info.cor+';border-radius:4px;transition:width .5s ease"></div>'
+            +'</div>'
+          +'</div>'
+        +'</div>';
+      }).join('');
+      
+      distHost.innerHTML = '<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap"><div style="flex-shrink:0">'+donut+'</div><div style="flex:1;min-width:240px">'+barras+'</div></div>';
+    }
+  }
+  
+  // ─── TENDÊNCIA (gráfico de linha — só semana/mês) ───
+  var tendCard = document.getElementById('clima-tendencia-card');
+  var tendHost = document.getElementById('clima-tendencia');
+  if(tendCard && tendHost){
+    if(periodo === 'hoje' || !dados.indiceSaude || dados.indiceSaude.length < 2){
+      tendCard.style.display = 'none';
+    } else {
+      tendCard.style.display = 'block';
+      var indices = dados.indiceSaude.slice().reverse(); // mais antigos primeiro
+      var maxIndice = 100;
+      var w = 600, h = 200, padL = 40, padR = 20, padT = 20, padB = 30;
+      var dx = (w - padL - padR) / Math.max(1, indices.length - 1);
+      
+      var pontos = indices.map(function(d, i){
+        var x = padL + i * dx;
+        var y = padT + (h - padT - padB) * (1 - parseFloat(d.indice_positividade)/maxIndice);
+        return { x: x.toFixed(1), y: y.toFixed(1), data: d.data, ind: parseFloat(d.indice_positividade), total: parseInt(d.total_votos) };
+      });
+      
+      var path = pontos.map(function(p, i){ return (i === 0 ? 'M' : 'L') + p.x + ',' + p.y; }).join(' ');
+      var area = path + ' L' + pontos[pontos.length-1].x + ',' + (h - padB) + ' L' + pontos[0].x + ',' + (h - padB) + ' Z';
+      
+      // Eixo Y (linhas guia)
+      var guias = '';
+      [0, 25, 50, 75, 100].forEach(function(v){
+        var y = padT + (h - padT - padB) * (1 - v/maxIndice);
+        guias += '<line x1="'+padL+'" y1="'+y+'" x2="'+(w-padR)+'" y2="'+y+'" stroke="rgba(0,0,0,0.06)" stroke-width="1"/>';
+        guias += '<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="var(--text3)">'+v+'%</text>';
+      });
+      
+      // Labels do eixo X (datas)
+      var dataLabels = '';
+      pontos.forEach(function(p, i){
+        if(indices.length <= 10 || i % Math.ceil(indices.length/8) === 0){
+          var d = new Date(p.data);
+          var lbl = d.getDate() + '/' + (d.getMonth()+1);
+          dataLabels += '<text x="'+p.x+'" y="'+(h-padB+14)+'" text-anchor="middle" font-size="9" fill="var(--text3)">'+lbl+'</text>';
+        }
+      });
+      
+      // Pontos
+      var circulos = pontos.map(function(p){
+        var titulo = p.data + ' — '+p.ind+'% positividade · '+p.total+' votos';
+        return '<circle cx="'+p.x+'" cy="'+p.y+'" r="4" fill="#1AB8F0" stroke="white" stroke-width="2"><title>'+titulo+'</title></circle>';
+      }).join('');
+      
+      tendHost.innerHTML = '<div style="overflow-x:auto"><svg viewBox="0 0 '+w+' '+h+'" style="width:100%;min-width:500px;max-height:280px">'
+        +'<defs><linearGradient id="climaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1AB8F0" stop-opacity="0.3"/><stop offset="100%" stop-color="#1AB8F0" stop-opacity="0"/></linearGradient></defs>'
+        +guias
+        +'<path d="'+area+'" fill="url(#climaGrad)"/>'
+        +'<path d="'+path+'" fill="none" stroke="#1AB8F0" stroke-width="2.5" stroke-linejoin="round"/>'
+        +circulos
+        +dataLabels
+      +'</svg></div>';
+    }
+  }
+  
+  // ─── HISTÓRICO ──────────────────────────────────
+  var histHost = document.getElementById('clima-historico');
+  if(histHost){
+    if(!dados.indiceSaude || dados.indiceSaude.length === 0){
+      histHost.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sem histórico ainda.</div>';
+    } else {
+      // Tabela com dias
+      var rows = dados.indiceSaude.slice(0, 30).map(function(d){
+        var data = new Date(d.data);
+        var diaSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][data.getDay()];
+        var dataFmt = String(data.getDate()).padStart(2,'0') + '/' + String(data.getMonth()+1).padStart(2,'0') + '/' + data.getFullYear();
+        var ind = parseFloat(d.indice_positividade) || 0;
+        var corInd = ind >= 70 ? '#1D9E75' : ind >= 50 ? '#EF9F27' : '#E24B4A';
+        var corBgInd = ind >= 70 ? '#EAF3DE' : ind >= 50 ? '#FFF8E1' : '#FCEBEB';
+        
+        return '<div style="display:flex;align-items:center;gap:14px;padding:10px 6px;border-bottom:1px solid var(--border);transition:background .15s" onmouseover="this.style.background=\'rgba(26,184,240,0.04)\'" onmouseout="this.style.background=\'transparent\'">'
+          +'<div style="min-width:120px;flex-shrink:0">'
+            +'<div style="font-size:13px;font-weight:700;color:var(--text)">'+dataFmt+'</div>'
+            +'<div style="font-size:10px;color:var(--text3)">'+diaSemana+'</div>'
+          +'</div>'
+          +'<div style="flex:1;font-size:11px;color:var(--text2)"><strong>'+d.total_votos+'</strong> votos · <span style="color:#1D9E75;font-weight:600">'+d.votos_positivos+'</span> positivos · <span style="color:#E24B4A;font-weight:600">'+d.votos_negativos+'</span> negativos</div>'
+          +'<div style="background:'+corBgInd+';color:'+corInd+';padding:5px 12px;border-radius:14px;font-size:12px;font-weight:800;flex-shrink:0">'+ind+'%</div>'
+        +'</div>';
+      }).join('');
+      histHost.innerHTML = rows;
+    }
+  }
+}
+
+// Hook: dispara render quando navega pra aba clima
+(function(){
+  var origNav = window.nav;
+  if(typeof origNav === 'function'){
+    window.nav = function(el, page){
+      origNav(el, page);
+      if(page === 'clima'){
+        setTimeout(function(){ renderClimaTime(_climaPeriodoAtual || 'hoje'); }, 100);
+      }
+    };
+  }
+})();
 var _ONBOARDING_PASSOS = [
   {
     emoji: '👋',
