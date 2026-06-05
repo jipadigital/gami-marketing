@@ -1,4 +1,4 @@
-<!-- v25.29 - Indicador saúde sync + botão Sincronizar agora (admin) - 03/06/2026 -->
+<!-- v25.30 - Top motoboys + Top empresas da rede na aba Cidades - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3515,6 +3515,38 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <button onclick="toggleMapaBrasil()" id="btn-toggle-mapa" style="font-size:10px;padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit">🗺️ Mostrar mapa</button>
     </div>
     <div id="cidades-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px"></div>
+
+    <!-- 🆕 TOP 10 MOTOBOYS DA REDE -->
+    <div class="card" style="margin-top:18px;padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="card-title" style="margin:0;display:flex;align-items:center;gap:8px">🏆 Top motoboys da rede</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Comparativo do mês atual vs mês anterior — todas as 11 cidades</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button id="btn-tab-motoboys-volume" onclick="trocarTabRede('motoboys','volume')" class="tabRede" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--gami-blue);background:var(--gami-blue);color:white;cursor:pointer;font-family:inherit;font-weight:600">🚀 Quem mais rodou</button>
+          <button id="btn-tab-motoboys-crescimento" onclick="trocarTabRede('motoboys','crescimento')" class="tabRede" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">📈 Quem mais cresceu</button>
+          <button onclick="renderTopRede('motoboys', _topRedeTabAtual.motoboys, true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--gami-blue);border-radius:18px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600" title="Atualizar">🔄</button>
+        </div>
+      </div>
+      <div id="top-rede-motoboys"></div>
+    </div>
+
+    <!-- 🆕 TOP 10 EMPRESAS DA REDE -->
+    <div class="card" style="margin-top:14px;padding:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="card-title" style="margin:0;display:flex;align-items:center;gap:8px">🏪 Top empresas da rede</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Comparativo do mês atual vs mês anterior — todas as 11 cidades</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button id="btn-tab-empresas-volume" onclick="trocarTabRede('empresas','volume')" class="tabRede" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--gami-blue);background:var(--gami-blue);color:white;cursor:pointer;font-family:inherit;font-weight:600">🚀 Quem mais pediu</button>
+          <button id="btn-tab-empresas-crescimento" onclick="trocarTabRede('empresas','crescimento')" class="tabRede" style="font-size:11px;padding:5px 12px;border-radius:18px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">📈 Quem mais cresceu</button>
+          <button onclick="renderTopRede('empresas', _topRedeTabAtual.empresas, true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--gami-blue);border-radius:18px;background:transparent;color:var(--gami-blue);cursor:pointer;font-family:inherit;font-weight:600" title="Atualizar">🔄</button>
+        </div>
+      </div>
+      <div id="top-rede-empresas"></div>
+    </div>
 
     <!-- STATUS DAS INTEGRAÇÕES (só super_admin, no rodapé) -->
     <div id="cidades-integracoes" style="margin-top:24px"></div>
@@ -19565,6 +19597,14 @@ function renderCidadesGrid(){
   // Renderiza headers (stats topo + aniversários) sempre que o grid muda
   if(typeof renderCidadesStatsTopo === 'function') renderCidadesStatsTopo();
   if(typeof renderCidadesAniversarios === 'function') renderCidadesAniversarios();
+  
+  // 🆕 Carrega Top motoboys e Top empresas da rede (lazy — em background)
+  setTimeout(function(){
+    if(typeof renderTopRede === 'function'){
+      renderTopRede('motoboys', _topRedeTabAtual.motoboys || 'volume');
+      renderTopRede('empresas', _topRedeTabAtual.empresas || 'volume');
+    }
+  }, 300);
 }
 
 function abrirCidade(id){
@@ -26583,6 +26623,150 @@ function _cidadesRanking(){
   // 11 cidades do ranking (10 atuais + Campo Grande)
   return ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Cuiabá','Teresina','Vitória','Campo Grande'];
 }
+
+// ============================================================
+// 🆕 TOP MOTOBOYS / EMPRESAS DA REDE (todas as 11 cidades)
+// ============================================================
+var _topRedeCache = { motoboys_volume: null, motoboys_crescimento: null, empresas_volume: null, empresas_crescimento: null };
+var _topRedeCacheTs = { motoboys_volume: 0, motoboys_crescimento: 0, empresas_volume: 0, empresas_crescimento: 0 };
+var _topRedeTabAtual = { motoboys: 'volume', empresas: 'volume' };
+var _TOP_REDE_TTL_MS = 5 * 60 * 1000; // 5 min
+
+function trocarTabRede(tipo, aba){
+  _topRedeTabAtual[tipo] = aba;
+  // Atualiza visual dos botões
+  var btnVol = document.getElementById('btn-tab-'+tipo+'-volume');
+  var btnCresc = document.getElementById('btn-tab-'+tipo+'-crescimento');
+  if(btnVol && btnCresc){
+    var ativo = aba === 'volume' ? btnVol : btnCresc;
+    var inativo = aba === 'volume' ? btnCresc : btnVol;
+    ativo.style.background = 'var(--gami-blue)';
+    ativo.style.color = 'white';
+    ativo.style.borderColor = 'var(--gami-blue)';
+    inativo.style.background = 'transparent';
+    inativo.style.color = 'var(--text2)';
+    inativo.style.borderColor = 'var(--border)';
+  }
+  renderTopRede(tipo, aba);
+}
+
+async function renderTopRede(tipo, aba, forceRefresh){
+  var host = document.getElementById('top-rede-'+tipo);
+  if(!host) return;
+  
+  var cacheKey = tipo+'_'+aba;
+  var agora = Date.now();
+  var cache = _topRedeCache[cacheKey];
+  var cacheTs = _topRedeCacheTs[cacheKey];
+  var expirado = (agora - cacheTs) > _TOP_REDE_TTL_MS;
+  
+  // Renderiza cache imediato se tiver
+  if(cache && !forceRefresh){
+    _renderTopRedeHTML(host, cache, tipo, aba);
+    if(!expirado) return;
+    // Stale: atualiza em background
+  } else if(!cache){
+    host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando top '+tipo+'...</div>';
+  }
+  
+  // Busca fresh
+  try {
+    var nomeRPC;
+    if(tipo === 'motoboys'){
+      nomeRPC = aba === 'volume' ? 'top_motoboys_rede_volume' : 'top_motoboys_rede_crescimento';
+    } else {
+      nomeRPC = aba === 'volume' ? 'top_empresas_rede_volume' : 'top_empresas_rede_crescimento';
+    }
+    
+    var r = await fetch(SUPA_URL+'/rest/v1/rpc/'+nomeRPC, {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify({ p_limite: 10 })
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var lista = await r.json();
+    
+    _topRedeCache[cacheKey] = lista;
+    _topRedeCacheTs[cacheKey] = agora;
+    _renderTopRedeHTML(host, lista, tipo, aba);
+  } catch(e){
+    console.warn('[TopRede '+tipo+'/'+aba+']', e);
+    if(!cache){
+      host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">⚠️ Erro ao carregar dados.<br><span style="font-size:10px">'+e.message+'</span></div>';
+    }
+  }
+}
+
+function _renderTopRedeHTML(host, lista, tipo, aba){
+  if(!Array.isArray(lista) || lista.length === 0){
+    host.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sem dados pra este período.</div>';
+    return;
+  }
+  
+  // Mapa de cidade_slug → nome
+  function nomeCidade(slug){
+    var map = (typeof RANKING_CIDADES_MAP !== 'undefined') ? RANKING_CIDADES_MAP : {};
+    if(map[slug]) return map[slug].nome + '/' + map[slug].uf;
+    return slug;
+  }
+  
+  var html = '';
+  lista.forEach(function(item, i){
+    var pos = item.posicao || (i+1);
+    var medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos+'°';
+    var medalCor = pos === 1 ? '#FFD700' : pos === 2 ? '#C0C0C0' : pos === 3 ? '#CD7F32' : '#999';
+    
+    var nome = tipo === 'motoboys' ? item.nome_motoboy : item.nome_empresa;
+    var cidade = nomeCidade(item.cidade_slug);
+    
+    var valor, label;
+    if(tipo === 'motoboys'){
+      valor = (item.paradas_mes || 0).toLocaleString('pt-BR');
+      label = '📦 paradas';
+    } else {
+      valor = (item.solicitacoes_mes || 0).toLocaleString('pt-BR');
+      label = '📋 solicitações';
+    }
+    
+    // Variação
+    var variacaoHTML = '';
+    var v = item.variacao_pct || 0;
+    if(aba === 'crescimento' && v > 0){
+      variacaoHTML = '<span style="font-size:11px;font-weight:800;color:#1D9E75;background:rgba(29,158,117,0.12);padding:3px 9px;border-radius:10px;white-space:nowrap">⬆️ +'+v+'%</span>';
+    } else if(v > 5){
+      variacaoHTML = '<span style="font-size:11px;font-weight:700;color:#1D9E75;background:rgba(29,158,117,0.1);padding:2px 8px;border-radius:10px;white-space:nowrap">+'+v+'%</span>';
+    } else if(v < -5){
+      variacaoHTML = '<span style="font-size:11px;font-weight:700;color:#E24B4A;background:rgba(226,75,74,0.1);padding:2px 8px;border-radius:10px;white-space:nowrap">'+v+'%</span>';
+    } else {
+      variacaoHTML = '<span style="font-size:11px;color:#888;background:rgba(0,0,0,0.04);padding:2px 8px;border-radius:10px;white-space:nowrap">estável</span>';
+    }
+    
+    html += '<div style="display:flex;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid rgba(0,0,0,0.06);transition:all .2s" '
+      +'onmouseover="this.style.background=\'rgba(26,184,240,0.04)\'" onmouseout="this.style.background=\'transparent\'">'
+      // Posição
+      +'<div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:'+medalCor+';width:32px;text-align:center;flex-shrink:0">'+medal+'</div>'
+      // Nome + cidade
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:2px;display:flex;align-items:center;gap:4px">📍 '+cidade+'</div>'
+      +'</div>'
+      // Número + variação
+      +'<div style="text-align:right;min-width:90px;flex-shrink:0">'
+        +'<div style="font-size:16px;font-weight:800;color:var(--text);line-height:1">'+valor+'</div>'
+        +'<div style="font-size:9px;color:var(--text3);margin-top:2px;font-weight:600">'+label+'</div>'
+        +'<div style="margin-top:5px">'+variacaoHTML+'</div>'
+      +'</div>'
+    +'</div>';
+  });
+  
+  host.innerHTML = html;
+}
+
+// Hook: quando entrar na aba Cidades, carregar os tops
+(function(){
+  var origPanel = window.nav;
+  // Vai disparar via setTimeout quando a aba abrir — abaixo
+})();
 
 async function renderRankingCidades(forceRefresh){
   var host = document.getElementById('dash-ranking-cidades');
