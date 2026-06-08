@@ -1,4 +1,4 @@
-<!-- v25.50 - Acesso convidado Iasmin Endringer (Dealwise) - 03/06/2026 -->
+<!-- v25.51 - Diagnostico IA semanal via Supabase + Kelvin substitui Bergue - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10997,7 +10997,7 @@ var CIDADES_DATA_DEFAULT = [
   { id:'c5', nome:'Natal',      uf:'RN', gestor:'Talis Ferreira',              tel:'84988750937', status:'ativa',  inicio:'2025-03-01', campanhas:0, posts_semana:0, machine_api:'mch_api_h1QuswRFxqNGQfue0RaDgEYb', instagram_conectado:true  },
   { id:'c6', nome:'Aracaju',    uf:'SE', gestor:'Sidnen da Silva',             tel:'82998278026', status:'ativa',  inicio:'2025-01-29', campanhas:0, posts_semana:0, machine_api:'mch_api_QheteUpBZChzh7SFhbJ99S12', instagram_conectado:true  },
   { id:'c7', nome:'São Luís',   uf:'MA', gestor:'Cláudio Martins',             tel:'82999298439', status:'ativa',  inicio:'2026-03-10', campanhas:0, posts_semana:0, machine_api:'mch_api_9HUXyIM4TJtglW12J3JAfXLz', instagram_conectado:false },
-  { id:'c8', nome:'Cuiabá',     uf:'MT', gestor:'João Bergue',                 tel:'69992698433', status:'ativa',  inicio:'2025-07-09', campanhas:0, posts_semana:0, machine_api:'mch_api_4oL92M6ZF5eLxG5bHYsrrWMC', instagram_conectado:false },
+  { id:'c8', nome:'Cuiabá',     uf:'MT', gestor:'Kelvin',                 tel:'69992698433', status:'ativa',  inicio:'2025-07-09', campanhas:0, posts_semana:0, machine_api:'mch_api_4oL92M6ZF5eLxG5bHYsrrWMC', instagram_conectado:false },
   { id:'c9', nome:'Teresina',   uf:'PI', gestor:'Rosimar Siqueira (MAZINHO)',  tel:'69984356443', status:'ativa',  inicio:'2025-10-26', campanhas:0, posts_semana:0, machine_api:'mch_api_RjJkmPUGdbcrSyD4cpAiUrEo', instagram_conectado:false },
   { id:'c10',nome:'Vitória',    uf:'ES', gestor:'Wesley Dias',                 tel:'69992019665', status:'ativa',  inicio:'2026-01-17', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
   { id:'c11',nome:'Campo Grande',uf:'MS',gestor:'João Duarte',                 tel:'',            status:'atencao',inicio:'2026-05-09', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
@@ -11036,7 +11036,7 @@ function saveCidadesData(d){ try{ localStorage.setItem('gami_cidades_v3', JSON.s
 /* Reset cidades para os valores padrão atualizados (mantém apenas dados de operação) */
 function resetCidadesParaPadrao(){
   if(!confirm('Atualizar dados das cidades para os valores oficiais?\n\n' +
-             '✓ Gestores reais (Ítalo, Chayd, Harison, Raimundo, Talis, Sidnen, Cláudio, João Bergue, Mazinho, Wesley)\n' +
+             '✓ Gestores reais (Ítalo, Chayd, Harison, Raimundo, Talis, Sidnen, Cláudio, Kelvin, Mazinho, Wesley)\n' +
              '✓ Chaves Machine API por cidade\n' +
              '✓ Status Instagram conectado\n\n' +
              'Os dados de campanhas/posts serão zerados para começar do zero.')) return;
@@ -17496,13 +17496,67 @@ function _diagSemanaKey(){
 
 /* Helper: coleta métricas REAIS da Machine API a partir do cache _vgCache.
    Retorna null se a cidade não tem dados carregados (ainda não foi aberta). */
+// 🆕 Busca métricas reais via Supabase pra UMA cidade (com retry)
+async function _buscarMetricasSemanaisCidade(slug){
+  for(var t = 0; t < 3; t++){
+    if(t > 0) await new Promise(function(r){ setTimeout(r, t === 1 ? 800 : 2000); });
+    try {
+      var resp = await fetch(SUPA_URL+'/rest/v1/rpc/metricas_semanais_cidade', {
+        method:'POST',
+        headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+        body: JSON.stringify({ p_slug: slug })
+      });
+      if(resp.ok){
+        var d = await resp.json();
+        if(d && typeof d === 'object') return d;
+      }
+    } catch(e){}
+  }
+  return null;
+}
+
+// 🆕 Slug da cidade pro Supabase
+function _slugCidadeParaRPC(c){
+  if(c.slug_machine) return c.slug_machine;
+  return (c.nome||'').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+}
+
+// 🆕 Coleta métricas via Supabase (formato igual _coletarMetricasMachine pra reaproveitar prompt)
+async function _coletarMetricasSemanaisSupabase(cidade){
+  var slug = _slugCidadeParaRPC(cidade);
+  var d = await _buscarMetricasSemanaisCidade(slug);
+  if(!d || !d.corridas_semana) return null;
+  return {
+    corridasSemana: d.corridas_semana || 0,
+    corridasSemanaAnt: d.corridas_semana_ant || 0,
+    finalizadas: d.finalizadas || 0,
+    canceladas: d.canceladas || 0,
+    taxaConclusao: d.taxa_conclusao,
+    receitaEstimada: parseFloat(d.receita_estimada || 0),
+    receitaSemanaAnt: parseFloat(d.receita_semana_ant || 0),
+    ticketMedio: parseFloat(d.ticket_medio || 0),
+    crescimentoPct: d.crescimento_pct,
+    crescReceitaPct: d.cresc_receita_pct,
+    motoboysAtivos: d.motoboys_ativos || 0,
+    motoboysCadastrados: d.motoboys_cadastrados || 0,
+    empresasComPedido: d.empresas_com_pedido || 0,
+    empresasCadastradas: d.empresas_cadastradas || 0,
+    top3Empresas: (d.top3_empresas || []).map(function(e){
+      return { nome: e.nome, corridas: parseInt(e.corridas)||0, valor: parseFloat(e.valor)||0 };
+    }),
+    pctConcentracaoTop3: d.pct_concentracao_top3 || 0,
+    fonte: 'supabase'
+  };
+}
+
 function _coletarMetricasMachine(cidadeId){
   if(typeof _vgCache === 'undefined' || !_vgCache[cidadeId] || !_vgCache[cidadeId].dados) return null;
   var d = _vgCache[cidadeId].dados;
   var hojeStr = d.hojeStr;
   if(!hojeStr) return null;
   var hoje = new Date(hojeStr+'T00:00:00');
-  
   // Range: últimos 7 dias e 7 dias anteriores
   var ms = 86400000;
   var seteDiasAtras = new Date(hoje.getTime() - 7*ms).toISOString().split('T')[0];
@@ -17628,65 +17682,40 @@ async function diagnosticoSemanalCidades(forceNew){
     return;
   }
   
-  // Coleta métricas reais Machine de cada cidade permitida
+  // 🆕 Busca métricas via Supabase EM PARALELO (em batches de 4 pra não sobrecarregar)
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📡</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Buscando dados Supabase de '+cidadesPermitidas.length+' cidade(s)...</div><div id="cid-prefetch-status" style="font-size:11px;color:var(--text3);margin-top:3px">Iniciando...</div></div></div>';
+  
   var comDados = [];
   var semDados = [];
-  cidadesPermitidas.forEach(function(c){
-    var m = _coletarMetricasMachine(c.id);
-    if(m){
-      comDados.push({ cidade:c, metricas:m });
-    } else {
-      semDados.push(c);
+  var BATCH = 4;
+  for(var bi = 0; bi < cidadesPermitidas.length; bi += BATCH){
+    var batch = cidadesPermitidas.slice(bi, bi + BATCH);
+    var statusEl = document.getElementById('cid-prefetch-status');
+    if(statusEl) statusEl.textContent = 'Cidades '+(bi+1)+' a '+Math.min(bi+BATCH, cidadesPermitidas.length)+' de '+cidadesPermitidas.length+'...';
+    var resultados = await Promise.all(batch.map(function(c){
+      return _coletarMetricasSemanaisSupabase(c).then(function(m){ return { cidade:c, metricas:m }; });
+    }));
+    resultados.forEach(function(r){
+      if(r.metricas) comDados.push(r);
+      else semDados.push(r.cidade);
+    });
+    if(bi + BATCH < cidadesPermitidas.length){
+      await new Promise(function(r){ setTimeout(r, 300); });
     }
-  });
-  
-  // PRE-FETCH: se faltar dados, carrega Machine automaticamente
-  if(semDados.length){
-    painel.style.display = 'block';
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
-    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📡</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Carregando dados Machine de '+semDados.length+' cidade(s)...</div><div id="cid-prefetch-status" style="font-size:11px;color:var(--text3);margin-top:3px">Iniciando...</div><div id="cid-prefetch-bar" style="margin-top:8px;height:6px;background:#E0E0E0;border-radius:3px;overflow:hidden"><div id="cid-prefetch-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:3px;transition:width .3s"></div></div></div></div>';
-    
-    var resultadoFetch = await _prefetchMachineParaDiagnostico(semDados, function(carregadas, total, nome){
-      var pct = Math.round((carregadas/total)*100);
-      var statusEl = document.getElementById('cid-prefetch-status');
-      var fillEl = document.getElementById('cid-prefetch-fill');
-      if(statusEl) statusEl.innerHTML = carregadas+'/'+total+' carregadas · última: <strong>'+nome+'</strong>';
-      if(fillEl) fillEl.style.width = pct+'%';
-    });
-    
-    // Após pre-fetch, recoleta métricas (agora deve ter dados)
-    comDados = [];
-    var aindaSemDados = [];
-    cidadesPermitidas.forEach(function(c){
-      var m = _coletarMetricasMachine(c.id);
-      if(m){
-        comDados.push({ cidade:c, metricas:m });
-      } else {
-        aindaSemDados.push(c);
-      }
-    });
-    semDados = aindaSemDados;
   }
   
   if(!comDados.length){
-    painel.style.display = 'block';
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-left:4px solid #E24B4A;border-radius:12px';
-    painel.innerHTML = ''
-      +'<div style="display:flex;align-items:flex-start;gap:10px">'
-        +'<span style="font-size:22px">⚠️</span>'
-        +'<div style="flex:1">'
-          +'<div style="font-size:13px;font-weight:700;color:#A32D2D">Não consegui carregar dados Machine de nenhuma cidade</div>'
-          +'<div style="font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5">Pode ser problema de conexão com a API Machine ou chaves não configuradas. Veja o console (F12) pra detalhes.</div>'
-        +'</div>'
-        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
-      +'</div>';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-radius:10px';
+    painel.innerHTML = '<div style="font-size:12px;color:#A32D2D"><strong>⚠️ Sem dados em nenhuma cidade.</strong> Verifique o sync.</div>';
     return;
   }
   
   painel.style.display = 'block';
   painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:12px;animation:mv-fadeup .4s ease both';
   var range = _diagRangeSemanaAnterior();
-  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">🤖</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando diagnóstico da semana '+range.label+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Analisando '+comDados.length+' cidade(s) com dados Machine · 15-25 segundos</div></div></div>';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">🤖</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Gerando diagnóstico da semana '+range.label+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Analisando '+comDados.length+' cidade(s) · 15-25 segundos</div></div></div>';
   
   var dadosLinhas = comDados.map(function(item){
     var c = item.cidade;
@@ -19994,29 +20023,25 @@ async function diagnosticoIACidade(cidadeId, forceNew){
     return;
   }
   
-  // Coleta métricas Machine — se não tem cache, pre-carrega automaticamente
-  var m = _coletarMetricasMachine(c.id);
+  // 🆕 Busca métricas via Supabase (não Machine)
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:10px';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">📡</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Buscando dados de '+c.nome+' no Supabase...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">~3 segundos</div></div></div>';
+  setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+  
+  var m = await _coletarMetricasSemanaisSupabase(c);
+  
   if(!m){
-    painel.style.display = 'block';
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#F8F2FC,#FFFFFF);border:1.5px solid #8B5CF655;border-left:4px solid #8B5CF6;border-radius:10px';
-    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">📡</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Carregando dados Machine de '+c.nome+'...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">5-10 segundos</div></div></div>';
-    setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
-    
-    var resultadoFetch = await _prefetchMachineParaDiagnostico([c]);
-    m = _coletarMetricasMachine(c.id);
-    
-    if(!m){
-      painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-left:4px solid #E24B4A;border-radius:10px';
-      painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
-        +'<span style="font-size:20px">⚠️</span>'
-        +'<div style="flex:1">'
-          +'<div style="font-size:12px;font-weight:700;color:#A32D2D">Não consegui carregar dados Machine de '+c.nome+'</div>'
-          +'<div style="font-size:11px;color:var(--text2);margin-top:3px">Problema de conexão ou chave Machine não configurada pra esta cidade. Veja console (F12).</div>'
-        +'</div>'
-        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button>'
-      +'</div>';
-      return;
-    }
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF8EE;border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:10px';
+    painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px">'
+      +'<span style="font-size:20px">⚠️</span>'
+      +'<div style="flex:1">'
+        +'<div style="font-size:12px;font-weight:700;color:#854F0B">Sem dados de '+c.nome+' nos últimos 7 dias</div>'
+        +'<div style="font-size:11px;color:var(--text2);margin-top:3px">Não houve corridas registradas. Verifique o sync ou aguarde dados.</div>'
+      +'</div>'
+      +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button>'
+    +'</div>';
+    return;
   }
   
   painel.style.display = 'block';
@@ -37133,7 +37158,7 @@ window.MANUAL_ARTIGOS = [
 {id:'modo-foco',categoria:'comecar',titulo:'Modo foco para concentração',icone:'🎯',tags:['foco','concentração','distração','minimalista'],conteudo:'<h2>🎯 Modo Foco</h2><p>O <strong>modo foco</strong> esconde tudo que não é essencial e deixa só o que importa pro trabalho do momento.</p><h3>Quando ele ajuda</h3><ul><li>Você tem muitas tarefas e quer só ver o essencial</li><li>Está em modo de execução pesada</li><li>Vai apresentar a tela pra alguém</li><li>Tá no celular com tela pequena</li></ul><h3>Como ativar</h3><ol><li>Vá pro <strong>Dashboard</strong>.</li><li>Procure o botão flutuante <strong>🎯 no canto inferior direito</strong>.</li><li>Click — a tela muda instantaneamente.</li></ol><h3>O que aparece em modo foco</h3><ul><li>Compromissos de hoje</li><li>Seus stickies pessoais (notinhas amarelas)</li><li>Recados que precisa ver</li></ul><div class="man-callout-dica">💡 <strong>Dica Gâmi:</strong> os <strong>stickies pessoais</strong> só aparecem no modo foco. É a forma de ter "lembretes" sem poluir o dashboard normal.</div><h3>Como sair</h3><p>Click no mesmo botão 🎯 — a tela volta ao normal.</p>'},
 {id:'criar-tarefa',categoria:'tarefas',titulo:'Criar uma tarefa',icone:'➕',tags:['tarefa','criar','adicionar','to-do'],conteudo:'<h2>➕ Criar uma tarefa</h2><p>Tarefas são suas anotações de "o que preciso fazer". Funcionam como um <strong>to-do list</strong>, mas com poderes extras (delegar, prazo, sincronizar com o time).</p><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Escolha o balde: <strong>Diário</strong> (hoje), <strong>Semana</strong>, <strong>Mês</strong>, <strong>Projetos</strong> (coisas grandes).</li><li>Click no campo <strong>"+ Nova tarefa"</strong>.</li><li>Digite o texto da tarefa.</li><li>Escolha prioridade: <strong>🔴 Alta · 🟡 Média · 🔵 Baixa</strong></li><li>Escolha categoria.</li><li>Defina prazo se precisar.</li><li>Click <strong>Salvar</strong>.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> tarefas com prazo aparecem em <strong>vermelho quando atrasam</strong>.</div><h3>Editar</h3><p>Click no <strong>ícone ✏️</strong> ao lado da tarefa.</p><h3>Concluir</h3><p>Click no <strong>checkbox</strong> ao lado. Vira "concluída". Pra ver as concluídas, click em "Mostrar concluídas".</p><h3>Apagar</h3><p>Click no <strong>ícone 🗑️</strong>.</p>'},
 {id:'delegar-tarefa',categoria:'tarefas',titulo:'Delegar tarefa pra alguém',icone:'📤',tags:['delegar','passar','time','colega'],conteudo:'<h2>📤 Delegar uma tarefa</h2><p>Delegar é <strong>passar uma tarefa pra outra pessoa do time</strong>. Ela recebe na lista dela.</p><h3>Quando delegar</h3><ul><li>Você é gestor e quer atribuir algo</li><li>Algo veio pra você mas é da especialidade de outro</li><li>Quer combinar uma data limite específica</li></ul><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Click em <strong>"+ Delegar tarefa"</strong>.</li><li>Preencha: <strong>pra quem · texto · prioridade · data · mensagem opcional</strong></li><li>Click <strong>Delegar</strong>.</li></ol><h3>O que acontece depois</h3><ul><li>A tarefa aparece na lista da pessoa imediatamente</li><li>Você também vê a tarefa marcada como "delegada"</li><li>Quando ela concluir, você é notificado</li></ul><div class="man-callout-dica">💡 <strong>Boa prática Gâmi:</strong> use mensagem clara. Evite vago ("vê isso") — descreva exatamente ("postar 3 stories sobre a parceria com a empresa X até sexta às 18h").</div><h3>Ver tarefas que delegaram pra mim</h3><p>Na aba <strong>✅ Tarefas</strong>, filtre por <strong>"Recebidas"</strong>.</p>'},
-{id:'navegar-cidades',categoria:'cidades',titulo:'Página de Cidades — visão geral',icone:'🗺️',tags:['cidades','painel','operação','lista','gestor','whatsapp','instagram','diagnostico','relatorio'],conteudo:'<h2>🗺️ Página de Cidades — visão geral</h2><p>A Gâmi tá em <strong>11 cidades</strong>. Quando você clica em <strong>🏙️ Cidades</strong> no menu, abre a página com a lista completa da rede.</p><h3>Onde estamos hoje</h3><ul><li>🏖️ <strong>Maceió/AL</strong> — Chayd</li><li>🌴 <strong>Fortaleza/CE</strong> — Ítalo</li><li>🌊 <strong>João Pessoa/PB</strong> — Harison</li><li>🌅 <strong>Recife e Jaboatão/PE</strong> — Raimundo e GUGA</li><li>🐪 <strong>Natal/RN</strong> — Talis</li><li>🏝️ <strong>Aracaju/SE</strong> — Sidnen</li><li>🌳 <strong>São Luís/MA</strong> — Cláudio</li><li>🌾 <strong>Cuiabá/MT</strong> — João Bergue</li><li>🌵 <strong>Teresina/PI</strong> — Mazinho</li><li>⛰️ <strong>Vitória/ES</strong> — Wesley</li><li>🌻 <strong>Campo Grande/MS</strong> — João Duarte</li></ul><h3>3 botões grandes no topo da página</h3><p>Antes da lista, tem três botões que rodam IA em toda a rede:</p><ul><li><strong>🤖 Diagnóstico IA da semana</strong> — a IA analisa as 11 cidades e gera um panorama semanal com alertas, oportunidades e pontos de atenção da rede inteira.</li><li><strong>📅 Relatório Mensal IA</strong> — gera o relatório mensal completo de todas as cidades. Roda <strong>uma vez por mês</strong>, a partir do dia 01.</li><li><strong>📚 Histórico IA</strong> — vê todos os diagnósticos IA salvos das semanas anteriores. Útil pra comparar evolução.</li></ul><h3>Filtros e busca</h3><p>Abaixo dos botões IA, você pode filtrar:</p><ul><li><strong>🔍 Busca</strong> — digite o nome da cidade pra filtrar.</li><li><strong>Status</strong> — Todas · 🟢 Ativas · 🟡 Atenção · 🔴 Críticas.</li><li><strong>📍 Região</strong> — Todas · Nordeste · Centro-Oeste · Sudeste.</li><li><strong>🗺️ Mapa do Brasil</strong> — botão pra mostrar/esconder o mapa interativo com todas as cidades marcadas.</li></ul><h3>O card de cada cidade</h3><p>Cada cidade aparece como um <strong>card</strong> com:</p><ul><li><strong>Foto do gestor</strong> + nome dele e da cidade</li><li>Status visual (verde/amarelo/vermelho)</li><li>Tempo desde a abertura (ex: "Desde mar/2024 · 1 ano")</li><li>Curiosidade da cidade (se cadastrada)</li><li>Alertas críticos (se houver)</li></ul><h3>4 botões em cada card</h3><p>Embaixo de cada cidade tem 4 botões pequenos pra ações rápidas:</p><ol><li><strong>📱 WhatsApp</strong> — abre direto o WhatsApp do gestor da cidade.</li><li><strong>📷 Instagram</strong> — indica se o Instagram da cidade já tá conectado (rosa) ou pendente (cinza).</li><li><strong>🤖 Diagnóstico IA</strong> — análise IA semanal específica dessa cidade (não da rede inteira).</li><li><strong>📅 Relatório Mensal</strong> — relatório mensal IA dessa cidade individual.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> esses 4 botões funcionam <strong>sem abrir o painel completo</strong> da cidade. São pra ações rápidas. Pra ver tudo da cidade, clique em qualquer outro lugar do card.</div><h3>Entrar numa cidade</h3><p>Click no <strong>card da cidade</strong> (qualquer área que não seja os 4 botões) pra abrir o <strong>painel completo</strong> dela.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> dependendo do seu papel, você pode ver todas as cidades, só algumas, ou só uma. Se atende uma cidade só, o app pode abrir direto ela.</div>'},
+{id:'navegar-cidades',categoria:'cidades',titulo:'Página de Cidades — visão geral',icone:'🗺️',tags:['cidades','painel','operação','lista','gestor','whatsapp','instagram','diagnostico','relatorio'],conteudo:'<h2>🗺️ Página de Cidades — visão geral</h2><p>A Gâmi tá em <strong>11 cidades</strong>. Quando você clica em <strong>🏙️ Cidades</strong> no menu, abre a página com a lista completa da rede.</p><h3>Onde estamos hoje</h3><ul><li>🏖️ <strong>Maceió/AL</strong> — Chayd</li><li>🌴 <strong>Fortaleza/CE</strong> — Ítalo</li><li>🌊 <strong>João Pessoa/PB</strong> — Harison</li><li>🌅 <strong>Recife e Jaboatão/PE</strong> — Raimundo e GUGA</li><li>🐪 <strong>Natal/RN</strong> — Talis</li><li>🏝️ <strong>Aracaju/SE</strong> — Sidnen</li><li>🌳 <strong>São Luís/MA</strong> — Cláudio</li><li>🌾 <strong>Cuiabá/MT</strong> — Kelvin</li><li>🌵 <strong>Teresina/PI</strong> — Mazinho</li><li>⛰️ <strong>Vitória/ES</strong> — Wesley</li><li>🌻 <strong>Campo Grande/MS</strong> — João Duarte</li></ul><h3>3 botões grandes no topo da página</h3><p>Antes da lista, tem três botões que rodam IA em toda a rede:</p><ul><li><strong>🤖 Diagnóstico IA da semana</strong> — a IA analisa as 11 cidades e gera um panorama semanal com alertas, oportunidades e pontos de atenção da rede inteira.</li><li><strong>📅 Relatório Mensal IA</strong> — gera o relatório mensal completo de todas as cidades. Roda <strong>uma vez por mês</strong>, a partir do dia 01.</li><li><strong>📚 Histórico IA</strong> — vê todos os diagnósticos IA salvos das semanas anteriores. Útil pra comparar evolução.</li></ul><h3>Filtros e busca</h3><p>Abaixo dos botões IA, você pode filtrar:</p><ul><li><strong>🔍 Busca</strong> — digite o nome da cidade pra filtrar.</li><li><strong>Status</strong> — Todas · 🟢 Ativas · 🟡 Atenção · 🔴 Críticas.</li><li><strong>📍 Região</strong> — Todas · Nordeste · Centro-Oeste · Sudeste.</li><li><strong>🗺️ Mapa do Brasil</strong> — botão pra mostrar/esconder o mapa interativo com todas as cidades marcadas.</li></ul><h3>O card de cada cidade</h3><p>Cada cidade aparece como um <strong>card</strong> com:</p><ul><li><strong>Foto do gestor</strong> + nome dele e da cidade</li><li>Status visual (verde/amarelo/vermelho)</li><li>Tempo desde a abertura (ex: "Desde mar/2024 · 1 ano")</li><li>Curiosidade da cidade (se cadastrada)</li><li>Alertas críticos (se houver)</li></ul><h3>4 botões em cada card</h3><p>Embaixo de cada cidade tem 4 botões pequenos pra ações rápidas:</p><ol><li><strong>📱 WhatsApp</strong> — abre direto o WhatsApp do gestor da cidade.</li><li><strong>📷 Instagram</strong> — indica se o Instagram da cidade já tá conectado (rosa) ou pendente (cinza).</li><li><strong>🤖 Diagnóstico IA</strong> — análise IA semanal específica dessa cidade (não da rede inteira).</li><li><strong>📅 Relatório Mensal</strong> — relatório mensal IA dessa cidade individual.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> esses 4 botões funcionam <strong>sem abrir o painel completo</strong> da cidade. São pra ações rápidas. Pra ver tudo da cidade, clique em qualquer outro lugar do card.</div><h3>Entrar numa cidade</h3><p>Click no <strong>card da cidade</strong> (qualquer área que não seja os 4 botões) pra abrir o <strong>painel completo</strong> dela.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> dependendo do seu papel, você pode ver todas as cidades, só algumas, ou só uma. Se atende uma cidade só, o app pode abrir direto ela.</div>'},
 {id:'cidade-visao-geral',categoria:'cidades',titulo:'Aba Visão Geral da cidade',icone:'📊',tags:['cidade','visão geral','painel','métricas','comparativo','aniversários'],conteudo:'<h2>📊 Aba Visão Geral</h2><p>Quando você entra numa cidade, a <strong>primeira aba</strong> que abre é a <strong>📊 Visão geral</strong>. É um resumo operacional completo.</p><h3>1. Painel operacional</h3><p>No topo tem um banner pedindo pra <strong>"Carregar dados reais"</strong>. Click no botão verde — a IA puxa os dados da Machine API e mostra:</p><ul><li>Corridas hoje</li><li>Motoboys ativos</li><li>Lojas ativas</li><li>Ticket médio</li><li>Taxa de conclusão</li><li>Tempo médio por entrega</li></ul><p>Esse painel também mostra gráficos: corridas por hora, status das corridas, top lojas, top motoboys.</p><h3>2. Comparativo</h3><p>Card que mostra <strong>Hoje vs Ontem</strong> e <strong>Mês atual vs Mês anterior</strong>. Indica se a operação tá subindo ou descendo.</p><h3>3. Alertas inteligentes</h3><p>A IA detecta automaticamente situações que merecem atenção. Exemplos: queda brusca de corridas, motoboy sumiu, empresa parou de pedir, taxa de cancelamento subindo.</p><h3>4. 🎂 Aniversários próximos</h3><p>Lista os colaboradores Gâmi <strong>dessa cidade</strong> que fazem aniversário nos próximos dias. Bom pra não esquecer de parabenizar.</p><h3>5. Plano de ação IA</h3><p>No final tem um botão <strong>"Plano de ação ↗"</strong>. A IA analisa toda a cidade e gera um plano com prioridades, problemas a resolver, oportunidades de crescimento e próximos passos sugeridos.</p><div class="man-callout-dica">💡 <strong>Dica:</strong> use o Plano de Ação IA como ponto de partida pra reuniões com o time da cidade. Ele já traz o diagnóstico mastigado.</div>'},
 {id:'cidade-motoboys',categoria:'cidades',titulo:'Aba Motoboys da cidade',icone:'🏍️',tags:['motoboys','condutores','entregadores','machine','ranking','sumidos'],conteudo:'<h2>🏍️ Aba Motoboys</h2><p>Mostra <strong>tudo sobre os motoboys</strong> que rodam na cidade. Carregue os dados reais primeiro (botão no topo) pra ativar todos os blocos.</p><h3>1. 6 cards de métricas</h3><p>No topo, métricas rápidas: total de motoboys, ativos hoje, corridas concluídas, ticket médio, distribuição por área, e outros indicadores-chave.</p><h3>2. Top motoboys: dia, semana e mês</h3><p>Três colunas lado a lado mostrando quem mais rodou <strong>hoje</strong>, na <strong>semana</strong> e no <strong>mês</strong>. Click no motoboy pra ver detalhes individuais.</p><h3>3. Motoboys sumidos</h3><p>Lista de quem <strong>parou de rodar</strong> recentemente. Ajuda a recuperar entregador que tá afastando ou perdeu interesse.</p><h3>4. Destaques semanais (5 prêmios)</h3><p>A IA identifica 5 prêmios semanais entre os motoboys: mais corridas, mais consistente, melhor avaliação, recuperação da semana, novato destaque. Boa forma de gamificar.</p><h3>5. Lista completa com filtros</h3><p>Todos os motoboys da cidade com filtros por status (ativo, sumido, novo) e busca por nome.</p><h3>6. Gráfico hora × cobertura</h3><p>Visual que cruza o <strong>horário do dia</strong> com a <strong>cobertura de motoboys</strong>. Identifica buracos: tem hora que tem motoboy demais, hora que tem de menos. Use pra planejar escalas.</p><h3>7. 📢 Comunicação rápida</h3><p>Botão <strong>"Enviar WhatsApp em massa"</strong>. Manda um aviso pra todos os motoboys ativos da cidade de uma vez. Útil pra recados urgentes, mudanças de horário, campanhas.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> a comunicação em massa via WhatsApp deve ser usada com responsabilidade. Não abuse — motoboy bom pode bloquear o número se receber spam.</div>'},
 {id:'cidade-empresas',categoria:'cidades',titulo:'Aba Empresas da cidade',icone:'🏪',tags:['empresas','clientes','restaurantes','machine','analisar ia','curva abc'],conteudo:'<h2>🏪 Aba Empresas</h2><p>Esta é a aba <strong>mais densa em informações</strong>. Mostra todas as empresas/clientes da cidade. Carregue os dados reais primeiro pra ativar tudo.</p><h3>1. 6 cards de métricas no topo</h3><p>Visão rápida: total de empresas ativas, novas no mês, sumidas, em queda, em alta, e ticket médio por empresa.</p><h3>2. Top empresas: dia, semana e mês</h3><p>Três blocos lado a lado mostrando as <strong>empresas que mais pediram</strong> hoje, na semana e no mês. Cada nome é <strong>clicável</strong> — abre o detalhe da empresa (explicado abaixo).</p><h3>3. Empresas sumidas</h3><p>Lista das empresas que <strong>pararam de pedir</strong>. A IA classifica há quanto tempo cada uma sumiu (3 dias, 7 dias, 15 dias, etc). Use pra puxar conversa e recuperar cliente.</p><h3>4. Empresas em queda</h3><p>Diferente das sumidas, essas <strong>ainda pedem</strong>, mas o volume caiu. A IA compara o ritmo atual com o histórico e marca quem tá perdendo tração.</p><h3>5. Lista completa com filtros</h3><p>Todas as empresas cadastradas na Machine, com filtros e busca. Click em qualquer empresa pra abrir o detalhe.</p><h3>6. Insights operacionais</h3><p>Quadros com análise estratégica automática:</p><ul><li><strong>Curva ABC</strong> — quais empresas geram 80% da receita (A), 15% (B) e 5% (C)</li><li><strong>Em queda</strong> — quem tá diminuindo o ritmo</li><li><strong>Em alta</strong> — quem tá crescendo</li><li><strong>Novos</strong> — empresas que entraram recentemente</li><li><strong>Fantasma</strong> — empresas cadastradas mas que nunca pediram</li></ul><h3>7. Análise estratégica</h3><p>A IA cruza dados por <strong>bairro</strong>, <strong>categoria de negócio</strong> (pizzaria, hamburgueria, açaí, etc) e <strong>comparativo</strong> entre tipos de cliente.</p><h3>8. Operação avançada</h3><p>Detalhes técnicos: empresas com <strong>alta taxa de cancelamento</strong> (problema operacional) e empresas com <strong>cadastro incompleto</strong> (sem CNPJ, sem categoria, sem telefone — afeta relatórios).</p><h3>Veja também</h3><p>Pra entender o detalhe de UMA empresa específica (modal completo + botão Analisar com IA), leia o artigo <strong>"🔍 Detalhe de empresa + Analisar com IA"</strong>.</p>'},
