@@ -1,4 +1,4 @@
-<!-- v25.47 - Plano semanal v2: janela rolling, prompt rico, aviso sync - 03/06/2026 -->
+<!-- v25.48 - Plano semanal: 2 chamadas IA paralelas (evita 504) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18466,53 +18466,88 @@ async function gerarPlanoSemanaCidade(cidadeId, forceNew){
       avisoSync = '⚠️ ATENÇÃO: 0 corridas nos últimos 7 dias mas '+(ran.corridas||0)+' na janela 8-14 dias. Pode indicar problema de sincronização. Confirme com o gestor antes de alarmar.\n\n';
     }
     
-    var prompt = avisoSync
-      +'Você é o coach operacional do gestor de '+c.nome+'/'+c.uf+'. '
-      +'Gestor: '+(c.gestor||'?')+'. '
-      +'Foque em AÇÕES PRÁTICAS pra ele fazer ESTA SEMANA. Tom motivador, direto. Sem markdown.\n\n'
-      +'COMPARAÇÃO JUSTA (últimos 7 dias vs 8-14 dias atrás — mesma janela):\n'
-      +'• Últimos 7 dias: '+(ra.corridas||0)+' corridas · R$ '+parseFloat(ra.receita||0).toFixed(0)+' · '+(ra.motoboys_unicos||0)+' motoboys · '+(ra.empresas_unicas||0)+' empresas\n'
-      +'• 8-14 dias atrás: '+(ran.corridas||0)+' corridas · R$ '+parseFloat(ran.receita||0).toFixed(0)+' · '+(ran.motoboys_unicos||0)+' motoboys · '+(ran.empresas_unicas||0)+' empresas\n'
-      +'• Variação volume: '+cresc+' | Variação receita: '+crescRec+'\n'
-      +'• Finalizadas: '+(ra.finalizadas||0)+' | Canceladas: '+(ra.canceladas||0)+' | Paradas: '+(ra.paradas||0)+'\n'
-      +'• Horários pico (últimos 30d): '+horariosStr+'\n'
-      +'• Por dia da semana: '+diaStr+'\n\n'
-      +'🏪 EMPRESAS QUE SUMIRAM ('+(dados.empresas_sumidas||[]).length+' encontradas):\n'+empSumidas+'\n\n'
-      +'📉 EMPRESAS EM QUEDA ('+(dados.empresas_caindo||[]).length+' encontradas):\n'+empCaindo+'\n\n'
+    var dadosContexto = avisoSync
+      +'Coach do gestor de '+c.nome+'/'+c.uf+'. Gestor: '+(c.gestor||'?')+'. '
+      +'Tom motivador, direto. SEM markdown.\n\n'
+      +'COMPARAÇÃO (últimos 7 dias vs 8-14 dias atrás):\n'
+      +'• Últimos 7d: '+(ra.corridas||0)+' corr · R$'+parseFloat(ra.receita||0).toFixed(0)+' · '+(ra.motoboys_unicos||0)+'mb · '+(ra.empresas_unicas||0)+'emp\n'
+      +'• 8-14d atrás: '+(ran.corridas||0)+' corr · R$'+parseFloat(ran.receita||0).toFixed(0)+' · '+(ran.motoboys_unicos||0)+'mb · '+(ran.empresas_unicas||0)+'emp\n'
+      +'• Variação: '+cresc+' volume | '+crescRec+' receita\n'
+      +'• Pico: '+horariosStr+' | Por dia: '+diaStr+'\n\n';
+    
+    // PROMPT 1: Análise + Empresas
+    var promptEmpresas = dadosContexto
+      +'🏪 EMPRESAS QUE SUMIRAM:\n'+empSumidas+'\n\n'
+      +'📉 EMPRESAS EM QUEDA:\n'+empCaindo+'\n\n'
       +'🏆 TOP EMPRESAS DA SEMANA:\n'+empTop+'\n\n'
       +'📈 EMPRESAS CRESCENDO:\n'+empCrescendo+'\n\n'
-      +'🛵 MOTOBOYS SUMIDOS ('+(dados.motoboys_sumidos||[]).length+' encontrados):\n'+motSumidos+'\n\n'
+      +'Gere EXATAMENTE estas 4 seções (curtas, SEM markdown, separadas por linha em branco):\n\n'
+      +'COMO ESTÁ A SEMANA\n• 2-3 frases sobre o ritmo (saudável/atenção/crítica)\n• Mencione números-chave\n\n'
+      +'EMPRESAS PRA VISITAR\n• 5-7 empresas (NOMES) ordenadas por urgência\n• Motivo + ação + bairro/telefone se houver\n• Ex: "Visitar Burger King (Boa Vista, 81999999999) — caiu 60%, levar amostra"\n\n'
+      +'EMPRESAS PRA LIGAR\n• 3-4 empresas onde ligação resolve\n• NOMES e telefones reais\n• Motivo do contato\n\n'
+      +'EMPRESAS RECONHECER\n• Top 3 empresas (NOMES e pedidos)\n• Empresas crescendo (oportunidade)\n• 1 ideia de retenção concreta\n\n'
+      +'Tom prático. Use NOMES reais. Português Brasil.';
+    
+    // PROMPT 2: Motoboys + Plano
+    var promptMotoboys = dadosContexto
+      +'🛵 MOTOBOYS SUMIDOS:\n'+motSumidos+'\n\n'
       +'📉 MOTOBOYS EM QUEDA:\n'+motCaindo+'\n\n'
       +'🏆 TOP MOTOBOYS DA SEMANA:\n'+motTop+'\n\n'
-      +'Gere EXATAMENTE estas 8 seções (curtas, sem markdown, separadas por linha em branco):\n\n'
-      +'COMO ESTÁ A SEMANA\n• Veredito da operação em 2-3 frases (saudável, em crescimento, atenção, ou crítica)\n• Mencione os números-chave: corridas, receita, motoboys ativos\n\n'
-      +'EMPRESAS PRA VISITAR (PRIORIDADE MÁXIMA)\n• Liste 6-8 empresas (NOMES) ordenadas por urgência\n• Pra cada uma: motivo (sumiu há X dias / caiu Y%) + ação específica + responsável dentro da empresa se possível\n• Inclua o bairro e telefone quando disponíveis\n• Ex: "Visitar Burger King (Boa Vista, 81999999999) — caiu 60% nos pedidos, levar amostra de cardápio renovado"\n\n'
-      +'EMPRESAS PRA LIGAR (mais rápido que visitar)\n• 3-4 empresas onde uma ligação resolve\n• NOMES e telefones reais quando disponíveis\n• Motivo de cada contato\n\n'
-      +'MOTOBOYS PRA CONTATAR\n• Liste 5-7 motoboys (NOMES e telefones) com motivo\n• Priorize os que sumiram há mais tempo e tinham mais corridas\n• Ex: "Ligar pra Carlos Souza (81988887777) — sumiu há 5 dias, ele tinha 45 corridas/mês, descobrir se está tudo bem"\n\n'
-      +'PROSPECÇÃO E CRESCIMENTO\n• 3-4 sugestões CONCRETAS pra captar mais empresas\n• Bairros com potencial (cruze com pico de horários)\n• Estratégias pra reativar empresas dormentes\n\n'
-      +'RECONHECIMENTO DA SEMANA\n• Reconhecer top 3 motoboys (NOMES e corridas)\n• Reconhecer top 3 empresas\n• Como reconhecer (mensagem WhatsApp, post no grupo, cartão impresso)\n• 1 ideia de campanha de retenção pra empresas top\n\n'
-      +'ESCALA E OPERAÇÃO\n• Recomendação de escala baseada nos picos identificados\n• Dia(s) da semana que precisa de reforço\n• Horário(s) crítico(s)\n\n'
-      +'PRIORIDADE #1 DA SEMANA\n• Em 3-4 frases: A ação MAIS importante, com responsável, prazo e KPI\n• O que NÃO pode deixar de fazer\n\n'
-      +'Tom: prático, motivacional, específico. Use NOMES reais. Português Brasil. SEM markdown.';
+      +'Gere EXATAMENTE estas 4 seções (curtas, SEM markdown, separadas por linha em branco):\n\n'
+      +'MOTOBOYS PRA CONTATAR\n• 5-7 motoboys (NOMES e telefones) com motivo\n• Priorize sumidos com mais corridas/mês\n• Ex: "Ligar pra Carlos (81988887777) — sumiu há 5 dias, 45 corr/mês"\n\n'
+      +'MOTOBOYS RECONHECER\n• Top 3 motoboys da semana (NOMES e corridas)\n• Como reconhecer (mensagem, post grupo)\n\n'
+      +'ESCALA E OPERAÇÃO\n• Recomendação de escala baseada nos picos\n• Dia(s) com mais demanda\n• Horário(s) crítico(s)\n• Quantos motoboys reforçar\n\n'
+      +'PRIORIDADE #1 DA SEMANA\n• Em 3-4 frases: A ação MAIS importante\n• Com responsável, prazo e KPI\n• O que NÃO pode deixar de fazer\n\n'
+      +'Tom prático. Use NOMES reais. Português Brasil.';
     
-    // 3. Chama IA
-    var resp = null, ultimoErro = null;
-    for(var t = 0; t < 2 && !resp; t++){
-      try {
-        var rIa = await fetch('/.netlify/functions/blog-ai', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 2400 })
-        });
-        if(rIa.ok){ resp = rIa; break; }
-        ultimoErro = 'HTTP '+rIa.status;
-        if(rIa.status !== 504 && rIa.status !== 502 && rIa.status !== 408) break;
-      } catch(e){ ultimoErro = e.message; }
+    // 3. Chama IA — 2 chamadas EM PARALELO (cada uma ~10-15s)
+    async function chamarIA(p){
+      var resp = null, ultimoErro = null;
+      for(var t = 0; t < 2 && !resp; t++){
+        try {
+          var rIa = await fetch('/.netlify/functions/blog-ai', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ prompt: p, max_tokens: 1500 })
+          });
+          if(rIa.ok){ resp = rIa; break; }
+          ultimoErro = 'HTTP '+rIa.status;
+          if(rIa.status !== 504 && rIa.status !== 502 && rIa.status !== 408) break;
+        } catch(e){ ultimoErro = e.message; }
+      }
+      if(!resp) throw new Error(ultimoErro || 'Sem resposta');
+      var data = await resp.json();
+      var txt = _extrairTextoIA(data);
+      if(!txt) throw new Error('Resposta vazia');
+      return txt;
     }
-    if(!resp) throw new Error(ultimoErro || 'Sem resposta da IA');
     
-    var data = await resp.json();
-    var texto = _extrairTextoIA(data);
-    if(!texto) throw new Error('Resposta vazia da IA');
+    if(status) status.textContent = '⏳ Gerando análise + plano (2 chamadas paralelas)...';
+    
+    var resultadoIA = await Promise.allSettled([
+      chamarIA(promptEmpresas),
+      chamarIA(promptMotoboys)
+    ]);
+    
+    var textoEmpresas = resultadoIA[0].status === 'fulfilled' ? resultadoIA[0].value : '';
+    var textoMotoboys = resultadoIA[1].status === 'fulfilled' ? resultadoIA[1].value : '';
+    
+    if(!textoEmpresas && !textoMotoboys){
+      var err1 = resultadoIA[0].status === 'rejected' ? resultadoIA[0].reason.message : '';
+      var err2 = resultadoIA[1].status === 'rejected' ? resultadoIA[1].reason.message : '';
+      throw new Error('Ambas chamadas falharam: '+err1+' / '+err2);
+    }
+    
+    // Junta os 2 textos
+    var texto = '';
+    if(textoEmpresas) texto += textoEmpresas;
+    if(textoEmpresas && textoMotoboys) texto += '\n\n';
+    if(textoMotoboys) texto += textoMotoboys;
+    
+    // Aviso se uma falhou
+    var aviso = '';
+    if(!textoEmpresas) aviso = '⚠️ Análise de empresas falhou — tente "↻ Refazer" em 1min.\n\n';
+    if(!textoMotoboys) aviso = '⚠️ Análise de motoboys falhou — tente "↻ Refazer" em 1min.\n\n';
+    if(aviso) texto = aviso + texto;
     
     var cacheObj = {
       texto: texto,
