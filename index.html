@@ -1,4 +1,4 @@
-<!-- v25.44 - Relatorio mensal executivo completo: insights+tabela+saude+top10 - 03/06/2026 -->
+<!-- v25.46 - Relatorio individual de cidade tambem via Supabase (motoboys corretos) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18324,6 +18324,301 @@ async function relatorioMensalCidades(forceNew){
   }
 }
 
+/* ============================================================
+ * 🆕 PLANO DE AÇÃO SEMANAL — pra GESTORES
+ * Análise da Machine + sugestões IA do que fazer essa semana
+ * ============================================================ */
+
+function _planoSemanaKey(slug){
+  var hoje = new Date();
+  var inicio = new Date(hoje);
+  var dia = hoje.getDay();
+  var diff = hoje.getDate() - dia + (dia === 0 ? -6 : 1); // segunda da semana
+  inicio.setDate(diff);
+  inicio.setHours(0,0,0,0);
+  var iso = inicio.toISOString().split('T')[0];
+  return 'gami_plano_semana_'+slug+'_'+iso;
+}
+
+function _slugCidadeNorm(c){
+  if(c && c.slug_machine) return c.slug_machine;
+  return ((c && c.nome) || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+}
+
+async function gerarPlanoSemanaCidade(cidadeId, forceNew){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  var c = cidades.find(function(x){return x.id===cidadeId;});
+  if(!c){ alert('Cidade não encontrada'); return; }
+  
+  var slug = _slugCidadeNorm(c);
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  
+  // Permissões: super_admin, diretoria, gerência (sempre), gestor (só cidade dele), colaborador (NÃO)
+  if(nivel === 'colaborador' || nivel === 'visitante'){
+    if(typeof toast==='function') toast('Sem permissão pra ver Plano de Ação.', 'warn');
+    return;
+  }
+  if(nivel === 'gestor'){
+    var permitidas = (typeof cidadesQueUsuarioAtende === 'function') ? cidadesQueUsuarioAtende(u) : [];
+    var slugsPermitidos = permitidas.map(function(p){return p.toLowerCase();});
+    if(slugsPermitidos.indexOf(slug) === -1 && slugsPermitidos.indexOf((c.nome||'').toLowerCase()) === -1){
+      if(typeof toast==='function') toast('Você só vê o Plano de Ação da sua cidade.', 'warn');
+      return;
+    }
+  }
+  
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  
+  var cacheKey = _planoSemanaKey(slug);
+  
+  // Cache da semana atual
+  if(!forceNew){
+    try {
+      var raw = localStorage.getItem(cacheKey);
+      if(raw){
+        var cached = JSON.parse(raw);
+        if(cached && cached.texto){
+          _renderPlanoSemana(cached, c, true);
+          return;
+        }
+      }
+    } catch(e){}
+  }
+  
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:12px';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">📋</span><div style="flex:1"><div style="font-size:13px;font-weight:700">Analisando dados da semana em '+c.nome+'...</div><div id="plano-status" style="font-size:11px;color:var(--text3);margin-top:3px">Buscando empresas e motoboys...</div></div></div>';
+  
+  try {
+    // 1. Busca análise da semana via Supabase RPC
+    var r = await fetch(SUPA_URL+'/rest/v1/rpc/acoes_gestor_semana', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_slug: slug })
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status+' ao buscar análise');
+    var dados = await r.json();
+    
+    var status = document.getElementById('plano-status');
+    if(status) status.textContent = '⏳ Gerando recomendações com IA (15-25s)...';
+    
+    // 2. Monta prompt pra IA
+    var empSumidas = (dados.empresas_sumidas||[]).map(function(e,i){
+      return (i+1)+'. '+e.nome+' — pediu '+e.pedidos_30d+'x no mês, último pedido há '+e.dias_sem_pedir+' dias';
+    }).join('\n') || '(nenhuma)';
+    
+    var empCaindo = (dados.empresas_caindo||[]).map(function(e,i){
+      return (i+1)+'. '+e.nome+' — '+e.pedidos_anterior+' → '+e.pedidos_atual+' pedidos ('+e.queda_pct+'%)';
+    }).join('\n') || '(nenhuma)';
+    
+    var empTop = (dados.empresas_top||[]).map(function(e,i){
+      return (i+1)+'. '+e.nome+' — '+e.pedidos_semana+' pedidos';
+    }).join('\n') || '(nenhuma)';
+    
+    var motSumidos = (dados.motoboys_sumidos||[]).map(function(m,i){
+      var tel = m.telefone ? ' · '+m.telefone : '';
+      return (i+1)+'. '+m.nome+tel+' — '+m.corridas_mes+' corr/mês, sem rodar há '+m.dias_sem_rodar+' dias';
+    }).join('\n') || '(nenhum)';
+    
+    var motTop = (dados.motoboys_top||[]).map(function(m,i){
+      return (i+1)+'. '+m.nome+' — '+m.corridas+' corridas';
+    }).join('\n') || '(nenhum)';
+    
+    var ra = dados.resumo_atual || {};
+    var ran = dados.resumo_anterior || {};
+    var cresc = dados.crescimento_pct !== null ? (dados.crescimento_pct >= 0 ? '+' : '')+dados.crescimento_pct+'%' : 'sem comparativo';
+    
+    var hp = dados.horario_pico;
+    var diasNomes = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    var horarioStr = hp ? diasNomes[hp.dia_semana]+' às '+hp.hora+'h ('+hp.qtd+' corridas)' : 'sem dado';
+    
+    var prompt = 'Você é o coach operacional do gestor de '+c.nome+'/'+c.uf+'. '
+      +'Gestor: '+(c.gestor||'?')+'. '
+      +'Foque em AÇÕES PRÁTICAS pra ele fazer ESTA SEMANA. Tom motivador, direto. Sem markdown.\n\n'
+      +'NÚMEROS DA SEMANA ATUAL ('+dados.semana_inicio+' até '+dados.semana_fim+'):\n'
+      +'• '+(ra.corridas||0)+' corridas (semana anterior: '+(ran.corridas||0)+' · '+cresc+')\n'
+      +'• Receita: R$ '+parseFloat(ra.receita||0).toFixed(2)+'\n'
+      +'• '+(ra.motoboys_unicos||0)+' motoboys diferentes rodaram\n'
+      +'• '+(ra.empresas_unicas||0)+' empresas diferentes pediram\n'
+      +'• Horário de pico (últimos 30d): '+horarioStr+'\n\n'
+      +'EMPRESAS QUE SUMIRAM (pediam regular e não pedem há vários dias):\n'+empSumidas+'\n\n'
+      +'EMPRESAS EM QUEDA (pedem menos esta semana vs anterior):\n'+empCaindo+'\n\n'
+      +'EMPRESAS TOP DA SEMANA (manter satisfeitas):\n'+empTop+'\n\n'
+      +'MOTOBOYS SUMIDOS (rodam bem mas não estão rodando):\n'+motSumidos+'\n\n'
+      +'MOTOBOYS TOP DA SEMANA (reconhecer):\n'+motTop+'\n\n'
+      +'Gere EXATAMENTE estas 6 seções (curtas, separadas por linha em branco, sem markdown):\n\n'
+      +'COMO ESTÁ A SEMANA\n(2-3 frases sobre o ritmo da operação)\n\n'
+      +'EMPRESAS PRA VISITAR/RECUPERAR\n• Liste 3-5 empresas (NOMES) com motivo e ação específica\n• Ex: "Visitar Burger King — caiu 60%, levar amostra de cardápio"\n\n'
+      +'MOTOBOYS PRA CONTATAR\n• Liste 3-5 motoboys (NOMES e telefones quando houver) com motivo\n• Ex: "Ligar pra João Silva (11999999999) — sumiu há 5 dias, descobrir se está tudo bem"\n\n'
+      +'PROSPECÇÃO E CRESCIMENTO\n• 2-3 sugestões pra captar mais empresas ou aumentar volume\n\n'
+      +'RECONHECIMENTO DA SEMANA\n• Reconheça publicamente top 2 motoboys e top 2 empresas (NOMES)\n• Sugestões de como reconhecer (mensagem, post)\n\n'
+      +'PRIORIDADE #1 DA SEMANA\n(A ação mais importante em 2 frases — o que NÃO pode deixar de fazer)\n\n'
+      +'Tom: prático, motivacional, específico. Português Brasil.';
+    
+    // 3. Chama IA
+    var resp = null, ultimoErro = null;
+    for(var t = 0; t < 2 && !resp; t++){
+      try {
+        var rIa = await fetch('/.netlify/functions/blog-ai', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ prompt: prompt, max_tokens: 1800 })
+        });
+        if(rIa.ok){ resp = rIa; break; }
+        ultimoErro = 'HTTP '+rIa.status;
+        if(rIa.status !== 504 && rIa.status !== 502 && rIa.status !== 408) break;
+      } catch(e){ ultimoErro = e.message; }
+    }
+    if(!resp) throw new Error(ultimoErro || 'Sem resposta da IA');
+    
+    var data = await resp.json();
+    var texto = _extrairTextoIA(data);
+    if(!texto) throw new Error('Resposta vazia da IA');
+    
+    var cacheObj = {
+      texto: texto,
+      gerado_em: new Date().toISOString(),
+      gerado_por: (u && u.nome) || (u && u.email) || 'usuário',
+      cidade_slug: slug,
+      cidade_nome: c.nome,
+      cidade_uf: c.uf,
+      gestor: c.gestor,
+      semana_inicio: dados.semana_inicio,
+      semana_fim: dados.semana_fim,
+      dados_brutos: dados,
+      tipo_relatorio: 'plano_semana'
+    };
+    try { localStorage.setItem(cacheKey, JSON.stringify(cacheObj)); } catch(e){}
+    
+    _renderPlanoSemana(cacheObj, c, false);
+    if(typeof toast === 'function') toast('Plano de Ação Semanal de '+c.nome+' pronto!', 'success');
+    
+  } catch(e){
+    var msg = e.message || '';
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o plano:</strong> '+msg+'<div style="margin-top:8px;font-size:11px">Veja console (F12) pra detalhes.</div></div>';
+    console.error('[Plano Semana]', e);
+  }
+}
+
+function _renderPlanoSemana(obj, cidade, fromCache){
+  var painel = document.getElementById('cid-diagnostico-ia');
+  if(!painel) return;
+  
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+  var podeForcar = nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia' || nivel === 'gestor';
+  
+  var dataFmt = new Date(obj.gerado_em).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  var semanaFmt = '';
+  try {
+    var sInicio = new Date(obj.semana_inicio+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
+    var sFim = new Date(obj.semana_fim+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
+    semanaFmt = sInicio+' até '+sFim;
+  } catch(e){ semanaFmt = obj.semana_inicio+' até '+obj.semana_fim; }
+  
+  // Separa texto e prioridade
+  var texto = obj.texto || '';
+  var prioridadeMatch = texto.match(/PRIORIDADE #?1.*?\n([\s\S]+?)$/i);
+  var textoSemPrior = texto;
+  var prioridadeTxt = '';
+  if(prioridadeMatch){
+    prioridadeTxt = prioridadeMatch[1].trim();
+    textoSemPrior = texto.replace(prioridadeMatch[0], '').trim();
+  }
+  
+  // KPIs da semana
+  var dados = obj.dados_brutos || {};
+  var ra = dados.resumo_atual || {};
+  var ran = dados.resumo_anterior || {};
+  var cresc = dados.crescimento_pct;
+  var crescBg, crescCor, crescTxt;
+  if(cresc === null || cresc === undefined){ crescBg='#F5F5F5'; crescCor='#999'; crescTxt='—'; }
+  else if(cresc >= 0){ crescBg='#EAF7F1'; crescCor='#1D9E75'; crescTxt='+'+cresc+'%'; }
+  else { crescBg='#FCEBEB'; crescCor='#E24B4A'; crescTxt=cresc+'%'; }
+  
+  var kpis = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">'
+    +'<div style="padding:10px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-radius:8px;text-align:center"><div style="font-size:9px;font-weight:700;color:#0E7AB8;text-transform:uppercase;letter-spacing:.5px">Corridas semana</div><div style="font-size:20px;font-weight:900;color:var(--text);margin-top:3px">'+(ra.corridas||0).toLocaleString('pt-BR')+'</div><div style="font-size:10px;color:'+crescCor+';margin-top:2px;font-weight:700">'+crescTxt+' vs anterior</div></div>'
+    +'<div style="padding:10px;background:linear-gradient(135deg,#F4FBF7,#FFFFFF);border:1px solid #1D9E7533;border-radius:8px;text-align:center"><div style="font-size:9px;font-weight:700;color:#136B4D;text-transform:uppercase;letter-spacing:.5px">Receita</div><div style="font-size:20px;font-weight:900;color:var(--text);margin-top:3px">R$ '+parseFloat(ra.receita||0).toFixed(0)+'</div><div style="font-size:10px;color:var(--text3);margin-top:2px">esta semana</div></div>'
+    +'<div style="padding:10px;background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border:1px solid #EF9F2733;border-radius:8px;text-align:center"><div style="font-size:9px;font-weight:700;color:#854F0B;text-transform:uppercase;letter-spacing:.5px">Motoboys ativos</div><div style="font-size:20px;font-weight:900;color:var(--text);margin-top:3px">'+(ra.motoboys_unicos||0)+'</div><div style="font-size:10px;color:var(--text3);margin-top:2px">diferentes rodaram</div></div>'
+    +'<div style="padding:10px;background:linear-gradient(135deg,#F5F3FE,#FFFFFF);border:1px solid #7F77DD33;border-radius:8px;text-align:center"><div style="font-size:9px;font-weight:700;color:#5C53C7;text-transform:uppercase;letter-spacing:.5px">Empresas ativas</div><div style="font-size:20px;font-weight:900;color:var(--text);margin-top:3px">'+(ra.empresas_unicas||0)+'</div><div style="font-size:10px;color:var(--text3);margin-top:2px">diferentes pediram</div></div>'
+    +'</div>';
+  
+  // Listas estruturadas (paralelo ao texto IA)
+  function listaCompactaCard(titulo, emoji, cor, items, renderItem){
+    if(!items || !items.length) return '';
+    var linhas = items.slice(0,5).map(function(it, i){
+      return '<div style="padding:7px 10px;border-bottom:1px solid var(--border);font-size:11.5px;color:var(--text)"><span style="font-weight:700;color:'+cor+';margin-right:6px">'+(i+1)+'.</span>'+renderItem(it)+'</div>';
+    }).join('');
+    return '<div style="background:var(--surface);border:1px solid '+cor+'22;border-radius:8px;overflow:hidden">'
+      +'<div style="padding:8px 12px;background:'+cor+'11;font-size:11px;font-weight:700;color:'+cor+';text-transform:uppercase;letter-spacing:.4px;display:flex;align-items:center;gap:6px">'+emoji+' '+titulo+'</div>'
+      +linhas
+    +'</div>';
+  }
+  
+  var listas = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px">'
+    +listaCompactaCard('Empresas Sumidas', '🏪', '#E24B4A', dados.empresas_sumidas, function(e){
+      return '<strong>'+e.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">há '+e.dias_sem_pedir+' dias · '+e.pedidos_30d+' pedidos/mês</div>';
+    })
+    +listaCompactaCard('Empresas em Queda', '📉', '#EF9F27', dados.empresas_caindo, function(e){
+      return '<strong>'+e.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">'+e.pedidos_anterior+' → '+e.pedidos_atual+' ('+e.queda_pct+'%)</div>';
+    })
+    +listaCompactaCard('Motoboys Sumidos', '🛵', '#E24B4A', dados.motoboys_sumidos, function(m){
+      var tel = m.telefone ? ' · 📞 '+m.telefone : '';
+      return '<strong>'+m.nome+'</strong>'+tel+'<div style="font-size:10px;color:var(--text3);margin-top:1px">há '+m.dias_sem_rodar+' dias · '+m.corridas_mes+' corr/mês</div>';
+    })
+    +listaCompactaCard('Top da Semana', '🏆', '#1D9E75', dados.motoboys_top, function(m){
+      return '<strong>'+m.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">'+m.corridas+' corridas</div>';
+    })
+    +'</div>';
+  
+  var prioridadeHtml = prioridadeTxt ? 
+    '<div style="margin-top:14px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
+      +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 PRIORIDADE #1 DA SEMANA</div>'
+      +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+prioridadeTxt.replace(/</g,'&lt;')+'</div>'
+    +'</div>' : '';
+  
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:12px';
+  painel.innerHTML = ''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:200px">'
+        +'<span style="font-size:22px">📋</span>'
+        +'<div>'
+          +'<div style="font-size:13px;font-weight:700;color:var(--text)">Plano de Ação Semanal · '+cidade.nome+'/'+cidade.uf+'</div>'
+          +'<div style="font-size:10px;color:var(--text3)">'
+            +(fromCache ? '✓ Gerado em '+dataFmt+' por '+(obj.gerado_por||'?') : '🆕 Recém-gerado em '+dataFmt)
+            +' · 📅 '+semanaFmt
+            +(obj.gestor ? ' · 👤 Gestor: '+obj.gestor : '')
+          +'</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        +(podeForcar ? '<button onclick="if(confirm(\'Sobrescrever o plano da semana?\'))gerarPlanoSemanaCidade(\''+cidade.id+'\',true)" style="padding:5px 10px;border:1px solid #EF9F27;border-radius:6px;background:white;color:#854F0B;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">↻ Refazer</button>' : '')
+        +'<button onclick="copiarPlanoSemana()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit">📋 Copiar</button>'
+        +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
+      +'</div>'
+    +'</div>'
+    +kpis
+    +listas
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+textoSemPrior.replace(/</g,'&lt;')+'</div>'
+    +prioridadeHtml;
+  
+  window._planoSemanaTexto = texto;
+}
+
+function copiarPlanoSemana(){
+  var t = window._planoSemanaTexto;
+  if(!t){ if(typeof toast==='function') toast('Nada pra copiar.', 'warn'); return; }
+  try {
+    navigator.clipboard.writeText(t);
+    if(typeof toast==='function') toast('Plano copiado!', 'success');
+  } catch(e){
+    if(typeof toast==='function') toast('Erro ao copiar.', 'error');
+  }
+}
+
 /* Relatório Mensal INDIVIDUAL — 1 cidade */
 async function relatorioMensalCidade(cidadeId, forceNew){
   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
@@ -18357,24 +18652,81 @@ async function relatorioMensalCidade(cidadeId, forceNew){
   }
   
   var range = _relRangeMesAnterior();
-  var m = _coletarMetricasMachineMensal(c.id);
   
-  // Se não tem dados do mês passado, pre-fetch 60 dias
-  if(!m || m.corridasMes === 0){
-    painel.style.display = 'block';
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:10px';
-    painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">📡</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Carregando dados Machine de '+c.nome+' (60 dias)...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">15-25 segundos</div></div></div>';
-    setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
-    
-    await _prefetchMachineParaDiagnostico([c], null, 60);
-    m = _coletarMetricasMachineMensal(c.id);
-    
-    if(!m || m.corridasMes === 0){
-      painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF8EE;border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:10px';
-      painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:20px">⚠️</span><div style="flex:1"><div style="font-size:12px;font-weight:700;color:#854F0B">Sem corridas no mês '+range.label+' em '+c.nome+'</div><div style="font-size:11px;color:var(--text2);margin-top:3px">Não houve atividade registrada no mês passado nessa cidade.</div></div><button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button></div>';
-      return;
-    }
+  // 🆕 Migrado pra Supabase RPC metricas_mensais_cidade (não usa mais cache Machine)
+  function slugCidadeRel(cid){
+    if(cid.slug_machine) return cid.slug_machine;
+    return (cid.nome||'').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
   }
+  
+  painel.style.display = 'block';
+  painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:10px';
+  painel.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">📡</span><div style="flex:1"><div style="font-size:12px;font-weight:700">Buscando dados de '+c.nome+' no Supabase...</div><div style="font-size:11px;color:var(--text3);margin-top:3px">~3 segundos</div></div></div>';
+  setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
+  
+  // Busca via RPC Supabase com retry
+  var slugC = slugCidadeRel(c);
+  var anoMesC = { ano: range.inicio.getFullYear(), mes: range.inicio.getMonth() + 1 };
+  
+  var dadosRPC = null;
+  var ultimoErroRPC = null;
+  for(var tRpc = 0; tRpc < 3 && !dadosRPC; tRpc++){
+    if(tRpc > 0){
+      await new Promise(function(rs){ setTimeout(rs, tRpc === 1 ? 800 : 2000); });
+    }
+    try {
+      var rRpc = await fetch(SUPA_URL+'/rest/v1/rpc/metricas_mensais_cidade', {
+        method:'POST',
+        headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+        body: JSON.stringify({ p_slug: slugC, p_ano: anoMesC.ano, p_mes: anoMesC.mes })
+      });
+      if(rRpc.ok){
+        dadosRPC = await rRpc.json();
+        break;
+      }
+      ultimoErroRPC = 'HTTP '+rRpc.status;
+    } catch(e){ ultimoErroRPC = e.message; }
+  }
+  
+  if(!dadosRPC || !dadosRPC.total_corridas){
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:14px;background:#FFF8EE;border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:10px';
+    painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:10px"><span style="font-size:20px">⚠️</span><div style="flex:1"><div style="font-size:12px;font-weight:700;color:#854F0B">Sem corridas no mês '+range.label+' em '+c.nome+'</div><div style="font-size:11px;color:var(--text2);margin-top:3px">Não houve atividade registrada no mês passado nessa cidade no Supabase. Pode ser necessário sync retroativo.</div></div><button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px">×</button></div>';
+    return;
+  }
+  
+  // Mapeia dados da RPC pro formato esperado
+  var m = {
+    corridasMes: dadosRPC.total_corridas || 0,
+    finalizadas: dadosRPC.finalizadas || 0,
+    canceladas: dadosRPC.canceladas || 0,
+    taxaConclusao: dadosRPC.taxa_conclusao,
+    receita: parseFloat(dadosRPC.receita || 0),
+    ticketMedio: parseFloat(dadosRPC.ticket_medio || 0),
+    corridasMesAnt: dadosRPC.total_corridas_anterior || 0,
+    receitaAnt: parseFloat(dadosRPC.receita_anterior || 0),
+    crescCorridasPct: dadosRPC.crescimento_corridas_pct,
+    crescReceitaPct: dadosRPC.crescimento_receita_pct,
+    motoboysAtivosCount: dadosRPC.motoboys_ativos || 0,
+    motoboysCadastrados: dadosRPC.motoboys_cadastrados || 0,
+    empresasComPedido: dadosRPC.empresas_com_pedido || 0,
+    empresasCadastradas: dadosRPC.empresas_cadastradas || 0,
+    top10MotoboysComNome: (dadosRPC.top_motoboys || []).map(function(mb){
+      return { nome: mb.nome, corridas: parseInt(mb.corridas)||0 };
+    }),
+    top5Empresas: (dadosRPC.top_empresas || []).map(function(e){
+      return { nome: e.nome, corridas: parseInt(e.pedidos)||0 };
+    }),
+    distribuicaoMotoboys: {
+      ate5: (dadosRPC.motoboys_distribuicao||{}).ate_5 || 0,
+      de5a20: (dadosRPC.motoboys_distribuicao||{}).de_5_a_20 || 0,
+      de20a50: (dadosRPC.motoboys_distribuicao||{}).de_20_a_50 || 0,
+      mais50: (dadosRPC.motoboys_distribuicao||{}).mais_50 || 0
+    },
+    pctConcentracaoTop5: dadosRPC.concentracao_top5_pct || 0,
+    corridasPorDiaSemana: [0,0,0,0,0,0,0] // não disponível na RPC, usa array zerado
+  };
   
   painel.style.display = 'block';
   painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1.5px solid #1AB8F055;border-left:4px solid #1AB8F0;border-radius:12px;animation:mv-fadeup .4s ease both';
@@ -18382,8 +18734,8 @@ async function relatorioMensalCidade(cidadeId, forceNew){
   setTimeout(function(){ painel.scrollIntoView({behavior:'smooth', block:'start'}); }, 80);
   
   var ticketFmt = m.ticketMedio > 0 ? 'R$ '+m.ticketMedio.toFixed(2) : '?';
-  var crescCorrTxt = m.crescCorridasPct !== null ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : '~';
-  var crescRecTxt = m.crescReceitaPct !== null ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : '~';
+  var crescCorrTxt = m.crescCorridasPct !== null && m.crescCorridasPct !== undefined ? (m.crescCorridasPct>=0?'+':'')+m.crescCorridasPct+'%' : '~';
+  var crescRecTxt = m.crescReceitaPct !== null && m.crescReceitaPct !== undefined ? (m.crescReceitaPct>=0?'+':'')+m.crescReceitaPct+'%' : '~';
   var top5EmpTxt = (m.top5Empresas||[]).slice(0,5).map(function(e,i){
     return (i+1)+'.'+e.nome+' ('+e.corridas+')';
   }).join(' | ') || '—';
@@ -18399,26 +18751,24 @@ async function relatorioMensalCidade(cidadeId, forceNew){
   var prompt = 'Consultor sênior Gâmi Delivery. Gere RELATÓRIO MENSAL de '+c.nome+'/'+c.uf+' ('+range.label+') pra diretoria e gestor '+(c.gestor||'')+'. '
     +'NÃO mencione marketing/posts/redes sociais — não disponível. Foco operação, receita, motoboys, empresas, riscos.\n\n'
     +'DADOS DE '+range.label+':\n'
-    +'• Corridas: '+m.corridasMes+' ('+crescCorrTxt+' vs '+m.corridasMesAnt+' retrasado)\n'
+    +'• Corridas: '+m.corridasMes+' ('+crescCorrTxt+' vs '+m.corridasMesAnt+' mês anterior)\n'
     +'• Finalizadas '+m.finalizadas+' | Canceladas '+m.canceladas+' | Conclusão '+(m.taxaConclusao !== null ? m.taxaConclusao+'%' : '?')+'\n'
-    +'• Receita R$'+m.receita.toFixed(0)+' ('+crescRecTxt+' vs R$'+m.receitaAnt.toFixed(0)+' retrasado) | Ticket '+ticketFmt+'\n'
-    +'• Motoboys: '+m.motoboysAtivosCount+'/'+m.motoboysCadastrados+' ('+pctMot+'% engajados)\n'
-    +'• Empresas: '+m.empresasComPedido+'/'+m.empresasCadastradas+' ('+pctEmp+'% ativadas)\n'
-    +'• Pico: '+diasSem[picoDia]+'\n'
+    +'• Receita R$'+m.receita.toFixed(0)+' ('+crescRecTxt+' vs R$'+m.receitaAnt.toFixed(0)+' anterior) | Ticket '+ticketFmt+'\n'
+    +'• Motoboys: '+m.motoboysAtivosCount+' ATIVOS de '+m.motoboysCadastrados+' cadastrados ('+pctMot+'% engajados)\n'
+    +'• Empresas: '+m.empresasComPedido+' que pediram de '+m.empresasCadastradas+' cadastradas ('+pctEmp+'% ativadas)\n'
     +'• TOP 5 EMPRESAS (concentração '+m.pctConcentracaoTop5+'%): '+top5EmpTxt+'\n'
     +'• TOP 10 MOTOBOYS: '+top10MotoTxt+'\n'
-    +'• Distribuição motoboys: '+(distMoto.ate5||0)+' até5/'+(distMoto.de5a20||0)+' 5-20/'+(distMoto.de20a50||0)+' 20-50/'+(distMoto.mais50||0)+' 50+\n\n'
-    +'Estrutura OBRIGATÓRIA (9 seções, sem markdown, sem ## ou **):\n\n'
+    +'• Distribuição motoboys (por nº corridas/mês): '+(distMoto.ate5||0)+' até5/'+(distMoto.de5a20||0)+' 5-20/'+(distMoto.de20a50||0)+' 20-50/'+(distMoto.mais50||0)+' 50+\n\n'
+    +'Estrutura OBRIGATÓRIA (8 seções, sem markdown, sem ## ou **):\n\n'
     +'RESUMO EXECUTIVO DO MÊS\n(3-4 bullets curtos: números-chave + veredito)\n\n'
     +'RESUMO FINANCEIRO\n• Receita e variação\n• Ticket médio\n• Receita não capturada\n\n'
-    +'PERFORMANCE OPERACIONAL\n(volume, conclusão, cancelamentos, dia de pico — 2-3 frases)\n\n'
+    +'PERFORMANCE OPERACIONAL\n(volume, conclusão, cancelamentos — 2-3 frases)\n\n'
     +'SAÚDE DA REDE\n• Engajamento motoboys ('+pctMot+'%) — saudável ou preocupante?\n• Ativação empresas ('+pctEmp+'%)\n• Riscos identificados\n\n'
-    +'MOTOBOYS DA CIDADE\n• Engajamento da rede: '+m.motoboysAtivosCount+' ativos de '+m.motoboysCadastrados+' cadastrados ('+pctMot+'%)\n• Distribuição por performance: '+(distMoto.mais50||0)+' elite (50+), '+(distMoto.de20a50||0)+' alta (20-50), '+(distMoto.de5a20||0)+' média (5-20), '+(distMoto.ate5||0)+' baixa (até 5)\n• Análise da saúde operacional: a rede está balanceada ou com risco de dependência em poucos motoboys?\n• A cidade tem motoboys "carregando" a operação? Qual a margem de crescimento?\n• Recomendação rápida: precisa atrair mais motoboys, treinar quem tá em baixa performance, ou tudo saudável?\n\n'
+    +'MOTOBOYS DA CIDADE\n• Engajamento da rede: '+m.motoboysAtivosCount+' ATIVOS de '+m.motoboysCadastrados+' cadastrados ('+pctMot+'%)\n• Distribuição por performance: '+(distMoto.mais50||0)+' elite (50+), '+(distMoto.de20a50||0)+' alta (20-50), '+(distMoto.de5a20||0)+' média (5-20), '+(distMoto.ate5||0)+' baixa (até 5)\n• Análise da saúde operacional: a rede está balanceada ou com risco de dependência em poucos motoboys?\n\n'
     +'CONCENTRAÇÃO E DEPENDÊNCIA\n('+m.pctConcentracaoTop5+'% nas top 5 — saudável? Risco?)\n\n'
     +'RECONHECIMENTOS DO MÊS\n'
-    +'🏆 TOP 5 EMPRESAS:\n• Liste as 5 empresas que mais pediram (use os dados fornecidos acima — nome e número de corridas)\n• Comente brevemente o destaque do mês entre elas\n\n'
-    +'🏍️ TOP 5 MOTOBOYS:\n• Liste os 5 motoboys que mais rodaram (use os dados fornecidos acima — nome e número de corridas)\n• Destaque especial pro motoboy do mês (o #1)\n\n'
-    +'Encerre com uma frase de celebração pra apresentar na próxima reunião da cidade.\n\n'
+    +'🏆 TOP 5 EMPRESAS: liste as 5 com nome e número de corridas dos dados acima\n'
+    +'🏍️ TOP 5 MOTOBOYS: liste os 5 com nome e corridas. Destaque o motoboy do mês (#1)\n\n'
     +'AÇÕES PRO PRÓXIMO MÊS\n• 5 ações concretas pra '+(c.gestor||'gestor')+'\n\n'
     +'META PRINCIPAL DO MÊS\n(1 meta mensurável em 3 frases com KPI)\n\n'
     +'Tom executivo, direto. Português Brasil.';
@@ -20021,10 +20371,11 @@ function renderCidadesGrid(){
       </div>
       ${curiosidade ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;line-height:1.4;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:8px">💡 ${curiosidade}</div>` : ''}
       ${temCritico ? `<div style="margin-bottom:8px;font-size:10px;color:#A32D2D;background:#FCEBEB;padding:4px 8px;border-radius:5px">⚠ ${alertas.find(a=>a.type==='critico').msg}</div>` : ''}
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;align-items:stretch">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:5px;align-items:stretch">
         ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border-radius:6px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:600;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📱 WhatsApp</a>` : `<span></span>`}
         ${c.instagram_conectado ? `<span title="Instagram conectado" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border-radius:6px;background:#FCE4EC;color:#AD1457;font-weight:600;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📷 Instagram</span>` : `<span title="Instagram pendente" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border-radius:6px;background:#F5F5F5;color:#888;font-weight:500;line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">📷 IG pendente</span>`}
         <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border:none;border-radius:6px;background:#8B5CF6;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25);line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Análise IA semanal desta cidade">🤖 Diagnóstico IA</button>
+        <button onclick="event.stopPropagation();gerarPlanoSemanaCidade('${c.id}')" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border:none;border-radius:6px;background:#EF9F27;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(239,159,39,.25);line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Plano de ação desta semana pra esta cidade">📋 Plano Semanal</button>
         <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}')" style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:7px 4px;border:none;border-radius:6px;background:#1AB8F0;color:white;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(26,184,240,.25);line-height:1.2;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Relatório mensal IA desta cidade">📅 Relatório Mensal</button>
       </div>
     </div>`;
