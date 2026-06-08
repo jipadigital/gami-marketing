@@ -1,4 +1,4 @@
-<!-- v25.53 - Forca gestor da cidade vir do default - 03/06/2026 -->
+<!-- v25.54 - Prospeccao restrita (Ana, Ingridy, Micaelle) sem valores - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -432,6 +432,25 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 .nav-item.active{background:var(--gami-blue);color:var(--gami-navy);font-weight:600;border:none}
 .nav-item.active::before{content:'';position:absolute;left:0;top:5px;bottom:5px;width:0;background:transparent;border-radius:0}
 .nav-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* 🆕 Esconde elementos monetários pra usuários sem permissão (prospecção) */
+body[data-sem-valores="true"] .gami-valor,
+body[data-sem-valores="true"] .gami-receita,
+body[data-sem-valores="true"] [data-tipo="valor"]{
+  display:none !important;
+}
+body[data-sem-valores="true"] .gami-valor-inline{
+  visibility:hidden;
+  position:relative;
+}
+body[data-sem-valores="true"] .gami-valor-inline::after{
+  content:'***';
+  visibility:visible;
+  position:absolute;
+  left:0; top:0;
+  color:var(--text3);
+  font-weight:600;
+}
 .nav-badge{margin-left:auto;font-size:10px;background:var(--gami-blue);color:var(--gami-navy);border-radius:10px;padding:1px 6px;font-weight:700}
 .nav-item.active .nav-badge{background:var(--gami-navy);color:var(--gami-blue)}
 .sb-footer{margin-top:auto;padding:12px;border-top:1px solid rgba(26,184,240,.15);color:#9DB4D6}
@@ -1139,6 +1158,11 @@ function detectarNivelPermissao(usuario){
     return 'diretoria';
   }
   
+  // 🆕 PROSPECÇÃO RESTRITA — vê só cidades específicas, sem valores monetários
+  if(usuario.email && PROSPECCAO_RESTRITA[usuario.email.toLowerCase()]){
+    return 'prospeccao';
+  }
+  
   var cargo = (usuario.cargo || '').toLowerCase();
   var categoria = (usuario.categoria || '').toLowerCase();
   
@@ -1158,8 +1182,26 @@ function detectarNivelPermissao(usuario){
   return 'colaborador';
 }
 
+// 🆕 PROSPECÇÃO RESTRITA — emails que veem só algumas cidades, sem valores monetários
+var PROSPECCAO_RESTRITA = {
+  'ana.flavia@gami.com.br':   ['maceio'],
+  'ingridy@gami.com.br':      ['campo-grande'],
+  'micaelle@gami.com.br':     ['joao-pessoa', 'recife', 'natal']
+};
+
 /* Matriz de permissões — define quem vê o quê */
 var MATRIZ_PERMISSOES = {
+  prospeccao: {
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','portal','relatorios','manual'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false,
+    ocultar_valores: true
+  },
   super_admin: {
     abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
     pode_editar_pessoas: true,
@@ -1297,7 +1339,13 @@ function cidadesQueUsuarioAtende(u){
   // 👔 Gerência → todas
   if(nivel === 'gerencia') return null;
   
-  // 👤 Prospecção (Vanessa) → todas
+  // 🆕 🎯 PROSPECÇÃO RESTRITA → cidades específicas do mapa
+  if(nivel === 'prospeccao'){
+    var email = (u.email || '').toLowerCase();
+    return PROSPECCAO_RESTRITA[email] || [];
+  }
+  
+  // 👤 Prospecção genérica (cargo "Prospecção") → todas
   if(cargo.indexOf('prospec') >= 0) return null;
   
   // Se cidade é array → vê as do array
@@ -1385,6 +1433,15 @@ function aplicarPermissoesVisuais(){
   
   var nivel = detectarNivelPermissao(u);
   var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
+  
+  // 🆕 Marca body se usuário não pode ver valores (CSS esconde .gami-valor)
+  if(perms.ocultar_valores){
+    document.body.setAttribute('data-sem-valores', 'true');
+    // Ativa mascarador de valores monetários
+    if(typeof _ativarMascaraValores === 'function') _ativarMascaraValores();
+  } else {
+    document.body.removeAttribute('data-sem-valores');
+  }
   
   // 🆕 Garantia: super_admin SEMPRE vê todos os itens
   if(nivel === 'super_admin'){
@@ -17473,6 +17530,74 @@ function _gestorAvatarHTML(nomeGestor, size){
 
 /* Helper robusto: extrai texto da resposta da Netlify function blog-ai
    (funciona com qualquer formato: content[], content string, text, completion, message, etc) */
+// 🆕 Helper: mascara valores monetários em texto (pra usuários sem permissão)
+function _filtrarValoresMonetarios(texto){
+  if(!texto) return texto;
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return texto;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  var perms = (typeof MATRIZ_PERMISSOES !== 'undefined') ? (MATRIZ_PERMISSOES[nivel] || {}) : {};
+  if(!perms.ocultar_valores) return texto;
+  
+  // Remove valores monetários: "R$ 123,45", "R$ 1.234,56", "R$ 1.234.567,89", "R$1234"
+  var filtrado = texto
+    .replace(/R\$\s*[\d.]+,\d{2}/g, 'R$ ***')
+    .replace(/R\$\s*[\d.]+k?/g, 'R$ ***')
+    .replace(/receita\s+de\s+\d+/gi, 'receita relevante')
+    .replace(/ticket\s+(médio\s+)?(de\s+)?(R\$\s*)?[\d.,]+/gi, 'ticket médio (oculto)')
+    .replace(/faturamento\s+de\s+\d+/gi, 'faturamento (oculto)');
+  return filtrado;
+}
+
+// 🆕 MutationObserver que mascara R$ no DOM automaticamente (pra prospecção)
+var _maskObserverAtivo = false;
+function _ativarMascaraValores(){
+  if(_maskObserverAtivo) return;
+  _maskObserverAtivo = true;
+  
+  function mascararTextNode(node){
+    if(!node || !node.nodeValue) return;
+    if(/R\$\s*[\d.,]+k?/i.test(node.nodeValue)){
+      node.nodeValue = node.nodeValue.replace(/R\$\s*[\d.,]+k?/gi, 'R$ ***');
+    }
+  }
+  
+  function escanear(root){
+    if(document.body.getAttribute('data-sem-valores') !== 'true') return;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: function(node){
+        var parent = node.parentNode;
+        if(!parent) return NodeFilter.FILTER_REJECT;
+        var tag = parent.tagName;
+        if(tag === 'SCRIPT' || tag === 'STYLE' || tag === 'INPUT' || tag === 'TEXTAREA') return NodeFilter.FILTER_REJECT;
+        return /R\$\s*[\d.,]+/i.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      }
+    });
+    var node, list = [];
+    while(node = walker.nextNode()) list.push(node);
+    list.forEach(mascararTextNode);
+  }
+  
+  // Escaneia tudo agora
+  escanear(document.body);
+  
+  // Observa mudanças no DOM
+  var obs = new MutationObserver(function(mutations){
+    if(document.body.getAttribute('data-sem-valores') !== 'true') return;
+    mutations.forEach(function(m){
+      if(m.type === 'childList'){
+        m.addedNodes.forEach(function(n){
+          if(n.nodeType === 1) escanear(n);
+          else if(n.nodeType === 3) mascararTextNode(n);
+        });
+      } else if(m.type === 'characterData'){
+        mascararTextNode(m.target);
+      }
+    });
+  });
+  obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+
 function _extrairTextoIA(data){
   if(!data) return '';
   var texto = '';
@@ -17925,7 +18050,7 @@ function _renderDiagnosticoSemanal(diagObj, fromCache){
     +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Este diagnóstico foi gerado uma vez nesta semana. O próximo será disponibilizado na próxima segunda-feira.</div>' : '')
     +avisoSemDados
     +kpisHtml
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+_filtrarValoresMonetarios(textoSemAposta).replace(/</g,'&lt;')+'</div>'
     +apostaHtml;
   window._cidDiagnosticoTexto = diagObj.texto;
 }
@@ -18739,7 +18864,7 @@ function _renderPlanoSemana(obj, cidade, fromCache){
   var prioridadeHtml = prioridadeTxt ? 
     '<div style="margin-top:14px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
       +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 PRIORIDADE #1 DA SEMANA</div>'
-      +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+prioridadeTxt.replace(/</g,'&lt;')+'</div>'
+      +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+_filtrarValoresMonetarios(prioridadeTxt).replace(/</g,'&lt;')+'</div>'
     +'</div>' : '';
   
   painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border:1.5px solid #EF9F2755;border-left:4px solid #EF9F27;border-radius:12px';
@@ -18766,7 +18891,7 @@ function _renderPlanoSemana(obj, cidade, fromCache){
     +avisoSyncHTML
     +kpis
     +listas
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+textoSemPrior.replace(/</g,'&lt;')+'</div>'
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+_filtrarValoresMonetarios(textoSemPrior).replace(/</g,'&lt;')+'</div>'
     +prioridadeHtml;
   
   window._planoSemanaTexto = texto;
@@ -19307,10 +19432,10 @@ function _renderRelatorioMensal(diagObj, fromCache){
           +'<div style="font-size:10px;color:var(--text3)">Operação independente (painel Machine separado)</div>'
         +'</div>'
       +'</div>'
-      +'<div style="padding:14px;background:linear-gradient(180deg,#F5F9FF,#FFFFFF);border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid #1AB8F022">'+textoCGsemAposta.replace(/</g,'&lt;')+'</div>'
+      +'<div style="padding:14px;background:linear-gradient(180deg,#F5F9FF,#FFFFFF);border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid #1AB8F022">'+_filtrarValoresMonetarios(textoCGsemAposta).replace(/</g,'&lt;')+'</div>'
       + (textoCGAposta ? '<div style="margin-top:12px;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:10px;position:relative">'
         +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎯 APOSTA · CAMPO GRANDE</div>'
-        +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+textoCGAposta.replace(/</g,'&lt;')+'</div>'
+        +'<div style="font-size:12.5px;line-height:1.7;color:#854F0B;font-weight:500;white-space:pre-line;margin-top:4px">'+_filtrarValoresMonetarios(textoCGAposta).replace(/</g,'&lt;')+'</div>'
       +'</div>' : '')
     +'</div>';
   }
@@ -19352,7 +19477,7 @@ function _renderRelatorioMensal(diagObj, fromCache){
     +kpisHtml
     +seccoesVisuais
     +'<div style="font-size:13px;font-weight:800;color:var(--text);font-family:Syne,sans-serif;margin:18px 0 8px 0;display:flex;align-items:center;gap:8px">📊 ANÁLISE EXECUTIVA DA REDE <span style="font-weight:500;font-family:inherit;color:var(--text3);font-size:11px">('+(diagObj.cidades_analisadas - (diagObj.texto_campo_grande?1:0))+' cidades, sem Campo Grande)</span><div style="flex:1;height:1px;background:linear-gradient(90deg,var(--gami-blue)33,transparent)"></div></div>'
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+_filtrarValoresMonetarios(textoSemAposta).replace(/</g,'&lt;')+'</div>'
     +apostaHtml
     +blocoCG;
   window._cidDiagnosticoTexto = (diagObj.texto || '') + (diagObj.texto_campo_grande ? '\n\n\n=== CAMPO GRANDE ===\n\n'+diagObj.texto_campo_grande : '');
@@ -20249,7 +20374,7 @@ function _renderDiagnosticoCidade(c, diagObj, fromCache){
     +'</div>'
     +(fromCache ? '<div style="padding:8px 11px;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:6px;font-size:10.5px;color:#0E7AB8;margin-bottom:10px">💡 Análise desta semana — todos da equipe veem a mesma. Próxima na segunda-feira.</div>' : '')
     +kpisHtml
-    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+textoSemAposta.replace(/</g,'&lt;')+'</div>'
+    +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line">'+_filtrarValoresMonetarios(textoSemAposta).replace(/</g,'&lt;')+'</div>'
     +apostaHtml;
   window._cidDiagnosticoTexto = diagObj.texto;
 }
