@@ -1,4 +1,4 @@
-<!-- v25.57 - Esconde Gerar Post e Editar Pessoa pra nao-admin - 03/06/2026 -->
+<!-- v25.58 - Lock contra publicacao dupla no client - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -36994,15 +36994,36 @@ async function agSalvar(){
 }
 
 /* ===== Ações ===== */
+var _AG_PUBLICANDO = {};  // 🆕 lock por id pra não publicar 2x
 async function agPublicarAgora(id){
+  // 🆕 PROTEÇÃO contra duplo clique / dupla execução
+  if(_AG_PUBLICANDO[id]){
+    alert('⏳ Este post já está sendo publicado. Aguarde a confirmação.');
+    return;
+  }
   if(!confirm('Publicar este post AGORA?')) return;
+  
+  _AG_PUBLICANDO[id] = true;
+  
+  // Desabilita TODOS os botões com onclick que mencionam esse id (visual)
+  var botoes = document.querySelectorAll('button[onclick*="'+id+'"]');
+  botoes.forEach(function(b){ b.disabled = true; b.style.opacity = '0.5'; });
+  
   try{
-    var r = await fetch('/.netlify/functions/posts-publicar?id='+encodeURIComponent(id));
+    var r = await fetch('/.netlify/functions/posts-publicar?id='+encodeURIComponent(id), {
+      method: 'POST',  // 🆕 POST em vez de GET (evita pre-fetch do browser/proxy duplicar)
+      headers: {'Content-Type':'application/json', 'X-Idempotency-Key': id+'-'+Date.now()}
+    });
     var d = await r.json();
     if(d.ok) alert('✅ Publicado! '+(d.permalink||''));
     else alert('❌ Falha: '+(d.erro||d.error||'erro'));
   }catch(e){ alert('Erro: '+e.message); }
-  agRecarregar();
+  finally{
+    // Mantém lock por 30s pra cobrir caso de cron ainda processando
+    setTimeout(function(){ delete _AG_PUBLICANDO[id]; }, 30000);
+    botoes.forEach(function(b){ b.disabled = false; b.style.opacity = ''; });
+    agRecarregar();
+  }
 }
 async function agCancelar(id){
   if(!confirm('Cancelar este agendamento?')) return;
