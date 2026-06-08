@@ -1,4 +1,4 @@
-<!-- v25.46 - Relatorio individual de cidade tambem via Supabase (motoboys corretos) - 03/06/2026 -->
+<!-- v25.47 - Plano semanal v2: janela rolling, prompt rico, aviso sync - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -18406,58 +18406,94 @@ async function gerarPlanoSemanaCidade(cidadeId, forceNew){
     var status = document.getElementById('plano-status');
     if(status) status.textContent = '⏳ Gerando recomendações com IA (15-25s)...';
     
-    // 2. Monta prompt pra IA
-    var empSumidas = (dados.empresas_sumidas||[]).map(function(e,i){
-      return (i+1)+'. '+e.nome+' — pediu '+e.pedidos_30d+'x no mês, último pedido há '+e.dias_sem_pedir+' dias';
+    // 2. Monta prompt pra IA - V2 RICO
+    var empSumidas = (dados.empresas_sumidas||[]).slice(0,12).map(function(e,i){
+      var bairro = e.bairro ? ' ('+e.bairro+')' : '';
+      var tel = e.telefone ? ' · 📞 '+e.telefone : '';
+      return (i+1)+'. '+e.nome+bairro+tel+' — pediu '+e.pedidos_30d+'x no mês, sem pedido há '+e.dias_sem_pedir+' dias';
     }).join('\n') || '(nenhuma)';
     
-    var empCaindo = (dados.empresas_caindo||[]).map(function(e,i){
-      return (i+1)+'. '+e.nome+' — '+e.pedidos_anterior+' → '+e.pedidos_atual+' pedidos ('+e.queda_pct+'%)';
+    var empCaindo = (dados.empresas_caindo||[]).slice(0,8).map(function(e,i){
+      var bairro = e.bairro ? ' ('+e.bairro+')' : '';
+      var tel = e.telefone ? ' · 📞 '+e.telefone : '';
+      return (i+1)+'. '+e.nome+bairro+tel+' — '+e.pedidos_anterior+' → '+e.pedidos_atual+' pedidos ('+e.variacao_pct+'%)';
     }).join('\n') || '(nenhuma)';
     
-    var empTop = (dados.empresas_top||[]).map(function(e,i){
-      return (i+1)+'. '+e.nome+' — '+e.pedidos_semana+' pedidos';
+    var empTop = (dados.empresas_top||[]).slice(0,10).map(function(e,i){
+      var bairro = e.bairro ? ' ('+e.bairro+')' : '';
+      return (i+1)+'. '+e.nome+bairro+' — '+e.pedidos+' pedidos';
     }).join('\n') || '(nenhuma)';
     
-    var motSumidos = (dados.motoboys_sumidos||[]).map(function(m,i){
-      var tel = m.telefone ? ' · '+m.telefone : '';
-      return (i+1)+'. '+m.nome+tel+' — '+m.corridas_mes+' corr/mês, sem rodar há '+m.dias_sem_rodar+' dias';
+    var empCrescendo = (dados.empresas_crescendo||[]).slice(0,5).map(function(e,i){
+      return (i+1)+'. '+e.nome+' — '+e.pedidos_anterior+' → '+e.pedidos_atual+' (+'+e.variacao_pct+'%)';
+    }).join('\n') || '(nenhuma significativa)';
+    
+    var motSumidos = (dados.motoboys_sumidos||[]).slice(0,12).map(function(m,i){
+      var tel = m.telefone ? ' · 📞 '+m.telefone : '';
+      return (i+1)+'. '+m.nome+tel+' — '+m.corridas_30d+' corridas/mês, sem rodar há '+m.dias_sem_rodar+' dias';
     }).join('\n') || '(nenhum)';
     
-    var motTop = (dados.motoboys_top||[]).map(function(m,i){
-      return (i+1)+'. '+m.nome+' — '+m.corridas+' corridas';
+    var motCaindo = (dados.motoboys_caindo||[]).slice(0,8).map(function(m,i){
+      var tel = m.telefone ? ' · 📞 '+m.telefone : '';
+      return (i+1)+'. '+m.nome+tel+' — '+m.corridas_anterior+' → '+m.corridas_atual+' ('+m.variacao_pct+'%)';
+    }).join('\n') || '(nenhum)';
+    
+    var motTop = (dados.motoboys_top||[]).slice(0,10).map(function(m,i){
+      var tel = m.telefone ? ' · 📞 '+m.telefone : '';
+      return (i+1)+'. '+m.nome+tel+' — '+m.corridas+' corridas';
     }).join('\n') || '(nenhum)';
     
     var ra = dados.resumo_atual || {};
     var ran = dados.resumo_anterior || {};
-    var cresc = dados.crescimento_pct !== null ? (dados.crescimento_pct >= 0 ? '+' : '')+dados.crescimento_pct+'%' : 'sem comparativo';
+    var cresc = dados.crescimento_pct !== null && dados.crescimento_pct !== undefined ? (dados.crescimento_pct >= 0 ? '+' : '')+dados.crescimento_pct+'%' : 'sem comparativo';
+    var crescRec = dados.crescimento_receita_pct !== null && dados.crescimento_receita_pct !== undefined ? (dados.crescimento_receita_pct >= 0 ? '+' : '')+dados.crescimento_receita_pct+'%' : 'sem comparativo';
     
-    var hp = dados.horario_pico;
     var diasNomes = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
-    var horarioStr = hp ? diasNomes[hp.dia_semana]+' às '+hp.hora+'h ('+hp.qtd+' corridas)' : 'sem dado';
+    var hpArr = (dados.horarios_pico || []).slice(0,3);
+    var horariosStr = hpArr.length ? hpArr.map(function(hp){
+      return diasNomes[hp.dia_semana]+' '+hp.hora+'h ('+hp.qtd+' corridas)';
+    }).join(', ') : 'sem dado';
     
-    var prompt = 'Você é o coach operacional do gestor de '+c.nome+'/'+c.uf+'. '
+    // Resumo dia da semana
+    var porDia = dados.por_dia_semana || [];
+    var diaStr = porDia.map(function(d){
+      return diasNomes[d.dia_semana].substring(0,3)+': '+d.qtd;
+    }).join(' | ');
+    
+    // Detecta se a semana atual está zerada (sync travado?)
+    var avisoSync = '';
+    if((ra.corridas||0) === 0 && (ran.corridas||0) > 0){
+      avisoSync = '⚠️ ATENÇÃO: 0 corridas nos últimos 7 dias mas '+(ran.corridas||0)+' na janela 8-14 dias. Pode indicar problema de sincronização. Confirme com o gestor antes de alarmar.\n\n';
+    }
+    
+    var prompt = avisoSync
+      +'Você é o coach operacional do gestor de '+c.nome+'/'+c.uf+'. '
       +'Gestor: '+(c.gestor||'?')+'. '
       +'Foque em AÇÕES PRÁTICAS pra ele fazer ESTA SEMANA. Tom motivador, direto. Sem markdown.\n\n'
-      +'NÚMEROS DA SEMANA ATUAL ('+dados.semana_inicio+' até '+dados.semana_fim+'):\n'
-      +'• '+(ra.corridas||0)+' corridas (semana anterior: '+(ran.corridas||0)+' · '+cresc+')\n'
-      +'• Receita: R$ '+parseFloat(ra.receita||0).toFixed(2)+'\n'
-      +'• '+(ra.motoboys_unicos||0)+' motoboys diferentes rodaram\n'
-      +'• '+(ra.empresas_unicas||0)+' empresas diferentes pediram\n'
-      +'• Horário de pico (últimos 30d): '+horarioStr+'\n\n'
-      +'EMPRESAS QUE SUMIRAM (pediam regular e não pedem há vários dias):\n'+empSumidas+'\n\n'
-      +'EMPRESAS EM QUEDA (pedem menos esta semana vs anterior):\n'+empCaindo+'\n\n'
-      +'EMPRESAS TOP DA SEMANA (manter satisfeitas):\n'+empTop+'\n\n'
-      +'MOTOBOYS SUMIDOS (rodam bem mas não estão rodando):\n'+motSumidos+'\n\n'
-      +'MOTOBOYS TOP DA SEMANA (reconhecer):\n'+motTop+'\n\n'
-      +'Gere EXATAMENTE estas 6 seções (curtas, separadas por linha em branco, sem markdown):\n\n'
-      +'COMO ESTÁ A SEMANA\n(2-3 frases sobre o ritmo da operação)\n\n'
-      +'EMPRESAS PRA VISITAR/RECUPERAR\n• Liste 3-5 empresas (NOMES) com motivo e ação específica\n• Ex: "Visitar Burger King — caiu 60%, levar amostra de cardápio"\n\n'
-      +'MOTOBOYS PRA CONTATAR\n• Liste 3-5 motoboys (NOMES e telefones quando houver) com motivo\n• Ex: "Ligar pra João Silva (11999999999) — sumiu há 5 dias, descobrir se está tudo bem"\n\n'
-      +'PROSPECÇÃO E CRESCIMENTO\n• 2-3 sugestões pra captar mais empresas ou aumentar volume\n\n'
-      +'RECONHECIMENTO DA SEMANA\n• Reconheça publicamente top 2 motoboys e top 2 empresas (NOMES)\n• Sugestões de como reconhecer (mensagem, post)\n\n'
-      +'PRIORIDADE #1 DA SEMANA\n(A ação mais importante em 2 frases — o que NÃO pode deixar de fazer)\n\n'
-      +'Tom: prático, motivacional, específico. Português Brasil.';
+      +'COMPARAÇÃO JUSTA (últimos 7 dias vs 8-14 dias atrás — mesma janela):\n'
+      +'• Últimos 7 dias: '+(ra.corridas||0)+' corridas · R$ '+parseFloat(ra.receita||0).toFixed(0)+' · '+(ra.motoboys_unicos||0)+' motoboys · '+(ra.empresas_unicas||0)+' empresas\n'
+      +'• 8-14 dias atrás: '+(ran.corridas||0)+' corridas · R$ '+parseFloat(ran.receita||0).toFixed(0)+' · '+(ran.motoboys_unicos||0)+' motoboys · '+(ran.empresas_unicas||0)+' empresas\n'
+      +'• Variação volume: '+cresc+' | Variação receita: '+crescRec+'\n'
+      +'• Finalizadas: '+(ra.finalizadas||0)+' | Canceladas: '+(ra.canceladas||0)+' | Paradas: '+(ra.paradas||0)+'\n'
+      +'• Horários pico (últimos 30d): '+horariosStr+'\n'
+      +'• Por dia da semana: '+diaStr+'\n\n'
+      +'🏪 EMPRESAS QUE SUMIRAM ('+(dados.empresas_sumidas||[]).length+' encontradas):\n'+empSumidas+'\n\n'
+      +'📉 EMPRESAS EM QUEDA ('+(dados.empresas_caindo||[]).length+' encontradas):\n'+empCaindo+'\n\n'
+      +'🏆 TOP EMPRESAS DA SEMANA:\n'+empTop+'\n\n'
+      +'📈 EMPRESAS CRESCENDO:\n'+empCrescendo+'\n\n'
+      +'🛵 MOTOBOYS SUMIDOS ('+(dados.motoboys_sumidos||[]).length+' encontrados):\n'+motSumidos+'\n\n'
+      +'📉 MOTOBOYS EM QUEDA:\n'+motCaindo+'\n\n'
+      +'🏆 TOP MOTOBOYS DA SEMANA:\n'+motTop+'\n\n'
+      +'Gere EXATAMENTE estas 8 seções (curtas, sem markdown, separadas por linha em branco):\n\n'
+      +'COMO ESTÁ A SEMANA\n• Veredito da operação em 2-3 frases (saudável, em crescimento, atenção, ou crítica)\n• Mencione os números-chave: corridas, receita, motoboys ativos\n\n'
+      +'EMPRESAS PRA VISITAR (PRIORIDADE MÁXIMA)\n• Liste 6-8 empresas (NOMES) ordenadas por urgência\n• Pra cada uma: motivo (sumiu há X dias / caiu Y%) + ação específica + responsável dentro da empresa se possível\n• Inclua o bairro e telefone quando disponíveis\n• Ex: "Visitar Burger King (Boa Vista, 81999999999) — caiu 60% nos pedidos, levar amostra de cardápio renovado"\n\n'
+      +'EMPRESAS PRA LIGAR (mais rápido que visitar)\n• 3-4 empresas onde uma ligação resolve\n• NOMES e telefones reais quando disponíveis\n• Motivo de cada contato\n\n'
+      +'MOTOBOYS PRA CONTATAR\n• Liste 5-7 motoboys (NOMES e telefones) com motivo\n• Priorize os que sumiram há mais tempo e tinham mais corridas\n• Ex: "Ligar pra Carlos Souza (81988887777) — sumiu há 5 dias, ele tinha 45 corridas/mês, descobrir se está tudo bem"\n\n'
+      +'PROSPECÇÃO E CRESCIMENTO\n• 3-4 sugestões CONCRETAS pra captar mais empresas\n• Bairros com potencial (cruze com pico de horários)\n• Estratégias pra reativar empresas dormentes\n\n'
+      +'RECONHECIMENTO DA SEMANA\n• Reconhecer top 3 motoboys (NOMES e corridas)\n• Reconhecer top 3 empresas\n• Como reconhecer (mensagem WhatsApp, post no grupo, cartão impresso)\n• 1 ideia de campanha de retenção pra empresas top\n\n'
+      +'ESCALA E OPERAÇÃO\n• Recomendação de escala baseada nos picos identificados\n• Dia(s) da semana que precisa de reforço\n• Horário(s) crítico(s)\n\n'
+      +'PRIORIDADE #1 DA SEMANA\n• Em 3-4 frases: A ação MAIS importante, com responsável, prazo e KPI\n• O que NÃO pode deixar de fazer\n\n'
+      +'Tom: prático, motivacional, específico. Use NOMES reais. Português Brasil. SEM markdown.';
     
     // 3. Chama IA
     var resp = null, ultimoErro = null;
@@ -18465,7 +18501,7 @@ async function gerarPlanoSemanaCidade(cidadeId, forceNew){
       try {
         var rIa = await fetch('/.netlify/functions/blog-ai', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 1800 })
+          body: JSON.stringify({ prompt: prompt, max_tokens: 2400 })
         });
         if(rIa.ok){ resp = rIa; break; }
         ultimoErro = 'HTTP '+rIa.status;
@@ -18512,12 +18548,27 @@ function _renderPlanoSemana(obj, cidade, fromCache){
   var podeForcar = nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia' || nivel === 'gestor';
   
   var dataFmt = new Date(obj.gerado_em).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-  var semanaFmt = '';
+  var periodoFmt = '';
   try {
-    var sInicio = new Date(obj.semana_inicio+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
-    var sFim = new Date(obj.semana_fim+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
-    semanaFmt = sInicio+' até '+sFim;
-  } catch(e){ semanaFmt = obj.semana_inicio+' até '+obj.semana_fim; }
+    var dIni = obj.dados_brutos && obj.dados_brutos.periodo_atual_inicio;
+    var dFim = obj.dados_brutos && obj.dados_brutos.periodo_atual_fim;
+    if(dIni && dFim){
+      var fIni = new Date(dIni+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
+      var fFim = new Date(dFim+'T00:00:00').toLocaleDateString('pt-BR', { day:'2-digit', month:'short' });
+      periodoFmt = fIni+' até '+fFim;
+    } else if(obj.semana_inicio && obj.semana_fim){
+      periodoFmt = obj.semana_inicio+' até '+obj.semana_fim;
+    }
+  } catch(e){}
+  
+  // 🚨 Aviso se zero corridas (sync travado?)
+  var dados2 = obj.dados_brutos || {};
+  var ra2 = dados2.resumo_atual || {};
+  var ran2 = dados2.resumo_anterior || {};
+  var avisoSyncHTML = '';
+  if((ra2.corridas||0) === 0 && (ran2.corridas||0) > 0){
+    avisoSyncHTML = '<div style="margin-bottom:10px;padding:10px 12px;background:#FFF5F5;border-left:4px solid #E24B4A;border-radius:6px"><strong style="color:#A32D2D;font-size:11.5px">⚠️ Atenção:</strong> <span style="font-size:11px;color:var(--text)">0 corridas nos últimos 7 dias mas '+(ran2.corridas||0)+' na janela 8-14 dias. Pode indicar problema de sincronização. Verifique antes de tomar ações alarmistas.</span></div>';
+  }
   
   // Separa texto e prioridade
   var texto = obj.texto || '';
@@ -18560,17 +18611,29 @@ function _renderPlanoSemana(obj, cidade, fromCache){
   
   var listas = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px">'
     +listaCompactaCard('Empresas Sumidas', '🏪', '#E24B4A', dados.empresas_sumidas, function(e){
-      return '<strong>'+e.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">há '+e.dias_sem_pedir+' dias · '+e.pedidos_30d+' pedidos/mês</div>';
+      var bairro = e.bairro ? '📍 '+e.bairro+' · ' : '';
+      var tel = e.telefone ? ' 📞 '+e.telefone : '';
+      return '<strong>'+e.nome+'</strong>'+tel+'<div style="font-size:10px;color:var(--text3);margin-top:1px">'+bairro+'há '+e.dias_sem_pedir+' dias · '+e.pedidos_30d+' pedidos/mês</div>';
     })
     +listaCompactaCard('Empresas em Queda', '📉', '#EF9F27', dados.empresas_caindo, function(e){
-      return '<strong>'+e.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">'+e.pedidos_anterior+' → '+e.pedidos_atual+' ('+e.queda_pct+'%)</div>';
+      var bairro = e.bairro ? '📍 '+e.bairro+' · ' : '';
+      var tel = e.telefone ? ' 📞 '+e.telefone : '';
+      return '<strong>'+e.nome+'</strong>'+tel+'<div style="font-size:10px;color:var(--text3);margin-top:1px">'+bairro+(e.pedidos_anterior)+' → '+(e.pedidos_atual)+' ('+(e.variacao_pct)+'%)</div>';
     })
     +listaCompactaCard('Motoboys Sumidos', '🛵', '#E24B4A', dados.motoboys_sumidos, function(m){
-      var tel = m.telefone ? ' · 📞 '+m.telefone : '';
-      return '<strong>'+m.nome+'</strong>'+tel+'<div style="font-size:10px;color:var(--text3);margin-top:1px">há '+m.dias_sem_rodar+' dias · '+m.corridas_mes+' corr/mês</div>';
+      var tel = m.telefone ? ' 📞 '+m.telefone : '';
+      return '<strong>'+m.nome+'</strong>'+tel+'<div style="font-size:10px;color:var(--text3);margin-top:1px">há '+m.dias_sem_rodar+' dias · '+m.corridas_30d+' corr/mês</div>';
     })
-    +listaCompactaCard('Top da Semana', '🏆', '#1D9E75', dados.motoboys_top, function(m){
-      return '<strong>'+m.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">'+m.corridas+' corridas</div>';
+    +listaCompactaCard('Top Motoboys Semana', '🏆', '#1D9E75', dados.motoboys_top, function(m){
+      var tel = m.telefone ? ' 📞 '+m.telefone : '';
+      return '<strong>'+m.nome+'</strong>'+tel+'<div style="font-size:10px;color:var(--text3);margin-top:1px">'+m.corridas+' corridas</div>';
+    })
+    +listaCompactaCard('Top Empresas Semana', '🏪', '#1AB8F0', dados.empresas_top, function(e){
+      var bairro = e.bairro ? '📍 '+e.bairro : '';
+      return '<strong>'+e.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">'+bairro+' · '+e.pedidos+' pedidos</div>';
+    })
+    +listaCompactaCard('Empresas Crescendo', '📈', '#7F77DD', dados.empresas_crescendo, function(e){
+      return '<strong>'+e.nome+'</strong><div style="font-size:10px;color:var(--text3);margin-top:1px">'+e.pedidos_anterior+' → '+e.pedidos_atual+' (+'+e.variacao_pct+'%)</div>';
     })
     +'</div>';
   
@@ -18589,7 +18652,7 @@ function _renderPlanoSemana(obj, cidade, fromCache){
           +'<div style="font-size:13px;font-weight:700;color:var(--text)">Plano de Ação Semanal · '+cidade.nome+'/'+cidade.uf+'</div>'
           +'<div style="font-size:10px;color:var(--text3)">'
             +(fromCache ? '✓ Gerado em '+dataFmt+' por '+(obj.gerado_por||'?') : '🆕 Recém-gerado em '+dataFmt)
-            +' · 📅 '+semanaFmt
+            +' · 📅 '+periodoFmt+' (últimos 7 dias)'
             +(obj.gestor ? ' · 👤 Gestor: '+obj.gestor : '')
           +'</div>'
         +'</div>'
@@ -18600,6 +18663,7 @@ function _renderPlanoSemana(obj, cidade, fromCache){
         +'<button onclick="document.getElementById(\'cid-diagnostico-ia\').style.display=\'none\'" style="width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px">×</button>'
       +'</div>'
     +'</div>'
+    +avisoSyncHTML
     +kpis
     +listas
     +'<div style="padding:14px;background:white;border-radius:8px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;border:1px solid var(--border)">'+textoSemPrior.replace(/</g,'&lt;')+'</div>'
