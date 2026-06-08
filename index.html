@@ -1,4 +1,4 @@
-<!-- v25.51 - Diagnostico IA semanal via Supabase + Kelvin substitui Bergue - 03/06/2026 -->
+<!-- v25.52 - Migracao auto Joao Bergue para Kelvin - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11032,6 +11032,31 @@ function getCidadesData(){
   }catch(e){ return JSON.parse(JSON.stringify(CIDADES_DATA_DEFAULT)); }
 }
 function saveCidadesData(d){ try{ localStorage.setItem('gami_cidades_v3', JSON.stringify(d)); }catch(e){} }
+
+// 🆕 Migração automática de gestores (corrige cache local com nomes antigos)
+(function _migrarGestores(){
+  try {
+    var raw = localStorage.getItem('gami_cidades_v3');
+    if(!raw) return;
+    var arr = JSON.parse(raw);
+    if(!Array.isArray(arr)) return;
+    var TROCAS = {
+      'João Bergue': 'Kelvin',
+      'Joao Bergue': 'Kelvin'
+    };
+    var trocou = false;
+    arr.forEach(function(c){
+      if(c.gestor && TROCAS[c.gestor]){
+        c.gestor = TROCAS[c.gestor];
+        trocou = true;
+      }
+    });
+    if(trocou){
+      localStorage.setItem('gami_cidades_v3', JSON.stringify(arr));
+      console.log('[Migração] Cache de gestores atualizado');
+    }
+  } catch(e){}
+})();
 
 /* Reset cidades para os valores padrão atualizados (mantém apenas dados de operação) */
 function resetCidadesParaPadrao(){
