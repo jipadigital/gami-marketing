@@ -1,4 +1,4 @@
-<!-- v25.60 - Modulo Estoque Fisico ETAPA 2 (aba + login PIN + visao geral) - 03/06/2026 -->
+<!-- v25.61 - Controle de Estoque normaliza id e nome - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1717,7 +1717,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas<span class="nav-badge" id="badge-pess">2</span></div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
-    <div class="nav-item" id="nav-estoque" data-permissao="estoque" onclick="abrirEstoque(this)" style="display:none">📦 Estoque Físico</div>
+    <div class="nav-item" id="nav-estoque" data-permissao="estoque" onclick="abrirEstoque(this)">📦 Controle de Estoque</div>
   </div>
 
   <div class="sb-section">
@@ -4083,11 +4083,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
 </div>
 
-<!-- ==================== 📦 ESTOQUE FÍSICO ==================== -->
+<!-- ==================== 📦 CONTROLE DE ESTOQUE ==================== -->
 <div class="page" id="pg-estoque">
   <div class="page-header">
     <div>
-      <div class="page-title">📦 Estoque Físico</div>
+      <div class="page-title">📦 Controle de Estoque</div>
       <div class="page-sub">Bags, camisetas, brindes e materiais — saldo derivado das movimentações</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap" id="estoque-acoes-topo">
@@ -38310,7 +38310,7 @@ function abrirPesquisaGlobal(){
 <script>
 
 // ================================================================
-// ===== 📦 MÓDULO ESTOQUE FÍSICO ==================================
+// ===== 📦 MÓDULO CONTROLE DE ESTOQUE ==================================
 // ================================================================
 // Etapa 2: aba + login PIN + visão geral
 // Tabelas: estoque_produtos, estoque_movimentacoes, estoque_pins, estoque_logs
@@ -38446,6 +38446,7 @@ async function estAbrirModalLogin(){
     try {
       autorizados = await _estRPC('pessoas_autorizadas_estoque', {});
       EST_PESSOAS_AUTORIZADAS = autorizados || [];
+      console.log('[Estoque] Autorizados retornados:', autorizados);
     } catch(e){
       alert('Erro ao carregar lista de autorizados: ' + e.message);
       resolve(null);
@@ -38453,7 +38454,23 @@ async function estAbrirModalLogin(){
     }
     
     if(!autorizados || !autorizados.length){
-      alert('Nenhum usuário autorizado encontrado. Verifique se rodou o SQL da Etapa 1 + complemento de PIN/auditoria.');
+      alert('Nenhum usuário autorizado encontrado. Verifique se rodou o SQL da Etapa 1 + complemento de PIN/auditoria e se cadastrou pelo menos 1 PIN.');
+      resolve(null);
+      return;
+    }
+    
+    // Normaliza: cada item precisa ter id, nome, cargo
+    autorizados = autorizados.map(function(p){
+      return {
+        id: p.id || p.pessoa_id || p.uuid || p.user_id,
+        nome: p.nome || p.name || '(sem nome)',
+        cargo: p.cargo || p.role || ''
+      };
+    }).filter(function(p){ return !!p.id; });
+    
+    if(!autorizados.length){
+      alert('Lista de autorizados retornou sem IDs válidos. Verifique a RPC pessoas_autorizadas_estoque — deve retornar campo "id".');
+      console.error('[Estoque] RPC retornou sem id válido');
       resolve(null);
       return;
     }
@@ -38464,14 +38481,14 @@ async function estAbrirModalLogin(){
     overlay.innerHTML = ''
       + '<div style="background:var(--surface);border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit">'
         + '<div style="font-size:32px;text-align:center;margin-bottom:6px">🛡️</div>'
-        + '<div style="text-align:center;font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Acesso ao Estoque</div>'
+        + '<div style="text-align:center;font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Acesso ao Controle de Estoque</div>'
         + '<div style="text-align:center;font-size:12px;color:var(--text3);margin-bottom:20px">Selecione seu nome e informe seu PIN de 4 dígitos</div>'
         
         + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">QUEM É VOCÊ?</label>'
         + '<select id="est-login-pessoa" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;margin-bottom:14px;font-family:inherit">'
           + '<option value="">— escolha —</option>'
           + autorizados.map(function(p){
-              return '<option value="' + p.id + '">' + p.nome + ' (' + (p.cargo||'?') + ')</option>';
+              return '<option value="' + p.id + '">' + p.nome + (p.cargo ? ' (' + p.cargo + ')' : '') + '</option>';
             }).join('')
         + '</select>'
         
@@ -38509,7 +38526,7 @@ async function estProcessarLogin(){
   var erroEl = document.getElementById('est-login-erro');
   var btnEntrar = document.getElementById('est-login-btn-entrar');
   
-  if(!pessoaId){
+  if(!pessoaId || pessoaId === 'undefined' || pessoaId === 'null'){
     erroEl.style.display = 'block';
     erroEl.textContent = 'Selecione seu nome.';
     return;
@@ -38525,7 +38542,9 @@ async function estProcessarLogin(){
   erroEl.style.display = 'none';
   
   try {
+    console.log('[Estoque] Validando com pessoaId:', pessoaId);
     var r = await _estRPC('validar_acesso_estoque', { p_pessoa_id: pessoaId, p_pin: pin });
+    console.log('[Estoque] Resposta:', r);
     
     // RPC pode retornar array ou objeto direto
     var dados = Array.isArray(r) ? r[0] : r;
