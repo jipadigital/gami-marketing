@@ -1,4 +1,4 @@
-<!-- v25.59 - Convidada Clara Leite Dealwise - 03/06/2026 -->
+<!-- v25.60 - Modulo Estoque Fisico ETAPA 2 (aba + login PIN + visao geral) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1717,6 +1717,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas<span class="nav-badge" id="badge-pess">2</span></div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
+    <div class="nav-item" id="nav-estoque" data-permissao="estoque" onclick="abrirEstoque(this)" style="display:none">📦 Estoque Físico</div>
   </div>
 
   <div class="sb-section">
@@ -4081,6 +4082,102 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div style="padding:40px 20px;text-align:center;color:var(--text3)">⏳ Carregando...</div>
   </div>
 </div>
+
+<!-- ==================== 📦 ESTOQUE FÍSICO ==================== -->
+<div class="page" id="pg-estoque">
+  <div class="page-header">
+    <div>
+      <div class="page-title">📦 Estoque Físico</div>
+      <div class="page-sub">Bags, camisetas, brindes e materiais — saldo derivado das movimentações</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap" id="estoque-acoes-topo">
+      <button class="btn btn-ghost" onclick="estAbrirHistorico()" style="font-size:11px">📜 Histórico</button>
+      <button class="btn btn-ghost" id="btn-est-auditoria" onclick="estAbrirAuditoria()" style="font-size:11px;display:none">🛡️ Auditoria</button>
+      <button class="btn btn-ghost" onclick="estAbrirCadastro()" style="font-size:11px">+ Produto</button>
+      <button class="btn btn-primary" onclick="estAbrirMovimentar()">📦 Movimentar</button>
+    </div>
+  </div>
+
+  <!-- BANNER DA SESSÃO LOGADA -->
+  <div id="est-sessao-info" style="margin-bottom:14px;padding:10px 14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span style="font-size:18px">🛡️</span>
+    <div style="flex:1;min-width:200px">
+      <div style="font-size:10px;font-weight:700;color:#0E7AB8;letter-spacing:0.6px;text-transform:uppercase">Operando como</div>
+      <div id="est-sessao-nome" style="font-size:13px;color:var(--text);font-weight:600">—</div>
+    </div>
+    <button onclick="estLogout()" style="padding:6px 12px;border:1px solid var(--border);background:white;color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit">🚪 Sair</button>
+  </div>
+
+  <!-- CARDS RESUMO -->
+  <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:14px">
+    <div class="metric" style="background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border-left:3px solid #1AB8F0">
+      <div class="metric-label">📦 Total de peças</div>
+      <div class="metric-val" id="est-total-pecas" style="color:#1AB8F0">—</div>
+      <div class="metric-sub" id="est-total-pecas-sub" style="color:#0E7AB8">somando tudo</div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#EAF7DD,#FFFFFF);border-left:3px solid #1D9E75">
+      <div class="metric-label gami-valor">💰 Valor do estoque</div>
+      <div class="metric-val gami-valor" id="est-valor-total" style="color:#1D9E75">—</div>
+      <div class="metric-sub gami-valor" style="color:#0F6D52">valor unit × saldo</div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border-left:3px solid #EF9F27">
+      <div class="metric-label">📤 Saídas no mês</div>
+      <div class="metric-val" id="est-saidas-mes" style="color:#EF9F27">—</div>
+      <div class="metric-sub" id="est-saidas-mes-sub" style="color:#854F0B">peças saídas</div>
+    </div>
+    <div class="metric" style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border-left:3px solid #8B5CF6">
+      <div class="metric-label">⚠️ Produtos baixos</div>
+      <div class="metric-val" id="est-baixos" style="color:#8B5CF6">—</div>
+      <div class="metric-sub" style="color:#6A1B9A">saldo &lt; 10 unidades</div>
+    </div>
+  </div>
+
+  <!-- FILTROS -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <input id="est-busca" oninput="estRenderTabela()" placeholder="🔍 Buscar produto..." style="flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+    <select id="est-filtro-loc" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;min-width:160px">
+      <option value="">Todas as localizações</option>
+      <option value="MATRIZ">🏢 Matriz</option>
+    </select>
+    <select id="est-filtro-cat" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;min-width:140px">
+      <option value="">Todas categorias</option>
+      <option value="bag">🎒 Bag</option>
+      <option value="camiseta">👕 Camiseta</option>
+      <option value="brinde">🎁 Brinde</option>
+      <option value="material">🧰 Material</option>
+    </select>
+    <select id="est-filtro-status" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+      <option value="">Todos status</option>
+      <option value="ok">✅ OK</option>
+      <option value="baixo">⚠️ Baixo</option>
+      <option value="zerado">❌ Zerado</option>
+    </select>
+  </div>
+
+  <!-- TABELA -->
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="overflow-x:auto">
+      <table id="est-tabela" style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
+        <thead>
+          <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Produto</th>
+            <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Categoria</th>
+            <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Localização</th>
+            <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Saldo</th>
+            <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px gami-valor">Valor unit.</th>
+            <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Status</th>
+          </tr>
+        </thead>
+        <tbody id="est-tabela-body">
+          <tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">Carregando saldos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<div class="page" id="pg-estoque-fim-marker" style="display:none"></div>
 
 <!-- ==================== PESSOAS ==================== -->
 <div class="page" id="pg-pessoas">
@@ -17147,7 +17244,7 @@ function _rlBaixarPDF(){
     + tabelaHtml
     +'<div style="margin-top:30px;padding-top:12px;border-top:2px solid #8B5CF6;font-size:10px;color:#6B7280;display:flex;justify-content:space-between"><span><strong style="color:#0D2B5C">Gâmi Delivery</strong> · Gerado em '+new Date().toLocaleString('pt-BR')+'</span><span style="padding:3px 8px;background:#F3E8FF;color:#6A1B9A;border-radius:4px;font-weight:600">CONFIDENCIAL</span></div>'
     +'<scr'+'ipt>setTimeout(function(){window.print();}, 400);</scr'+'ipt>'
-    +'</body></html>';
+    +'\n\n\n</body></html>';
   w.document.open(); w.document.write(html); w.document.close();
 }
 
@@ -19964,7 +20061,7 @@ function baixarDiagnosticoPDF(textoOuObj, tituloOpcional){
       +'<span class="rodape-conf">CONFIDENCIAL</span>'
     +'</div>'
     +'<scr'+'ipt>setTimeout(function(){window.print();}, 400);</scr'+'ipt>'
-    +'</body></html>';
+    +'\n\n\n</body></html>';
   w.document.open(); w.document.write(html); w.document.close();
 }
 
@@ -38203,5 +38300,452 @@ function abrirPesquisaGlobal(){
 }
 </script>
 
+
+
+
 </body>
+
+
+
+<script>
+
+// ================================================================
+// ===== 📦 MÓDULO ESTOQUE FÍSICO ==================================
+// ================================================================
+// Etapa 2: aba + login PIN + visão geral
+// Tabelas: estoque_produtos, estoque_movimentacoes, estoque_pins, estoque_logs
+// RPCs: pessoas_autorizadas_estoque, validar_acesso_estoque, saldo_estoque
+// ================================================================
+
+var EST_SESSAO = null;  // {pessoa_id, nome, cargo, estoque_admin, token}
+var EST_PRODUTOS_CACHE = [];
+var EST_SALDOS_CACHE = [];
+var EST_PESSOAS_AUTORIZADAS = [];
+
+// Lista oficial das 11 cidades + MATRIZ (slugs alinhados com schema do SQL)
+var EST_LOCALIZACOES = [
+  { codigo: 'MATRIZ', nome: '🏢 Matriz', emoji: '🏢' },
+  { codigo: 'maceio', nome: 'Maceió/AL', emoji: '🏙️' },
+  { codigo: 'fortaleza', nome: 'Fortaleza/CE', emoji: '🏙️' },
+  { codigo: 'joao-pessoa', nome: 'João Pessoa/PB', emoji: '🏙️' },
+  { codigo: 'recife', nome: 'Recife/PE', emoji: '🏙️' },
+  { codigo: 'natal', nome: 'Natal/RN', emoji: '🏙️' },
+  { codigo: 'aracaju', nome: 'Aracaju/SE', emoji: '🏙️' },
+  { codigo: 'sao-luis', nome: 'São Luís/MA', emoji: '🏙️' },
+  { codigo: 'cuiaba', nome: 'Cuiabá/MT', emoji: '🏙️' },
+  { codigo: 'teresina', nome: 'Teresina/PI', emoji: '🏙️' },
+  { codigo: 'vitoria', nome: 'Vitória/ES', emoji: '🏙️' },
+  { codigo: 'campo-grande', nome: 'Campo Grande/MS', emoji: '🏙️' }
+];
+
+// ====== Helpers Supabase ======
+function _estSupaHeaders(){
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
+}
+
+async function _estRPC(funcao, params){
+  var resp = await fetch(SUPA_URL + '/rest/v1/rpc/' + funcao, {
+    method: 'POST', headers: _estSupaHeaders(),
+    body: JSON.stringify(params || {})
+  });
+  if(!resp.ok){
+    var txt = await resp.text();
+    throw new Error('RPC ' + funcao + ' falhou: HTTP ' + resp.status + ' ' + txt);
+  }
+  return resp.json();
+}
+
+// ====== Sessão ======
+function _estSalvarSessao(s){
+  EST_SESSAO = s;
+  try { sessionStorage.setItem('gami_estoque_sessao', JSON.stringify(s)); } catch(e){}
+}
+function _estCarregarSessao(){
+  try {
+    var raw = sessionStorage.getItem('gami_estoque_sessao');
+    if(!raw) return null;
+    var s = JSON.parse(raw);
+    if(s && s.pessoa_id && s.token) return s;
+  } catch(e){}
+  return null;
+}
+function estLogout(){
+  EST_SESSAO = null;
+  try { sessionStorage.removeItem('gami_estoque_sessao'); } catch(e){}
+  if(typeof toast === 'function') toast('🚪 Sessão encerrada', 'info');
+  document.getElementById('pg-estoque').style.display = 'none';
+  // Volta pro dashboard
+  var dash = document.querySelector('.nav-item[onclick*="dashboard"]');
+  if(dash) dash.click();
+}
+
+// ====== Mostra item da sidebar pra quem tem acesso ======
+async function estVerificarAcessoSidebar(){
+  // Mostra item da sidebar SEMPRE pros níveis super_admin, diretoria, gerencia
+  // (o controle fino acontece no clique via modal de PIN)
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  var navEstoque = document.getElementById('nav-estoque');
+  if(!navEstoque) return;
+  
+  // Diretoria, gerência, super_admin podem ver
+  if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
+    navEstoque.style.display = '';
+  } else {
+    navEstoque.style.display = 'none';
+  }
+}
+
+// ====== Abrir aba Estoque (com modal PIN se não logado) ======
+async function abrirEstoque(navEl){
+  // Tenta carregar sessão existente
+  if(!EST_SESSAO) EST_SESSAO = _estCarregarSessao();
+  
+  if(!EST_SESSAO){
+    // Mostra modal de login
+    await estAbrirModalLogin();
+    if(!EST_SESSAO) return; // usuário cancelou
+  }
+  
+  // Marca o nav-item como ativo
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  if(navEl) navEl.classList.add('active');
+  
+  // Esconde todas as páginas, mostra estoque
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
+  var pg = document.getElementById('pg-estoque');
+  pg.classList.add('active');
+  pg.style.display = 'block';
+  
+  // Atualiza UI da sessão
+  estAtualizarBannerSessao();
+  
+  // Carrega dados
+  await estCarregarTudo();
+}
+
+function estAtualizarBannerSessao(){
+  if(!EST_SESSAO) return;
+  var nomeEl = document.getElementById('est-sessao-nome');
+  if(nomeEl){
+    nomeEl.innerHTML = EST_SESSAO.nome + 
+      ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + (EST_SESSAO.cargo||'?') + '</span>' +
+      (EST_SESSAO.estoque_admin ? ' <span style="background:#FAEEDA;color:#854F0B;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.5px;margin-left:4px">ADMIN</span>' : '');
+  }
+  // Botão Auditoria só pra admin
+  var btnAud = document.getElementById('btn-est-auditoria');
+  if(btnAud) btnAud.style.display = EST_SESSAO.estoque_admin ? '' : 'none';
+}
+
+// ====== MODAL DE LOGIN ======
+async function estAbrirModalLogin(){
+  return new Promise(async function(resolve){
+    // Carrega lista de autorizados
+    var autorizados = [];
+    try {
+      autorizados = await _estRPC('pessoas_autorizadas_estoque', {});
+      EST_PESSOAS_AUTORIZADAS = autorizados || [];
+    } catch(e){
+      alert('Erro ao carregar lista de autorizados: ' + e.message);
+      resolve(null);
+      return;
+    }
+    
+    if(!autorizados || !autorizados.length){
+      alert('Nenhum usuário autorizado encontrado. Verifique se rodou o SQL da Etapa 1 + complemento de PIN/auditoria.');
+      resolve(null);
+      return;
+    }
+    
+    var overlay = document.createElement('div');
+    overlay.id = 'est-modal-login';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = ''
+      + '<div style="background:var(--surface);border-radius:14px;max-width:420px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit">'
+        + '<div style="font-size:32px;text-align:center;margin-bottom:6px">🛡️</div>'
+        + '<div style="text-align:center;font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Acesso ao Estoque</div>'
+        + '<div style="text-align:center;font-size:12px;color:var(--text3);margin-bottom:20px">Selecione seu nome e informe seu PIN de 4 dígitos</div>'
+        
+        + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">QUEM É VOCÊ?</label>'
+        + '<select id="est-login-pessoa" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;margin-bottom:14px;font-family:inherit">'
+          + '<option value="">— escolha —</option>'
+          + autorizados.map(function(p){
+              return '<option value="' + p.id + '">' + p.nome + ' (' + (p.cargo||'?') + ')</option>';
+            }).join('')
+        + '</select>'
+        
+        + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">PIN (4 dígitos)</label>'
+        + '<input id="est-login-pin" type="password" maxlength="4" pattern="[0-9]{4}" inputmode="numeric" autocomplete="off" placeholder="••••" style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:16px;text-align:center;letter-spacing:8px;font-family:inherit;font-weight:700"/>'
+        + '<div id="est-login-erro" style="display:none;margin-top:10px;padding:8px 12px;background:#FFF5F5;border-left:3px solid #E24B4A;border-radius:6px;font-size:11px;color:#A32D2D"></div>'
+        
+        + '<div style="display:flex;gap:8px;margin-top:18px">'
+          + '<button onclick="document.getElementById(\'est-modal-login\').remove();window._estLoginResolve&&window._estLoginResolve(null)" style="flex:1;padding:10px 14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>'
+          + '<button id="est-login-btn-entrar" onclick="estProcessarLogin()" style="flex:1;padding:10px 14px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit">🔓 Entrar</button>'
+        + '</div>'
+      + '</div>';
+    document.body.appendChild(overlay);
+    
+    window._estLoginResolve = resolve;
+    
+    setTimeout(function(){
+      document.getElementById('est-login-pessoa').focus();
+    }, 100);
+    
+    // Enter pra entrar
+    document.getElementById('est-login-pin').addEventListener('keypress', function(e){
+      if(e.key === 'Enter') estProcessarLogin();
+    });
+    document.getElementById('est-login-pin').addEventListener('input', function(e){
+      // Só números
+      e.target.value = e.target.value.replace(/\D/g, '');
+    });
+  });
+}
+
+async function estProcessarLogin(){
+  var pessoaId = document.getElementById('est-login-pessoa').value;
+  var pin = document.getElementById('est-login-pin').value;
+  var erroEl = document.getElementById('est-login-erro');
+  var btnEntrar = document.getElementById('est-login-btn-entrar');
+  
+  if(!pessoaId){
+    erroEl.style.display = 'block';
+    erroEl.textContent = 'Selecione seu nome.';
+    return;
+  }
+  if(!/^\d{4}$/.test(pin)){
+    erroEl.style.display = 'block';
+    erroEl.textContent = 'PIN deve ter 4 dígitos numéricos.';
+    return;
+  }
+  
+  btnEntrar.disabled = true;
+  btnEntrar.textContent = '⏳ Validando...';
+  erroEl.style.display = 'none';
+  
+  try {
+    var r = await _estRPC('validar_acesso_estoque', { p_pessoa_id: pessoaId, p_pin: pin });
+    
+    // RPC pode retornar array ou objeto direto
+    var dados = Array.isArray(r) ? r[0] : r;
+    
+    if(!dados || !dados.token){
+      erroEl.style.display = 'block';
+      erroEl.textContent = '❌ ' + (dados && dados.motivo ? dados.motivo : 'PIN incorreto ou sem permissão.');
+      btnEntrar.disabled = false;
+      btnEntrar.textContent = '🔓 Entrar';
+      return;
+    }
+    
+    // Sucesso!
+    _estSalvarSessao({
+      pessoa_id: pessoaId,
+      nome: dados.nome,
+      cargo: dados.cargo,
+      estoque_admin: !!dados.estoque_admin,
+      token: dados.token
+    });
+    
+    document.getElementById('est-modal-login').remove();
+    if(window._estLoginResolve) window._estLoginResolve(EST_SESSAO);
+    if(typeof toast === 'function') toast('✅ Bem-vindo(a), ' + dados.nome, 'success');
+    
+  } catch(e){
+    erroEl.style.display = 'block';
+    erroEl.textContent = '❌ Erro: ' + e.message;
+    btnEntrar.disabled = false;
+    btnEntrar.textContent = '🔓 Entrar';
+  }
+}
+
+// ====== CARREGA TUDO ======
+async function estCarregarTudo(){
+  await Promise.all([
+    estCarregarProdutos(),
+    estCarregarSaldos(),
+    estCarregarResumoMes()
+  ]);
+  estPopularFiltroLoc();
+  estRenderTabela();
+  estRenderCardsTopo();
+}
+
+async function estCarregarProdutos(){
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_produtos?select=*&ativo=eq.true&order=nome.asc', {
+      headers: _estSupaHeaders()
+    });
+    if(r.ok) EST_PRODUTOS_CACHE = await r.json();
+  } catch(e){ console.error('[estoque] produtos:', e); }
+}
+
+async function estCarregarSaldos(){
+  try {
+    EST_SALDOS_CACHE = await _estRPC('saldo_estoque', {});
+  } catch(e){ console.error('[estoque] saldos:', e); EST_SALDOS_CACHE = []; }
+}
+
+async function estCarregarResumoMes(){
+  try {
+    var hoje = new Date();
+    var ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
+    var fim = hoje.toISOString().slice(0,10);
+    var dados = await _estRPC('relatorio_saidas', { p_data_inicio: ini, p_data_fim: fim });
+    window._estSaidasMes = dados || [];
+  } catch(e){ window._estSaidasMes = []; }
+}
+
+function estPopularFiltroLoc(){
+  var sel = document.getElementById('est-filtro-loc');
+  if(!sel) return;
+  // Mantém o primeiro option e MATRIZ
+  while(sel.options.length > 2) sel.remove(2);
+  EST_LOCALIZACOES.slice(1).forEach(function(loc){
+    var opt = document.createElement('option');
+    opt.value = loc.codigo;
+    opt.textContent = '🏙️ ' + loc.nome;
+    sel.appendChild(opt);
+  });
+}
+
+function _estLocLabel(codigo){
+  var loc = EST_LOCALIZACOES.find(function(l){ return l.codigo === codigo; });
+  return loc ? loc.nome : codigo;
+}
+
+function _estProdutoById(id){
+  return EST_PRODUTOS_CACHE.find(function(p){ return p.id === id; });
+}
+
+function _estCategoriaLabel(c){
+  var map = { bag: '🎒 Bag', camiseta: '👕 Camiseta', brinde: '🎁 Brinde', material: '🧰 Material' };
+  return map[c] || c;
+}
+
+function _estStatus(saldo){
+  if(saldo <= 0) return { label: '❌ Zerado', cor: '#E24B4A', bg: '#FCE6E6', codigo: 'zerado' };
+  if(saldo < 10) return { label: '⚠️ Baixo', cor: '#854F0B', bg: '#FFF8E1', codigo: 'baixo' };
+  return { label: '✅ OK', cor: '#0F6D52', bg: '#EAF7DD', codigo: 'ok' };
+}
+
+// ====== Renderiza Cards ======
+function estRenderCardsTopo(){
+  var totalPecas = 0;
+  var valorTotal = 0;
+  var baixos = 0;
+  
+  EST_SALDOS_CACHE.forEach(function(s){
+    var saldo = parseInt(s.saldo) || 0;
+    if(saldo > 0){
+      totalPecas += saldo;
+      var prod = _estProdutoById(s.produto_id);
+      if(prod) valorTotal += saldo * (parseFloat(prod.valor_unitario) || 0);
+      if(saldo < 10) baixos++;
+    }
+  });
+  
+  var saidasMes = (window._estSaidasMes || []).reduce(function(acc, r){
+    return acc + (parseInt(r.quantidade) || 0);
+  }, 0);
+  
+  document.getElementById('est-total-pecas').textContent = totalPecas.toLocaleString('pt-BR');
+  document.getElementById('est-total-pecas-sub').textContent = EST_PRODUTOS_CACHE.length + ' produtos cadastrados';
+  document.getElementById('est-valor-total').textContent = 'R$ ' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  document.getElementById('est-saidas-mes').textContent = saidasMes.toLocaleString('pt-BR');
+  var hoje = new Date();
+  var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  document.getElementById('est-saidas-mes-sub').textContent = 'em ' + meses[hoje.getMonth()] + '/' + hoje.getFullYear();
+  document.getElementById('est-baixos').textContent = baixos;
+}
+
+// ====== Renderiza Tabela ======
+function estRenderTabela(){
+  var tbody = document.getElementById('est-tabela-body');
+  if(!tbody) return;
+  
+  var busca = (document.getElementById('est-busca').value || '').toLowerCase().trim();
+  var filtroLoc = document.getElementById('est-filtro-loc').value;
+  var filtroCat = document.getElementById('est-filtro-cat').value;
+  var filtroStatus = document.getElementById('est-filtro-status').value;
+  
+  // Mescla saldos com info de produto
+  var linhas = EST_SALDOS_CACHE.map(function(s){
+    var prod = _estProdutoById(s.produto_id);
+    return {
+      produto_id: s.produto_id,
+      produto_nome: prod ? prod.nome + (prod.tamanho ? ' (' + prod.tamanho + ')' : '') : 'Produto removido',
+      categoria: prod ? prod.categoria : '?',
+      localizacao: s.localizacao,
+      saldo: parseInt(s.saldo) || 0,
+      valor_unit: prod ? parseFloat(prod.valor_unitario) || 0 : 0
+    };
+  });
+  
+  // Filtros
+  var filtradas = linhas.filter(function(l){
+    if(busca && l.produto_nome.toLowerCase().indexOf(busca) < 0) return false;
+    if(filtroLoc && l.localizacao !== filtroLoc) return false;
+    if(filtroCat && l.categoria !== filtroCat) return false;
+    if(filtroStatus){
+      var st = _estStatus(l.saldo);
+      if(st.codigo !== filtroStatus) return false;
+    }
+    return true;
+  });
+  
+  // Ordena por produto, depois localização
+  filtradas.sort(function(a, b){
+    var p = a.produto_nome.localeCompare(b.produto_nome);
+    if(p) return p;
+    return a.localizacao.localeCompare(b.localizacao);
+  });
+  
+  if(!filtradas.length){
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado com esses filtros.</td></tr>';
+    return;
+  }
+  
+  tbody.innerHTML = filtradas.map(function(l){
+    var status = _estStatus(l.saldo);
+    return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + l.produto_nome + '</td>'
+      + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estCategoriaLabel(l.categoria) + '</td>'
+      + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLocLabel(l.localizacao) + '</td>'
+      + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700;font-size:14px">' + l.saldo + '</td>'
+      + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:var(--text2);font-size:11px">R$ ' + l.valor_unit.toFixed(2) + '</td>'
+      + '<td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 10px;border-radius:12px;background:' + status.bg + ';color:' + status.cor + ';font-size:10px;font-weight:700">' + status.label + '</span></td>'
+    + '</tr>';
+  }).join('');
+}
+
+// ====== STUBS (etapas 3 e 4) ======
+function estAbrirMovimentar(){
+  alert('🔧 Tela de movimentação será implementada na Etapa 3.\n\nVai abrir modal com:\n• Tipo (entrada/transferência/saída)\n• Produto, origem, destino, quantidade\n• Validação automática de saldo');
+}
+function estAbrirCadastro(){
+  alert('🔧 Cadastro de produto será implementado na Etapa 3.');
+}
+function estAbrirHistorico(){
+  alert('🔧 Histórico será implementado na Etapa 3.');
+}
+function estAbrirAuditoria(){
+  if(!EST_SESSAO || !EST_SESSAO.estoque_admin){
+    alert('🚫 Apenas admin pode ver auditoria.');
+    return;
+  }
+  alert('🔧 Auditoria (logs) será implementada na Etapa 4.');
+}
+
+// ====== INIT ======
+// Mostra item da sidebar pra quem tem nível adequado
+setTimeout(estVerificarAcessoSidebar, 1500);
+setInterval(estVerificarAcessoSidebar, 5000);
+
+// Tenta restaurar sessão na carga (se ainda válida)
+(function(){
+  EST_SESSAO = _estCarregarSessao();
+})();
+
+</script>
 </html>
