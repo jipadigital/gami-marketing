@@ -1,4 +1,4 @@
-<!-- v25.63 - Sidebar Estoque oculta por padrao - 03/06/2026 -->
+<!-- v25.64 - Controle Estoque v2 sub-abas e modelo simplificado - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4083,103 +4083,318 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
 </div>
 
-<!-- ==================== 📦 CONTROLE DE ESTOQUE ==================== -->
+
+
+<!-- ==================== 📦 CONTROLE DE ESTOQUE v2 ==================== -->
 <div class="page" id="pg-estoque">
   <div class="page-header">
     <div>
       <div class="page-title">📦 Controle de Estoque</div>
-      <div class="page-sub">Bags, camisetas, brindes e materiais — saldo derivado das movimentações</div>
+      <div class="page-sub">Entradas, vendas e saldos por cidade</div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap" id="estoque-acoes-topo">
-      <button class="btn btn-ghost" onclick="estAbrirHistorico()" style="font-size:11px">📜 Histórico</button>
-      <button class="btn btn-ghost" id="btn-est-auditoria" onclick="estAbrirAuditoria()" style="font-size:11px;display:none">🛡️ Auditoria</button>
-      <button class="btn btn-ghost" onclick="estAbrirCadastro()" style="font-size:11px">+ Produto</button>
-      <button class="btn btn-primary" onclick="estAbrirMovimentar()">📦 Movimentar</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <select id="est-cidade-global" onchange="estTrocarCidade()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;min-width:170px;font-weight:600">
+        <option value="">🌎 Todas as cidades</option>
+      </select>
     </div>
   </div>
 
-  <!-- BANNER DA SESSÃO LOGADA -->
+  <!-- BANNER USUÁRIO -->
   <div id="est-sessao-info" style="margin-bottom:14px;padding:10px 14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="font-size:18px">🛡️</span>
     <div style="flex:1;min-width:200px">
       <div style="font-size:10px;font-weight:700;color:#0E7AB8;letter-spacing:0.6px;text-transform:uppercase">Operando como</div>
       <div id="est-sessao-nome" style="font-size:13px;color:var(--text);font-weight:600">—</div>
     </div>
-    <button onclick="estLogout()" style="padding:6px 12px;border:1px solid var(--border);background:white;color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit" title="Voltar ao Dashboard">← Voltar</button>
   </div>
 
-  <!-- CARDS RESUMO -->
-  <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:14px">
-    <div class="metric" style="background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border-left:3px solid #1AB8F0">
-      <div class="metric-label">📦 Total de peças</div>
-      <div class="metric-val" id="est-total-pecas" style="color:#1AB8F0">—</div>
-      <div class="metric-sub" id="est-total-pecas-sub" style="color:#0E7AB8">somando tudo</div>
+  <!-- SUB-NAV (TABS) -->
+  <div style="display:flex;gap:4px;overflow-x:auto;border-bottom:2px solid var(--border);margin-bottom:18px;padding-bottom:0">
+    <button class="est-tab-btn active" data-tab="dashboard" onclick="estIrParaTab('dashboard')" style="padding:10px 16px;border:none;border-bottom:3px solid #1AB8F0;background:transparent;color:#1AB8F0;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📊 Dashboard</button>
+    <button class="est-tab-btn" data-tab="estoque" onclick="estIrParaTab('estoque')" style="padding:10px 16px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📦 Estoque</button>
+    <button class="est-tab-btn" data-tab="adicionar" onclick="estIrParaTab('adicionar')" style="padding:10px 16px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">➕ Adicionar</button>
+    <button class="est-tab-btn" data-tab="venda" onclick="estIrParaTab('venda')" style="padding:10px 16px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💰 Nova Venda</button>
+    <button class="est-tab-btn" data-tab="historico" onclick="estIrParaTab('historico')" style="padding:10px 16px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📜 Histórico</button>
+    <button class="est-tab-btn" data-tab="relatorios" onclick="estIrParaTab('relatorios')" style="padding:10px 16px;border:none;border-bottom:3px solid transparent;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📈 Relatórios</button>
+  </div>
+
+  <!-- TAB: DASHBOARD -->
+  <div id="est-tab-dashboard" class="est-tab-pane" style="display:block">
+    <div style="margin-bottom:12px"><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Dashboard</div><div style="font-size:11px;color:var(--text3)">Visão geral do estoque e vendas</div></div>
+    
+    <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:14px">
+      <div class="metric" style="background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border-left:3px solid #1AB8F0">
+        <div class="metric-label">📦 Peças em Estoque</div>
+        <div class="metric-val" id="est-kpi-pecas" style="color:#1AB8F0">0</div>
+        <div class="metric-sub" style="color:#0E7AB8">unidades</div>
+      </div>
+      <div class="metric" style="background:linear-gradient(135deg,#EAF7DD,#FFFFFF);border-left:3px solid #1D9E75">
+        <div class="metric-label gami-valor">💰 Valor do Estoque</div>
+        <div class="metric-val gami-valor" id="est-kpi-valor" style="color:#1D9E75">R$ 0,00</div>
+        <div class="metric-sub gami-valor" style="color:#0F6D52">saldo × valor unit.</div>
+      </div>
+      <div class="metric" style="background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border-left:3px solid #EF9F27">
+        <div class="metric-label">📤 Total Vendido</div>
+        <div class="metric-val" id="est-kpi-vendido" style="color:#EF9F27">0</div>
+        <div class="metric-sub" style="color:#854F0B">peças vendidas (todo período)</div>
+      </div>
+      <div class="metric" style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border-left:3px solid #8B5CF6">
+        <div class="metric-label gami-valor">💎 Faturamento (mês)</div>
+        <div class="metric-val gami-valor" id="est-kpi-fat-mes" style="color:#8B5CF6">R$ 0,00</div>
+        <div class="metric-sub gami-valor" style="color:#6A1B9A">vendas no mês</div>
+      </div>
     </div>
-    <div class="metric" style="background:linear-gradient(135deg,#EAF7DD,#FFFFFF);border-left:3px solid #1D9E75">
-      <div class="metric-label gami-valor">💰 Valor do estoque</div>
-      <div class="metric-val gami-valor" id="est-valor-total" style="color:#1D9E75">—</div>
-      <div class="metric-sub gami-valor" style="color:#0F6D52">valor unit × saldo</div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px">
+      <div class="card gami-valor" style="padding:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">💵 Faturamento Hoje</div>
+        <div id="est-kpi-fat-hoje" style="font-size:22px;font-weight:700;color:#1D9E75">R$ 0,00</div>
+      </div>
+      <div class="card gami-valor" style="padding:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">📅 Faturamento Semana</div>
+        <div id="est-kpi-fat-semana" style="font-size:22px;font-weight:700;color:#1AB8F0">R$ 0,00</div>
+      </div>
     </div>
-    <div class="metric" style="background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border-left:3px solid #EF9F27">
-      <div class="metric-label">📤 Saídas no mês</div>
-      <div class="metric-val" id="est-saidas-mes" style="color:#EF9F27">—</div>
-      <div class="metric-sub" id="est-saidas-mes-sub" style="color:#854F0B">peças saídas</div>
-    </div>
-    <div class="metric" style="background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border-left:3px solid #8B5CF6">
-      <div class="metric-label">⚠️ Produtos baixos</div>
-      <div class="metric-val" id="est-baixos" style="color:#8B5CF6">—</div>
-      <div class="metric-sub" style="color:#6A1B9A">saldo &lt; 10 unidades</div>
+    
+    <div class="card" style="padding:14px">
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">📋 Últimas vendas</div>
+      <div id="est-ultimas-vendas">
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma venda registrada ainda.</div>
+      </div>
     </div>
   </div>
 
-  <!-- FILTROS -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-    <input id="est-busca" oninput="estRenderTabela()" placeholder="🔍 Buscar produto..." style="flex:1;min-width:180px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
-    <select id="est-filtro-loc" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;min-width:160px">
-      <option value="">Todas as localizações</option>
-      <option value="MATRIZ">🏢 Matriz</option>
-    </select>
-    <select id="est-filtro-cat" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;min-width:140px">
-      <option value="">Todas categorias</option>
-      <option value="bag">🎒 Bag</option>
-      <option value="camiseta">👕 Camiseta</option>
-      <option value="brinde">🎁 Brinde</option>
-      <option value="material">🧰 Material</option>
-    </select>
-    <select id="est-filtro-status" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
-      <option value="">Todos status</option>
-      <option value="ok">✅ OK</option>
-      <option value="baixo">⚠️ Baixo</option>
-      <option value="zerado">❌ Zerado</option>
-    </select>
+  <!-- TAB: ESTOQUE -->
+  <div id="est-tab-estoque" class="est-tab-pane" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Estoque</div><div style="font-size:11px;color:var(--text3)" id="est-itens-count">0 itens cadastrados</div></div>
+      <button class="btn btn-primary" onclick="estIrParaTab('adicionar')">+ Adicionar Item</button>
+    </div>
+    
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <input id="est-busca-estoque" oninput="estRenderTabela()" placeholder="🔍 Buscar por modelo ou tamanho..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+      <select id="est-filtro-status" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+        <option value="">Todos status</option>
+        <option value="ok">✅ OK</option>
+        <option value="baixo">⚠️ Baixo</option>
+        <option value="zerado">❌ Zerado</option>
+      </select>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+          <thead>
+            <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Modelo</th>
+              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Tam.</th>
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cidade</th>
+              <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Qtd.</th>
+              <th class="gami-valor" style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Valor</th>
+              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Status</th>
+            </tr>
+          </thead>
+          <tbody id="est-tabela-body">
+            <tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
-  <!-- TABELA -->
-  <div class="card" style="padding:0;overflow:hidden">
-    <div style="overflow-x:auto">
-      <table id="est-tabela" style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
-        <thead>
-          <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
-            <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Produto</th>
-            <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Categoria</th>
-            <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Localização</th>
-            <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Saldo</th>
-            <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px gami-valor">Valor unit.</th>
-            <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Status</th>
-          </tr>
-        </thead>
-        <tbody id="est-tabela-body">
-          <tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">Carregando saldos...</td></tr>
-        </tbody>
-      </table>
+  <!-- TAB: ADICIONAR -->
+  <div id="est-tab-adicionar" class="est-tab-pane" style="display:none">
+    <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Adicionar ao Estoque</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:18px">Cadastre um item novo ou registre entrada de item existente em uma cidade</div>
+    
+    <div class="card" style="padding:18px;max-width:560px">
+      
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📦 ITEM</label>
+        <div style="display:flex;gap:6px">
+          <select id="est-add-item" style="flex:1;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
+            <option value="">— escolha um item existente —</option>
+          </select>
+          <button onclick="estAlternarNovoItem()" id="est-btn-novo-item" style="padding:10px 14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap">+ Novo item</button>
+        </div>
+      </div>
+      
+      <!-- Bloco pra criar novo item (oculto por padrão) -->
+      <div id="est-form-novo-item" style="display:none;background:#FFF8E1;border:1px dashed #EF9F27;border-radius:8px;padding:12px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:#854F0B;margin-bottom:10px">📝 NOVO ITEM</div>
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Nome do item</label>
+          <input id="est-novo-nome" placeholder="Ex: Camisa Polo Preta" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Tamanho</label>
+          <select id="est-novo-tamanho" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit">
+            <option value="">— sem tamanho —</option>
+            <option value="PP">PP</option><option value="P">P</option>
+            <option value="M">M</option><option value="G">G</option>
+            <option value="GG">GG</option><option value="XG">XG</option>
+            <option value="Único">Único</option>
+          </select>
+        </div>
+        <button onclick="estCadastrarNovoItem()" style="padding:8px 16px;border:none;background:#EF9F27;color:white;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">✅ Cadastrar item</button>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">🏙️ CIDADE</label>
+          <select id="est-add-cidade" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
+            <option value="">— escolha —</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">QUANTIDADE</label>
+          <input id="est-add-qtd" type="number" min="1" placeholder="0" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:14px" class="gami-valor">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💰 VALOR UNITÁRIO (R$)</label>
+        <input id="est-add-valor" type="number" step="0.01" min="0" placeholder="0,00" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Valor de custo ou referência. Vai virar valor padrão do item.</div>
+      </div>
+      
+      <button onclick="estConfirmarEntrada()" class="btn btn-primary" style="width:100%;padding:12px">✅ Adicionar ao estoque</button>
+    </div>
+  </div>
+
+  <!-- TAB: NOVA VENDA -->
+  <div id="est-tab-venda" class="est-tab-pane" style="display:none">
+    <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Nova Venda</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:18px">Registre uma venda — saldo da cidade é validado automaticamente</div>
+    
+    <div class="card" style="padding:18px;max-width:560px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">👤 NOME DO CLIENTE</label>
+          <input id="est-vd-cliente" placeholder="Nome completo" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📱 TELEFONE</label>
+          <input id="est-vd-telefone" placeholder="(00) 00000-0000" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        </div>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">🏙️ CIDADE</label>
+          <select id="est-vd-cidade" onchange="estCarregarItensVenda()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
+            <option value="">— escolha —</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📅 DATA</label>
+          <input id="est-vd-data" type="date" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📦 ITEM</label>
+        <select id="est-vd-item" onchange="estPreencherValorVenda()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
+          <option value="">— escolha a cidade primeiro —</option>
+        </select>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">QUANTIDADE</label>
+          <input id="est-vd-qtd" type="number" min="1" placeholder="1" oninput="estPreencherValorVenda()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        </div>
+        <div class="gami-valor">
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💰 VALOR TOTAL DA VENDA (R$)</label>
+          <input id="est-vd-valor" type="number" step="0.01" min="0" placeholder="0,00" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📝 OBSERVAÇÕES (opcional)</label>
+        <textarea id="est-vd-obs" rows="2" placeholder="Forma de pagamento, prazo de entrega, etc." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      
+      <button onclick="estConfirmarVenda()" class="btn btn-primary" style="width:100%;padding:12px">💰 Registrar Venda</button>
+    </div>
+  </div>
+
+  <!-- TAB: HISTÓRICO -->
+  <div id="est-tab-historico" class="est-tab-pane" style="display:none">
+    <div style="margin-bottom:12px"><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Histórico de Vendas</div><div style="font-size:11px;color:var(--text3)" id="est-hist-count">— vendas registradas</div></div>
+    
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <input id="est-hist-busca" oninput="estCarregarHistorico()" placeholder="🔍 Buscar por cliente, modelo ou telefone..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+      <div class="gami-valor" style="font-size:11px;color:var(--text3)">Total filtrado: <strong id="est-hist-total" style="color:#1D9E75;font-size:14px">R$ 0,00</strong></div>
+    </div>
+    
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px">
+          <thead>
+            <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Data</th>
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cliente</th>
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Item</th>
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cidade</th>
+              <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Qtd</th>
+              <th class="gami-valor" style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Valor</th>
+            </tr>
+          </thead>
+          <tbody id="est-hist-body">
+            <tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: RELATÓRIOS -->
+  <div id="est-tab-relatorios" class="est-tab-pane" style="display:none">
+    <div style="margin-bottom:12px"><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Relatórios</div><div style="font-size:11px;color:var(--text3)">Análise por período e cidade</div></div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;margin-bottom:18px">
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📅 Relatório por Período</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+          <div>
+            <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Data Início</label>
+            <input id="est-rel-ini" type="date" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Data Fim</label>
+            <input id="est-rel-fim" type="date" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+          </div>
+        </div>
+        <button onclick="estExportarRelatorio('periodo')" style="width:100%;padding:10px;border:none;background:linear-gradient(135deg,#1D9E75,#0F6D52);color:white;font-size:12px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">📊 Exportar Excel</button>
+      </div>
+      
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📆 Relatório Mensal</div>
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Mês / Ano</label>
+          <input id="est-rel-mes" type="month" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <button onclick="estExportarRelatorio('mes')" style="width:100%;padding:10px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">📊 Exportar Excel</button>
+      </div>
+    </div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px">
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">🏆 Vendas por Modelo</div>
+        <div id="est-rel-modelo"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Nenhuma venda registrada ainda.</div></div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">📏 Vendas por Tamanho</div>
+        <div id="est-rel-tamanho"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Nenhuma venda registrada ainda.</div></div>
+      </div>
     </div>
   </div>
 </div>
 
-
 <div class="page" id="pg-estoque-fim-marker" style="display:none"></div>
 
-<!-- ==================== PESSOAS ==================== -->
+
 <div class="page" id="pg-pessoas">
   <div class="page-header">
     <div><div class="page-title">Pessoas</div><div class="page-sub">Diretoria, gestores e colaboradores</div></div>
@@ -38307,94 +38522,95 @@ function abrirPesquisaGlobal(){
 
 
 
+
+
 <script>
 
 // ================================================================
-// ===== 📦 MÓDULO CONTROLE DE ESTOQUE ==================================
+// ===== 📦 CONTROLE DE ESTOQUE v2 ================================
 // ================================================================
-// Etapa 2: aba + visão geral (sem PIN — usa login do dashboard)
-// Tabelas: estoque_produtos, estoque_movimentacoes
-// RPCs: saldo_estoque, relatorio_saidas, registrar_movimentacao
+// Sub-abas: Dashboard, Estoque, Adicionar, Nova Venda, Histórico, Relatórios
+// Tabelas: estoque_itens, estoque_mov
+// RPCs: estoque_dashboard, estoque_saldo, estoque_vendas, estoque_vendas_agrupadas,
+//       estoque_registrar_entrada, estoque_registrar_venda
 // Permissão: super_admin, diretoria, gerência (do dashboard principal)
 // ================================================================
 
-var EST_SESSAO = null;  // {pessoa_id, nome, cargo, estoque_admin, token}
-var EST_PRODUTOS_CACHE = [];
-var EST_SALDOS_CACHE = [];
-var EST_PESSOAS_AUTORIZADAS = [];
+var EST_SESSAO = null;
+var EST_ITENS = [];          // catálogo
+var EST_SALDOS = [];         // saldos por item/cidade
+var EST_CIDADE_SEL = '';     // filtro global de cidade
+var EST_TAB_ATIVA = 'dashboard';
 
-// Lista oficial das 11 cidades + MATRIZ (slugs alinhados com schema do SQL)
+// Localizações
 var EST_LOCALIZACOES = [
-  { codigo: 'MATRIZ', nome: '🏢 Matriz', emoji: '🏢' },
-  { codigo: 'maceio', nome: 'Maceió/AL', emoji: '🏙️' },
-  { codigo: 'fortaleza', nome: 'Fortaleza/CE', emoji: '🏙️' },
-  { codigo: 'joao-pessoa', nome: 'João Pessoa/PB', emoji: '🏙️' },
-  { codigo: 'recife', nome: 'Recife/PE', emoji: '🏙️' },
-  { codigo: 'natal', nome: 'Natal/RN', emoji: '🏙️' },
-  { codigo: 'aracaju', nome: 'Aracaju/SE', emoji: '🏙️' },
-  { codigo: 'sao-luis', nome: 'São Luís/MA', emoji: '🏙️' },
-  { codigo: 'cuiaba', nome: 'Cuiabá/MT', emoji: '🏙️' },
-  { codigo: 'teresina', nome: 'Teresina/PI', emoji: '🏙️' },
-  { codigo: 'vitoria', nome: 'Vitória/ES', emoji: '🏙️' },
-  { codigo: 'campo-grande', nome: 'Campo Grande/MS', emoji: '🏙️' }
+  { codigo: 'MATRIZ', nome: '🏢 Matriz' },
+  { codigo: 'maceio', nome: 'Maceió/AL' },
+  { codigo: 'fortaleza', nome: 'Fortaleza/CE' },
+  { codigo: 'joao-pessoa', nome: 'João Pessoa/PB' },
+  { codigo: 'recife', nome: 'Recife/PE' },
+  { codigo: 'natal', nome: 'Natal/RN' },
+  { codigo: 'aracaju', nome: 'Aracaju/SE' },
+  { codigo: 'sao-luis', nome: 'São Luís/MA' },
+  { codigo: 'cuiaba', nome: 'Cuiabá/MT' },
+  { codigo: 'teresina', nome: 'Teresina/PI' },
+  { codigo: 'vitoria', nome: 'Vitória/ES' },
+  { codigo: 'campo-grande', nome: 'Campo Grande/MS' }
 ];
 
-// ====== Helpers Supabase ======
+// ====== Helpers ======
 function _estSupaHeaders(){
   return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
 }
-
-async function _estRPC(funcao, params){
-  var resp = await fetch(SUPA_URL + '/rest/v1/rpc/' + funcao, {
+async function _estRPC(fn, params){
+  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
     method: 'POST', headers: _estSupaHeaders(),
     body: JSON.stringify(params || {})
   });
-  if(!resp.ok){
-    var txt = await resp.text();
-    throw new Error('RPC ' + funcao + ' falhou: HTTP ' + resp.status + ' ' + txt);
-  }
-  return resp.json();
+  if(!r.ok){ var t = await r.text(); throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); }
+  return r.json();
+}
+function _estLoc(codigo){
+  var l = EST_LOCALIZACOES.find(function(x){ return x.codigo === codigo; });
+  return l ? l.nome : codigo;
+}
+function _estFmtBRL(v){
+  return 'R$ ' + (parseFloat(v||0)).toLocaleString('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function _estFmtData(d){
+  if(!d) return '—';
+  try {
+    var data = new Date(d + 'T00:00:00');
+    return data.toLocaleDateString('pt-BR');
+  } catch(e){ return d; }
 }
 
-// ====== Sessão (usa o usuário do dashboard) ======
+// ====== Sessão ======
 function _estSincronizarSessao(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  if(!u) { EST_SESSAO = null; return null; }
-  
+  if(!u){ EST_SESSAO = null; return null; }
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
-  
-  // Apenas super_admin, diretoria e gerencia podem acessar
   if(nivel !== 'super_admin' && nivel !== 'diretoria' && nivel !== 'gerencia'){
     EST_SESSAO = null;
     return null;
   }
-  
   EST_SESSAO = {
     pessoa_id: u.id || u.pessoa_id,
     nome: u.nome || u.name || u.email,
     cargo: u.cargo || (nivel === 'super_admin' ? 'Marketing/Owner' : (nivel === 'diretoria' ? 'Diretoria' : 'Gerência')),
     nivel: nivel,
-    estoque_admin: (nivel === 'super_admin')   // Apenas Cleyton vê auditoria
+    estoque_admin: (nivel === 'super_admin')
   };
   return EST_SESSAO;
 }
 
-function estLogout(){
-  // Volta pro dashboard
-  document.getElementById('pg-estoque').style.display = 'none';
-  var dash = document.querySelector('.nav-item[onclick*="dashboard"]');
-  if(dash) dash.click();
-}
-
-// ====== Mostra item da sidebar pra quem tem acesso ======
+// ====== Sidebar visibility ======
 async function estVerificarAcessoSidebar(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   if(!u) return;
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   var navEstoque = document.getElementById('nav-estoque');
   if(!navEstoque) return;
-  
-  // Apenas super_admin, diretoria e gerência podem ver
   if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
     navEstoque.style.display = '';
   } else {
@@ -38402,230 +38618,567 @@ async function estVerificarAcessoSidebar(){
   }
 }
 
-// ====== Abrir aba Estoque ======
+// ====== Abrir aba principal ======
 async function abrirEstoque(navEl){
-  // Pega usuário do dashboard
   _estSincronizarSessao();
-  
   if(!EST_SESSAO){
-    alert('🚫 Você não tem permissão pra acessar o Controle de Estoque.\n\nApenas Diretoria, Gerência e Marketing têm acesso.');
+    alert('🚫 Acesso restrito à Diretoria, Gerência e Marketing.');
     return;
   }
-  
-  // Marca o nav-item como ativo
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
   if(navEl) navEl.classList.add('active');
-  
-  // Esconde todas as páginas, mostra estoque
   document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
   var pg = document.getElementById('pg-estoque');
   pg.classList.add('active');
   pg.style.display = 'block';
   
-  // Atualiza UI da sessão
   estAtualizarBannerSessao();
-  
-  // Carrega dados
+  estPopularSeletores();
+  estPreencherDatasPadrao();
   await estCarregarTudo();
 }
 
 function estAtualizarBannerSessao(){
   if(!EST_SESSAO) return;
-  var nomeEl = document.getElementById('est-sessao-nome');
-  if(nomeEl){
-    nomeEl.innerHTML = EST_SESSAO.nome + 
+  var el = document.getElementById('est-sessao-nome');
+  if(el){
+    el.innerHTML = EST_SESSAO.nome +
       ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + (EST_SESSAO.cargo||'?') + '</span>' +
       (EST_SESSAO.estoque_admin ? ' <span style="background:#FAEEDA;color:#854F0B;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.5px;margin-left:4px">ADMIN</span>' : '');
   }
-  // Botão Auditoria só pra admin (Cleyton)
-  var btnAud = document.getElementById('btn-est-auditoria');
-  if(btnAud) btnAud.style.display = EST_SESSAO.estoque_admin ? '' : 'none';
 }
 
-// ====== CARREGA TUDO ======
+function estPopularSeletores(){
+  // Filtro global de cidade (no header)
+  var selGlobal = document.getElementById('est-cidade-global');
+  if(selGlobal && selGlobal.options.length <= 1){
+    EST_LOCALIZACOES.forEach(function(loc){
+      var o = document.createElement('option');
+      o.value = loc.codigo; o.textContent = loc.nome;
+      selGlobal.appendChild(o);
+    });
+  }
+  // Cidade na aba adicionar e venda
+  ['est-add-cidade', 'est-vd-cidade'].forEach(function(id){
+    var sel = document.getElementById(id);
+    if(sel && sel.options.length <= 1){
+      EST_LOCALIZACOES.forEach(function(loc){
+        var o = document.createElement('option');
+        o.value = loc.codigo; o.textContent = loc.nome;
+        sel.appendChild(o);
+      });
+    }
+  });
+}
+
+function estPreencherDatasPadrao(){
+  var hoje = new Date();
+  var hojeStr = hoje.toISOString().slice(0,10);
+  var ini = new Date(hoje.getTime() - 7*86400000).toISOString().slice(0,10);
+  
+  var vdData = document.getElementById('est-vd-data');
+  if(vdData && !vdData.value) vdData.value = hojeStr;
+  
+  var relIni = document.getElementById('est-rel-ini');
+  if(relIni && !relIni.value) relIni.value = ini;
+  var relFim = document.getElementById('est-rel-fim');
+  if(relFim && !relFim.value) relFim.value = hojeStr;
+  
+  var relMes = document.getElementById('est-rel-mes');
+  if(relMes && !relMes.value) relMes.value = hojeStr.slice(0,7);
+}
+
+function estTrocarCidade(){
+  EST_CIDADE_SEL = document.getElementById('est-cidade-global').value;
+  estCarregarTudo();
+}
+
+// ====== Navegação entre sub-abas ======
+function estIrParaTab(tab){
+  EST_TAB_ATIVA = tab;
+  // Esconde todas as panes
+  document.querySelectorAll('.est-tab-pane').forEach(function(p){ p.style.display = 'none'; });
+  // Mostra a selecionada
+  var pane = document.getElementById('est-tab-' + tab);
+  if(pane) pane.style.display = 'block';
+  // Atualiza botões
+  document.querySelectorAll('.est-tab-btn').forEach(function(btn){
+    if(btn.dataset.tab === tab){
+      btn.style.borderBottom = '3px solid #1AB8F0';
+      btn.style.color = '#1AB8F0';
+      btn.classList.add('active');
+    } else {
+      btn.style.borderBottom = '3px solid transparent';
+      btn.style.color = 'var(--text2)';
+      btn.classList.remove('active');
+    }
+  });
+  
+  // Re-render conforme a aba
+  if(tab === 'dashboard') estRenderDashboard();
+  else if(tab === 'estoque') estRenderTabela();
+  else if(tab === 'adicionar') estPopularItensSelect();
+  else if(tab === 'venda') estPopularItensVenda();
+  else if(tab === 'historico') estCarregarHistorico();
+  else if(tab === 'relatorios') estCarregarRelatorioAgrupado();
+}
+
+// ====== Carregar dados ======
 async function estCarregarTudo(){
-  await Promise.all([
-    estCarregarProdutos(),
-    estCarregarSaldos(),
-    estCarregarResumoMes()
-  ]);
-  estPopularFiltroLoc();
-  estRenderTabela();
-  estRenderCardsTopo();
+  await Promise.all([estCarregarItens(), estCarregarSaldos()]);
+  // Re-render aba ativa
+  estIrParaTab(EST_TAB_ATIVA);
 }
 
-async function estCarregarProdutos(){
+async function estCarregarItens(){
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_produtos?select=*&ativo=eq.true&order=nome.asc', {
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?select=*&ativo=eq.true&order=nome.asc', {
       headers: _estSupaHeaders()
     });
-    if(r.ok) EST_PRODUTOS_CACHE = await r.json();
-  } catch(e){ console.error('[estoque] produtos:', e); }
+    EST_ITENS = r.ok ? await r.json() : [];
+  } catch(e){ EST_ITENS = []; console.error('[Estoque] itens:', e); }
 }
 
 async function estCarregarSaldos(){
   try {
-    EST_SALDOS_CACHE = await _estRPC('saldo_estoque', {});
-  } catch(e){ console.error('[estoque] saldos:', e); EST_SALDOS_CACHE = []; }
+    EST_SALDOS = await _estRPC('estoque_saldo', { p_cidade: EST_CIDADE_SEL || null });
+    EST_SALDOS = EST_SALDOS || [];
+  } catch(e){ EST_SALDOS = []; console.error('[Estoque] saldos:', e); }
 }
 
-async function estCarregarResumoMes(){
+// ====== DASHBOARD ======
+async function estRenderDashboard(){
+  var d = null;
   try {
-    var hoje = new Date();
-    var ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
-    var fim = hoje.toISOString().slice(0,10);
-    var dados = await _estRPC('relatorio_saidas', { p_data_inicio: ini, p_data_fim: fim });
-    window._estSaidasMes = dados || [];
-  } catch(e){ window._estSaidasMes = []; }
-}
-
-function estPopularFiltroLoc(){
-  var sel = document.getElementById('est-filtro-loc');
-  if(!sel) return;
-  // Mantém o primeiro option e MATRIZ
-  while(sel.options.length > 2) sel.remove(2);
-  EST_LOCALIZACOES.slice(1).forEach(function(loc){
-    var opt = document.createElement('option');
-    opt.value = loc.codigo;
-    opt.textContent = '🏙️ ' + loc.nome;
-    sel.appendChild(opt);
-  });
-}
-
-function _estLocLabel(codigo){
-  var loc = EST_LOCALIZACOES.find(function(l){ return l.codigo === codigo; });
-  return loc ? loc.nome : codigo;
-}
-
-function _estProdutoById(id){
-  return EST_PRODUTOS_CACHE.find(function(p){ return p.id === id; });
-}
-
-function _estCategoriaLabel(c){
-  var map = { bag: '🎒 Bag', camiseta: '👕 Camiseta', brinde: '🎁 Brinde', material: '🧰 Material' };
-  return map[c] || c;
-}
-
-function _estStatus(saldo){
-  if(saldo <= 0) return { label: '❌ Zerado', cor: '#E24B4A', bg: '#FCE6E6', codigo: 'zerado' };
-  if(saldo < 10) return { label: '⚠️ Baixo', cor: '#854F0B', bg: '#FFF8E1', codigo: 'baixo' };
-  return { label: '✅ OK', cor: '#0F6D52', bg: '#EAF7DD', codigo: 'ok' };
-}
-
-// ====== Renderiza Cards ======
-function estRenderCardsTopo(){
-  var totalPecas = 0;
-  var valorTotal = 0;
-  var baixos = 0;
+    d = await _estRPC('estoque_dashboard', { p_cidade: EST_CIDADE_SEL || null });
+  } catch(e){ console.error('[Estoque] dashboard:', e); }
   
-  EST_SALDOS_CACHE.forEach(function(s){
-    var saldo = parseInt(s.saldo) || 0;
-    if(saldo > 0){
-      totalPecas += saldo;
-      var prod = _estProdutoById(s.produto_id);
-      if(prod) valorTotal += saldo * (parseFloat(prod.valor_unitario) || 0);
-      if(saldo < 10) baixos++;
+  if(d){
+    document.getElementById('est-kpi-pecas').textContent = (d.total_pecas || 0).toLocaleString('pt-BR');
+    document.getElementById('est-kpi-valor').textContent = _estFmtBRL(d.valor_estoque);
+    document.getElementById('est-kpi-vendido').textContent = (d.total_vendido || 0).toLocaleString('pt-BR');
+    document.getElementById('est-kpi-fat-mes').textContent = _estFmtBRL(d.faturamento_mes);
+    document.getElementById('est-kpi-fat-hoje').textContent = _estFmtBRL(d.faturamento_hoje);
+    document.getElementById('est-kpi-fat-semana').textContent = _estFmtBRL(d.faturamento_semana);
+  }
+  
+  // Últimas vendas
+  try {
+    var vendas = await _estRPC('estoque_vendas', { p_cidade: EST_CIDADE_SEL || null });
+    vendas = (vendas || []).slice(0, 5);
+    var ul = document.getElementById('est-ultimas-vendas');
+    if(!vendas.length){
+      ul.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma venda registrada ainda.</div>';
+    } else {
+      ul.innerHTML = vendas.map(function(v){
+        var tam = v.item_tamanho ? ' (' + v.item_tamanho + ')' : '';
+        return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);align-items:center;gap:10px">'
+          + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:12px;font-weight:600;color:var(--text)">' + (v.cliente_nome||'—') + '</div>'
+            + '<div style="font-size:10px;color:var(--text3)">' + (v.item_nome||'') + tam + ' · ' + _estLoc(v.cidade) + '</div>'
+          + '</div>'
+          + '<div style="text-align:right">'
+            + '<div class="gami-valor" style="font-size:13px;font-weight:700;color:#1D9E75">' + _estFmtBRL(v.valor_total) + '</div>'
+            + '<div style="font-size:10px;color:var(--text3)">' + _estFmtData(v.data) + ' · ' + v.quantidade + ' un</div>'
+          + '</div>'
+        + '</div>';
+      }).join('');
     }
-  });
-  
-  var saidasMes = (window._estSaidasMes || []).reduce(function(acc, r){
-    return acc + (parseInt(r.quantidade) || 0);
-  }, 0);
-  
-  document.getElementById('est-total-pecas').textContent = totalPecas.toLocaleString('pt-BR');
-  document.getElementById('est-total-pecas-sub').textContent = EST_PRODUTOS_CACHE.length + ' produtos cadastrados';
-  document.getElementById('est-valor-total').textContent = 'R$ ' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  document.getElementById('est-saidas-mes').textContent = saidasMes.toLocaleString('pt-BR');
-  var hoje = new Date();
-  var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-  document.getElementById('est-saidas-mes-sub').textContent = 'em ' + meses[hoje.getMonth()] + '/' + hoje.getFullYear();
-  document.getElementById('est-baixos').textContent = baixos;
+  } catch(e){}
 }
 
-// ====== Renderiza Tabela ======
+// ====== ESTOQUE (tabela) ======
 function estRenderTabela(){
   var tbody = document.getElementById('est-tabela-body');
   if(!tbody) return;
-  
-  var busca = (document.getElementById('est-busca').value || '').toLowerCase().trim();
-  var filtroLoc = document.getElementById('est-filtro-loc').value;
-  var filtroCat = document.getElementById('est-filtro-cat').value;
+  var busca = (document.getElementById('est-busca-estoque').value || '').toLowerCase().trim();
   var filtroStatus = document.getElementById('est-filtro-status').value;
   
-  // Mescla saldos com info de produto
-  var linhas = EST_SALDOS_CACHE.map(function(s){
-    var prod = _estProdutoById(s.produto_id);
+  // Linhas a partir do saldos
+  var linhas = EST_SALDOS.map(function(s){
     return {
-      produto_id: s.produto_id,
-      produto_nome: prod ? prod.nome + (prod.tamanho ? ' (' + prod.tamanho + ')' : '') : 'Produto removido',
-      categoria: prod ? prod.categoria : '?',
-      localizacao: s.localizacao,
+      item_id: s.item_id,
+      nome: s.nome,
+      tamanho: s.tamanho || '',
+      cidade: s.cidade,
       saldo: parseInt(s.saldo) || 0,
-      valor_unit: prod ? parseFloat(prod.valor_unitario) || 0 : 0
+      valor: parseFloat(s.valor_unitario) || 0
     };
   });
   
   // Filtros
-  var filtradas = linhas.filter(function(l){
-    if(busca && l.produto_nome.toLowerCase().indexOf(busca) < 0) return false;
-    if(filtroLoc && l.localizacao !== filtroLoc) return false;
-    if(filtroCat && l.categoria !== filtroCat) return false;
+  var filt = linhas.filter(function(l){
+    if(busca){
+      var alvo = (l.nome + ' ' + l.tamanho).toLowerCase();
+      if(alvo.indexOf(busca) < 0) return false;
+    }
     if(filtroStatus){
-      var st = _estStatus(l.saldo);
-      if(st.codigo !== filtroStatus) return false;
+      var st = l.saldo <= 0 ? 'zerado' : (l.saldo < 10 ? 'baixo' : 'ok');
+      if(st !== filtroStatus) return false;
     }
     return true;
   });
   
-  // Ordena por produto, depois localização
-  filtradas.sort(function(a, b){
-    var p = a.produto_nome.localeCompare(b.produto_nome);
-    if(p) return p;
-    return a.localizacao.localeCompare(b.localizacao);
+  filt.sort(function(a,b){
+    var n = a.nome.localeCompare(b.nome);
+    if(n) return n;
+    var t = (a.tamanho||'').localeCompare(b.tamanho||'');
+    if(t) return t;
+    return a.cidade.localeCompare(b.cidade);
   });
   
-  if(!filtradas.length){
-    tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado com esses filtros.</td></tr>';
+  document.getElementById('est-itens-count').textContent = EST_ITENS.length + ' itens cadastrados';
+  
+  if(!filt.length){
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado. Vá em ➕ Adicionar pra cadastrar.</td></tr>';
     return;
   }
   
-  tbody.innerHTML = filtradas.map(function(l){
-    var status = _estStatus(l.saldo);
+  tbody.innerHTML = filt.map(function(l){
+    var st = l.saldo <= 0 
+      ? { lbl: '❌ Zerado', cor: '#E24B4A', bg: '#FCE6E6' }
+      : (l.saldo < 10 
+        ? { lbl: '⚠️ Baixo', cor: '#854F0B', bg: '#FFF8E1' }
+        : { lbl: '✅ OK', cor: '#0F6D52', bg: '#EAF7DD' });
     return '<tr style="border-bottom:1px solid var(--border)">'
-      + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + l.produto_nome + '</td>'
-      + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estCategoriaLabel(l.categoria) + '</td>'
-      + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLocLabel(l.localizacao) + '</td>'
+      + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + l.nome + '</td>'
+      + '<td style="padding:10px 12px;text-align:center;color:var(--text2);font-size:11px">' + (l.tamanho || '—') + '</td>'
+      + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLoc(l.cidade) + '</td>'
       + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700;font-size:14px">' + l.saldo + '</td>'
-      + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:var(--text2);font-size:11px">R$ ' + l.valor_unit.toFixed(2) + '</td>'
-      + '<td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 10px;border-radius:12px;background:' + status.bg + ';color:' + status.cor + ';font-size:10px;font-weight:700">' + status.label + '</span></td>'
+      + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:var(--text2);font-size:11px">' + _estFmtBRL(l.valor) + '</td>'
+      + '<td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 10px;border-radius:12px;background:' + st.bg + ';color:' + st.cor + ';font-size:10px;font-weight:700">' + st.lbl + '</span></td>'
     + '</tr>';
   }).join('');
 }
 
-// ====== STUBS (etapas 3 e 4) ======
-function estAbrirMovimentar(){
-  alert('🔧 Tela de movimentação será implementada na Etapa 3.\n\nVai abrir modal com:\n• Tipo (entrada/transferência/saída)\n• Produto, origem, destino, quantidade\n• Validação automática de saldo');
+// ====== ADICIONAR ======
+function estPopularItensSelect(){
+  var sel = document.getElementById('est-add-item');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">— escolha um item existente —</option>'
+    + EST_ITENS.map(function(i){
+      var t = i.tamanho ? ' (' + i.tamanho + ')' : '';
+      return '<option value="' + i.id + '">' + i.nome + t + '</option>';
+    }).join('');
 }
-function estAbrirCadastro(){
-  alert('🔧 Cadastro de produto será implementado na Etapa 3.');
+
+function estAlternarNovoItem(){
+  var div = document.getElementById('est-form-novo-item');
+  var btn = document.getElementById('est-btn-novo-item');
+  if(div.style.display === 'none'){
+    div.style.display = 'block';
+    btn.textContent = '← cancelar';
+    document.getElementById('est-add-item').value = '';
+    document.getElementById('est-add-item').disabled = true;
+  } else {
+    div.style.display = 'none';
+    btn.textContent = '+ Novo item';
+    document.getElementById('est-add-item').disabled = false;
+  }
 }
-function estAbrirHistorico(){
-  alert('🔧 Histórico será implementado na Etapa 3.');
+
+async function estCadastrarNovoItem(){
+  var nome = document.getElementById('est-novo-nome').value.trim();
+  var tamanho = document.getElementById('est-novo-tamanho').value;
+  if(!nome){ alert('Informe o nome do item.'); return; }
+  
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens', {
+      method: 'POST',
+      headers: Object.assign({}, _estSupaHeaders(), { 'Prefer': 'return=representation' }),
+      body: JSON.stringify({ nome: nome, tamanho: tamanho || null, valor_unitario: 0 })
+    });
+    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
+    var criado = await r.json();
+    var novoItem = Array.isArray(criado) ? criado[0] : criado;
+    
+    // Atualiza cache e seletor
+    EST_ITENS.push(novoItem);
+    EST_ITENS.sort(function(a,b){ return a.nome.localeCompare(b.nome); });
+    estPopularItensSelect();
+    document.getElementById('est-add-item').value = novoItem.id;
+    
+    // Fecha form
+    estAlternarNovoItem();
+    document.getElementById('est-novo-nome').value = '';
+    document.getElementById('est-novo-tamanho').value = '';
+    
+    if(typeof toast === 'function') toast('✅ Item "' + nome + '" cadastrado', 'success');
+  } catch(e){
+    alert('Erro ao cadastrar item: ' + e.message);
+  }
 }
-function estAbrirAuditoria(){
-  if(!EST_SESSAO || !EST_SESSAO.estoque_admin){
-    alert('🚫 Apenas admin pode ver auditoria.');
+
+async function estConfirmarEntrada(){
+  var itemId = document.getElementById('est-add-item').value;
+  var cidade = document.getElementById('est-add-cidade').value;
+  var qtd = parseInt(document.getElementById('est-add-qtd').value);
+  var valor = parseFloat(document.getElementById('est-add-valor').value);
+  
+  if(!itemId){ alert('Escolha um item ou crie um novo.'); return; }
+  if(!cidade){ alert('Escolha a cidade.'); return; }
+  if(!qtd || qtd <= 0){ alert('Quantidade deve ser > 0.'); return; }
+  if(isNaN(valor) || valor < 0){ alert('Valor unitário inválido.'); return; }
+  
+  try {
+    var r = await _estRPC('estoque_registrar_entrada', {
+      p_item_id: parseInt(itemId),
+      p_cidade: cidade,
+      p_quantidade: qtd,
+      p_valor_unitario: valor,
+      p_usuario_id: EST_SESSAO.pessoa_id,
+      p_usuario_nome: EST_SESSAO.nome,
+      p_observacao: null
+    });
+    
+    if(r && r.ok){
+      if(typeof toast === 'function') toast('✅ ' + qtd + ' un. adicionadas em ' + _estLoc(cidade), 'success');
+      // Limpa form
+      document.getElementById('est-add-item').value = '';
+      document.getElementById('est-add-cidade').value = '';
+      document.getElementById('est-add-qtd').value = '';
+      document.getElementById('est-add-valor').value = '';
+      // Recarrega
+      await estCarregarTudo();
+      estIrParaTab('estoque');
+    } else {
+      alert('Erro: ' + JSON.stringify(r));
+    }
+  } catch(e){
+    alert('Erro ao registrar entrada: ' + e.message);
+  }
+}
+
+// ====== NOVA VENDA ======
+function estPopularItensVenda(){
+  // Inicial: pede pra escolher cidade
+  var sel = document.getElementById('est-vd-item');
+  if(!sel) return;
+  if(!document.getElementById('est-vd-cidade').value){
+    sel.innerHTML = '<option value="">— escolha a cidade primeiro —</option>';
+  } else {
+    estCarregarItensVenda();
+  }
+}
+
+function estCarregarItensVenda(){
+  var cidade = document.getElementById('est-vd-cidade').value;
+  var sel = document.getElementById('est-vd-item');
+  if(!cidade){
+    sel.innerHTML = '<option value="">— escolha a cidade primeiro —</option>';
     return;
   }
-  alert('🔧 Auditoria (logs) será implementada na Etapa 4.');
+  // Mostra só itens com saldo > 0 nessa cidade
+  var disponiveis = EST_SALDOS.filter(function(s){
+    return s.cidade === cidade && (parseInt(s.saldo)||0) > 0;
+  });
+  
+  if(!disponiveis.length){
+    sel.innerHTML = '<option value="">— sem itens com saldo em ' + _estLoc(cidade) + ' —</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">— escolha —</option>'
+    + disponiveis.map(function(s){
+      var t = s.tamanho ? ' (' + s.tamanho + ')' : '';
+      return '<option value="' + s.item_id + '" data-saldo="' + s.saldo + '" data-valor="' + s.valor_unitario + '">'
+        + s.nome + t + ' · saldo: ' + s.saldo + '</option>';
+    }).join('');
+}
+
+function estPreencherValorVenda(){
+  var sel = document.getElementById('est-vd-item');
+  var opt = sel.options[sel.selectedIndex];
+  if(!opt || !opt.value) return;
+  var valorUnit = parseFloat(opt.dataset.valor) || 0;
+  var qtd = parseInt(document.getElementById('est-vd-qtd').value) || 1;
+  document.getElementById('est-vd-valor').value = (valorUnit * qtd).toFixed(2);
+}
+
+async function estConfirmarVenda(){
+  var dados = {
+    p_item_id: parseInt(document.getElementById('est-vd-item').value),
+    p_cidade: document.getElementById('est-vd-cidade').value,
+    p_quantidade: parseInt(document.getElementById('est-vd-qtd').value),
+    p_valor_total: parseFloat(document.getElementById('est-vd-valor').value),
+    p_cliente_nome: document.getElementById('est-vd-cliente').value.trim(),
+    p_cliente_telefone: document.getElementById('est-vd-telefone').value.trim() || null,
+    p_data: document.getElementById('est-vd-data').value || null,
+    p_observacao: document.getElementById('est-vd-obs').value.trim() || null,
+    p_usuario_id: EST_SESSAO.pessoa_id,
+    p_usuario_nome: EST_SESSAO.nome
+  };
+  
+  if(!dados.p_item_id){ alert('Escolha o item.'); return; }
+  if(!dados.p_cidade){ alert('Escolha a cidade.'); return; }
+  if(!dados.p_quantidade || dados.p_quantidade <= 0){ alert('Quantidade inválida.'); return; }
+  if(isNaN(dados.p_valor_total) || dados.p_valor_total < 0){ alert('Valor inválido.'); return; }
+  if(!dados.p_cliente_nome){ alert('Informe o nome do cliente.'); return; }
+  
+  try {
+    var r = await _estRPC('estoque_registrar_venda', dados);
+    if(r && r.ok){
+      if(typeof toast === 'function') toast('✅ Venda registrada! Saldo após: ' + r.saldo_apos, 'success');
+      // Limpa form
+      ['est-vd-cliente','est-vd-telefone','est-vd-cidade','est-vd-item','est-vd-qtd','est-vd-valor','est-vd-obs'].forEach(function(id){
+        document.getElementById(id).value = '';
+      });
+      estPreencherDatasPadrao();
+      // Recarrega
+      await estCarregarTudo();
+      estIrParaTab('historico');
+    } else {
+      alert('Erro: ' + JSON.stringify(r));
+    }
+  } catch(e){
+    alert('Erro ao registrar venda: ' + e.message);
+  }
+}
+
+// ====== HISTÓRICO ======
+async function estCarregarHistorico(){
+  var busca = (document.getElementById('est-hist-busca').value || '').trim();
+  try {
+    var vendas = await _estRPC('estoque_vendas', {
+      p_cidade: EST_CIDADE_SEL || null,
+      p_busca: busca || null
+    });
+    vendas = vendas || [];
+    
+    var totalFilt = vendas.reduce(function(a, v){ return a + (parseFloat(v.valor_total)||0); }, 0);
+    document.getElementById('est-hist-count').textContent = vendas.length + ' vendas registradas';
+    document.getElementById('est-hist-total').textContent = _estFmtBRL(totalFilt);
+    
+    var tbody = document.getElementById('est-hist-body');
+    if(!vendas.length){
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhuma venda encontrada.</td></tr>';
+      return;
+    }
+    
+    tbody.innerHTML = vendas.map(function(v){
+      var tam = v.item_tamanho ? ' (' + v.item_tamanho + ')' : '';
+      return '<tr style="border-bottom:1px solid var(--border)">'
+        + '<td style="padding:10px 12px;color:var(--text);font-size:11px">' + _estFmtData(v.data) + '</td>'
+        + '<td style="padding:10px 12px;color:var(--text)">'
+          + '<div style="font-weight:600">' + (v.cliente_nome||'—') + '</div>'
+          + (v.cliente_telefone ? '<div style="font-size:10px;color:var(--text3)">' + v.cliente_telefone + '</div>' : '')
+        + '</td>'
+        + '<td style="padding:10px 12px;color:var(--text)">' + (v.item_nome||'') + tam + '</td>'
+        + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLoc(v.cidade) + '</td>'
+        + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700">' + v.quantidade + '</td>'
+        + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:#1D9E75;font-weight:700">' + _estFmtBRL(v.valor_total) + '</td>'
+      + '</tr>';
+    }).join('');
+  } catch(e){
+    document.getElementById('est-hist-body').innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#A32D2D">Erro: ' + e.message + '</td></tr>';
+  }
+}
+
+// ====== RELATÓRIOS ======
+async function estCarregarRelatorioAgrupado(){
+  try {
+    var hoje = new Date();
+    var iniMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0,10);
+    var d = await _estRPC('estoque_vendas_agrupadas', {
+      p_data_inicio: iniMes,
+      p_data_fim: hoje.toISOString().slice(0,10),
+      p_cidade: EST_CIDADE_SEL || null
+    });
+    
+    // Por modelo
+    var elM = document.getElementById('est-rel-modelo');
+    if(d.por_modelo && d.por_modelo.length){
+      elM.innerHTML = d.por_modelo.map(function(r){
+        return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">'
+          + '<span style="color:var(--text);font-weight:600">' + r.modelo + '</span>'
+          + '<span><strong style="color:#1AB8F0">' + r.quantidade + ' un</strong> <span class="gami-valor" style="color:#1D9E75;font-weight:600">' + _estFmtBRL(r.valor) + '</span></span>'
+        + '</div>';
+      }).join('');
+    } else {
+      elM.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Nenhuma venda no mês.</div>';
+    }
+    
+    // Por tamanho
+    var elT = document.getElementById('est-rel-tamanho');
+    if(d.por_tamanho && d.por_tamanho.length){
+      elT.innerHTML = d.por_tamanho.map(function(r){
+        return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">'
+          + '<span style="color:var(--text);font-weight:600">' + r.tamanho + '</span>'
+          + '<span><strong style="color:#1AB8F0">' + r.quantidade + ' un</strong> <span class="gami-valor" style="color:#1D9E75;font-weight:600">' + _estFmtBRL(r.valor) + '</span></span>'
+        + '</div>';
+      }).join('');
+    } else {
+      elT.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Nenhuma venda no mês.</div>';
+    }
+  } catch(e){}
+}
+
+async function estExportarRelatorio(tipo){
+  var ini, fim;
+  if(tipo === 'mes'){
+    var mes = document.getElementById('est-rel-mes').value;
+    if(!mes){ alert('Escolha o mês.'); return; }
+    ini = mes + '-01';
+    var d = new Date(mes + '-01');
+    d.setMonth(d.getMonth() + 1); d.setDate(0);
+    fim = d.toISOString().slice(0,10);
+  } else {
+    ini = document.getElementById('est-rel-ini').value;
+    fim = document.getElementById('est-rel-fim').value;
+    if(!ini || !fim){ alert('Escolha o período.'); return; }
+  }
+  
+  try {
+    var vendas = await _estRPC('estoque_vendas', {
+      p_data_inicio: ini, p_data_fim: fim,
+      p_cidade: EST_CIDADE_SEL || null
+    });
+    vendas = vendas || [];
+    
+    if(!vendas.length){
+      alert('Nenhuma venda no período selecionado.');
+      return;
+    }
+    
+    // Gera CSV (Excel abre direto)
+    var cab = ['Data','Cliente','Telefone','Item','Tamanho','Cidade','Quantidade','Valor Total','Observação','Registrado por'];
+    var linhas = vendas.map(function(v){
+      return [
+        _estFmtData(v.data),
+        (v.cliente_nome||'').replace(/[";]/g,''),
+        (v.cliente_telefone||''),
+        (v.item_nome||'').replace(/[";]/g,''),
+        (v.item_tamanho||''),
+        _estLoc(v.cidade),
+        v.quantidade,
+        parseFloat(v.valor_total||0).toFixed(2).replace('.', ','),
+        (v.observacao||'').replace(/[";]/g,''),
+        (v.usuario_nome||'')
+      ].join(';');
+    });
+    var totalVal = vendas.reduce(function(a,v){ return a + (parseFloat(v.valor_total)||0); }, 0);
+    var totalQtd = vendas.reduce(function(a,v){ return a + (parseInt(v.quantidade)||0); }, 0);
+    linhas.push('');
+    linhas.push(';;;;;TOTAIS;' + totalQtd + ';' + totalVal.toFixed(2).replace('.', ',') + ';;');
+    
+    var csv = '\uFEFF' + cab.join(';') + '\n' + linhas.join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'relatorio_vendas_' + ini + '_a_' + fim + (EST_CIDADE_SEL ? '_' + EST_CIDADE_SEL : '_todas') + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    if(typeof toast === 'function') toast('📊 Relatório exportado: ' + vendas.length + ' vendas', 'success');
+  } catch(e){
+    alert('Erro: ' + e.message);
+  }
 }
 
 // ====== INIT ======
-// Mostra item da sidebar pra quem tem nível adequado (imediato + recheck)
 estVerificarAcessoSidebar();
 setTimeout(estVerificarAcessoSidebar, 500);
 setTimeout(estVerificarAcessoSidebar, 1500);
-setTimeout(estVerificarAcessoSidebar, 3000);
 setInterval(estVerificarAcessoSidebar, 5000);
 document.addEventListener('DOMContentLoaded', estVerificarAcessoSidebar);
 
