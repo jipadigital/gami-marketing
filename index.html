@@ -1,4 +1,4 @@
-<!-- v25.73 - Sistema Ponto Etapa 2 (aba Meu Ponto) - 03/06/2026 -->
+<!-- v25.74 - Tour 1x e botao Baixar App no Manual - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -5781,6 +5781,16 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
 
   <div id="manual-home" class="man-section">
+    <!-- 📲 Card Baixar App -->
+    <div id="manual-baixar-app-card" style="display:flex;align-items:center;gap:14px;padding:16px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:white;border-radius:12px;margin-bottom:18px;flex-wrap:wrap;box-shadow:0 4px 14px rgba(14,122,184,0.25)">
+      <div style="font-size:36px;flex-shrink:0">📲</div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:16px;font-weight:700">Instalar o app no seu dispositivo</div>
+        <div id="manual-baixar-sub" style="font-size:12px;opacity:0.92;margin-top:3px;line-height:1.4">Acesse o Gâmi Marketing direto da tela inicial, sem precisar abrir o navegador. Funciona como um app nativo.</div>
+      </div>
+      <button onclick="gamiBaixarApp()" id="manual-btn-baixar" style="padding:11px 20px;border:none;background:white;color:#0E7AB8;font-size:13px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit;box-shadow:0 2px 6px rgba(0,0,0,0.1)">📥 Baixar App</button>
+    </div>
+    
     <div style="margin-bottom:18px">
       <input type="text" id="manual-busca" placeholder="🔍 Buscar tópico (ex: tarefa, story, ranking, delegação...)" class="man-busca-input" oninput="manualBuscar(this.value)">
     </div>
@@ -30581,14 +30591,29 @@ var GAMI_CLOUD_BLACKLIST = [
   // ===== Tem sync próprio em tabela dedicada =====
   'gami_pessoas_v2',
   // ===== 🚨 SESSÃO DO USUÁRIO LOCAL — NUNCA SINCRONIZAR! =====
-  // (sem isso, login de um dispositivo sobrescreve o do outro)
   'gami_usuario_logado',
   'gami_ultima_atividade',
   'gami_estoque_sessao',
   // ===== Caches locais por dispositivo =====
   'gami_inbox_lida',
-  'gami_inbox_lida_v2'
+  'gami_inbox_lida_v2',
+  // ===== PREFIXOS (* no final = "qualquer chave começando com") =====
+  'gami_onboarding_completo*',   // tour por usuário
+  'gami_lida_*'                  // marcações por dispositivo
 ];
+
+// Helper: checa se chave bate com blacklist (exato OU prefixo)
+function _gamiBlacklistMatch(key){
+  for(var i = 0; i < GAMI_CLOUD_BLACKLIST.length; i++){
+    var pattern = GAMI_CLOUD_BLACKLIST[i];
+    if(pattern.endsWith('*')){
+      if(key.indexOf(pattern.slice(0, -1)) === 0) return true;
+    } else {
+      if(key === pattern) return true;
+    }
+  }
+  return false;
+}
 
 function _gamiSyncBadge(text, color){
   var el = (typeof getStatusBadge === 'function') ? getStatusBadge() : null;
@@ -30663,14 +30688,14 @@ async function _gamiCloudFlush(){
     origSet.call(this, key, value);
     if(this !== window.localStorage) return;
     if(typeof key !== 'string' || key.indexOf('gami_') !== 0) return;
-    if(GAMI_CLOUD_BLACKLIST.indexOf(key) >= 0) return;
+    if(_gamiBlacklistMatch(key)) return;
     _gamiCloudQueue(key, value);
   };
   Storage.prototype.removeItem = function(key){
     origRemove.call(this, key);
     if(this !== window.localStorage) return;
     if(typeof key !== 'string' || key.indexOf('gami_') !== 0) return;
-    if(GAMI_CLOUD_BLACKLIST.indexOf(key) >= 0) return;
+    if(_gamiBlacklistMatch(key)) return;
     _gamiCloudQueue(key, null);
   };
 })();
@@ -30690,7 +30715,7 @@ async function gamiCloudPull(){
     var aplicadas = 0;
     rows.forEach(function(row){
       if(!row || !row.chave) return;
-      if(GAMI_CLOUD_BLACKLIST.indexOf(row.chave) >= 0) return;
+      if(_gamiBlacklistMatch(row.chave)) return;
       var v = row.valor;
       if(v === null || v === undefined) return;
       // Se valor é objeto/array (Postgres jsonb), converte; se já é string, usa como veio
@@ -37776,8 +37801,79 @@ function recarregarPortal(){
   window.addEventListener('beforeinstallprompt', function(e){
     e.preventDefault();
     deferredPrompt = e;
+    window._gamiPwaPrompt = e;  // 🆕 expõe globalmente
     mostrarBotaoInstalar();
+    // Atualiza UI do Manual (se estiver visível)
+    if(typeof atualizarBotaoBaixarManual === 'function') atualizarBotaoBaixarManual();
   });
+  
+  window.addEventListener('appinstalled', function(){
+    deferredPrompt = null;
+    window._gamiPwaPrompt = null;
+    window._gamiPwaInstalado = true;
+    if(typeof atualizarBotaoBaixarManual === 'function') atualizarBotaoBaixarManual();
+  });
+  
+  // 🆕 Atualiza UI do card "Baixar App" no Manual
+  window.atualizarBotaoBaixarManual = function(){
+    var btn = document.getElementById('manual-btn-baixar');
+    var sub = document.getElementById('manual-baixar-sub');
+    if(!btn) return;
+    var isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    if(window._gamiPwaInstalado || isStandalone){
+      btn.textContent = '✅ App instalado';
+      btn.disabled = true;
+      btn.style.background = '#1D9E75';
+      btn.style.color = 'white';
+      btn.style.cursor = 'default';
+      if(sub) sub.textContent = 'O app já está instalado neste dispositivo. Acesse pela tela inicial!';
+    }
+  };
+  // Verifica no carregamento
+  setTimeout(function(){ if(typeof atualizarBotaoBaixarManual === 'function') atualizarBotaoBaixarManual(); }, 1000);
+  
+  // 🆕 Função pra instalar via botão no Manual
+  window.gamiBaixarApp = async function(){
+    if(window._gamiPwaInstalado){
+      alert('✅ App já instalado neste dispositivo!');
+      return;
+    }
+    if(window._gamiPwaPrompt){
+      try {
+        await window._gamiPwaPrompt.prompt();
+        var r = await window._gamiPwaPrompt.userChoice;
+        if(r && r.outcome === 'accepted'){
+          window._gamiPwaPrompt = null;
+          deferredPrompt = null;
+          alert('✅ App sendo instalado...');
+        }
+      } catch(e){ console.error('PWA install:', e); }
+      return;
+    }
+    // Detecta plataforma e mostra instruções manuais
+    var ua = navigator.userAgent || '';
+    var isIOS = /iPhone|iPad|iPod/.test(ua);
+    var isAndroid = /Android/i.test(ua);
+    var isMac = /Macintosh/.test(ua);
+    var isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    
+    if(isStandalone){
+      alert('✅ Você já está usando o app instalado.');
+      return;
+    }
+    
+    var msg = '';
+    if(isIOS){
+      msg = '📱 Pra instalar no iPhone/iPad:\n\n1. Toque no botão Compartilhar (⬆️) no Safari\n2. Role e toque em "Adicionar à Tela de Início"\n3. Confirme em "Adicionar"';
+    } else if(isAndroid){
+      msg = '📱 Pra instalar no Android:\n\n1. Abra o menu do Chrome (3 pontos)\n2. Toque em "Instalar app" ou "Adicionar à tela inicial"\n3. Confirme';
+    } else if(isMac){
+      msg = '💻 Pra instalar no Mac:\n\n1. Abra no Safari ou Chrome\n2. No Safari: menu Arquivo → "Adicionar ao Dock"\n3. No Chrome: ícone ⊕ na barra de endereço';
+    } else {
+      msg = '💻 Pra instalar no PC:\n\n1. Abra o Chrome/Edge\n2. Clique no ícone ⊕ "Instalar" na barra de endereço\n3. Confirme';
+    }
+    alert(msg);
+  };
   
   function mostrarBotaoInstalar(){
     if (document.getElementById('pwa-instalar-btn')) return;
@@ -38487,14 +38583,12 @@ function _onboardingVoltar(){
 function _fecharOnboarding(completou){
   var modal = document.getElementById('onboarding-modal');
   if(modal) modal.remove();
-  if(completou){
-    try {
-      var chave = _onboardingChave();
-      if(chave) localStorage.setItem(chave, '1');
-      // Mantém retrocompatibilidade com chave global antiga
-      localStorage.setItem('gami_onboarding_completo', '1');
-    } catch(e){}
-  }
+  // 🆕 SEMPRE marca como visto (mesmo se pulou) — evita aparecer de novo
+  try {
+    var chave = _onboardingChave();
+    if(chave) localStorage.setItem(chave, '1');
+    localStorage.setItem('gami_onboarding_completo', '1');
+  } catch(e){}
 }
 
 // Inicia o tour APÓS detectar usuário logado (1ª vez de cada pessoa)
