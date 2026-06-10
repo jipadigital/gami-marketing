@@ -1,4 +1,4 @@
-<!-- v25.79 - Plano de Carreira sem tempo fixo - 10/06/2026 -->
+<!-- v25.80 - Ponto reconhece modo teste sem precisar do banco - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40149,26 +40149,44 @@ async function mpVerificarAcessoSidebar(){
   var navGestao = document.getElementById('nav-ponto-gestao');
   if(!u) return;
   
-  // Pra Meu Ponto: precisa estar logada como pessoa com bate_ponto = TRUE
-  // Busca no Supabase pra saber se essa pessoa bate ponto
-  try {
-    var email = u.email || '';
-    var id = u.id || u.pessoa_id;
-    var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
-    var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto&limit=1', {
-      headers: _mpSupaHeaders(), cache: 'no-store'
-    });
-    var arr = r.ok ? await r.json() : [];
-    var p = arr[0];
-    if(p && p.bate_ponto){
-      MP_PESSOA = p;
+  // 🆕 MODO TESTE: se o perfil é impersonado e tem bate_ponto, usa direto (não consulta banco)
+  if(u._impersonacao){
+    if(u.bate_ponto){
+      MP_PESSOA = {
+        id: u.id || u.pessoa_id,
+        nome: u.nome,
+        foto: u.foto || null,
+        cargo: u.cargo,
+        bate_ponto: true,
+        _impersonacao: true
+      };
       if(navMp) navMp.style.display = '';
     } else {
+      MP_PESSOA = null;
       if(navMp) navMp.style.display = 'none';
     }
-  } catch(e){ console.warn('[MP] verificar acesso:', e); }
+  } else {
+    // Verificação normal via banco
+    try {
+      var email = u.email || '';
+      var id = u.id || u.pessoa_id;
+      var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
+      var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto&limit=1', {
+        headers: _mpSupaHeaders(), cache: 'no-store'
+      });
+      var arr = r.ok ? await r.json() : [];
+      var p = arr[0];
+      if(p && p.bate_ponto){
+        MP_PESSOA = p;
+        if(navMp) navMp.style.display = '';
+      } else {
+        MP_PESSOA = null;
+        if(navMp) navMp.style.display = 'none';
+      }
+    } catch(e){ console.warn('[MP] verificar acesso:', e); }
+  }
   
-  // Pra Gestão: super_admin, diretoria, gerência
+  // Pra Gestão: super_admin, diretoria, gerência (FUNCIONA em impersonação tb)
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   if(navGestao){
     if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
@@ -41460,6 +41478,21 @@ async function dashRenderCardPonto(){
   }
   
   card.style.display = 'block';
+  
+  // 🆕 Modo teste: mostra banner informativo
+  if(MP_PESSOA._impersonacao){
+    document.getElementById('dash-ponto-info').innerHTML = '🎭 <strong style="color:#8B5CF6">Modo Teste</strong> · botão de bater ponto não funciona (perfil fictício)';
+    document.getElementById('dash-ponto-status').innerHTML = 
+      '<div style="grid-column:1/-1;padding:14px;background:#F3E8FF;border:1px dashed #8B5CF6;border-radius:8px;text-align:center;color:#6A1B9A;font-size:11px">'
+      + 'Aqui apareceriam os 4 cards de batida (Entrada · Almoço · Volta · Saída) com horários esperados e realizados.'
+      + '</div>';
+    var btn = document.getElementById('dash-btn-bater-ponto');
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.innerHTML = '🎭 Bater Ponto · (desativado em modo teste)';
+    document.getElementById('dash-ponto-geo').innerHTML = '📍 Em uso real, mostraria a localização da pessoa aqui';
+    return;
+  }
   
   // Carrega config (se ainda não tem)
   if(!MP_CONFIG) await mpCarregarConfig();
