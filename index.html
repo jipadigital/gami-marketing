@@ -1,4 +1,4 @@
-<!-- v25.75 - Modo Teste impersonacao de perfis - 03/06/2026 -->
+<!-- v25.76 - Modo teste check mais robusto + botao maior - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40580,7 +40580,23 @@ var PERFIS_TESTE = [
 // ============ Verificações ============
 function _gamiEhSuperAdminReal(){
   var real = _getUsuarioLogadoReal();
-  return !!(real && real.email === 'jipadigital@gmail.com');
+  if(!real) return false;
+  
+  // Check 1: email exato
+  if(real.email && real.email.toLowerCase() === 'jipadigital@gmail.com') return true;
+  
+  // Check 2: via detectarNivelPermissao do sistema (mais robusto)
+  if(typeof detectarNivelPermissao === 'function'){
+    try {
+      var nivel = detectarNivelPermissao(real);
+      if(nivel === 'super_admin') return true;
+    } catch(e){}
+  }
+  
+  // Check 3: cargo Marketing/Owner
+  if(real.cargo && /marketing|owner|admin/i.test(real.cargo)) return true;
+  
+  return false;
 }
 
 function _gamiEstaImpersonando(){
@@ -40664,11 +40680,11 @@ function gamiRenderBotaoModoTeste(){
   
   var btn = document.createElement('button');
   btn.id = 'btn-modo-teste';
-  btn.title = 'Modo Teste — ver como cada nível';
+  btn.title = 'Modo Teste — ver como cada nível (só você)';
   btn.onclick = gamiAbrirModalImpersonar;
-  btn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:48px;height:48px;border:none;background:linear-gradient(135deg,#8B5CF6,#6A1B9A);color:white;font-size:22px;border-radius:50%;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(139,92,246,0.4);z-index:9996;display:flex;align-items:center;justify-content:center;transition:transform .2s';
-  btn.innerHTML = '🎭';
-  btn.onmouseover = function(){ this.style.transform = 'scale(1.1)'; };
+  btn.style.cssText = 'position:fixed;bottom:90px;right:16px;padding:10px 14px;border:none;background:linear-gradient(135deg,#8B5CF6,#6A1B9A);color:white;font-size:13px;font-weight:700;border-radius:24px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(139,92,246,0.45);z-index:9996;display:flex;align-items:center;gap:6px;transition:transform .2s';
+  btn.innerHTML = '<span style="font-size:18px">🎭</span> Modo Teste';
+  btn.onmouseover = function(){ this.style.transform = 'scale(1.05)'; };
   btn.onmouseout = function(){ this.style.transform = ''; };
   document.body.appendChild(btn);
 }
@@ -40717,13 +40733,34 @@ function gamiAbrirModalImpersonar(){
 
 // ============ INIT ============
 function _gamiInitImpersonacao(){
-  gamiRenderBannerImpersonacao();
-  gamiRenderBotaoModoTeste();
+  try {
+    var real = _getUsuarioLogadoReal();
+    var ehAdmin = _gamiEhSuperAdminReal();
+    console.log('[🎭 Modo Teste] Usuário real:', real ? (real.nome + ' · ' + real.email) : 'nenhum', '· super_admin?', ehAdmin);
+    gamiRenderBannerImpersonacao();
+    gamiRenderBotaoModoTeste();
+  } catch(e){ console.error('[🎭] init:', e); }
 }
 
-setTimeout(_gamiInitImpersonacao, 800);
-setTimeout(_gamiInitImpersonacao, 2000);
+setTimeout(_gamiInitImpersonacao, 500);
+setTimeout(_gamiInitImpersonacao, 1500);
+setTimeout(_gamiInitImpersonacao, 3000);
+setInterval(_gamiInitImpersonacao, 5000);  // garante que aparece mesmo após login tardio
 document.addEventListener('DOMContentLoaded', _gamiInitImpersonacao);
+
+// 🆕 Comando manual via console pra forçar (caso check falhe)
+window.gamiForcarModoTeste = function(){
+  if(document.getElementById('btn-modo-teste')) return 'Botão já existe';
+  // Força sem checagem
+  var btn = document.createElement('button');
+  btn.id = 'btn-modo-teste';
+  btn.title = 'Modo Teste (forçado)';
+  btn.onclick = gamiAbrirModalImpersonar;
+  btn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:48px;height:48px;border:none;background:linear-gradient(135deg,#8B5CF6,#6A1B9A);color:white;font-size:22px;border-radius:50%;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(139,92,246,0.4);z-index:9996;display:flex;align-items:center;justify-content:center';
+  btn.innerHTML = '🎭';
+  document.body.appendChild(btn);
+  return 'Botão criado!';
+};
 
 </script>
 </html>
