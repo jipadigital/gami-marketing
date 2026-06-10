@@ -1,4 +1,4 @@
-<!-- v25.71 - Estoque cache fix definitivo - 03/06/2026 -->
+<!-- v25.72 - Estoque modo pastas por cidade - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4187,12 +4187,29 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
   <!-- TAB: ESTOQUE -->
   <div id="est-tab-estoque" class="est-tab-pane" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap;gap:10px">
-      <div><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">Estoque</div><div style="font-size:11px;color:var(--text3)" id="est-itens-count">0 itens cadastrados</div></div>
+    <!-- Header padrão -->
+    <div id="est-pastas-header" style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">📂 Estoque por Cidade</div>
+        <div style="font-size:11px;color:var(--text3)" id="est-itens-count">0 itens cadastrados</div>
+      </div>
       <button class="btn btn-primary" onclick="estIrParaTab('adicionar')">+ Adicionar Item</button>
     </div>
     
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    <!-- Header de cidade aberta (oculto inicialmente) -->
+    <div id="est-cidade-header" style="display:none;margin-bottom:12px">
+      <button onclick="estVoltarPastas()" style="margin-bottom:10px;padding:6px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit">← Voltar pras cidades</button>
+      <div id="est-cidade-info" style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap">
+        <div>
+          <div id="est-cidade-titulo" style="font-size:20px;font-weight:700;color:var(--text)">—</div>
+          <div id="est-cidade-resumo" style="font-size:12px;color:var(--text3);margin-top:2px">—</div>
+        </div>
+        <button class="btn btn-primary" onclick="estIrParaTab('adicionar')">+ Adicionar Item</button>
+      </div>
+    </div>
+    
+    <!-- Filtros (apenas modo itens) -->
+    <div id="est-filtros" style="display:none;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <input id="est-busca-estoque" oninput="estRenderTabela()" placeholder="🔍 Buscar por modelo ou tamanho..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
       <select id="est-filtro-status" onchange="estRenderTabela()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
         <option value="">Todos status</option>
@@ -4202,25 +4219,30 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       </select>
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden">
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
-          <thead>
-            <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
-              <th style="text-align:center;padding:10px 6px;font-weight:700;color:var(--text2);font-size:11px;width:50px">Foto</th>
-              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Modelo</th>
-              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Tam.</th>
-              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cidade</th>
-              <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Qtd.</th>
-              <th class="gami-valor" style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Valor</th>
-              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Status</th>
-              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px;width:60px">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="est-tabela-body">
-            <tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
-          </tbody>
-        </table>
+    <!-- GRID DE PASTAS (modo default) -->
+    <div id="est-pastas-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px"></div>
+
+    <!-- TABELA (modo cidade aberta) -->
+    <div id="est-tabela-wrapper" style="display:none">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+            <thead>
+              <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+                <th style="text-align:center;padding:10px 6px;font-weight:700;color:var(--text2);font-size:11px;width:50px">Foto</th>
+                <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Modelo</th>
+                <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Tam.</th>
+                <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Qtd.</th>
+                <th class="gami-valor" style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Valor</th>
+                <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Status</th>
+                <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px;width:60px">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="est-tabela-body">
+              <tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -39067,26 +39089,129 @@ async function estRenderDashboard(){
 }
 
 // ====== ESTOQUE (tabela) ======
+// ====== ESTOQUE (modos pasta / itens) ======
+var EST_VIEW_MODE = 'pastas';      // 'pastas' ou 'itens'
+var EST_CIDADE_ABERTA = null;
+
+function estVoltarPastas(){
+  EST_VIEW_MODE = 'pastas';
+  EST_CIDADE_ABERTA = null;
+  estRenderTabela();
+}
+
+function estAbrirPasta(cidade){
+  EST_VIEW_MODE = 'itens';
+  EST_CIDADE_ABERTA = cidade;
+  estRenderTabela();
+}
+
 function estRenderTabela(){
-  var tbody = document.getElementById('est-tabela-body');
-  if(!tbody) return;
+  var headerPastas = document.getElementById('est-pastas-header');
+  var headerCidade = document.getElementById('est-cidade-header');
+  var filtros = document.getElementById('est-filtros');
+  var gridPastas = document.getElementById('est-pastas-grid');
+  var wrapperTabela = document.getElementById('est-tabela-wrapper');
+  
+  if(!headerPastas || !gridPastas || !wrapperTabela) return;
+  
+  // Conta itens cadastrados
+  document.getElementById('est-itens-count').textContent = EST_ITENS.length + ' itens cadastrados em ' + (new Set(EST_SALDOS.map(function(s){ return s.cidade; }))).size + ' cidades';
+  
+  // === MODO PASTAS ===
+  if(EST_VIEW_MODE === 'pastas'){
+    headerPastas.style.display = 'flex';
+    headerCidade.style.display = 'none';
+    filtros.style.display = 'none';
+    wrapperTabela.style.display = 'none';
+    gridPastas.style.display = 'grid';
+    
+    // Agrupa saldos por cidade
+    var porCidade = {};
+    EST_SALDOS.forEach(function(s){
+      var sd = parseInt(s.saldo) || 0;
+      if(!porCidade[s.cidade]) porCidade[s.cidade] = { cidade: s.cidade, total: 0, modelos: 0, valor: 0, baixo: 0, zerado: 0 };
+      if(sd > 0){
+        porCidade[s.cidade].total += sd;
+        porCidade[s.cidade].modelos++;
+        porCidade[s.cidade].valor += sd * (parseFloat(s.valor_unitario)||0);
+        if(sd < 10) porCidade[s.cidade].baixo++;
+      } else {
+        porCidade[s.cidade].zerado++;
+      }
+    });
+    
+    // Garante que todas as cidades aparecem (mesmo sem saldo) — só as 11 + Matriz
+    EST_LOCALIZACOES.forEach(function(loc){
+      if(!porCidade[loc.codigo]) porCidade[loc.codigo] = { cidade: loc.codigo, total: 0, modelos: 0, valor: 0, baixo: 0, zerado: 0 };
+    });
+    
+    // Ordena: maior estoque primeiro
+    var lista = Object.values(porCidade).sort(function(a, b){ return b.total - a.total; });
+    
+    gridPastas.innerHTML = lista.map(function(c){
+      var vazia = c.total === 0;
+      var corBg = vazia 
+        ? 'linear-gradient(135deg,#F5F7FA,#FFFFFF)' 
+        : 'linear-gradient(135deg,#E6F6FE,#FFFFFF)';
+      var corBorda = vazia ? 'var(--border)' : '#1AB8F0';
+      var corNum = vazia ? 'var(--text3)' : '#0E7AB8';
+      var emojiPasta = vazia ? '📁' : '📂';
+      var alertaBaixo = c.baixo > 0 ? '<span style="margin-left:6px;padding:2px 6px;background:#FFF8E1;color:#854F0B;border-radius:4px;font-size:9px;font-weight:700">⚠️ ' + c.baixo + ' baixo</span>' : '';
+      
+      return '<div onclick="estAbrirPasta(\'' + c.cidade + '\')" '
+        + 'style="background:' + corBg + ';border:1.5px solid ' + corBorda + (vazia ? '' : '33') + ';border-radius:14px;padding:16px;cursor:pointer;transition:transform .15s, box-shadow .15s;position:relative" '
+        + 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 20px rgba(26,184,240,0.18)\'" '
+        + 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'
+          + '<div style="font-size:36px;line-height:1">' + emojiPasta + '</div>'
+          + (vazia ? '<span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:10px;font-weight:600">VAZIA</span>' : '')
+        + '</div>'
+        + '<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px">' + _estLoc(c.cidade) + alertaBaixo + '</div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid ' + (vazia ? 'var(--border)' : '#1AB8F033') + '">'
+          + '<div>'
+            + '<div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Peças</div>'
+            + '<div style="font-size:22px;font-weight:700;color:' + corNum + ';line-height:1">' + c.total.toLocaleString('pt-BR') + '</div>'
+          + '</div>'
+          + '<div style="text-align:right">'
+            + '<div style="font-size:9px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:0.5px">Modelos</div>'
+            + '<div style="font-size:18px;font-weight:600;color:' + corNum + ';line-height:1">' + c.modelos + '</div>'
+          + '</div>'
+        + '</div>'
+        + (!vazia ? '<div class="gami-valor" style="margin-top:8px;font-size:11px;color:var(--text2);text-align:center">💰 ' + _estFmtBRL(c.valor) + '</div>' : '')
+      + '</div>';
+    }).join('');
+    return;
+  }
+  
+  // === MODO ITENS (cidade aberta) ===
+  headerPastas.style.display = 'none';
+  headerCidade.style.display = 'block';
+  filtros.style.display = 'flex';
+  wrapperTabela.style.display = 'block';
+  gridPastas.style.display = 'none';
+  
+  // Header da cidade
+  document.getElementById('est-cidade-titulo').textContent = _estLoc(EST_CIDADE_ABERTA);
+  
   var busca = (document.getElementById('est-busca-estoque').value || '').toLowerCase().trim();
   var filtroStatus = document.getElementById('est-filtro-status').value;
   
-  // Linhas a partir do saldos
-  var linhas = EST_SALDOS.map(function(s){
-    return {
-      item_id: s.item_id,
-      nome: s.nome,
-      tamanho: s.tamanho || '',
-      cidade: s.cidade,
-      saldo: parseInt(s.saldo) || 0,
-      valor: parseFloat(s.valor_unitario) || 0,
-      foto_url: s.foto_url || ''
-    };
-  });
+  // Filtra só pela cidade aberta
+  var linhas = EST_SALDOS
+    .filter(function(s){ return s.cidade === EST_CIDADE_ABERTA; })
+    .map(function(s){
+      return {
+        item_id: s.item_id,
+        nome: s.nome,
+        tamanho: s.tamanho || '',
+        cidade: s.cidade,
+        saldo: parseInt(s.saldo) || 0,
+        valor: parseFloat(s.valor_unitario) || 0,
+        foto_url: s.foto_url || ''
+      };
+    });
   
-  // Filtros
+  // Aplica busca e filtro de status
   var filt = linhas.filter(function(l){
     if(busca){
       var alvo = (l.nome + ' ' + l.tamanho).toLowerCase();
@@ -39102,15 +39227,22 @@ function estRenderTabela(){
   filt.sort(function(a,b){
     var n = a.nome.localeCompare(b.nome);
     if(n) return n;
-    var t = (a.tamanho||'').localeCompare(b.tamanho||'');
-    if(t) return t;
-    return a.cidade.localeCompare(b.cidade);
+    return (a.tamanho||'').localeCompare(b.tamanho||'');
   });
   
-  document.getElementById('est-itens-count').textContent = EST_ITENS.length + ' itens cadastrados';
+  // Resumo da cidade (todos os itens, sem filtro de busca)
+  var totalPecas = linhas.reduce(function(a, l){ return a + Math.max(0, l.saldo); }, 0);
+  var modelos = linhas.filter(function(l){ return l.saldo > 0; }).length;
+  var valorTotal = linhas.reduce(function(a, l){ return a + (Math.max(0, l.saldo) * l.valor); }, 0);
+  document.getElementById('est-cidade-resumo').innerHTML = 
+    '📦 <strong style="color:#1AB8F0">' + totalPecas + '</strong> peças · '
+    + '<strong>' + modelos + '</strong> modelos · '
+    + '<span class="gami-valor">💰 ' + _estFmtBRL(valorTotal) + '</span>';
+  
+  var tbody = document.getElementById('est-tabela-body');
   
   if(!filt.length){
-    tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado. Vá em ➕ Adicionar pra cadastrar.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text3)">📭 Nada encontrado com esses filtros.</td></tr>';
     return;
   }
   
@@ -39129,7 +39261,6 @@ function estRenderTabela(){
       + '<td style="padding:8px 6px;text-align:center"><div style="display:flex;justify-content:center">' + fotoHtml + '</div></td>'
       + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + l.nome + '</td>'
       + '<td style="padding:10px 12px;text-align:center;color:var(--text2);font-size:11px">' + (l.tamanho || '—') + '</td>'
-      + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLoc(l.cidade) + '</td>'
       + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700;font-size:14px">' + l.saldo + '</td>'
       + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:var(--text2);font-size:11px">' + _estFmtBRL(l.valor) + '</td>'
       + '<td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 10px;border-radius:12px;background:' + st.bg + ';color:' + st.cor + ';font-size:10px;font-weight:700">' + st.lbl + '</span></td>'
