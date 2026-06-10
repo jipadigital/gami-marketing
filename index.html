@@ -1,4 +1,4 @@
-<!-- v25.74 - Tour 1x e botao Baixar App no Manual - 03/06/2026 -->
+<!-- v25.75 - Modo Teste impersonacao de perfis - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8272,15 +8272,32 @@ async function obterExtratoPessoa(pessoaId){
 
 /* SESSION HELPERS */
 function getUsuarioLogado(){
+  // 🎭 IMPERSONAÇÃO (só funciona se o usuário REAL é super_admin)
+  try {
+    var imp = sessionStorage.getItem('_gami_impersonacao');
+    if(imp){
+      var real = _getUsuarioLogadoReal();
+      // Só permite impersonar se realmente é super_admin
+      if(real && real.email === 'jipadigital@gmail.com'){
+        var perfil = JSON.parse(imp);
+        return perfil;
+      } else {
+        // Não é super_admin: limpa impersonação
+        sessionStorage.removeItem('_gami_impersonacao');
+      }
+    }
+  } catch(e){}
+  return _getUsuarioLogadoReal();
+}
+
+function _getUsuarioLogadoReal(){
   var saved = localStorage.getItem('gami_usuario_logado');
   if(!saved) return null;
   try {
     var u = JSON.parse(saved);
-    // Verifica timeout (20min de inatividade)
     var ultimaAtividade = parseInt(localStorage.getItem('gami_ultima_atividade') || '0', 10);
     var agora = Date.now();
     if(ultimaAtividade && (agora - ultimaAtividade) > 20 * 60 * 1000){
-      // Expirou
       setUsuarioLogado(null);
       return null;
     }
@@ -40416,6 +40433,297 @@ setTimeout(mpVerificarAcessoSidebar, 600);
 setTimeout(mpVerificarAcessoSidebar, 1500);
 setInterval(mpVerificarAcessoSidebar, 5000);
 document.addEventListener('DOMContentLoaded', mpVerificarAcessoSidebar);
+
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🎭 MODO TESTE — IMPERSONAÇÃO DE PERFIS ===================
+// ================================================================
+// Apenas pro super_admin (Cleyton) — permite "ver como" cada nível
+// Salvado em sessionStorage (não vaza pro cloud sync)
+// NÃO adiciona pessoas em pessoas — perfis fictícios apenas pra UI
+// ================================================================
+
+var PERFIS_TESTE = [
+  {
+    id: 'teste-cleyton-real',
+    nome: '🛡️ Cleyton (você - REAL)',
+    descricao: 'Super Admin · acesso total · ver tudo',
+    cor: '#E24B4A',
+    perfil: null  // null = volta pro real
+  },
+  {
+    id: 'teste-diretoria',
+    nome: '👔 Diretoria',
+    descricao: 'Ver tudo · ler relatórios · não edita',
+    cor: '#0E7AB8',
+    perfil: {
+      id: 'teste-diretoria-fake-id',
+      pessoa_id: 'teste-diretoria-fake-id',
+      email: 'diretoria@teste.gami',
+      nome: 'Diretoria (teste)',
+      cargo: 'Diretor',
+      cidade: null,
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-gerencia-ops',
+    nome: '🏢 Gerência - Operações',
+    descricao: 'Thiago · acessa relatórios sem financeiro',
+    cor: '#8B5CF6',
+    perfil: {
+      id: 'teste-gerencia-ops-fake-id',
+      pessoa_id: 'teste-gerencia-ops-fake-id',
+      email: 'gerencia.ops@teste.gami',
+      nome: 'Gerência Operações (teste)',
+      cargo: 'Gerente de Operações',
+      cidade: null,
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-gerencia-fin',
+    nome: '💰 Gerência - Financeiro',
+    descricao: 'Leomara · acessa relatórios',
+    cor: '#8B5CF6',
+    perfil: {
+      id: 'teste-gerencia-fin-fake-id',
+      pessoa_id: 'teste-gerencia-fin-fake-id',
+      email: 'gerencia.fin@teste.gami',
+      nome: 'Gerência Financeiro (teste)',
+      cargo: 'Gerente Financeiro',
+      cidade: null,
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-gestor-maceio',
+    nome: '🛵 Gestor - Maceió',
+    descricao: 'Vê apenas Maceió',
+    cor: '#1D9E75',
+    perfil: {
+      id: 'teste-gestor-maceio-fake-id',
+      pessoa_id: 'teste-gestor-maceio-fake-id',
+      email: 'gestor.maceio@teste.gami',
+      nome: 'Gestor Maceió (teste)',
+      cargo: 'Gestor de Cidade',
+      cidade: 'maceio',
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-gestor-cuiaba',
+    nome: '🛵 Gestor - Cuiabá',
+    descricao: 'Vê apenas Cuiabá',
+    cor: '#1D9E75',
+    perfil: {
+      id: 'teste-gestor-cuiaba-fake-id',
+      pessoa_id: 'teste-gestor-cuiaba-fake-id',
+      email: 'gestor.cuiaba@teste.gami',
+      nome: 'Gestor Cuiabá (teste)',
+      cargo: 'Gestor de Cidade',
+      cidade: 'cuiaba',
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-prospeccao',
+    nome: '🎯 Prospecção - Maceió',
+    descricao: 'Sem valores R$ · só Maceió',
+    cor: '#EF9F27',
+    perfil: {
+      id: 'teste-prospeccao-fake-id',
+      pessoa_id: 'teste-prospeccao-fake-id',
+      email: 'flaviagomes.gami@gmail.com',  // email real da Flávia → detecta como prospecção
+      nome: 'Prospecção (teste)',
+      cargo: 'Prospecção',
+      cidade: 'maceio',
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-colaborador-suporte',
+    nome: '👥 Colaboradora - Suporte',
+    descricao: 'Bate ponto · Meu Ponto disponível',
+    cor: '#5A6678',
+    perfil: {
+      id: 'teste-colaborador-fake-id',
+      pessoa_id: 'teste-colaborador-fake-id',
+      email: 'colaborador@teste.gami',
+      nome: 'Colaboradora Suporte (teste)',
+      cargo: 'Suporte Escritório',
+      cidade: null,
+      bate_ponto: true,
+      _impersonacao: true
+    }
+  },
+  {
+    id: 'teste-colaborador-geral',
+    nome: '👤 Colaborador genérico',
+    descricao: 'Nível básico · vê dashboard sem edição',
+    cor: '#5A6678',
+    perfil: {
+      id: 'teste-colaborador-geral-fake-id',
+      pessoa_id: 'teste-colaborador-geral-fake-id',
+      email: 'colaborador@teste.gami',
+      nome: 'Colaborador (teste)',
+      cargo: 'Colaborador',
+      cidade: null,
+      _impersonacao: true
+    }
+  }
+];
+
+// ============ Verificações ============
+function _gamiEhSuperAdminReal(){
+  var real = _getUsuarioLogadoReal();
+  return !!(real && real.email === 'jipadigital@gmail.com');
+}
+
+function _gamiEstaImpersonando(){
+  try {
+    return !!sessionStorage.getItem('_gami_impersonacao');
+  } catch(e){ return false; }
+}
+
+function _gamiPerfilImpersonado(){
+  try {
+    var raw = sessionStorage.getItem('_gami_impersonacao');
+    if(!raw) return null;
+    return JSON.parse(raw);
+  } catch(e){ return null; }
+}
+
+// ============ Impersonar / Sair ============
+function gamiImpersonar(perfilId){
+  if(!_gamiEhSuperAdminReal()){
+    alert('🚫 Apenas o super_admin pode usar o modo teste.');
+    return;
+  }
+  var p = PERFIS_TESTE.find(function(x){ return x.id === perfilId; });
+  if(!p) return;
+  
+  if(!p.perfil){
+    // Volta pro real
+    sessionStorage.removeItem('_gami_impersonacao');
+  } else {
+    sessionStorage.setItem('_gami_impersonacao', JSON.stringify(p.perfil));
+  }
+  
+  // Fecha modal
+  var m = document.getElementById('modal-impersonar');
+  if(m) m.remove();
+  
+  // Recarrega a página pra UI ajustar
+  setTimeout(function(){ window.location.reload(); }, 200);
+}
+
+function gamiSairImpersonar(){
+  sessionStorage.removeItem('_gami_impersonacao');
+  setTimeout(function(){ window.location.reload(); }, 100);
+}
+
+// ============ UI: Banner topo + Botão menu ============
+function gamiRenderBannerImpersonacao(){
+  // Remove banner anterior
+  var antigo = document.getElementById('banner-impersonacao');
+  if(antigo) antigo.remove();
+  
+  if(!_gamiEstaImpersonando()) return;
+  
+  var perfil = _gamiPerfilImpersonado();
+  if(!perfil) return;
+  
+  var perfilInfo = PERFIS_TESTE.find(function(x){ 
+    return x.perfil && x.perfil.email === perfil.email; 
+  });
+  var cor = perfilInfo ? perfilInfo.cor : '#EF9F27';
+  var nomeExib = perfilInfo ? perfilInfo.nome : perfil.nome;
+  
+  var banner = document.createElement('div');
+  banner.id = 'banner-impersonacao';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:' + cor + ';color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:600;z-index:9997;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.15)';
+  banner.innerHTML = '<span>🎭 MODO TESTE — visualizando como <strong>' + nomeExib + '</strong></span>'
+    + '<button onclick="gamiAbrirModalImpersonar()" style="padding:3px 10px;background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);font-size:10px;font-weight:600;border-radius:4px;cursor:pointer;font-family:inherit">🔄 Trocar</button>'
+    + '<button onclick="gamiSairImpersonar()" style="padding:3px 10px;background:white;color:' + cor + ';border:none;font-size:10px;font-weight:700;border-radius:4px;cursor:pointer;font-family:inherit">✕ Voltar pra mim</button>';
+  
+  document.body.appendChild(banner);
+  
+  // Empurra o conteúdo pra baixo
+  document.body.style.paddingTop = '40px';
+}
+
+function gamiRenderBotaoModoTeste(){
+  // Só pra super_admin REAL
+  if(!_gamiEhSuperAdminReal()) return;
+  // Evita duplicação
+  if(document.getElementById('btn-modo-teste')) return;
+  
+  var btn = document.createElement('button');
+  btn.id = 'btn-modo-teste';
+  btn.title = 'Modo Teste — ver como cada nível';
+  btn.onclick = gamiAbrirModalImpersonar;
+  btn.style.cssText = 'position:fixed;bottom:80px;right:16px;width:48px;height:48px;border:none;background:linear-gradient(135deg,#8B5CF6,#6A1B9A);color:white;font-size:22px;border-radius:50%;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(139,92,246,0.4);z-index:9996;display:flex;align-items:center;justify-content:center;transition:transform .2s';
+  btn.innerHTML = '🎭';
+  btn.onmouseover = function(){ this.style.transform = 'scale(1.1)'; };
+  btn.onmouseout = function(){ this.style.transform = ''; };
+  document.body.appendChild(btn);
+}
+
+function gamiAbrirModalImpersonar(){
+  if(!_gamiEhSuperAdminReal()){
+    alert('🚫 Apenas você pode usar o modo teste.');
+    return;
+  }
+  
+  var atual = _gamiPerfilImpersonado();
+  var atualEmail = atual ? atual.email : null;
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'modal-impersonar';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  
+  overlay.innerHTML = ''
+    + '<div style="background:var(--surface);border-radius:14px;max-width:500px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit;max-height:90vh;overflow-y:auto">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        + '<div style="font-size:18px;font-weight:700;color:var(--text)">🎭 Modo Teste</div>'
+        + '<button onclick="document.getElementById(\'modal-impersonar\').remove()" style="border:none;background:transparent;font-size:22px;color:var(--text3);cursor:pointer;line-height:1">✕</button>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">Escolha um perfil pra ver como o sistema fica pra cada nível. Apenas você (super_admin) tem acesso. Os perfis de teste não aparecem em Pessoas.</div>'
+      + '<div style="display:flex;flex-direction:column;gap:8px">'
+        + PERFIS_TESTE.map(function(p){
+            var ativo = p.perfil ? (p.perfil.email === atualEmail) : (atualEmail === null);
+            return '<button onclick="gamiImpersonar(\'' + p.id + '\')" '
+              + 'style="padding:12px 14px;border:2px solid ' + (ativo ? p.cor : 'var(--border)') + ';background:' + (ativo ? p.cor + '15' : 'var(--surface2)') + ';color:var(--text);font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;gap:10px;transition:all .15s">'
+                + '<div style="flex:1">'
+                  + '<div style="display:flex;align-items:center;gap:6px"><span>' + p.nome + '</span>' + (ativo ? '<span style="font-size:10px;background:' + p.cor + ';color:white;padding:2px 6px;border-radius:4px;letter-spacing:0.5px">ATIVO</span>' : '') + '</div>'
+                  + '<div style="font-size:10px;color:var(--text3);font-weight:500;margin-top:2px">' + p.descricao + '</div>'
+                + '</div>'
+                + '<span style="color:' + p.cor + ';font-size:18px;font-weight:700">→</span>'
+              + '</button>';
+          }).join('')
+      + '</div>'
+      + '<div style="margin-top:18px;padding:10px 12px;background:#FFF8E1;border-left:3px solid #EF9F27;border-radius:6px;font-size:11px;color:#854F0B;line-height:1.5"><strong>⚠️ Modo teste:</strong> apenas a UI muda. Ações de escrita (criar tarefa, registrar venda, etc.) podem dar erro porque o usuário fake não existe no banco. Pra testes de leitura/visualização é perfeito.</div>'
+    + '</div>';
+  
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e){
+    if(e.target === overlay) overlay.remove();
+  });
+}
+
+// ============ INIT ============
+function _gamiInitImpersonacao(){
+  gamiRenderBannerImpersonacao();
+  gamiRenderBotaoModoTeste();
+}
+
+setTimeout(_gamiInitImpersonacao, 800);
+setTimeout(_gamiInitImpersonacao, 2000);
+document.addEventListener('DOMContentLoaded', _gamiInitImpersonacao);
 
 </script>
 </html>
