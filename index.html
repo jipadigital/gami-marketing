@@ -1,4 +1,4 @@
-<!-- v25.68 - Estoque botao editar item (foto desc valor) - 03/06/2026 -->
+<!-- v25.69 - Anti-cache nas chamadas do Estoque - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -38673,8 +38673,10 @@ function _estSupaHeaders(){
   return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
 }
 async function _estRPC(fn, params){
-  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
-    method: 'POST', headers: _estSupaHeaders(),
+  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn + '?_t=' + Date.now(), {
+    method: 'POST', 
+    headers: Object.assign({}, _estSupaHeaders(), { 'Cache-Control': 'no-cache, no-store' }),
+    cache: 'no-store',
     body: JSON.stringify(params || {})
   });
   if(!r.ok){ var t = await r.text(); throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); }
@@ -38842,8 +38844,9 @@ async function estCarregarTudo(){
 
 async function estCarregarItens(){
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?select=*&ativo=eq.true&order=nome.asc', {
-      headers: _estSupaHeaders()
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?select=*&ativo=eq.true&order=nome.asc&_t=' + Date.now(), {
+      headers: Object.assign({}, _estSupaHeaders(), { 'Cache-Control': 'no-cache, no-store' }),
+      cache: 'no-store'
     });
     EST_ITENS = r.ok ? await r.json() : [];
   } catch(e){ EST_ITENS = []; console.error('[Estoque] itens:', e); }
