@@ -1,4 +1,4 @@
-<!-- v25.76 - Modo teste check mais robusto + botao maior - 03/06/2026 -->
+<!-- v25.77 - Sistema Ponto COMPLETO (Etapa 3 - Gestao) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4571,14 +4571,116 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
 <!-- ==================== 🛡️ PONTO · GESTÃO (Etapa 3) ==================== -->
 <div class="page" id="pg-ponto-gestao">
+  <style>
+    #pg-ponto-gestao .pg-tab-btn{padding:9px 14px;border:none;background:transparent;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:all .15s}
+    #pg-ponto-gestao .pg-tab-btn:hover{color:var(--text)}
+    #pg-ponto-gestao .pg-tab-btn.active{color:#1AB8F0;border-bottom-color:#1AB8F0}
+    #pg-ponto-gestao .pg-card-pessoa{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;transition:all .15s}
+    #pg-ponto-gestao .pg-card-pessoa:hover{border-color:#1AB8F0;box-shadow:0 4px 12px rgba(26,184,240,0.15)}
+    #pg-ponto-gestao .pg-status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+  </style>
+  
   <div class="page-header">
     <div>
       <div class="page-title">🛡️ Ponto · Gestão</div>
-      <div class="page-sub">Painel das colaboradoras, espelhos mensais e edições</div>
+      <div class="page-sub">Painel das colaboradoras, espelhos mensais, exceções e configurações</div>
     </div>
   </div>
-  <div class="card" style="padding:30px;text-align:center;color:var(--text3)">
-    🚧 <strong>Etapa 3</strong> — será implementada após confirmação da Etapa 2.
+  
+  <!-- Sub-abas -->
+  <div style="display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto">
+    <button onclick="pgIrParaTab('hoje')" id="pg-tab-hoje-btn" class="pg-tab-btn active">📅 Painel Hoje</button>
+    <button onclick="pgIrParaTab('espelho')" id="pg-tab-espelho-btn" class="pg-tab-btn">📋 Espelho Mensal</button>
+    <button onclick="pgIrParaTab('excecoes')" id="pg-tab-excecoes-btn" class="pg-tab-btn">📝 Exceções</button>
+    <button onclick="pgIrParaTab('config')" id="pg-tab-config-btn" class="pg-tab-btn">⚙️ Configurações</button>
+  </div>
+
+  <!-- ============ TAB: PAINEL HOJE ============ -->
+  <div id="pg-tab-hoje" class="pg-tab-pane">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div id="pg-hoje-data" style="font-size:15px;font-weight:700;color:var(--text)">—</div>
+        <div id="pg-hoje-resumo" style="font-size:11px;color:var(--text3);margin-top:2px">—</div>
+      </div>
+      <button onclick="pgCarregarHoje()" class="btn btn-ghost" style="font-size:11px">🔄 Atualizar</button>
+    </div>
+    <div id="pg-hoje-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+      <div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3)">Carregando...</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: ESPELHO MENSAL ============ -->
+  <div id="pg-tab-espelho" class="pg-tab-pane" style="display:none">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+      <select id="pg-esp-pessoa" onchange="pgCarregarEspelho()" style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+        <option value="">Selecione a colaboradora...</option>
+      </select>
+      <input id="pg-esp-mes" type="month" onchange="pgCarregarEspelho()" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+      <button onclick="pgExportarExcel()" class="btn btn-primary" style="font-size:12px">📤 Excel</button>
+    </div>
+    <div id="pg-esp-banner" style="display:none;align-items:center;gap:14px;padding:14px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:10px;margin-bottom:14px">
+      <div id="pg-esp-foto" style="width:54px;height:54px;border-radius:50%;background:var(--surface2);border:2px solid #1AB8F0;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:22px">👤</div>
+      <div style="flex:1;min-width:0">
+        <div id="pg-esp-nome" style="font-size:15px;font-weight:700;color:var(--text)">—</div>
+        <div id="pg-esp-cargo" style="font-size:10px;color:var(--text3);margin-top:1px">—</div>
+        <div id="pg-esp-resumo" style="font-size:11px;color:#0E7AB8;font-weight:600;margin-top:5px">—</div>
+      </div>
+    </div>
+    <div id="pg-esp-tabela" style="overflow-x:auto">
+      <div style="padding:30px;text-align:center;color:var(--text3)">Selecione colaboradora e mês.</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: EXCEÇÕES ============ -->
+  <div id="pg-tab-excecoes" class="pg-tab-pane" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:14px;font-weight:700;color:var(--text)">📝 Faltas, atestados e afastamentos</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Registre justificativas pra dias sem ponto</div>
+      </div>
+      <button onclick="pgAbrirModalExcecao()" class="btn btn-primary" style="font-size:12px">+ Nova Exceção</button>
+    </div>
+    <div id="pg-excecoes-lista" style="display:flex;flex-direction:column;gap:8px">
+      <div style="padding:30px;text-align:center;color:var(--text3)">Carregando...</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: CONFIGURAÇÕES ============ -->
+  <div id="pg-tab-config" class="pg-tab-pane" style="display:none">
+    <div class="card" style="padding:18px">
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">📍 Localização do escritório</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Nome</label>
+          <input id="pg-cfg-nome" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Endereço</label>
+          <input id="pg-cfg-endereco" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Latitude</label>
+          <input id="pg-cfg-lat" type="number" step="0.000001" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Longitude</label>
+          <input id="pg-cfg-lng" type="number" step="0.000001" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Raio (metros)</label>
+          <input id="pg-cfg-raio" type="number" min="20" max="500" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Tolerância atraso (min)</label>
+          <input id="pg-cfg-tolerancia" type="number" min="0" max="60" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button onclick="pgUsarGpsAtual()" class="btn btn-ghost" style="font-size:11px">📡 Usar GPS atual</button>
+        <button onclick="pgSalvarConfig()" class="btn btn-primary" style="font-size:12px">💾 Salvar Configurações</button>
+      </div>
+      <div id="pg-cfg-status" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
+    </div>
   </div>
 </div>
 
@@ -40417,15 +40519,7 @@ function mpRenderMes(dados){
     + '</tbody></table>';
 }
 
-// ============ Abrir Ponto Gestão (placeholder Etapa 3) ============
-async function abrirPontoGestao(navEl){
-  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
-  if(navEl) navEl.classList.add('active');
-  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
-  var pg = document.getElementById('pg-ponto-gestao');
-  pg.classList.add('active');
-  pg.style.display = 'block';
-}
+// (abrirPontoGestao agora vem do pg_modulo)
 
 // ============ INIT ============
 mpVerificarAcessoSidebar();
@@ -40761,6 +40855,615 @@ window.gamiForcarModoTeste = function(){
   document.body.appendChild(btn);
   return 'Botão criado!';
 };
+
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🛡️ MÓDULO PONTO · GESTÃO (Etapa 3) =======================
+// ================================================================
+// Aba pra gestores: painel hoje, espelho mensal editável,
+// registrar exceções, configurações do escritório
+// Acesso: super_admin, diretoria, gerência
+// ================================================================
+
+var PG_COLABORADORAS = [];
+var PG_TAB_ATIVA = 'hoje';
+var PG_ESP_DADOS = null;  // dados do espelho mensal atual
+var PG_CONFIG = null;
+
+var PG_TIPO_LBL = {
+  entrada1: 'Entrada',
+  saida1: 'Almoço',
+  entrada2: 'Volta',
+  saida2: 'Saída'
+};
+var PG_DIAS_SEMANA = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+var PG_TIPO_EXC = {
+  falta: { lbl: '❌ Falta', cor: '#A32D2D', bg: '#FCE6E6' },
+  atestado: { lbl: '🏥 Atestado', cor: '#0E7AB8', bg: '#E6F6FE' },
+  ferias: { lbl: '🏖️ Férias', cor: '#854F0B', bg: '#FFF8E1' },
+  folga: { lbl: '🌙 Folga', cor: '#6A1B9A', bg: '#F3E5F5' },
+  compensacao: { lbl: '🔄 Compensação', cor: '#0F6D52', bg: '#EAF7DD' },
+  outro: { lbl: '📝 Outro', cor: '#5A6678', bg: '#F0F2F5' }
+};
+
+// ============ Helpers ============
+function _pgSupaHeaders(){
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
+}
+async function _pgRPC(fn, params){
+  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
+    method: 'POST', headers: _pgSupaHeaders(),
+    cache: 'no-store',
+    body: JSON.stringify(params || {})
+  });
+  if(!r.ok){ var t = await r.text(); throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); }
+  return r.json();
+}
+
+function _pgFotoHtml(foto, size){
+  size = size || 40;
+  if(foto){
+    return '<img src="' + foto + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;border:2px solid #1AB8F0;flex-shrink:0"/>';
+  }
+  return '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:var(--surface2);border:2px solid #1AB8F0;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:' + Math.floor(size*0.45) + 'px;flex-shrink:0">👤</div>';
+}
+
+function _pgFormatarHora(h){ return h || '—'; }
+
+function _pgAtrasoMin(esperada, realizada){
+  if(!esperada || !realizada) return null;
+  var [eh, em] = esperada.split(':').map(Number);
+  var [rh, rm] = realizada.split(':').map(Number);
+  return (rh*60+rm) - (eh*60+em);
+}
+
+// ============ Abrir aba ============
+async function abrirPontoGestao(navEl){
+  // Permissão
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  if(!u || (nivel !== 'super_admin' && nivel !== 'diretoria' && nivel !== 'gerencia')){
+    alert('🚫 Acesso restrito a super_admin, diretoria e gerência.');
+    return;
+  }
+  
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  if(navEl) navEl.classList.add('active');
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
+  var pg = document.getElementById('pg-ponto-gestao');
+  pg.classList.add('active');
+  pg.style.display = 'block';
+  
+  // Carrega colaboradoras
+  try {
+    PG_COLABORADORAS = await _pgRPC('ponto_lista_colaboradoras', {});
+    pgPopularSelects();
+  } catch(e){ console.error('[PG] colab:', e); }
+  
+  pgIrParaTab(PG_TAB_ATIVA);
+}
+
+function pgPopularSelects(){
+  var sel = document.getElementById('pg-esp-pessoa');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Selecione a colaboradora...</option>'
+    + PG_COLABORADORAS.map(function(c){
+        return '<option value="' + c.pessoa_id + '">' + c.nome + '</option>';
+      }).join('');
+}
+
+function pgIrParaTab(tab){
+  PG_TAB_ATIVA = tab;
+  document.querySelectorAll('#pg-ponto-gestao .pg-tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelectorAll('#pg-ponto-gestao .pg-tab-pane').forEach(function(p){ p.style.display = 'none'; });
+  document.getElementById('pg-tab-' + tab + '-btn').classList.add('active');
+  document.getElementById('pg-tab-' + tab).style.display = 'block';
+  
+  if(tab === 'hoje') pgCarregarHoje();
+  else if(tab === 'espelho') pgInicializarEspelho();
+  else if(tab === 'excecoes') pgCarregarExcecoes();
+  else if(tab === 'config') pgCarregarConfig();
+}
+
+// ============ PAINEL HOJE ============
+async function pgCarregarHoje(){
+  var grid = document.getElementById('pg-hoje-grid');
+  grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3)">Carregando...</div>';
+  
+  try {
+    var dados = await _pgRPC('ponto_painel_hoje', {});
+    var hoje = new Date(dados.data + 'T12:00:00');
+    var fmt = new Intl.DateTimeFormat('pt-BR', { 
+      timeZone: 'America/Porto_Velho',
+      weekday: 'long', day: '2-digit', month: 'long'
+    });
+    document.getElementById('pg-hoje-data').textContent = fmt.format(hoje);
+    
+    var colabs = dados.colaboradoras || [];
+    
+    // Resumo
+    var total = colabs.length;
+    var chegaram = colabs.filter(function(c){ return c.pontos_hoje && c.pontos_hoje.entrada1; }).length;
+    var faltaram = colabs.filter(function(c){ return c.excecao_hoje && c.excecao_hoje.tipo === 'falta'; }).length;
+    var afastadas = colabs.filter(function(c){ return c.excecao_hoje && c.excecao_hoje.tipo !== 'falta'; }).length;
+    
+    document.getElementById('pg-hoje-resumo').innerHTML = 
+      '👥 ' + total + ' colaboradoras · '
+      + '✅ ' + chegaram + ' chegaram · '
+      + (faltaram > 0 ? '<span style="color:#A32D2D">❌ ' + faltaram + ' faltas · </span>' : '')
+      + (afastadas > 0 ? '🏥 ' + afastadas + ' afastadas' : '');
+    
+    if(!colabs.length){
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3)">Nenhuma colaboradora com ponto ativo.</div>';
+      return;
+    }
+    
+    grid.innerHTML = colabs.map(function(c){
+      var h = c.horario_esperado;
+      var p = c.pontos_hoje || {};
+      var exc = c.excecao_hoje;
+      
+      // Status geral
+      var statusCor = '#5A6678', statusBg = 'var(--surface2)', statusLbl = '⌛ Aguardando';
+      if(exc){
+        var info = PG_TIPO_EXC[exc.tipo] || PG_TIPO_EXC.outro;
+        statusCor = info.cor; statusBg = info.bg; statusLbl = info.lbl;
+      } else if(p.entrada1){
+        var atraso = h ? _pgAtrasoMin(h.entrada1, p.entrada1.hora) : 0;
+        var tolerancia = (PG_CONFIG && PG_CONFIG.tolerancia_atraso_min) || 10;
+        if(atraso > tolerancia){
+          statusCor = '#854F0B'; statusBg = '#FFF8E1'; statusLbl = '⏰ Atrasou ' + atraso + 'min';
+        } else {
+          statusCor = '#0F6D52'; statusBg = '#EAF7DD'; statusLbl = '✅ No prazo';
+        }
+      } else if(h){
+        // Tem horário hoje mas não bateu
+        var agora = new Date();
+        var fmtAgora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Porto_Velho', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(agora);
+        var [ag_h, ag_m] = fmtAgora.split(':').map(Number);
+        var [eh, em] = h.entrada1.split(':').map(Number);
+        if((ag_h*60+ag_m) > (eh*60+em+15)){
+          statusCor = '#A32D2D'; statusBg = '#FCE6E6'; statusLbl = '❌ Não chegou';
+        }
+      }
+      
+      var batidasHtml = ['entrada1','saida1','entrada2','saida2'].map(function(t){
+        var b = p[t];
+        if(b){
+          var iconCor = b.dentro_do_raio ? '#0F6D52' : '#854F0B';
+          return '<div style="font-size:11px;color:var(--text);font-weight:600"><span style="color:' + iconCor + '">●</span> ' + b.hora + '</div>';
+        }
+        return '<div style="font-size:11px;color:var(--text3)">— —:—</div>';
+      }).join('');
+      
+      return '<div class="pg-card-pessoa">'
+        + '<div style="display:flex;align-items:center;gap:10px">'
+          + _pgFotoHtml(c.foto, 44)
+          + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + c.nome + '</div>'
+            + '<div style="font-size:10px;color:var(--text3)">Esperado: ' + (h ? h.entrada1 + '–' + h.saida2 : '—') + '</div>'
+          + '</div>'
+        + '</div>'
+        + '<div style="display:inline-block;padding:3px 9px;background:' + statusBg + ';color:' + statusCor + ';font-size:10px;font-weight:700;border-radius:10px;align-self:flex-start">' + statusLbl + '</div>'
+        + (exc ? '<div style="font-size:10px;color:var(--text3);font-style:italic">' + (exc.motivo || '') + '</div>' :
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding-top:6px;border-top:1px solid var(--border)">'
+              + ['Entrada','Almoço','Volta','Saída'].map(function(lbl, i){
+                  return '<div style="text-align:center"><div style="font-size:9px;color:var(--text3);font-weight:600">' + lbl + '</div></div>';
+                }).join('')
+              + '</div>'
+              + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">' + batidasHtml + '</div>')
+        + '<button onclick="pgVerEspelho(\'' + c.pessoa_id + '\')" style="margin-top:4px;padding:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:10px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit">📋 Ver espelho do mês</button>'
+      + '</div>';
+    }).join('');
+  } catch(e){
+    console.error('[PG] hoje:', e);
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: ' + e.message + '</div>';
+  }
+}
+
+function pgVerEspelho(pessoaId){
+  document.getElementById('pg-esp-pessoa').value = pessoaId;
+  var hoje = new Date();
+  document.getElementById('pg-esp-mes').value = hoje.toISOString().slice(0,7);
+  pgIrParaTab('espelho');
+}
+
+// ============ ESPELHO MENSAL ============
+function pgInicializarEspelho(){
+  var mes = document.getElementById('pg-esp-mes');
+  if(!mes.value){
+    var hoje = new Date();
+    mes.value = hoje.toISOString().slice(0,7);
+  }
+  if(document.getElementById('pg-esp-pessoa').value) pgCarregarEspelho();
+}
+
+async function pgCarregarEspelho(){
+  var pessoaId = document.getElementById('pg-esp-pessoa').value;
+  var mesStr = document.getElementById('pg-esp-mes').value;
+  var banner = document.getElementById('pg-esp-banner');
+  var tabela = document.getElementById('pg-esp-tabela');
+  
+  if(!pessoaId || !mesStr){
+    banner.style.display = 'none';
+    tabela.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">Selecione colaboradora e mês.</div>';
+    return;
+  }
+  
+  var [ano, mes] = mesStr.split('-').map(Number);
+  var colab = PG_COLABORADORAS.find(function(c){ return c.pessoa_id === pessoaId; });
+  if(!colab){ tabela.innerHTML = '<div style="padding:20px;color:#A32D2D">Colaboradora não encontrada.</div>'; return; }
+  
+  // Banner
+  banner.style.display = 'flex';
+  var fotoEl = document.getElementById('pg-esp-foto');
+  fotoEl.innerHTML = colab.foto ? '<img src="' + colab.foto + '" style="width:100%;height:100%;object-fit:cover"/>' : '👤';
+  document.getElementById('pg-esp-nome').textContent = colab.nome;
+  document.getElementById('pg-esp-cargo').textContent = colab.cargo || 'Suporte';
+  
+  tabela.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>';
+  
+  try {
+    var dados = await _pgRPC('ponto_mes', { p_pessoa_id: pessoaId, p_ano: ano, p_mes: mes });
+    PG_ESP_DADOS = { pessoaId: pessoaId, ano: ano, mes: mes, dados: dados };
+    pgRenderEspelho(dados);
+  } catch(e){
+    console.error('[PG] espelho:', e);
+    tabela.innerHTML = '<div style="padding:20px;color:#A32D2D">Erro: ' + e.message + '</div>';
+  }
+}
+
+function pgRenderEspelho(dados){
+  var r = dados.resumo || {};
+  document.getElementById('pg-esp-resumo').innerHTML = 
+    '✅ ' + (r.dias_trabalhados||0) + '/' + (r.dias_uteis_esperados||0) + ' dias · '
+    + (r.faltas > 0 ? '<span style="color:#A32D2D">❌ ' + r.faltas + ' faltas · </span>' : '')
+    + (r.afastamentos > 0 ? '🏥 ' + r.afastamentos + ' afastamentos · ' : '')
+    + (r.batidas_editadas > 0 ? '✏️ ' + r.batidas_editadas + ' edições' : '');
+  
+  var dias = dados.dias || [];
+  document.getElementById('pg-esp-tabela').innerHTML = 
+    '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:680px">'
+      + '<thead><tr style="background:var(--surface2);border-bottom:2px solid var(--border)">'
+        + '<th style="text-align:left;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Dia</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Esperado</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Entrada</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Almoço</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Volta</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Saída</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px;width:90px">Ações</th>'
+      + '</tr></thead><tbody>'
+      + dias.map(function(d){
+          var data = new Date(d.data + 'T12:00:00');
+          var ddmm = String(data.getDate()).padStart(2, '0') + '/' + String(data.getMonth()+1).padStart(2, '0');
+          var diaSem = PG_DIAS_SEMANA[d.dia_semana];
+          var fimSem = (d.dia_semana === 0 || d.dia_semana === 6);
+          var p = d.pontos || {};
+          var esperado = d.horario_esperado 
+            ? d.horario_esperado.entrada1 + '–' + d.horario_esperado.saida2
+            : '—';
+          
+          var pontoCell = function(tipo){
+            if(d.excecao){
+              var info = PG_TIPO_EXC[d.excecao.tipo] || PG_TIPO_EXC.outro;
+              return '<span style="color:' + info.cor + ';font-weight:700;font-size:10px">' + info.lbl + '</span>';
+            }
+            if(!p[tipo]) return '<button onclick="pgCriarBatida(\'' + d.data + '\',\'' + tipo + '\')" style="padding:3px 6px;border:1px dashed var(--border);background:transparent;color:var(--text3);font-size:10px;border-radius:4px;cursor:pointer;font-family:inherit" title="Lançar manualmente">+ Add</button>';
+            var edit = p[tipo].editado ? '<span title="Editado" style="color:#EF9F27">✏️</span>' : '';
+            var foraRaio = p[tipo].dentro_do_raio === false ? '<span title="Bateu fora do raio" style="color:#A32D2D">📍</span>' : '';
+            return '<a onclick="pgEditarBatida(' + p[tipo].id + ',\'' + d.data + '\',\'' + tipo + '\',\'' + p[tipo].hora + '\')" style="font-weight:600;cursor:pointer;color:var(--text);text-decoration:underline;text-decoration-style:dotted">' + p[tipo].hora + '</a> ' + edit + foraRaio;
+          };
+          
+          var bgRow = fimSem ? 'background:var(--surface2)' : '';
+          var hoje = new Date().toISOString().slice(0,10);
+          var ehHoje = d.data === hoje;
+          if(ehHoje) bgRow = 'background:#E6F6FE';
+          
+          return '<tr style="border-bottom:1px solid var(--border);' + bgRow + '">'
+            + '<td style="padding:8px;font-weight:600;color:var(--text)">' + ddmm + ' <span style="color:var(--text3);font-size:9px">' + diaSem + (ehHoje ? ' · hoje' : '') + '</span></td>'
+            + '<td style="padding:8px;text-align:center;color:var(--text3);font-size:10px">' + esperado + '</td>'
+            + '<td style="padding:8px;text-align:center">' + (d.excecao ? pontoCell() : pontoCell('entrada1')) + '</td>'
+            + '<td style="padding:8px;text-align:center">' + (d.excecao ? '' : pontoCell('saida1')) + '</td>'
+            + '<td style="padding:8px;text-align:center">' + (d.excecao ? '' : pontoCell('entrada2')) + '</td>'
+            + '<td style="padding:8px;text-align:center">' + (d.excecao ? '' : pontoCell('saida2')) + '</td>'
+            + '<td style="padding:8px;text-align:center">'
+              + (!d.excecao ? '<button onclick="pgAddExcecaoNoDia(\'' + d.data + '\')" style="padding:3px 6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:9px;border-radius:4px;cursor:pointer;font-family:inherit" title="Registrar exceção">📝</button>' : '')
+            + '</td>'
+          + '</tr>';
+        }).join('')
+    + '</tbody></table>';
+}
+
+// ============ EDITAR / CRIAR BATIDA ============
+function pgEditarBatida(registroId, data, tipo, horaAtual){
+  var nova = prompt('✏️ Editar ' + PG_TIPO_LBL[tipo] + ' do dia ' + data + '\n\nHora atual: ' + horaAtual + '\nNova hora (HH:MM):', horaAtual);
+  if(!nova) return;
+  var motivo = prompt('Motivo da edição (obrigatório):');
+  if(!motivo) return;
+  
+  var u = getUsuarioLogado();
+  var editorId = (u && (u.id || u.pessoa_id)) || 'desconhecido';
+  
+  // Combina data + nova hora no fuso de Porto Velho (UTC-4)
+  var [hh, mm] = nova.split(':').map(Number);
+  var novaHoraISO = data + 'T' + String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0') + ':00-04:00';
+  
+  _pgRPC('ponto_editar', {
+    p_registro_id: registroId,
+    p_nova_hora: novaHoraISO,
+    p_motivo: motivo,
+    p_editor_id: editorId
+  }).then(function(){
+    alert('✅ Editado.');
+    pgCarregarEspelho();
+  }).catch(function(e){ alert('❌ ' + e.message); });
+}
+
+function pgCriarBatida(data, tipo){
+  var hora = prompt('+ Lançar ' + PG_TIPO_LBL[tipo] + ' manualmente no dia ' + data + '\n\nHora (HH:MM):', '08:00');
+  if(!hora) return;
+  var motivo = prompt('Motivo do lançamento manual (obrigatório):');
+  if(!motivo) return;
+  
+  var u = getUsuarioLogado();
+  var editorId = (u && (u.id || u.pessoa_id)) || 'desconhecido';
+  
+  _pgRPC('ponto_criar_manual', {
+    p_pessoa_id: PG_ESP_DADOS.pessoaId,
+    p_data: data,
+    p_tipo: tipo,
+    p_hora: hora,
+    p_motivo: motivo,
+    p_editor_id: editorId
+  }).then(function(){
+    alert('✅ Lançado.');
+    pgCarregarEspelho();
+  }).catch(function(e){ alert('❌ ' + e.message); });
+}
+
+function pgAddExcecaoNoDia(data){
+  pgAbrirModalExcecao(PG_ESP_DADOS ? PG_ESP_DADOS.pessoaId : null, data);
+}
+
+// ============ EXCEÇÕES ============
+async function pgCarregarExcecoes(){
+  var lista = document.getElementById('pg-excecoes-lista');
+  lista.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3)">Carregando...</div>';
+  
+  try {
+    var dados = await _pgRPC('ponto_listar_excecoes', { p_pessoa_id: null, p_mes: null, p_ano: null });
+    
+    if(!dados || !dados.length){
+      lista.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">Nenhuma exceção registrada.</div>';
+      return;
+    }
+    
+    lista.innerHTML = dados.map(function(e){
+      var info = PG_TIPO_EXC[e.tipo] || PG_TIPO_EXC.outro;
+      var di = new Date(e.data_inicio + 'T12:00:00');
+      var df = new Date(e.data_fim + 'T12:00:00');
+      var diStr = String(di.getDate()).padStart(2,'0') + '/' + String(di.getMonth()+1).padStart(2,'0') + '/' + di.getFullYear();
+      var dfStr = String(df.getDate()).padStart(2,'0') + '/' + String(df.getMonth()+1).padStart(2,'0') + '/' + df.getFullYear();
+      var periodo = diStr === dfStr ? diStr : diStr + ' → ' + dfStr;
+      
+      return '<div class="card" style="padding:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+        + _pgFotoHtml(e.pessoa_foto, 36)
+        + '<div style="flex:1;min-width:200px">'
+          + '<div style="font-size:13px;font-weight:700;color:var(--text)">' + e.pessoa_nome + '</div>'
+          + '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 ' + periodo + (e.motivo ? ' · ' + e.motivo : '') + '</div>'
+        + '</div>'
+        + '<span style="padding:4px 10px;background:' + info.bg + ';color:' + info.cor + ';font-size:10px;font-weight:700;border-radius:10px">' + info.lbl + '</span>'
+        + '<button onclick="pgDeletarExcecao(' + e.id + ')" style="padding:5px 10px;border:1px solid var(--border);background:var(--surface2);color:#A32D2D;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit" title="Remover">🗑️</button>'
+      + '</div>';
+    }).join('');
+  } catch(e){
+    console.error('[PG] excecoes:', e);
+    lista.innerHTML = '<div style="padding:20px;color:#A32D2D;font-size:12px">Erro: ' + e.message + '</div>';
+  }
+}
+
+function pgAbrirModalExcecao(pessoaIdInicial, dataInicial){
+  pessoaIdInicial = pessoaIdInicial || '';
+  dataInicial = dataInicial || new Date().toISOString().slice(0,10);
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'modal-excecao';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  
+  var opcoesPessoas = PG_COLABORADORAS.map(function(c){
+    return '<option value="' + c.pessoa_id + '"' + (c.pessoa_id === pessoaIdInicial ? ' selected' : '') + '>' + c.nome + '</option>';
+  }).join('');
+  
+  overlay.innerHTML = ''
+    + '<div style="background:var(--surface);border-radius:12px;max-width:480px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+        + '<div style="font-size:16px;font-weight:700;color:var(--text)">📝 Nova Exceção</div>'
+        + '<button onclick="document.getElementById(\'modal-excecao\').remove()" style="border:none;background:transparent;font-size:22px;color:var(--text3);cursor:pointer">✕</button>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:10px">'
+        + '<div>'
+          + '<label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Colaboradora</label>'
+          + '<select id="exc-pessoa" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">'
+            + '<option value="">Selecione...</option>' + opcoesPessoas
+          + '</select>'
+        + '</div>'
+        + '<div>'
+          + '<label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Tipo</label>'
+          + '<select id="exc-tipo" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">'
+            + '<option value="atestado">🏥 Atestado médico</option>'
+            + '<option value="falta">❌ Falta</option>'
+            + '<option value="ferias">🏖️ Férias</option>'
+            + '<option value="folga">🌙 Folga</option>'
+            + '<option value="compensacao">🔄 Compensação</option>'
+            + '<option value="outro">📝 Outro</option>'
+          + '</select>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+          + '<div>'
+            + '<label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">De</label>'
+            + '<input type="date" id="exc-ini" value="' + dataInicial + '" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>'
+          + '</div>'
+          + '<div>'
+            + '<label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Até</label>'
+            + '<input type="date" id="exc-fim" value="' + dataInicial + '" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>'
+          + '</div>'
+        + '</div>'
+        + '<div>'
+          + '<label style="display:block;font-size:11px;color:var(--text3);font-weight:600;margin-bottom:4px">Motivo / Observação</label>'
+          + '<textarea id="exc-motivo" rows="2" placeholder="Ex: Atestado médico anexo, consulta no dentista..." style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>'
+        + '</div>'
+      + '</div>'
+      + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">'
+        + '<button onclick="document.getElementById(\'modal-excecao\').remove()" class="btn btn-ghost">Cancelar</button>'
+        + '<button onclick="pgSalvarExcecao()" class="btn btn-primary">💾 Registrar</button>'
+      + '</div>'
+    + '</div>';
+  
+  document.body.appendChild(overlay);
+}
+
+async function pgSalvarExcecao(){
+  var pessoaId = document.getElementById('exc-pessoa').value;
+  var tipo = document.getElementById('exc-tipo').value;
+  var ini = document.getElementById('exc-ini').value;
+  var fim = document.getElementById('exc-fim').value;
+  var motivo = document.getElementById('exc-motivo').value.trim();
+  
+  if(!pessoaId){ alert('Selecione a colaboradora.'); return; }
+  if(!ini || !fim){ alert('Datas obrigatórias.'); return; }
+  if(fim < ini){ alert('Data fim < data início.'); return; }
+  
+  var u = getUsuarioLogado();
+  var registradoPor = (u && (u.id || u.pessoa_id)) || 'desconhecido';
+  
+  try {
+    await _pgRPC('ponto_registrar_excecao', {
+      p_pessoa_id: pessoaId,
+      p_data_inicio: ini, p_data_fim: fim,
+      p_tipo: tipo, p_motivo: motivo,
+      p_registrado_por: registradoPor
+    });
+    document.getElementById('modal-excecao').remove();
+    alert('✅ Exceção registrada.');
+    if(PG_TAB_ATIVA === 'excecoes') pgCarregarExcecoes();
+    else if(PG_TAB_ATIVA === 'espelho') pgCarregarEspelho();
+  } catch(e){ alert('❌ ' + e.message); }
+}
+
+async function pgDeletarExcecao(id){
+  if(!confirm('Remover esta exceção?')) return;
+  try {
+    await _pgRPC('ponto_deletar_excecao', { p_id: id });
+    pgCarregarExcecoes();
+  } catch(e){ alert('❌ ' + e.message); }
+}
+
+// ============ CONFIGURAÇÕES ============
+async function pgCarregarConfig(){
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_config?id=eq.1&select=*', {
+      headers: _pgSupaHeaders(), cache: 'no-store'
+    });
+    var arr = await r.json();
+    PG_CONFIG = arr[0];
+    if(!PG_CONFIG) return;
+    document.getElementById('pg-cfg-nome').value = PG_CONFIG.nome_local || '';
+    document.getElementById('pg-cfg-endereco').value = PG_CONFIG.endereco || '';
+    document.getElementById('pg-cfg-lat').value = PG_CONFIG.latitude || '';
+    document.getElementById('pg-cfg-lng').value = PG_CONFIG.longitude || '';
+    document.getElementById('pg-cfg-raio').value = PG_CONFIG.raio_metros || 150;
+    document.getElementById('pg-cfg-tolerancia').value = PG_CONFIG.tolerancia_atraso_min || 10;
+  } catch(e){ console.error('[PG] config:', e); }
+}
+
+function pgUsarGpsAtual(){
+  var statusEl = document.getElementById('pg-cfg-status');
+  statusEl.textContent = '📡 Capturando GPS...';
+  if(!navigator.geolocation){
+    statusEl.textContent = '❌ Navegador não suporta GPS';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      document.getElementById('pg-cfg-lat').value = pos.coords.latitude.toFixed(7);
+      document.getElementById('pg-cfg-lng').value = pos.coords.longitude.toFixed(7);
+      statusEl.innerHTML = '✅ GPS capturado · precisão ' + Math.round(pos.coords.accuracy) + 'm. <strong>Clique Salvar pra aplicar</strong>.';
+    },
+    function(err){ statusEl.textContent = '❌ ' + err.message; },
+    { enableHighAccuracy: true, timeout: 15000 }
+  );
+}
+
+async function pgSalvarConfig(){
+  var lat = parseFloat(document.getElementById('pg-cfg-lat').value);
+  var lng = parseFloat(document.getElementById('pg-cfg-lng').value);
+  var raio = parseInt(document.getElementById('pg-cfg-raio').value);
+  var tolerancia = parseInt(document.getElementById('pg-cfg-tolerancia').value);
+  var nome = document.getElementById('pg-cfg-nome').value.trim();
+  var endereco = document.getElementById('pg-cfg-endereco').value.trim();
+  
+  if(isNaN(lat) || isNaN(lng)){ alert('Lat/Lng inválidos.'); return; }
+  if(raio < 20 || raio > 500){ alert('Raio deve ser entre 20m e 500m.'); return; }
+  
+  try {
+    await _pgRPC('ponto_atualizar_config', {
+      p_latitude: lat, p_longitude: lng, p_raio_metros: raio, p_tolerancia_atraso_min: tolerancia,
+      p_nome_local: nome || null, p_endereco: endereco || null
+    });
+    document.getElementById('pg-cfg-status').innerHTML = '✅ Configurações salvas!';
+    pgCarregarConfig();
+  } catch(e){ alert('❌ ' + e.message); }
+}
+
+// ============ EXPORT EXCEL ============
+function pgExportarExcel(){
+  if(!PG_ESP_DADOS){ alert('Selecione colaboradora e mês primeiro.'); return; }
+  var pessoaId = PG_ESP_DADOS.pessoaId;
+  var dados = PG_ESP_DADOS.dados;
+  var colab = PG_COLABORADORAS.find(function(c){ return c.pessoa_id === pessoaId; });
+  if(!colab){ alert('Colaboradora não encontrada.'); return; }
+  
+  var headers = ['Dia','Dia Semana','Esperado Entrada','Esperado Saída Almoço','Esperado Volta','Esperado Saída','Entrada','Saída Almoço','Volta','Saída','Status'];
+  var rows = (dados.dias || []).map(function(d){
+    var data = new Date(d.data + 'T12:00:00');
+    var ddmm = String(data.getDate()).padStart(2,'0') + '/' + String(data.getMonth()+1).padStart(2,'0') + '/' + data.getFullYear();
+    var diaSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][d.dia_semana];
+    var h = d.horario_esperado || {};
+    var p = d.pontos || {};
+    var status = '';
+    if(d.excecao){
+      var info = PG_TIPO_EXC[d.excecao.tipo] || PG_TIPO_EXC.outro;
+      status = info.lbl + (d.excecao.motivo ? ' · ' + d.excecao.motivo : '');
+    } else if(d.dia_semana === 0 || d.dia_semana === 6){
+      status = 'Fim de semana';
+    } else if(p.entrada1){
+      status = 'Trabalhou';
+    } else if(h.entrada1){
+      status = 'Sem registro';
+    }
+    return [
+      ddmm, diaSem,
+      h.entrada1 || '', h.saida1 || '', h.entrada2 || '', h.saida2 || '',
+      (p.entrada1 && p.entrada1.hora) || '',
+      (p.saida1 && p.saida1.hora) || '',
+      (p.entrada2 && p.entrada2.hora) || '',
+      (p.saida2 && p.saida2.hora) || '',
+      status
+    ];
+  });
+  
+  var csv = headers.join(';') + '\n' + rows.map(function(r){ return r.map(function(c){ return '"' + String(c||'').replace(/"/g,'""') + '"'; }).join(';'); }).join('\n');
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'ponto_' + (colab.nome || 'pessoa').replace(/[^a-zA-Z0-9]/g,'_') + '_' + PG_ESP_DADOS.ano + '-' + String(PG_ESP_DADOS.mes).padStart(2,'0') + '.csv';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 100);
+}
 
 </script>
 </html>
