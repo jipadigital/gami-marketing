@@ -1,4 +1,4 @@
-<!-- v25.77 - Sistema Ponto COMPLETO (Etapa 3 - Gestao) - 03/06/2026 -->
+<!-- v25.78 - Card Bater Ponto no Dashboard - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1870,6 +1870,36 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           Modo foco
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ====== 🕒 CARD BATER PONTO (só pra colaboradoras com bate_ponto=TRUE) ====== -->
+  <div id="dash-card-ponto" style="display:none;margin:14px 0;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(26,184,240,0.10)">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="font-size:36px;line-height:1">🕒</div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:15px;font-weight:700;color:var(--text)">Bater Ponto</div>
+        <div id="dash-ponto-info" style="font-size:11px;color:var(--text2);margin-top:2px">Carregando...</div>
+      </div>
+      <button onclick="abrirMeuPonto(document.getElementById('nav-meu-ponto'))" style="padding:7px 14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit" title="Abrir página completa">📋 Ver mês</button>
+    </div>
+    
+    <!-- Mini status do dia (4 micro-pílulas) -->
+    <div id="dash-ponto-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
+      <!-- preenchido pelo JS -->
+    </div>
+    
+    <button id="dash-btn-bater-ponto" onclick="dashBaterPontoRapido()" style="width:100%;padding:14px 20px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,184,240,0.3);transition:transform .15s"
+      onmouseover="this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.transform=''">
+      🕒 BATER PONTO
+    </button>
+    
+    <div id="dash-ponto-geo" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px;text-align:center">📡 Detectando localização...</div>
+    
+    <div id="dash-ponto-justif-box" style="display:none;margin-top:10px;padding:10px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:6px">
+      <label style="display:block;font-size:10px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio. Justifique:</label>
+      <textarea id="dash-ponto-justif" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px;border:1px solid #EF9F27;border-radius:5px;background:white;color:var(--text);font-size:11px;font-family:inherit;resize:vertical"></textarea>
     </div>
   </div>
 
@@ -41465,5 +41495,180 @@ function pgExportarExcel(){
   setTimeout(function(){ URL.revokeObjectURL(url); }, 100);
 }
 
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🕒 CARD BATER PONTO NO DASHBOARD =========================
+// ================================================================
+async function dashRenderCardPonto(){
+  var card = document.getElementById('dash-card-ponto');
+  if(!card) return;
+  
+  // Garante que MP_PESSOA está carregada
+  if(!MP_PESSOA){
+    await mpVerificarAcessoSidebar();
+  }
+  
+  // Se não bate ponto, esconde card
+  if(!MP_PESSOA){
+    card.style.display = 'none';
+    return;
+  }
+  
+  card.style.display = 'block';
+  
+  // Carrega config (se ainda não tem)
+  if(!MP_CONFIG) await mpCarregarConfig();
+  
+  // Carrega dia atual via RPC
+  try {
+    var dados = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
+    dashRenderPontoStatus(dados);
+  } catch(e){
+    document.getElementById('dash-ponto-info').textContent = '⚠️ Erro ao carregar: ' + e.message;
+    console.error('[Dash Ponto] erro:', e);
+  }
+  
+  // Pede GPS
+  dashPedirGeoPonto();
+}
+
+function dashRenderPontoStatus(dados){
+  var horario = dados.horario_esperado;
+  var registros = {};
+  (dados.registros || []).forEach(function(r){ registros[r.tipo] = r; });
+  
+  var tipos = ['entrada1','saida1','entrada2','saida2'];
+  var tiposLbl = ['🌅 Entrada','🍽️ Saída','↩️ Volta','🌆 Saída'];
+  var proximo = null;
+  
+  // Linha info
+  if(horario){
+    document.getElementById('dash-ponto-info').textContent = 
+      'Esperado hoje: ' + horario.entrada1 + ' · ' + horario.saida1 + ' · ' + horario.entrada2 + ' · ' + horario.saida2;
+  } else {
+    document.getElementById('dash-ponto-info').textContent = 'Sem horário cadastrado pra hoje (dia útil?)';
+  }
+  
+  // Mini-pílulas
+  document.getElementById('dash-ponto-status').innerHTML = tipos.map(function(t, i){
+    var reg = registros[t];
+    var esperado = horario ? horario[t] : null;
+    if(!reg && !proximo) proximo = t;
+    
+    var corBg, corTxt;
+    if(reg){
+      corBg = '#EAF7DD'; corTxt = '#0F6D52';
+    } else {
+      corBg = 'var(--surface2)'; corTxt = 'var(--text3)';
+    }
+    
+    return '<div style="padding:7px 4px;background:' + corBg + ';border-radius:6px;text-align:center;font-size:10px">'
+      + '<div style="font-weight:700;color:' + corTxt + ';font-size:9px;margin-bottom:2px">' + tiposLbl[i] + '</div>'
+      + '<div style="font-weight:700;color:' + (reg ? '#0E7AB8' : 'var(--text3)') + ';font-size:13px">' + (reg ? reg.hora : '—') + '</div>'
+      + (esperado ? '<div style="color:var(--text3);font-size:8px;margin-top:1px">esp ' + esperado + '</div>' : '')
+    + '</div>';
+  }).join('');
+  
+  // Botão
+  var btn = document.getElementById('dash-btn-bater-ponto');
+  if(proximo){
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.innerHTML = '🕒 BATER PONTO · ' + (MP_TIPO_LABEL[proximo] || proximo);
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.style.cursor = 'not-allowed';
+    btn.innerHTML = '✅ Todos os pontos batidos hoje';
+  }
+}
+
+function dashPedirGeoPonto(){
+  var statusEl = document.getElementById('dash-ponto-geo');
+  if(!statusEl) return;
+  if(!navigator.geolocation){
+    statusEl.innerHTML = '❌ Sem suporte a GPS';
+    return;
+  }
+  
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      MP_GEO = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy };
+      
+      if(MP_CONFIG){
+        var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
+        MP_GEO.distancia = d;
+        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+        
+        if(MP_GEO.dentro){
+          statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
+          document.getElementById('dash-ponto-justif-box').style.display = 'none';
+        } else {
+          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
+          document.getElementById('dash-ponto-justif-box').style.display = 'block';
+        }
+      }
+    },
+    function(err){
+      MP_GEO = null;
+      statusEl.innerHTML = '❌ Permita acesso ao GPS pra bater ponto';
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+}
+
+async function dashBaterPontoRapido(){
+  if(!MP_PESSOA){ alert('Não autenticado'); return; }
+  
+  var btn = document.getElementById('dash-btn-bater-ponto');
+  var originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Registrando...';
+  
+  var justif = document.getElementById('dash-ponto-justif').value.trim() || null;
+  
+  try {
+    var resp = await _mpRPC('ponto_bater', {
+      p_pessoa_id: MP_PESSOA.id,
+      p_latitude: MP_GEO ? MP_GEO.lat : null,
+      p_longitude: MP_GEO ? MP_GEO.lng : null,
+      p_justificativa: justif,
+      p_user_agent: navigator.userAgent.slice(0, 150)
+    });
+    
+    if(typeof toast === 'function'){
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' registrado às ' + resp.hora, 'success');
+    } else {
+      alert('✅ Ponto registrado às ' + resp.hora);
+    }
+    
+    document.getElementById('dash-ponto-justif').value = '';
+    document.getElementById('dash-ponto-justif-box').style.display = 'none';
+    
+    // Recarrega o status
+    await dashRenderCardPonto();
+  } catch(e){
+    alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+    btn.innerHTML = originalText;
+  }
+}
+
+// Auto-init quando dashboard carregar
+setTimeout(dashRenderCardPonto, 1200);
+setTimeout(dashRenderCardPonto, 3000);
+// Reage a navegação pra dashboard
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(t && t.classList && t.classList.contains('nav-item')){
+    var txt = (t.textContent || '').toLowerCase();
+    if(txt.indexOf('dashboard') >= 0 || txt.indexOf('início') >= 0 || txt.indexOf('inicio') >= 0){
+      setTimeout(dashRenderCardPonto, 300);
+    }
+  }
+});
 </script>
 </html>
