@@ -1,4 +1,4 @@
-<!-- v25.72 - Estoque modo pastas por cidade - 03/06/2026 -->
+<!-- v25.73 - Sistema Ponto Etapa 2 (aba Meu Ponto) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1717,6 +1717,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas<span class="nav-badge" id="badge-pess">2</span></div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
+    <div class="nav-item" id="nav-meu-ponto" onclick="abrirMeuPonto(this)" style="display:none">🕒 Meu Ponto</div>
+    <div class="nav-item" id="nav-ponto-gestao" onclick="abrirPontoGestao(this)" style="display:none">🛡️ Ponto · Gestão</div>
     <div class="nav-item" id="nav-estoque" data-permissao="estoque" onclick="abrirEstoque(this)" style="display:none">📦 Controle de Estoque</div>
   </div>
 
@@ -4511,6 +4513,72 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       <button onclick="estFecharEdicao()" style="flex:1;padding:10px 14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>
       <button onclick="estSalvarEdicao()" style="flex:2;padding:10px 14px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit">💾 Salvar</button>
     </div>
+  </div>
+</div>
+
+
+<!-- ==================== 🕒 MEU PONTO (funcionária) ==================== -->
+<div class="page" id="pg-meu-ponto">
+  <div class="page-header">
+    <div>
+      <div class="page-title">🕒 Meu Ponto</div>
+      <div class="page-sub">Bater ponto e ver suas horas</div>
+    </div>
+  </div>
+
+  <div id="mp-banner" style="display:flex;align-items:center;gap:14px;padding:16px;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:12px;margin-bottom:16px">
+    <div id="mp-foto" style="width:60px;height:60px;border-radius:50%;background:var(--surface2);border:2px solid #1AB8F0;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:24px">👤</div>
+    <div style="flex:1;min-width:0">
+      <div id="mp-nome" style="font-size:16px;font-weight:700;color:var(--text)">—</div>
+      <div id="mp-cargo" style="font-size:11px;color:var(--text3);margin-top:2px">—</div>
+      <div id="mp-data-hoje" style="font-size:13px;color:#0E7AB8;font-weight:600;margin-top:6px">—</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px" id="mp-cards-dia"></div>
+
+  <div class="card" style="padding:20px;text-align:center;margin-bottom:18px">
+    <div id="mp-info-batida" style="font-size:13px;color:var(--text);margin-bottom:14px;font-weight:600">Próxima batida: <span id="mp-proxima-batida" style="color:#1AB8F0">—</span></div>
+    
+    <button id="mp-btn-bater" onclick="mpBaterPonto()" style="width:100%;max-width:380px;padding:18px 24px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:18px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(26,184,240,0.3);transition:transform .15s"
+      onmouseover="this.style.transform='translateY(-2px)'"
+      onmouseout="this.style.transform=''">
+      🕒 BATER PONTO
+    </button>
+    
+    <div id="mp-status-geo" style="margin-top:14px;font-size:11px;color:var(--text3);min-height:18px">Aguardando localização...</div>
+    
+    <div id="mp-justificativa-box" style="display:none;margin-top:14px;padding:12px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;text-align:left">
+      <label style="display:block;font-size:11px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio do escritório. Justifique:</label>
+      <textarea id="mp-justificativa" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px 10px;border:1px solid #EF9F27;border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>
+    </div>
+  </div>
+
+  <div class="card" style="padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--text)">📅 Meu mês</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px" id="mp-resumo-mes">—</div>
+      </div>
+      <input id="mp-filtro-mes" type="month" onchange="mpCarregarMes()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+    </div>
+    
+    <div id="mp-tabela-mes" style="overflow-x:auto">
+      <div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Carregando...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 🛡️ PONTO · GESTÃO (Etapa 3) ==================== -->
+<div class="page" id="pg-ponto-gestao">
+  <div class="page-header">
+    <div>
+      <div class="page-title">🛡️ Ponto · Gestão</div>
+      <div class="page-sub">Painel das colaboradoras, espelhos mensais e edições</div>
+    </div>
+  </div>
+  <div class="card" style="padding:30px;text-align:center;color:var(--text3)">
+    🚧 <strong>Etapa 3</strong> — será implementada após confirmação da Etapa 2.
   </div>
 </div>
 
@@ -39848,6 +39916,412 @@ setTimeout(estVerificarAcessoSidebar, 500);
 setTimeout(estVerificarAcessoSidebar, 1500);
 setInterval(estVerificarAcessoSidebar, 5000);
 document.addEventListener('DOMContentLoaded', estVerificarAcessoSidebar);
+
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🕒 MÓDULO MEU PONTO (funcionária) =========================
+// ================================================================
+// Aba "Meu Ponto" — bater ponto + ver mês próprio
+// RPCs: ponto_dia, ponto_mes, ponto_bater
+// Permissão: pessoas com pessoas.bate_ponto = TRUE
+// ================================================================
+
+var MP_PESSOA = null;
+var MP_GEO = null;       // {lat, lng, distancia, dentro}
+var MP_CONFIG = null;    // {latitude, longitude, raio_metros, timezone, ...}
+
+var MP_TIPO_LABEL = {
+  entrada1: '🌅 Entrada',
+  saida1:   '🍽️ Saída pro almoço',
+  entrada2: '↩️ Volta do almoço',
+  saida2:   '🌆 Saída'
+};
+
+var MP_DIAS_SEMANA = ['DOM','SEG','TER','QUA','QUI','SEX','SÁB'];
+var MP_DIAS_LONGO = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+
+// ============ Helpers ============
+function _mpSupaHeaders(){
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
+}
+async function _mpRPC(fn, params){
+  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
+    method: 'POST', headers: _mpSupaHeaders(),
+    cache: 'no-store',
+    body: JSON.stringify(params || {})
+  });
+  if(!r.ok){ var t = await r.text(); throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); }
+  return r.json();
+}
+
+// ============ Verifica acesso ============
+async function mpVerificarAcessoSidebar(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var navMp = document.getElementById('nav-meu-ponto');
+  var navGestao = document.getElementById('nav-ponto-gestao');
+  if(!u) return;
+  
+  // Pra Meu Ponto: precisa estar logada como pessoa com bate_ponto = TRUE
+  // Busca no Supabase pra saber se essa pessoa bate ponto
+  try {
+    var email = u.email || '';
+    var id = u.id || u.pessoa_id;
+    var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
+    var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto&limit=1', {
+      headers: _mpSupaHeaders(), cache: 'no-store'
+    });
+    var arr = r.ok ? await r.json() : [];
+    var p = arr[0];
+    if(p && p.bate_ponto){
+      MP_PESSOA = p;
+      if(navMp) navMp.style.display = '';
+    } else {
+      if(navMp) navMp.style.display = 'none';
+    }
+  } catch(e){ console.warn('[MP] verificar acesso:', e); }
+  
+  // Pra Gestão: super_admin, diretoria, gerência
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  if(navGestao){
+    if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
+      navGestao.style.display = '';
+    } else {
+      navGestao.style.display = 'none';
+    }
+  }
+}
+
+// ============ Abrir aba Meu Ponto ============
+async function abrirMeuPonto(navEl){
+  if(!MP_PESSOA){
+    await mpVerificarAcessoSidebar();
+    if(!MP_PESSOA){
+      alert('🚫 Você não tem permissão pra bater ponto.');
+      return;
+    }
+  }
+  
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  if(navEl) navEl.classList.add('active');
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
+  var pg = document.getElementById('pg-meu-ponto');
+  pg.classList.add('active');
+  pg.style.display = 'block';
+  
+  // Carrega config + banner
+  await mpCarregarConfig();
+  mpRenderBanner();
+  mpPedirGeolocation();
+  
+  // Carrega dia atual
+  await mpCarregarDia();
+  
+  // Carrega mês atual
+  var hoje = new Date();
+  var mesStr = hoje.toISOString().slice(0,7);
+  document.getElementById('mp-filtro-mes').value = mesStr;
+  await mpCarregarMes();
+}
+
+async function mpCarregarConfig(){
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_config?id=eq.1&select=*', {
+      headers: _mpSupaHeaders(), cache: 'no-store'
+    });
+    var arr = await r.json();
+    MP_CONFIG = arr[0] || null;
+  } catch(e){ console.error('[MP] config:', e); }
+}
+
+function mpRenderBanner(){
+  document.getElementById('mp-nome').textContent = MP_PESSOA.nome || '—';
+  document.getElementById('mp-cargo').textContent = MP_PESSOA.cargo || 'Suporte Escritório';
+  
+  var foto = document.getElementById('mp-foto');
+  if(MP_PESSOA.foto){
+    foto.innerHTML = '<img src="' + MP_PESSOA.foto + '" style="width:100%;height:100%;object-fit:cover"/>';
+  } else {
+    foto.innerHTML = '👤';
+  }
+  
+  // Data de hoje (fuso RO)
+  var hoje = new Date();
+  // Pega data no fuso de Porto Velho via Intl
+  var fmt = new Intl.DateTimeFormat('pt-BR', { 
+    timeZone: 'America/Porto_Velho',
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+  });
+  document.getElementById('mp-data-hoje').textContent = 'Hoje · ' + fmt.format(hoje);
+}
+
+// ============ Geolocalização ============
+function mpPedirGeolocation(){
+  var statusEl = document.getElementById('mp-status-geo');
+  if(!navigator.geolocation){
+    statusEl.innerHTML = '❌ Seu navegador não suporta geolocalização';
+    return;
+  }
+  
+  statusEl.innerHTML = '📡 Capturando localização...';
+  
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      MP_GEO = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        precisao: pos.coords.accuracy
+      };
+      
+      // Calcula distância usando Haversine
+      if(MP_CONFIG){
+        var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
+        MP_GEO.distancia = d;
+        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+        
+        if(MP_GEO.dentro){
+          statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
+          document.getElementById('mp-justificativa-box').style.display = 'none';
+        } else {
+          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m (raio ' + MP_CONFIG.raio_metros + 'm)';
+          document.getElementById('mp-justificativa-box').style.display = 'block';
+        }
+      } else {
+        statusEl.innerHTML = '📍 Localização capturada (config não disponível)';
+      }
+    },
+    function(err){
+      MP_GEO = null;
+      statusEl.innerHTML = '❌ Erro: ' + (err.message || 'não foi possível obter localização. Permita acesso ao GPS.');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+}
+
+function _mpHaversine(lat1, lng1, lat2, lng2){
+  var R = 6371000;
+  var dLat = (lat2-lat1) * Math.PI / 180;
+  var dLng = (lng2-lng1) * Math.PI / 180;
+  var a = Math.sin(dLat/2) * Math.sin(dLat/2) + 
+          Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+          Math.sin(dLng/2) * Math.sin(dLng/2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// ============ Carregar dia ============
+async function mpCarregarDia(){
+  try {
+    var dados = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
+    mpRenderCardsDia(dados);
+  } catch(e){
+    console.error('[MP] dia:', e);
+    document.getElementById('mp-cards-dia').innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: ' + e.message + '</div>';
+  }
+}
+
+function mpRenderCardsDia(dados){
+  var horario = dados.horario_esperado;
+  var registros = {};
+  (dados.registros || []).forEach(function(r){ registros[r.tipo] = r; });
+  
+  var tipos = ['entrada1','saida1','entrada2','saida2'];
+  var tiposLbl = ['🌅 Entrada','🍽️ Saída almoço','↩️ Volta almoço','🌆 Saída'];
+  var proximo = null;
+  
+  document.getElementById('mp-cards-dia').innerHTML = tipos.map(function(t, i){
+    var reg = registros[t];
+    var esperado = horario ? horario[t] : null;
+    var realizado = reg ? reg.hora : null;
+    
+    if(!reg && !proximo) proximo = t;
+    
+    var corBg, corBorda, lbl, lblCor;
+    if(reg){
+      // Realizado: verifica se está atrasado
+      if(esperado && t === 'entrada1'){
+        var [eh, em] = esperado.split(':').map(Number);
+        var [rh, rm] = realizado.split(':').map(Number);
+        var tolerancia = (MP_CONFIG && MP_CONFIG.tolerancia_atraso_min) || 10;
+        var atrasoMin = (rh*60+rm) - (eh*60+em);
+        if(atrasoMin > tolerancia){
+          corBg = '#FFF8E1'; corBorda = '#EF9F27';
+          lbl = '⏰ +' + atrasoMin + 'min'; lblCor = '#854F0B';
+        } else {
+          corBg = '#EAF7DD'; corBorda = '#1D9E75';
+          lbl = '✅ No prazo'; lblCor = '#0F6D52';
+        }
+      } else {
+        corBg = '#EAF7DD'; corBorda = '#1D9E75';
+        lbl = '✅ Registrado'; lblCor = '#0F6D52';
+      }
+    } else {
+      corBg = 'var(--surface2)'; corBorda = 'var(--border)';
+      lbl = '⌛ Pendente'; lblCor = 'var(--text3)';
+    }
+    
+    return '<div style="padding:12px;background:' + corBg + ';border:1px solid ' + corBorda + ';border-radius:10px;text-align:center">'
+      + '<div style="font-size:11px;color:var(--text2);font-weight:600;margin-bottom:6px">' + tiposLbl[i] + '</div>'
+      + '<div style="font-size:22px;font-weight:700;color:' + (reg ? '#0E7AB8' : 'var(--text3)') + ';line-height:1">' + (realizado || '—') + '</div>'
+      + (esperado ? '<div style="font-size:10px;color:var(--text3);margin-top:4px">esperado ' + esperado + '</div>' : '')
+      + '<div style="font-size:9px;color:' + lblCor + ';font-weight:700;margin-top:6px;text-transform:uppercase;letter-spacing:0.5px">' + lbl + '</div>'
+    + '</div>';
+  }).join('');
+  
+  // Botão
+  var infoEl = document.getElementById('mp-proxima-batida');
+  var btn = document.getElementById('mp-btn-bater');
+  if(proximo){
+    infoEl.textContent = MP_TIPO_LABEL[proximo];
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+  } else {
+    infoEl.textContent = '✅ Todos os pontos do dia já foram batidos';
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.style.cursor = 'not-allowed';
+  }
+}
+
+// ============ BATER PONTO ============
+async function mpBaterPonto(){
+  if(!MP_PESSOA){ alert('Não autenticado.'); return; }
+  
+  var btn = document.getElementById('mp-btn-bater');
+  btn.disabled = true;
+  btn.textContent = '⏳ Registrando...';
+  
+  var justif = document.getElementById('mp-justificativa').value.trim() || null;
+  
+  try {
+    var resp = await _mpRPC('ponto_bater', {
+      p_pessoa_id: MP_PESSOA.id,
+      p_latitude: MP_GEO ? MP_GEO.lat : null,
+      p_longitude: MP_GEO ? MP_GEO.lng : null,
+      p_justificativa: justif,
+      p_user_agent: navigator.userAgent.slice(0, 150)
+    });
+    
+    if(typeof toast === 'function'){
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+    } else {
+      alert('✅ Ponto registrado às ' + resp.hora);
+    }
+    
+    // Limpa justificativa
+    document.getElementById('mp-justificativa').value = '';
+    document.getElementById('mp-justificativa-box').style.display = 'none';
+    
+    // Recarrega
+    await mpCarregarDia();
+    await mpCarregarMes();
+  } catch(e){
+    alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+  } finally {
+    btn.textContent = '🕒 BATER PONTO';
+  }
+}
+
+// ============ Mês ============
+async function mpCarregarMes(){
+  var mesStr = document.getElementById('mp-filtro-mes').value;
+  if(!mesStr){ 
+    var hoje = new Date();
+    mesStr = hoje.toISOString().slice(0,7);
+    document.getElementById('mp-filtro-mes').value = mesStr;
+  }
+  var [ano, mes] = mesStr.split('-').map(Number);
+  
+  try {
+    var dados = await _mpRPC('ponto_mes', { p_pessoa_id: MP_PESSOA.id, p_ano: ano, p_mes: mes });
+    mpRenderMes(dados);
+  } catch(e){
+    console.error('[MP] mes:', e);
+    document.getElementById('mp-tabela-mes').innerHTML = '<div style="padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: ' + e.message + '</div>';
+  }
+}
+
+function mpRenderMes(dados){
+  var r = dados.resumo || {};
+  document.getElementById('mp-resumo-mes').innerHTML = 
+    '✅ ' + (r.dias_trabalhados||0) + ' dias trabalhados · ' 
+    + (r.dias_uteis_esperados||0) + ' dias úteis · '
+    + (r.faltas > 0 ? '<span style="color:#A32D2D">❌ ' + r.faltas + ' faltas · </span>' : '')
+    + (r.afastamentos > 0 ? '🏥 ' + r.afastamentos + ' afastamentos · ' : '')
+    + (r.batidas_editadas > 0 ? '✏️ ' + r.batidas_editadas + ' edições' : '');
+  
+  var dias = dados.dias || [];
+  if(!dias.length){
+    document.getElementById('mp-tabela-mes').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Sem dados.</div>';
+    return;
+  }
+  
+  document.getElementById('mp-tabela-mes').innerHTML = 
+    '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:520px">'
+      + '<thead><tr style="background:var(--surface2);border-bottom:2px solid var(--border)">'
+        + '<th style="text-align:left;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Dia</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Esperado</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Entrada</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Almoço</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Volta</th>'
+        + '<th style="text-align:center;padding:8px;font-weight:700;color:var(--text2);font-size:10px">Saída</th>'
+      + '</tr></thead><tbody>'
+      + dias.map(function(d){
+          var data = new Date(d.data + 'T00:00:00');
+          var ddmm = String(data.getDate()).padStart(2, '0') + '/' + String(data.getMonth()+1).padStart(2, '0');
+          var diaSem = MP_DIAS_SEMANA[d.dia_semana];
+          var fimSem = (d.dia_semana === 0 || d.dia_semana === 6);
+          var p = d.pontos || {};
+          var temPontos = Object.keys(p).length > 0;
+          
+          var esperado = d.horario_esperado 
+            ? d.horario_esperado.entrada1 + '–' + d.horario_esperado.saida2
+            : '—';
+          
+          var pontoHtml = function(tipo){
+            if(d.excecao){
+              return '<span style="color:#8B5CF6;font-weight:600">' + 
+                (d.excecao.tipo === 'atestado' ? '🏥' : d.excecao.tipo === 'ferias' ? '🏖️' : '📝') + 
+                ' ' + d.excecao.tipo + '</span>';
+            }
+            if(!p[tipo]) return '<span style="color:var(--text3)">—</span>';
+            var edit = p[tipo].editado ? '<span title="Editado pelo gestor" style="color:#EF9F27">*</span>' : '';
+            return '<span style="font-weight:600">' + p[tipo].hora + edit + '</span>';
+          };
+          
+          var bgRow = fimSem ? 'background:var(--surface2)' : '';
+          
+          return '<tr style="border-bottom:1px solid var(--border);' + bgRow + '">'
+            + '<td style="padding:8px;font-weight:600;color:var(--text)">' + ddmm + ' <span style="color:var(--text3);font-size:9px">' + diaSem + '</span></td>'
+            + '<td style="padding:8px;text-align:center;color:var(--text3);font-size:10px">' + esperado + '</td>'
+            + '<td style="padding:8px;text-align:center;color:var(--text)">' + (d.excecao && !temPontos ? pontoHtml() : pontoHtml('entrada1')) + '</td>'
+            + '<td style="padding:8px;text-align:center;color:var(--text)">' + pontoHtml('saida1') + '</td>'
+            + '<td style="padding:8px;text-align:center;color:var(--text)">' + pontoHtml('entrada2') + '</td>'
+            + '<td style="padding:8px;text-align:center;color:var(--text)">' + pontoHtml('saida2') + '</td>'
+          + '</tr>';
+        }).join('')
+    + '</tbody></table>';
+}
+
+// ============ Abrir Ponto Gestão (placeholder Etapa 3) ============
+async function abrirPontoGestao(navEl){
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+  if(navEl) navEl.classList.add('active');
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
+  var pg = document.getElementById('pg-ponto-gestao');
+  pg.classList.add('active');
+  pg.style.display = 'block';
+}
+
+// ============ INIT ============
+mpVerificarAcessoSidebar();
+setTimeout(mpVerificarAcessoSidebar, 600);
+setTimeout(mpVerificarAcessoSidebar, 1500);
+setInterval(mpVerificarAcessoSidebar, 5000);
+document.addEventListener('DOMContentLoaded', mpVerificarAcessoSidebar);
 
 </script>
 </html>
