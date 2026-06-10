@@ -1,4 +1,4 @@
-<!-- v25.78 - Card Bater Ponto no Dashboard - 03/06/2026 -->
+<!-- v25.79 - Plano de Carreira sem tempo fixo - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -5748,15 +5748,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div class="card carr-section" style="margin-bottom:14px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border:none;color:white;padding:0;overflow:hidden;position:relative">
     <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,217,61,.18),transparent 70%);pointer-events:none"></div>
     <div style="position:absolute;bottom:-40px;left:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.1),transparent 70%);pointer-events:none"></div>
-    <div style="position:relative;padding:24px 26px;display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center">
+    <div style="position:relative;padding:24px 26px">
       <div>
         <div style="display:inline-block;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:14px;margin-bottom:10px;font-weight:700">TRILHA GÂMI</div>
         <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px;line-height:1.15">Crescer aqui é <span style="background:linear-gradient(90deg,#FFD93D,#FFB300);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">construir uma história</span></div>
-        <div style="font-size:12px;opacity:.92;line-height:1.6;max-width:520px">10 níveis · 5 fases · cada faixa com 6 meses. Toda promoção é resultado de aprendizado real, não tempo de casa.</div>
-      </div>
-      <div style="text-align:center;background:rgba(255,255,255,.13);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px 18px;min-width:120px">
-        <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:#FFD93D">4,5</div>
-        <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.85">anos até Gerente</div>
+        <div style="font-size:12px;opacity:.92;line-height:1.6;max-width:620px">10 níveis · 5 fases · toda promoção é resultado de aprendizado real e desempenho, sugerida pela diretoria com base nos critérios abaixo.</div>
       </div>
     </div>
   </div>
@@ -5770,7 +5766,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <!-- TRILHA DOS 10 NÍVEIS -->
   <div class="card" style="margin-bottom:14px">
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🏆</span> Trilha de Níveis</div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">10 faixas com 6 meses cada — total de 4 anos e 6 meses até Gerente</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">10 faixas de progressão — promoções sugeridas pela diretoria com base em desempenho</div>
     <div id="carreira-trilha" style="display:flex;flex-wrap:wrap;gap:8px"></div>
   </div>
 
@@ -5791,9 +5787,6 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
   <!-- DISTRIBUIÇÃO POR CIDADE -->
   <div class="card" id="carreira-cidades" style="margin-bottom:14px"></div>
-
-  <!-- PRÓXIMOS DA PROMOÇÃO -->
-  <div class="card" id="carreira-promocao" style="margin-bottom:14px"></div>
 
   <!-- CRITÉRIOS DE PROMOÇÃO -->
   <div class="card" id="carreira-criterios" style="margin-bottom:14px"></div>
@@ -8505,7 +8498,10 @@ async function tentarLogin(identificador, pin){
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
     if(!r.ok){
-      return { sucesso: false, erro: 'Erro de conexão. Tente novamente.' };
+      var errTxt = '';
+      try { errTxt = await r.text(); } catch(e){}
+      console.error('[LOGIN] HTTP', r.status, errTxt);
+      return { sucesso: false, erro: 'Erro de conexão (HTTP ' + r.status + '). Tente novamente.' };
     }
     var lista = await r.json();
     if(!lista.length){
@@ -36533,16 +36529,16 @@ function renderCarreira(){
   var trilhaHost = document.getElementById('carreira-trilha');
   if(trilhaHost){
     var niveis = [
-      {nome:'Júnior I',  faixa:'6 meses', total:'-'},
-      {nome:'Júnior II', faixa:'6 meses', total:'6 meses'},
-      {nome:'Júnior III',faixa:'6 meses', total:'1 ano'},
-      {nome:'Pleno I',   faixa:'6 meses', total:'1 ano e 6 meses'},
-      {nome:'Pleno II',  faixa:'6 meses', total:'2 anos'},
-      {nome:'Pleno III', faixa:'6 meses', total:'2 anos e 6 meses'},
-      {nome:'Sênior I',  faixa:'6 meses', total:'3 anos'},
-      {nome:'Sênior II', faixa:'6 meses', total:'3 anos e 6 meses'},
-      {nome:'Sênior III',faixa:'6 meses', total:'4 anos'},
-      {nome:'Gerente',   faixa:'6 meses', total:'4 anos e 6 meses'},
+      {nome:'Júnior I'},
+      {nome:'Júnior II'},
+      {nome:'Júnior III'},
+      {nome:'Pleno I'},
+      {nome:'Pleno II'},
+      {nome:'Pleno III'},
+      {nome:'Sênior I'},
+      {nome:'Sênior II'},
+      {nome:'Sênior III'},
+      {nome:'Gerente'},
     ];
     
     // Renderiza com cor neutra primeiro, depois extrai cor de cada broche e aplica
@@ -36566,8 +36562,6 @@ function renderCarreira(){
         '<div id="'+cardId+'" data-broche="'+brocheUrl+'" style="border:1px solid #E1E7EE;border-radius:10px;padding:12px 10px 10px;background:#F5F7FA;color:#0B2542;min-width:130px;text-align:center;transition:all 0.4s ease">'+
           brocheHTML +
           '<div style="font-size:11px;font-weight:700;letter-spacing:.2px">'+n.nome+'</div>'+
-          '<div style="font-size:9px;opacity:.85;margin-top:2px">'+n.faixa+' na faixa</div>'+
-          '<div style="font-size:9px;opacity:.7">tempo: '+n.total+'</div>'+
           (qtd>0 ? '<div class="trilha-badge-qtd" style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.55);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
         '</div>'+
         arrow+
@@ -36728,65 +36722,12 @@ function renderCarreira(){
       }).join('') + '</div>';
   }
 
-  // ----- PRÓXIMOS DA PROMOÇÃO -----
-  var promHost = document.getElementById('carreira-promocao');
-  if(promHost){
-    var hoje = new Date();
-    var proximos = pessoas.map(function(p){
-      if(!p.entrada || !p.nivel) return null;
-      // Gestor/Gerente/Diretor não fazem trilha automática de senioridade
-      if(p.nivel === 'Gestor' || p.nivel === 'Diretor' || p.nivel === 'Gerente') return null;
-      var entrada = new Date(p.entrada);
-      if(isNaN(entrada.getTime())) return null;
-      var meses = (hoje.getFullYear() - entrada.getFullYear())*12 + (hoje.getMonth() - entrada.getMonth());
-      // Se está há 6+ meses na empresa (mínimo para promoção)
-      // Para simplicidade, considera "próximo da promoção" quem tem 5+ meses no nível atual
-      // (assume que cada nível dura 6 meses)
-      var mesesNoNivel = meses % 6;
-      var mesesParaProm = 6 - mesesNoNivel;
-      if(meses < 5) return null;
-      return Object.assign({}, p, {meses:meses, mesesParaProm:mesesParaProm});
-    }).filter(Boolean).sort(function(a,b){ return a.mesesParaProm - b.mesesParaProm; }).slice(0,8);
-
-    if(proximos.length === 0){
-      promHost.innerHTML =
-        '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🎯</span> Próximos da promoção</div>'+
-        '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Time elegível para subir de nível em breve</div>'+
-        '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Cadastre as datas de entrada das pessoas para ver quem está próximo da promoção.</div>';
-    } else {
-      promHost.innerHTML =
-        '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🎯</span> Próximos da promoção</div>'+
-        '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Time elegível para subir de nível em breve · '+proximos.length+' pessoa'+(proximos.length>1?'s':'')+'</div>'+
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">'+
-        proximos.map(function(p){
-          var ac = (function(nome){ try{ return avColor(nome); }catch(e){ return {bg:'#EEE',color:'#333'}; } })(p.nome);
-          var ini = (function(nome){ try{ return initials(nome); }catch(e){ return (nome||'?')[0]; } })(p.nome);
-          var statusCor = p.mesesParaProm <= 1 ? '#1D9E75' : (p.mesesParaProm <= 2 ? '#FFB300' : '#1E88E5');
-          var statusTxt = p.mesesParaProm <= 1 ? 'Pronto!' : (p.mesesParaProm <= 2 ? 'Quase lá' : 'Em desenvolvimento');
-          // Avatar com foto OU iniciais (fallback)
-          var avatarConteudo = p.foto 
-            ? '<img src="'+p.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>'
-            : ini;
-          return '<div style="border:1px solid var(--border);border-left:3px solid '+statusCor+';border-radius:10px;padding:10px 12px;background:var(--surface);display:flex;gap:10px;align-items:center">'+
-            '<div style="width:40px;height:40px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;overflow:hidden">'+avatarConteudo+'</div>'+
-            '<div style="flex:1;min-width:0">'+
-              '<div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.nome+'</div>'+
-              '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(p.nivel||'')+' · '+(p.cidade||'')+'</div>'+
-            '</div>'+
-            '<div style="text-align:right;flex-shrink:0">'+
-              '<div style="font-size:9px;font-weight:700;color:'+statusCor+';text-transform:uppercase;letter-spacing:.5px">'+statusTxt+'</div>'+
-              '<div style="font-size:9px;color:var(--text3);margin-top:1px">'+p.meses+' meses</div>'+
-            '</div>'+
-          '</div>';
-        }).join('') + '</div>';
-    }
-  }
+  // ----- PRÓXIMOS DA PROMOÇÃO removido em v25.79 (promoção é sugerida pela diretoria, não por tempo) -----
 
   // ----- CRITÉRIOS -----
   var critHost = document.getElementById('carreira-criterios');
   if(critHost){
     var criterios = [
-      ['⏱️','Tempo de empresa','Cumprir o tempo mínimo de 6 meses na faixa atual'],
       ['📈','Evolução técnica','Domínio das ferramentas e processos da função'],
       ['🎯','Performance no atendimento (IA)','Qualidade nas interações via IA e suporte'],
       ['🤝','Alinhamento cultural e comportamental','Vivenciar os valores Gâmi no dia a dia'],
@@ -36794,6 +36735,7 @@ function renderCarreira(){
       ['🔄','Aplicação no dia a dia','Colocar em prática o que aprendeu'],
       ['💪','Performance diante das demandas','Entregar com consistência e qualidade'],
       ['🏆','Geração de resultados','O critério mais importante — gerar impacto real'],
+      ['👀','Avaliação da diretoria','Cada promoção é sugerida pela diretoria após análise individual'],
     ];
     critHost.innerHTML =
       '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">📋</span> Critérios de Promoção</div>'+
