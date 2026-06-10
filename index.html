@@ -1,4 +1,4 @@
-<!-- v25.64 - Controle Estoque v2 sub-abas e modelo simplificado - 03/06/2026 -->
+<!-- v25.66 - Loja da Gami (vitrine) + descricao - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4156,6 +4156,27 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       </div>
     </div>
     
+    <!-- 🏪 VITRINE LOJA DA GÂMI -->
+    <div class="card" style="padding:16px;margin-bottom:14px;background:linear-gradient(135deg,#FFF8E1,#FFFFFF);border:1px solid #EF9F2733;border-left:4px solid #EF9F27">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:#854F0B;display:flex;align-items:center;gap:8px">🏪 Loja da Gâmi</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px" id="est-vitrine-count">— itens disponíveis</div>
+        </div>
+        <input id="est-vitrine-busca" oninput="estRenderVitrine()" placeholder="🔍 Buscar..." style="padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text);font-size:11px;font-family:inherit;min-width:180px"/>
+      </div>
+      <div id="est-vitrine-grid">
+        <div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Carregando vitrine...</div>
+      </div>
+    </div>
+    
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">🏙️ Itens por Cidade</div>
+      <div id="est-distribuicao-cidades">
+        <div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Carregando...</div>
+      </div>
+    </div>
+    
     <div class="card" style="padding:14px">
       <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">📋 Últimas vendas</div>
       <div id="est-ultimas-vendas">
@@ -4186,6 +4207,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
           <thead>
             <tr style="background:var(--surface2);border-bottom:2px solid var(--border)">
+              <th style="text-align:center;padding:10px 6px;font-weight:700;color:var(--text2);font-size:11px;width:50px">Foto</th>
               <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Modelo</th>
               <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Tam.</th>
               <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cidade</th>
@@ -4195,7 +4217,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
             </tr>
           </thead>
           <tbody id="est-tabela-body">
-            <tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
+            <tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
           </tbody>
         </table>
       </div>
@@ -4222,6 +4244,19 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       <!-- Bloco pra criar novo item (oculto por padrão) -->
       <div id="est-form-novo-item" style="display:none;background:#FFF8E1;border:1px dashed #EF9F27;border-radius:8px;padding:12px;margin-bottom:14px">
         <div style="font-size:11px;font-weight:700;color:#854F0B;margin-bottom:10px">📝 NOVO ITEM</div>
+        
+        <!-- Foto -->
+        <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">
+          <div id="est-foto-preview" style="width:80px;height:80px;border-radius:10px;background:white;border:2px dashed #EF9F27;display:flex;align-items:center;justify-content:center;color:#854F0B;font-size:24px;flex-shrink:0;overflow:hidden">📷</div>
+          <div style="flex:1">
+            <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">FOTO DO ITEM (opcional)</label>
+            <input type="file" id="est-foto-input" accept="image/*" onchange="estUploadFoto(event)" style="font-size:11px;color:var(--text2);font-family:inherit"/>
+            <input type="hidden" id="est-foto-url"/>
+            <button id="est-foto-remover" onclick="estRemoverFoto()" style="display:none;margin-top:4px;padding:3px 8px;border:1px solid #E24B4A;background:white;color:#A32D2D;font-size:10px;font-weight:600;border-radius:4px;cursor:pointer;font-family:inherit">✕ Remover foto</button>
+            <div id="est-foto-status" style="font-size:10px;color:var(--text3);margin-top:3px"></div>
+          </div>
+        </div>
+        
         <div style="margin-bottom:10px">
           <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Nome do item</label>
           <input id="est-novo-nome" placeholder="Ex: Camisa Polo Preta" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit"/>
@@ -4235,6 +4270,10 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
             <option value="GG">GG</option><option value="XG">XG</option>
             <option value="Único">Único</option>
           </select>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="display:block;font-size:10px;color:var(--text2);margin-bottom:3px">Descrição (opcional)</label>
+          <textarea id="est-novo-descricao" rows="2" placeholder="Ex: Tecido 100% algodão, bordado em alta qualidade" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>
         </div>
         <button onclick="estCadastrarNovoItem()" style="padding:8px 16px;border:none;background:#EF9F27;color:white;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">✅ Cadastrar item</button>
       </div>
@@ -38746,6 +38785,75 @@ async function estCarregarSaldos(){
   } catch(e){ EST_SALDOS = []; console.error('[Estoque] saldos:', e); }
 }
 
+var EST_VITRINE_CACHE = [];
+
+// ====== 🏪 VITRINE LOJA DA GÂMI ======
+function estRenderVitrine(){
+  var el = document.getElementById('est-vitrine-grid');
+  if(!el) return;
+  
+  var busca = (document.getElementById('est-vitrine-busca').value || '').toLowerCase().trim();
+  var vitrine = EST_VITRINE_CACHE || [];
+  
+  // Filtra por busca
+  if(busca){
+    vitrine = vitrine.filter(function(v){
+      var alvo = (v.nome + ' ' + (v.tamanho||'') + ' ' + (v.descricao||'')).toLowerCase();
+      return alvo.indexOf(busca) >= 0;
+    });
+  }
+  
+  var disponiveis = vitrine.filter(function(v){ return (parseInt(v.saldo_total)||0) > 0; }).length;
+  document.getElementById('est-vitrine-count').textContent = disponiveis + ' itens disponíveis · ' + vitrine.length + ' modelos cadastrados';
+  
+  if(!vitrine.length){
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">📦 Nenhum item cadastrado ainda.<br><br><button onclick="estIrParaTab(\'adicionar\')" style="margin-top:8px;padding:8px 14px;border:none;background:#EF9F27;color:white;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">+ Cadastrar primeiro item</button></div>';
+    return;
+  }
+  
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">'
+    + vitrine.map(function(v){
+      var saldo = parseInt(v.saldo_total) || 0;
+      var esgotado = saldo <= 0;
+      var baixo = saldo > 0 && saldo < 10;
+      
+      var fotoHtml = v.foto_url 
+        ? '<img src="' + v.foto_url + '" style="width:100%;height:140px;object-fit:cover;background:#F5F5F5"/>'
+        : '<div style="width:100%;height:140px;background:linear-gradient(135deg,#F5F7FA,#E6F6FE);display:flex;align-items:center;justify-content:center;font-size:48px">📦</div>';
+      
+      var tag = esgotado 
+        ? '<span style="position:absolute;top:8px;right:8px;padding:3px 8px;background:rgba(226,75,74,0.95);color:white;font-size:9px;font-weight:700;border-radius:4px;letter-spacing:0.5px">ESGOTADO</span>'
+        : (baixo 
+          ? '<span style="position:absolute;top:8px;right:8px;padding:3px 8px;background:rgba(239,159,39,0.95);color:white;font-size:9px;font-weight:700;border-radius:4px;letter-spacing:0.5px">ÚLTIMAS</span>'
+          : '<span style="position:absolute;top:8px;right:8px;padding:3px 8px;background:rgba(29,158,117,0.95);color:white;font-size:9px;font-weight:700;border-radius:4px;letter-spacing:0.5px">EM ESTOQUE</span>');
+      
+      var tamHtml = v.tamanho ? ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + v.tamanho + '</span>' : '';
+      
+      var descHtml = v.descricao 
+        ? '<div style="font-size:10.5px;color:var(--text3);line-height:1.35;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + v.descricao + '</div>'
+        : '';
+      
+      return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:transform .15s, box-shadow .15s;cursor:pointer;position:relative" '
+        + 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" '
+        + 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'" '
+        + 'onclick="estIrParaTab(\'estoque\');document.getElementById(\'est-busca-estoque\').value=\'' + v.nome.replace(/'/g, "\\'") + '\';estRenderTabela();">'
+          + '<div style="position:relative">' + fotoHtml + tag + '</div>'
+          + '<div style="padding:10px 12px">'
+            + '<div style="font-size:12.5px;font-weight:700;color:var(--text);line-height:1.2">' + v.nome + tamHtml + '</div>'
+            + descHtml
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'
+              + '<div>'
+                + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Disponível</div>'
+                + '<div style="font-size:16px;font-weight:700;color:' + (esgotado ? '#A32D2D' : (baixo ? '#854F0B' : '#1D9E75')) + '">' + saldo + ' un</div>'
+              + '</div>'
+              + (v.cidades_com_saldo > 0 ? '<div style="text-align:right"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Cidades</div><div style="font-size:13px;font-weight:600;color:#1AB8F0">' + v.cidades_com_saldo + '</div></div>' : '')
+            + '</div>'
+          + '</div>'
+        + '</div>';
+    }).join('')
+  + '</div>';
+}
+
 // ====== DASHBOARD ======
 async function estRenderDashboard(){
   var d = null;
@@ -38761,6 +38869,38 @@ async function estRenderDashboard(){
     document.getElementById('est-kpi-fat-hoje').textContent = _estFmtBRL(d.faturamento_hoje);
     document.getElementById('est-kpi-fat-semana').textContent = _estFmtBRL(d.faturamento_semana);
   }
+  
+  // 🏪 VITRINE LOJA DA GÂMI
+  try {
+    EST_VITRINE_CACHE = await _estRPC('estoque_vitrine', {});
+    estRenderVitrine();
+  } catch(e){ console.error('[Estoque] vitrine:', e); }
+  
+  // Distribuição por cidade
+  try {
+    var distrib = await _estRPC('estoque_distribuicao_cidades', {});
+    var el = document.getElementById('est-distribuicao-cidades');
+    if(!distrib || !distrib.length){
+      el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhum item em estoque ainda.</div>';
+    } else {
+      var maior = Math.max.apply(null, distrib.map(function(d){ return parseInt(d.total_pecas)||0; }));
+      el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">'
+        + distrib.map(function(d){
+          var pct = maior > 0 ? Math.round((parseInt(d.total_pecas)||0) / maior * 100) : 0;
+          return '<div onclick="document.getElementById(\'est-cidade-global\').value=\'' + d.cidade + '\';estTrocarCidade();" style="padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:transform .15s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'\'">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+              + '<span style="font-size:12px;font-weight:600;color:var(--text)">' + _estLoc(d.cidade) + '</span>'
+              + '<span style="font-size:16px;font-weight:700;color:#1AB8F0">' + parseInt(d.total_pecas).toLocaleString('pt-BR') + '</span>'
+            + '</div>'
+            + '<div style="font-size:10px;color:var(--text3);margin-bottom:6px">' + d.modelos_distintos + ' modelos diferentes</div>'
+            + '<div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">'
+              + '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);border-radius:3px"></div>'
+            + '</div>'
+          + '</div>';
+        }).join('')
+      + '</div>';
+    }
+  } catch(e){ console.error('[Estoque] distrib:', e); }
   
   // Últimas vendas
   try {
@@ -38802,7 +38942,8 @@ function estRenderTabela(){
       tamanho: s.tamanho || '',
       cidade: s.cidade,
       saldo: parseInt(s.saldo) || 0,
-      valor: parseFloat(s.valor_unitario) || 0
+      valor: parseFloat(s.valor_unitario) || 0,
+      foto_url: s.foto_url || ''
     };
   });
   
@@ -38830,7 +38971,7 @@ function estRenderTabela(){
   document.getElementById('est-itens-count').textContent = EST_ITENS.length + ' itens cadastrados';
   
   if(!filt.length){
-    tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado. Vá em ➕ Adicionar pra cadastrar.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado. Vá em ➕ Adicionar pra cadastrar.</td></tr>';
     return;
   }
   
@@ -38840,7 +38981,13 @@ function estRenderTabela(){
       : (l.saldo < 10 
         ? { lbl: '⚠️ Baixo', cor: '#854F0B', bg: '#FFF8E1' }
         : { lbl: '✅ OK', cor: '#0F6D52', bg: '#EAF7DD' });
+    
+    var fotoHtml = l.foto_url 
+      ? '<img src="' + l.foto_url + '" style="width:38px;height:38px;border-radius:6px;object-fit:cover;border:1px solid var(--border)"/>'
+      : '<div style="width:38px;height:38px;border-radius:6px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:16px;border:1px solid var(--border)">📦</div>';
+    
     return '<tr style="border-bottom:1px solid var(--border)">'
+      + '<td style="padding:8px 6px;text-align:center"><div style="display:flex;justify-content:center">' + fotoHtml + '</div></td>'
       + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + l.nome + '</td>'
       + '<td style="padding:10px 12px;text-align:center;color:var(--text2);font-size:11px">' + (l.tamanho || '—') + '</td>'
       + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLoc(l.cidade) + '</td>'
@@ -38880,33 +39027,124 @@ function estAlternarNovoItem(){
 async function estCadastrarNovoItem(){
   var nome = document.getElementById('est-novo-nome').value.trim();
   var tamanho = document.getElementById('est-novo-tamanho').value;
+  var descricao = (document.getElementById('est-novo-descricao').value || '').trim();
+  var fotoUrl = document.getElementById('est-foto-url').value || null;
   if(!nome){ alert('Informe o nome do item.'); return; }
   
   try {
     var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens', {
       method: 'POST',
       headers: Object.assign({}, _estSupaHeaders(), { 'Prefer': 'return=representation' }),
-      body: JSON.stringify({ nome: nome, tamanho: tamanho || null, valor_unitario: 0 })
+      body: JSON.stringify({ 
+        nome: nome, 
+        tamanho: tamanho || null, 
+        descricao: descricao || null,
+        valor_unitario: 0, 
+        foto_url: fotoUrl 
+      })
     });
     if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
     var criado = await r.json();
     var novoItem = Array.isArray(criado) ? criado[0] : criado;
     
-    // Atualiza cache e seletor
     EST_ITENS.push(novoItem);
     EST_ITENS.sort(function(a,b){ return a.nome.localeCompare(b.nome); });
     estPopularItensSelect();
     document.getElementById('est-add-item').value = novoItem.id;
     
-    // Fecha form
     estAlternarNovoItem();
     document.getElementById('est-novo-nome').value = '';
     document.getElementById('est-novo-tamanho').value = '';
+    document.getElementById('est-novo-descricao').value = '';
+    estRemoverFoto();
     
     if(typeof toast === 'function') toast('✅ Item "' + nome + '" cadastrado', 'success');
   } catch(e){
     alert('Erro ao cadastrar item: ' + e.message);
   }
+}
+
+// ====== UPLOAD DE FOTO ======
+async function estUploadFoto(ev){
+  var file = ev.target.files[0];
+  if(!file) return;
+  
+  if(file.size > 5 * 1024 * 1024){
+    alert('Foto muito grande (máx 5MB).');
+    ev.target.value = '';
+    return;
+  }
+  
+  var statusEl = document.getElementById('est-foto-status');
+  statusEl.textContent = '⏳ Enviando...';
+  
+  try {
+    // Comprime/redimensiona pra max 800px
+    var blob = await _estComprimirImagem(file, 800);
+    var ext = file.name.split('.').pop().toLowerCase();
+    var fileName = Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.jpg';
+    var uploadUrl = SUPA_URL + '/storage/v1/object/estoque-fotos/' + fileName;
+    
+    var r = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'image/jpeg',
+        'x-upsert': 'true'
+      },
+      body: blob
+    });
+    
+    if(!r.ok){
+      var txt = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + txt.slice(0,200));
+    }
+    
+    var url = SUPA_URL + '/storage/v1/object/public/estoque-fotos/' + fileName;
+    document.getElementById('est-foto-url').value = url;
+    document.getElementById('est-foto-preview').innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover"/>';
+    document.getElementById('est-foto-remover').style.display = 'inline-block';
+    statusEl.textContent = '✓ Foto enviada';
+    statusEl.style.color = '#1D9E75';
+  } catch(e){
+    statusEl.textContent = '❌ Erro: ' + e.message;
+    statusEl.style.color = '#A32D2D';
+    ev.target.value = '';
+  }
+}
+
+function estRemoverFoto(){
+  document.getElementById('est-foto-url').value = '';
+  document.getElementById('est-foto-input').value = '';
+  document.getElementById('est-foto-preview').innerHTML = '📷';
+  document.getElementById('est-foto-remover').style.display = 'none';
+  document.getElementById('est-foto-status').textContent = '';
+}
+
+// Comprime imagem usando Canvas (max width)
+function _estComprimirImagem(file, maxW){
+  return new Promise(function(resolve, reject){
+    var img = new Image();
+    var reader = new FileReader();
+    reader.onload = function(e){
+      img.onload = function(){
+        var canvas = document.createElement('canvas');
+        var ratio = Math.min(1, maxW / img.width);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(function(blob){
+          resolve(blob);
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = function(){ reject(new Error('Erro ao ler imagem')); };
+      img.src = e.target.result;
+    };
+    reader.onerror = function(){ reject(new Error('Erro ao ler arquivo')); };
+    reader.readAsDataURL(file);
+  });
 }
 
 async function estConfirmarEntrada(){
