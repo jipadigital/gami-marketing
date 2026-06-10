@@ -1,4 +1,4 @@
-<!-- v25.67 - FIX CRITICO bug login trocando entre dispositivos - 03/06/2026 -->
+<!-- v25.68 - Estoque botao editar item (foto desc valor) - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4214,10 +4214,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
               <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Qtd.</th>
               <th class="gami-valor" style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Valor</th>
               <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Status</th>
+              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px;width:60px">Ações</th>
             </tr>
           </thead>
           <tbody id="est-tabela-body">
-            <tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
+            <tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text3)">Carregando...</td></tr>
           </tbody>
         </table>
       </div>
@@ -4432,6 +4433,64 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 </div>
 
 <div class="page" id="pg-estoque-fim-marker" style="display:none"></div>
+
+<!-- ============ MODAL DE EDIÇÃO DE ITEM ============ -->
+<div id="est-modal-editar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;padding:20px;overflow-y:auto;align-items:flex-start;justify-content:center">
+  <div style="background:var(--surface);border-radius:14px;max-width:520px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit;margin:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--text)">✏️ Editar Item</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px" id="est-edit-id-info">—</div>
+      </div>
+      <button onclick="estFecharEdicao()" style="border:none;background:transparent;font-size:22px;color:var(--text3);cursor:pointer;line-height:1">✕</button>
+    </div>
+    
+    <!-- Foto -->
+    <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">
+      <div id="est-edit-foto-preview" style="width:90px;height:90px;border-radius:10px;background:var(--surface2);border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:28px;flex-shrink:0;overflow:hidden">📷</div>
+      <div style="flex:1">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">FOTO DO ITEM</label>
+        <input type="file" id="est-edit-foto-input" accept="image/*" onchange="estEditUploadFoto(event)" style="font-size:11px;color:var(--text2);font-family:inherit;display:block;margin-bottom:6px"/>
+        <input type="hidden" id="est-edit-foto-url"/>
+        <button id="est-edit-foto-remover" onclick="estEditRemoverFoto()" style="display:none;padding:4px 10px;border:1px solid #E24B4A;background:white;color:#A32D2D;font-size:10px;font-weight:600;border-radius:4px;cursor:pointer;font-family:inherit">✕ Remover foto</button>
+        <div id="est-edit-foto-status" style="font-size:10px;color:var(--text3);margin-top:4px"></div>
+      </div>
+    </div>
+    
+    <div style="margin-bottom:12px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">NOME DO ITEM</label>
+      <input id="est-edit-nome" placeholder="Ex: Camisa Polo Preta" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+    </div>
+    
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">TAMANHO</label>
+        <select id="est-edit-tamanho" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
+          <option value="">— sem tamanho —</option>
+          <option value="PP">PP</option><option value="P">P</option>
+          <option value="M">M</option><option value="G">G</option>
+          <option value="GG">GG</option><option value="XG">XG</option>
+          <option value="Único">Único</option>
+        </select>
+      </div>
+      <div class="gami-valor">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">VALOR UNITÁRIO (R$)</label>
+        <input id="est-edit-valor" type="number" step="0.01" min="0" placeholder="0,00" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+      </div>
+    </div>
+    
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">DESCRIÇÃO</label>
+      <textarea id="est-edit-descricao" rows="3" placeholder="Detalhes do item" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>
+    </div>
+    
+    <div style="display:flex;gap:8px;margin-top:18px;flex-wrap:wrap">
+      <button onclick="estDesativarItem()" style="padding:10px 14px;border:1px solid #E24B4A;background:white;color:#A32D2D;font-size:11px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit">🗑️ Desativar</button>
+      <button onclick="estFecharEdicao()" style="flex:1;padding:10px 14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>
+      <button onclick="estSalvarEdicao()" style="flex:2;padding:10px 14px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit">💾 Salvar</button>
+    </div>
+  </div>
+</div>
 
 
 <div class="page" id="pg-pessoas">
@@ -38839,6 +38898,8 @@ function estRenderVitrine(){
           ? '<span style="position:absolute;top:8px;right:8px;padding:3px 8px;background:rgba(239,159,39,0.95);color:white;font-size:9px;font-weight:700;border-radius:4px;letter-spacing:0.5px">ÚLTIMAS</span>'
           : '<span style="position:absolute;top:8px;right:8px;padding:3px 8px;background:rgba(29,158,117,0.95);color:white;font-size:9px;font-weight:700;border-radius:4px;letter-spacing:0.5px">EM ESTOQUE</span>');
       
+      var btnEditar = '<button onclick="event.stopPropagation();estEditarItem(' + v.item_id + ')" style="position:absolute;top:8px;left:8px;width:30px;height:30px;border:none;background:rgba(255,255,255,0.95);color:#0E7AB8;font-size:14px;border-radius:6px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.15)" title="Editar item">✏️</button>';
+      
       var tamHtml = v.tamanho ? ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + v.tamanho + '</span>' : '';
       
       var descHtml = v.descricao 
@@ -38849,7 +38910,7 @@ function estRenderVitrine(){
         + 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" '
         + 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'" '
         + 'onclick="estIrParaTab(\'estoque\');document.getElementById(\'est-busca-estoque\').value=\'' + v.nome.replace(/'/g, "\\'") + '\';estRenderTabela();">'
-          + '<div style="position:relative">' + fotoHtml + tag + '</div>'
+          + '<div style="position:relative">' + fotoHtml + tag + btnEditar + '</div>'
           + '<div style="padding:10px 12px">'
             + '<div style="font-size:12.5px;font-weight:700;color:var(--text);line-height:1.2">' + v.nome + tamHtml + '</div>'
             + descHtml
@@ -38983,7 +39044,7 @@ function estRenderTabela(){
   document.getElementById('est-itens-count').textContent = EST_ITENS.length + ' itens cadastrados';
   
   if(!filt.length){
-    tbody.innerHTML = '<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado. Vá em ➕ Adicionar pra cadastrar.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhum saldo encontrado. Vá em ➕ Adicionar pra cadastrar.</td></tr>';
     return;
   }
   
@@ -39006,6 +39067,7 @@ function estRenderTabela(){
       + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700;font-size:14px">' + l.saldo + '</td>'
       + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:var(--text2);font-size:11px">' + _estFmtBRL(l.valor) + '</td>'
       + '<td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 10px;border-radius:12px;background:' + st.bg + ';color:' + st.cor + ';font-size:10px;font-weight:700">' + st.lbl + '</span></td>'
+      + '<td style="padding:10px 12px;text-align:center"><button onclick="estEditarItem(' + l.item_id + ')" style="padding:5px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:5px;cursor:pointer;font-family:inherit" title="Editar item">✏️</button></td>'
     + '</tr>';
   }).join('');
 }
@@ -39157,6 +39219,164 @@ function _estComprimirImagem(file, maxW){
     reader.onerror = function(){ reject(new Error('Erro ao ler arquivo')); };
     reader.readAsDataURL(file);
   });
+}
+
+// ====== ✏️ EDITAR ITEM ======
+var EST_ITEM_EDITANDO = null;
+
+async function estEditarItem(itemId){
+  // Busca item completo
+  var item = EST_ITENS.find(function(i){ return i.id === itemId; });
+  if(!item){
+    // Recarrega o cache
+    await estCarregarItens();
+    item = EST_ITENS.find(function(i){ return i.id === itemId; });
+  }
+  if(!item){ alert('Item não encontrado.'); return; }
+  
+  EST_ITEM_EDITANDO = item;
+  
+  // Preenche o modal
+  document.getElementById('est-edit-id-info').textContent = 'ID #' + item.id + ' · cadastrado em ' + _estFmtData(item.created_at ? item.created_at.slice(0,10) : '');
+  document.getElementById('est-edit-nome').value = item.nome || '';
+  document.getElementById('est-edit-tamanho').value = item.tamanho || '';
+  document.getElementById('est-edit-valor').value = parseFloat(item.valor_unitario || 0).toFixed(2);
+  document.getElementById('est-edit-descricao').value = item.descricao || '';
+  document.getElementById('est-edit-foto-url').value = item.foto_url || '';
+  document.getElementById('est-edit-foto-input').value = '';
+  document.getElementById('est-edit-foto-status').textContent = '';
+  
+  var preview = document.getElementById('est-edit-foto-preview');
+  if(item.foto_url){
+    preview.innerHTML = '<img src="' + item.foto_url + '" style="width:100%;height:100%;object-fit:cover"/>';
+    document.getElementById('est-edit-foto-remover').style.display = 'inline-block';
+  } else {
+    preview.innerHTML = '📷';
+    document.getElementById('est-edit-foto-remover').style.display = 'none';
+  }
+  
+  // Mostra modal
+  document.getElementById('est-modal-editar').style.display = 'flex';
+}
+
+function estFecharEdicao(){
+  document.getElementById('est-modal-editar').style.display = 'none';
+  EST_ITEM_EDITANDO = null;
+}
+
+async function estEditUploadFoto(ev){
+  var file = ev.target.files[0];
+  if(!file) return;
+  if(file.size > 5 * 1024 * 1024){
+    alert('Foto muito grande (máx 5MB).');
+    ev.target.value = '';
+    return;
+  }
+  var statusEl = document.getElementById('est-edit-foto-status');
+  statusEl.textContent = '⏳ Enviando...';
+  statusEl.style.color = 'var(--text3)';
+  
+  try {
+    var blob = await _estComprimirImagem(file, 800);
+    var fileName = Date.now() + '_' + Math.random().toString(36).slice(2,8) + '.jpg';
+    var uploadUrl = SUPA_URL + '/storage/v1/object/estoque-fotos/' + fileName;
+    
+    var r = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'image/jpeg',
+        'x-upsert': 'true'
+      },
+      body: blob
+    });
+    if(!r.ok){
+      var t = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + t.slice(0,200));
+    }
+    var url = SUPA_URL + '/storage/v1/object/public/estoque-fotos/' + fileName;
+    document.getElementById('est-edit-foto-url').value = url;
+    document.getElementById('est-edit-foto-preview').innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover"/>';
+    document.getElementById('est-edit-foto-remover').style.display = 'inline-block';
+    statusEl.textContent = '✓ Foto enviada';
+    statusEl.style.color = '#1D9E75';
+  } catch(e){
+    statusEl.textContent = '❌ Erro: ' + e.message;
+    statusEl.style.color = '#A32D2D';
+    ev.target.value = '';
+  }
+}
+
+function estEditRemoverFoto(){
+  document.getElementById('est-edit-foto-url').value = '';
+  document.getElementById('est-edit-foto-input').value = '';
+  document.getElementById('est-edit-foto-preview').innerHTML = '📷';
+  document.getElementById('est-edit-foto-remover').style.display = 'none';
+  document.getElementById('est-edit-foto-status').textContent = '';
+}
+
+async function estSalvarEdicao(){
+  if(!EST_ITEM_EDITANDO){ alert('Erro: nenhum item selecionado.'); return; }
+  
+  var nome = document.getElementById('est-edit-nome').value.trim();
+  var tamanho = document.getElementById('est-edit-tamanho').value || null;
+  var valor = parseFloat(document.getElementById('est-edit-valor').value) || 0;
+  var descricao = document.getElementById('est-edit-descricao').value.trim() || null;
+  var fotoUrl = document.getElementById('est-edit-foto-url').value || null;
+  
+  if(!nome){ alert('Informe o nome do item.'); return; }
+  
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?id=eq.' + EST_ITEM_EDITANDO.id, {
+      method: 'PATCH',
+      headers: Object.assign({}, _estSupaHeaders(), { 'Prefer': 'return=representation' }),
+      body: JSON.stringify({
+        nome: nome,
+        tamanho: tamanho,
+        valor_unitario: valor,
+        descricao: descricao,
+        foto_url: fotoUrl,
+        updated_at: new Date().toISOString()
+      })
+    });
+    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
+    
+    if(typeof toast === 'function') toast('✅ Item atualizado', 'success');
+    estFecharEdicao();
+    await estCarregarTudo();
+  } catch(e){
+    alert('Erro ao salvar: ' + e.message);
+  }
+}
+
+async function estDesativarItem(){
+  if(!EST_ITEM_EDITANDO){ return; }
+  
+  // Verifica saldo total
+  var saldoTotal = EST_SALDOS
+    .filter(function(s){ return s.item_id === EST_ITEM_EDITANDO.id; })
+    .reduce(function(a, s){ return a + (parseInt(s.saldo)||0); }, 0);
+  
+  var msg = '🗑️ Desativar "' + EST_ITEM_EDITANDO.nome + '"' + (EST_ITEM_EDITANDO.tamanho ? ' (' + EST_ITEM_EDITANDO.tamanho + ')' : '') + '?';
+  if(saldoTotal > 0) msg += '\n\n⚠️ ATENÇÃO: ainda tem ' + saldoTotal + ' unidades em estoque. Desativar não apaga as movimentações, apenas remove o item da lista. Continuar?';
+  
+  if(!confirm(msg)) return;
+  
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?id=eq.' + EST_ITEM_EDITANDO.id, {
+      method: 'PATCH',
+      headers: _estSupaHeaders(),
+      body: JSON.stringify({ ativo: false })
+    });
+    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
+    
+    if(typeof toast === 'function') toast('✅ Item desativado', 'info');
+    estFecharEdicao();
+    await estCarregarTudo();
+  } catch(e){
+    alert('Erro ao desativar: ' + e.message);
+  }
 }
 
 async function estConfirmarEntrada(){
