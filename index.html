@@ -1,4 +1,4 @@
-<!-- v25.69 - Anti-cache nas chamadas do Estoque - 03/06/2026 -->
+<!-- v25.71 - Estoque cache fix definitivo - 03/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -38309,10 +38309,24 @@ var _ONBOARDING_PASSOS = [
 ];
 var _onboardingPasso = 0;
 
+// Chave única por usuário pra "primeira vez"
+function _onboardingChave(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return null;
+  var ident = u.email || u.id || u.pessoa_id;
+  if(!ident) return null;
+  return 'gami_onboarding_completo_' + ident;
+}
+
 function iniciarOnboarding(force){
-  // Só roda se nunca completou (ou force=true)
+  // Só roda se há usuário logado
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return;
+  
+  // Só roda se nunca completou pra esse usuário (ou force=true)
   try {
-    if(!force && localStorage.getItem('gami_onboarding_completo') === '1') return;
+    var chave = _onboardingChave();
+    if(!force && chave && localStorage.getItem(chave) === '1') return;
   } catch(e){}
   
   _onboardingPasso = 0;
@@ -38384,14 +38398,36 @@ function _fecharOnboarding(completou){
   var modal = document.getElementById('onboarding-modal');
   if(modal) modal.remove();
   if(completou){
-    try { localStorage.setItem('gami_onboarding_completo', '1'); } catch(e){}
+    try {
+      var chave = _onboardingChave();
+      if(chave) localStorage.setItem(chave, '1');
+      // Mantém retrocompatibilidade com chave global antiga
+      localStorage.setItem('gami_onboarding_completo', '1');
+    } catch(e){}
   }
 }
 
-// Inicia automaticamente pra novos usuários (depois do login)
-setTimeout(function(){
-  iniciarOnboarding(false);  // false = só se nunca completou
-}, 1500);
+// Inicia o tour APÓS detectar usuário logado (1ª vez de cada pessoa)
+(function _onboardingAguardarLogin(){
+  var _onboardingDisparado = false;
+  var _onboardingTimer = setInterval(function(){
+    if(_onboardingDisparado) return;
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u) return; // ainda não logou
+    
+    _onboardingDisparado = true;
+    // Pequeno delay pra deixar o app renderizar primeiro
+    setTimeout(function(){
+      iniciarOnboarding(false);
+    }, 1200);
+    
+    // Para de verificar (mas continua observando caso usuário troque)
+    clearInterval(_onboardingTimer);
+  }, 600);
+  
+  // Stop check após 5 min se ninguém logar (segurança)
+  setTimeout(function(){ clearInterval(_onboardingTimer); }, 5 * 60 * 1000);
+})();
 
 
 // ============================================================
@@ -38673,14 +38709,20 @@ function _estSupaHeaders(){
   return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
 }
 async function _estRPC(fn, params){
-  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn + '?_t=' + Date.now(), {
+  var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
     method: 'POST', 
-    headers: Object.assign({}, _estSupaHeaders(), { 'Cache-Control': 'no-cache, no-store' }),
+    headers: _estSupaHeaders(),
     cache: 'no-store',
     body: JSON.stringify(params || {})
   });
-  if(!r.ok){ var t = await r.text(); throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); }
-  return r.json();
+  if(!r.ok){ 
+    var t = await r.text(); 
+    console.error('[Estoque RPC]', fn, 'falhou HTTP', r.status, t);
+    throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); 
+  }
+  var j = await r.json();
+  console.log('[Estoque RPC]', fn, '→', Array.isArray(j) ? j.length + ' linhas' : j);
+  return j;
 }
 function _estLoc(codigo){
   var l = EST_LOCALIZACOES.find(function(x){ return x.codigo === codigo; });
@@ -38737,6 +38779,25 @@ async function abrirEstoque(navEl){
     alert('🚫 Acesso restrito à Diretoria, Gerência e Marketing.');
     return;
   }
+  
+  // 🧹 Limpa caches do navegador pra essa sessão (evita dados antigos)
+  try {
+    if('caches' in window){
+      var keys = await caches.keys();
+      await Promise.all(keys.map(function(k){
+        // Só limpa cache de chamadas pra Supabase
+        return caches.open(k).then(function(c){
+          return c.keys().then(function(reqs){
+            return Promise.all(reqs
+              .filter(function(req){ return req.url.indexOf('supabase.co/rest/') >= 0 || req.url.indexOf('/rpc/estoque') >= 0; })
+              .map(function(req){ return c.delete(req); }));
+          });
+        });
+      }));
+      console.log('[Estoque] cache do navegador limpo');
+    }
+  } catch(e){ console.warn('[Estoque] erro ao limpar cache:', e); }
+  
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
   if(navEl) navEl.classList.add('active');
   document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.style.display = 'none'; });
@@ -38844,12 +38905,14 @@ async function estCarregarTudo(){
 
 async function estCarregarItens(){
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?select=*&ativo=eq.true&order=nome.asc&_t=' + Date.now(), {
-      headers: Object.assign({}, _estSupaHeaders(), { 'Cache-Control': 'no-cache, no-store' }),
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?select=*&ativo=eq.true&order=nome.asc', {
+      headers: _estSupaHeaders(),
       cache: 'no-store'
     });
-    EST_ITENS = r.ok ? await r.json() : [];
-  } catch(e){ EST_ITENS = []; console.error('[Estoque] itens:', e); }
+    if(!r.ok){ console.error('[Estoque] itens HTTP', r.status, await r.text()); EST_ITENS = []; return; }
+    EST_ITENS = await r.json();
+    console.log('[Estoque] itens carregados:', EST_ITENS.length);
+  } catch(e){ EST_ITENS = []; console.error('[Estoque] erro itens:', e); }
 }
 
 async function estCarregarSaldos(){
