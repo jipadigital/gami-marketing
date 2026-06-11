@@ -1,4 +1,4 @@
-<!-- v25.81 - Ajustes Ranking e Loja - 10/06/2026 -->
+<!-- v25.82 - Monitoramento de lancamento - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1733,6 +1733,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'portal')">🌐 Portal Gâmi</div>
     <div class="nav-item" onclick="nav(this,'relatorios')">📊 Relatórios</div>
     <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')">🩺 Saúde</div>
+    <div class="nav-item" onclick="mntReportarAbrir()" title="Reportar bug, sugestão ou dúvida">💬 Reportar</div>
     <div class="nav-item" data-permissao="clima" id="nav-clima" onclick="nav(this,'clima')">💙 Clima do time</div>
     <div class="nav-item" onclick="nav(this,'manual')">📘 Manual</div>
   </div>
@@ -41626,5 +41627,479 @@ document.addEventListener('click', function(e){
     }
   }
 });
+</script>
+
+<script>
+
+// ================================================================
+// ===== 📊 MÓDULO DE MONITORAMENTO ===============================
+// ================================================================
+// Captura erros JS · Rastreia navegação · Botão Reportar Problema
+// Tabelas: log_erros_js, log_feedback, log_navegacao
+// ================================================================
+
+var MNT_LAST_NAV = { pagina: null, ts: 0 };
+var MNT_ERROS_RECENTES = {}; // throttle local: hash → ts
+
+function _mntHeaders(){
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
+}
+
+function _mntUsuario(){
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u) return null;
+    // Pula em modo teste (não polui banco com perfis fake)
+    if(u._impersonacao) return null;
+    return {
+      id: u.id || u.pessoa_id || null,
+      nome: u.nome || '—',
+      email: u.email || null
+    };
+  } catch(e){ return null; }
+}
+
+async function _mntRPC(fn, params){
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST', headers: _mntHeaders(),
+      cache: 'no-store',
+      body: JSON.stringify(params || {})
+    });
+    if(!r.ok) return null;
+    return r.json();
+  } catch(e){ return null; }
+}
+
+// ============================================================
+// 🐛 CAPTURA AUTOMÁTICA DE ERROS JS
+// ============================================================
+function _mntCapturarErro(mensagem, stack, url){
+  var u = _mntUsuario();
+  if(!u) return; // sem usuário logado ou em modo teste, não registra
+  
+  // Throttle local: mesmo erro não envia 2x em 5min
+  var hash = String(mensagem).slice(0, 100);
+  var agora = Date.now();
+  if(MNT_ERROS_RECENTES[hash] && (agora - MNT_ERROS_RECENTES[hash]) < 5 * 60 * 1000) return;
+  MNT_ERROS_RECENTES[hash] = agora;
+  
+  // Ignora erros muito genéricos / de extensões
+  if(!mensagem || mensagem.indexOf('ResizeObserver') >= 0 || 
+     mensagem.indexOf('Script error') >= 0 ||
+     mensagem.indexOf('Failed to fetch') >= 0 && !stack) return;
+  
+  var pagina = '';
+  try { 
+    var ativa = document.querySelector('.page.active'); 
+    if(ativa) pagina = ativa.id || ''; 
+  } catch(e){}
+  
+  _mntRPC('registrar_erro', {
+    p_pessoa_id: u.id,
+    p_pessoa_nome: u.nome,
+    p_pessoa_email: u.email,
+    p_mensagem: String(mensagem).slice(0, 500),
+    p_stack: String(stack || '').slice(0, 3000),
+    p_url: String(url || location.href).slice(0, 500),
+    p_pagina: pagina,
+    p_user_agent: navigator.userAgent.slice(0, 200)
+  });
+}
+
+window.addEventListener('error', function(e){
+  _mntCapturarErro(
+    e.message || 'Erro desconhecido',
+    (e.error && e.error.stack) || '',
+    e.filename || ''
+  );
+});
+
+window.addEventListener('unhandledrejection', function(e){
+  var msg = '';
+  var stack = '';
+  try {
+    if(e.reason && typeof e.reason === 'object'){
+      msg = e.reason.message || JSON.stringify(e.reason).slice(0, 200);
+      stack = e.reason.stack || '';
+    } else {
+      msg = String(e.reason);
+    }
+  } catch(_){ msg = 'Promise rejeitada'; }
+  _mntCapturarErro('UnhandledPromise: ' + msg, stack, '');
+});
+
+// ============================================================
+// 📍 RASTREIO DE NAVEGAÇÃO (silencioso)
+// ============================================================
+function _mntRegistrarAcesso(pagina){
+  var u = _mntUsuario();
+  if(!u || !u.id) return;
+  
+  // Throttle: mesma pagina = 1x por minuto
+  var agora = Date.now();
+  if(MNT_LAST_NAV.pagina === pagina && (agora - MNT_LAST_NAV.ts) < 60 * 1000) return;
+  MNT_LAST_NAV.pagina = pagina;
+  MNT_LAST_NAV.ts = agora;
+  
+  _mntRPC('registrar_acesso_aba', { p_pessoa_id: u.id, p_pagina: pagina });
+}
+
+// Hook em todos os clicks de nav-item
+document.addEventListener('click', function(e){
+  var t = e.target;
+  while(t && t !== document){
+    if(t.classList && t.classList.contains('nav-item')){
+      // Extrai nome da página do texto (limpo)
+      var txt = (t.textContent || '').replace(/[^\w\sÀ-ÿ]/g, '').trim();
+      if(txt) _mntRegistrarAcesso(txt.toLowerCase().slice(0, 80));
+      return;
+    }
+    t = t.parentNode;
+  }
+}, true);
+
+// Registra acesso inicial após login
+setTimeout(function(){
+  var u = _mntUsuario();
+  if(u && u.id) _mntRegistrarAcesso('dashboard');
+}, 3000);
+
+// ============================================================
+// 💬 BOTÃO REPORTAR PROBLEMA
+// ============================================================
+window.mntReportarAbrir = function(){
+  // Remove modal anterior se houver
+  var antigo = document.getElementById('modal-reportar');
+  if(antigo) antigo.remove();
+  
+  var u = _mntUsuario();
+  var pagina = '';
+  try { var ativa = document.querySelector('.page.active'); if(ativa) pagina = ativa.id || ''; } catch(e){}
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'modal-reportar';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  
+  overlay.innerHTML = ''
+    + '<div style="background:var(--surface);border-radius:14px;max-width:500px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit;max-height:90vh;overflow-y:auto">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        + '<div style="font-size:18px;font-weight:700;color:var(--text)">💬 Reportar problema</div>'
+        + '<button onclick="document.getElementById(\'modal-reportar\').remove()" style="border:none;background:transparent;font-size:22px;color:var(--text3);cursor:pointer;line-height:1">✕</button>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">Encontrou um bug, tem uma sugestão ou dúvida? Conta aqui que a gente resolve. Sua mensagem chega direto pro time técnico.</div>'
+      
+      + '<div style="margin-bottom:14px">'
+        + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">TIPO</label>'
+        + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="bug" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid #E24B4A55;border-radius:8px;background:#FCE6E6;color:#A32D2D;text-align:center;font-size:12px;font-weight:700">🐛 Bug</div></label>'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="sugestao" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid #1AB8F055;border-radius:8px;background:#E6F6FE;color:#0E7AB8;text-align:center;font-size:12px;font-weight:700">💡 Sugestão</div></label>'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="duvida" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid #EF9F2755;border-radius:8px;background:#FFF8E1;color:#854F0B;text-align:center;font-size:12px;font-weight:700">❓ Dúvida</div></label>'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="outro" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);text-align:center;font-size:12px;font-weight:700">📝 Outro</div></label>'
+        + '</div>'
+      + '</div>'
+      
+      + '<div style="margin-bottom:14px">'
+        + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">DESCRIÇÃO <span style="color:#A32D2D">*</span></label>'
+        + '<textarea id="mnt-descricao" rows="5" placeholder="Descreva o que aconteceu. Quanto mais detalhes, melhor!" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>'
+        + '<div style="font-size:10px;color:var(--text3);margin-top:4px">Mínimo 5 caracteres</div>'
+      + '</div>'
+      
+      + (pagina ? '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:10px;color:var(--text3);margin-bottom:14px">📍 Página: <strong>' + pagina + '</strong></div>' : '')
+      + (u ? '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:10px;color:var(--text3);margin-bottom:14px">👤 Enviando como: <strong>' + u.nome + '</strong></div>' : '<div style="padding:8px 10px;background:#FCE6E6;border-radius:6px;font-size:10px;color:#A32D2D;margin-bottom:14px">⚠️ Você precisa estar logado pra enviar reporte</div>')
+      
+      + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="document.getElementById(\'modal-reportar\').remove()" style="padding:10px 16px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>'
+        + '<button onclick="mntReportarEnviar()" id="mnt-btn-enviar"' + (u ? '' : ' disabled') + ' style="padding:10px 18px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit' + (u ? '' : ';opacity:0.5') + '">📤 Enviar</button>'
+      + '</div>'
+    + '</div>';
+  
+  document.body.appendChild(overlay);
+  
+  // Radio buttons: muda visual ao selecionar
+  overlay.querySelectorAll('input[name="mnt-tipo"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      overlay.querySelectorAll('.mnt-radio').forEach(function(d){
+        d.style.boxShadow = 'none';
+        d.style.transform = '';
+      });
+      var div = r.nextElementSibling;
+      if(div){
+        div.style.boxShadow = '0 0 0 3px rgba(26,184,240,0.25)';
+        div.style.transform = 'scale(1.02)';
+      }
+    });
+  });
+  
+  // Click fora fecha
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
+  
+  // Foco no textarea
+  setTimeout(function(){ var ta = document.getElementById('mnt-descricao'); if(ta) ta.focus(); }, 100);
+};
+
+window.mntReportarEnviar = async function(){
+  var u = _mntUsuario();
+  if(!u){ alert('Você precisa estar logado.'); return; }
+  
+  var tipoEl = document.querySelector('input[name="mnt-tipo"]:checked');
+  if(!tipoEl){ alert('Escolha o tipo de reporte (Bug, Sugestão, Dúvida ou Outro)'); return; }
+  var descricao = document.getElementById('mnt-descricao').value.trim();
+  if(descricao.length < 5){ alert('Descrição muito curta (mínimo 5 caracteres)'); return; }
+  
+  var pagina = '';
+  try { var ativa = document.querySelector('.page.active'); if(ativa) pagina = ativa.id || ''; } catch(e){}
+  
+  var btn = document.getElementById('mnt-btn-enviar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+  
+  try {
+    await _mntRPC('registrar_feedback', {
+      p_pessoa_id: u.id,
+      p_pessoa_nome: u.nome,
+      p_pessoa_email: u.email,
+      p_tipo: tipoEl.value,
+      p_descricao: descricao,
+      p_pagina: pagina,
+      p_user_agent: navigator.userAgent.slice(0, 200)
+    });
+    
+    document.getElementById('modal-reportar').remove();
+    if(typeof toast === 'function'){
+      toast('✅ Reporte enviado! Obrigado pela contribuição.', 'success');
+    } else {
+      alert('✅ Reporte enviado! Obrigado pela contribuição.');
+    }
+  } catch(e){
+    btn.disabled = false;
+    btn.textContent = '📤 Enviar';
+    alert('❌ Erro ao enviar: ' + (e.message || e));
+  }
+};
+
+// ============================================================
+// 🩺 SEÇÕES EXTRAS NA PÁGINA DE SAÚDE DO SISTEMA
+// ============================================================
+async function mntRenderExtrasSaude(){
+  var host = document.getElementById('saude-content');
+  if(!host) return;
+  
+  // Verifica se já foi renderizado o conteúdo base
+  if(!host.innerHTML || host.innerHTML.indexOf('Verificando') >= 0) {
+    // Espera renderSaudeSistema terminar primeiro
+    setTimeout(mntRenderExtrasSaude, 1000);
+    return;
+  }
+  
+  // Não duplica
+  if(document.getElementById('mnt-saude-extras')) return;
+  
+  // Container das seções novas
+  var container = document.createElement('div');
+  container.id = 'mnt-saude-extras';
+  container.style.cssText = 'margin-top:18px;display:grid;gap:14px';
+  container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando métricas de adoção...</div>';
+  host.appendChild(container);
+  
+  // Busca dados em paralelo
+  try {
+    var [adocao, erros, feedback] = await Promise.all([
+      _mntRPC('saude_adocao'),
+      _mntRPC('saude_erros_recentes'),
+      _mntRPC('saude_feedback_pendente')
+    ]);
+    
+    container.innerHTML = mntRenderAdocaoCard(adocao) + 
+                          mntRenderErrosCard(erros) + 
+                          mntRenderFeedbackCard(feedback);
+  } catch(e){
+    container.innerHTML = '<div style="padding:20px;background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;color:#A32D2D;font-size:12px">⚠️ Erro ao carregar métricas: ' + e.message + '</div>';
+  }
+}
+
+function mntRenderAdocaoCard(d){
+  if(!d) return '';
+  var total = d.total_pessoas || 0;
+  var a7 = d.ativos_7d || 0;
+  var a30 = d.ativos_30d || 0;
+  var pct7 = total > 0 ? Math.round(100*a7/total) : 0;
+  var inativos = d.inativos_14d_lista || [];
+  var topAbas = d.top_abas_7d || [];
+  
+  var corPct = pct7 >= 70 ? '#1D9E75' : pct7 >= 40 ? '#EF9F27' : '#E24B4A';
+  
+  var inativosHtml = inativos.length === 0 
+    ? '<div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">🎉 Todos os colaboradores acessaram nos últimos 14 dias!</div>'
+    : '<div style="display:flex;flex-direction:column;gap:6px">' + 
+      inativos.slice(0, 8).map(function(p){
+        var ult = p.ultimo_acesso ? new Date(p.ultimo_acesso).toLocaleDateString('pt-BR') : 'Nunca acessou';
+        var fotoHtml = p.foto 
+          ? '<img src="' + p.foto + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover"/>'
+          : '<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:12px">👤</div>';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:6px;font-size:11px">'
+          + fotoHtml
+          + '<div style="flex:1;min-width:0">'
+            + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.nome || '—') + '</div>'
+            + '<div style="font-size:9px;color:var(--text3)">' + (p.cargo || '') + '</div>'
+          + '</div>'
+          + '<div style="font-size:10px;color:#A32D2D;font-weight:600">⌛ ' + ult + '</div>'
+        + '</div>';
+      }).join('') + 
+      (inativos.length > 8 ? '<div style="font-size:10px;color:var(--text3);text-align:center;padding:4px">+' + (inativos.length-8) + ' outros</div>' : '') +
+      '</div>';
+  
+  var abasHtml = topAbas.length === 0
+    ? '<div style="padding:10px;text-align:center;color:var(--text3);font-size:11px">Sem dados ainda. Aparece após algumas navegações.</div>'
+    : topAbas.map(function(a, i){
+        var max = topAbas[0].hits;
+        var pctBar = max > 0 ? Math.round(100 * a.hits / max) : 0;
+        return '<div style="margin-bottom:6px">'
+          + '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'
+            + '<span style="color:var(--text);font-weight:600">' + (i+1) + '. ' + a.pagina + '</span>'
+            + '<span style="color:var(--text3)">' + a.hits + '</span>'
+          + '</div>'
+          + '<div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pctBar + '%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);border-radius:3px"></div></div>'
+        + '</div>';
+      }).join('');
+  
+  return '<div class="card" style="padding:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>📊</span> Adoção da plataforma</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px">'
+      + '<div style="padding:12px;background:var(--surface2);border-left:3px solid ' + corPct + ';border-radius:8px"><div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Ativos · 7 dias</div><div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:' + corPct + '">' + a7 + '/' + total + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + pct7 + '% do time</div></div>'
+      + '<div style="padding:12px;background:var(--surface2);border-left:3px solid #1AB8F0;border-radius:8px"><div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Ativos · 30 dias</div><div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#0E7AB8">' + a30 + '/' + total + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + (total>0 ? Math.round(100*a30/total) : 0) + '% do time</div></div>'
+      + '<div style="padding:12px;background:var(--surface2);border-left:3px solid ' + (inativos.length > 0 ? '#E24B4A' : '#1D9E75') + ';border-radius:8px"><div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Inativos · 14+ dias</div><div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:' + (inativos.length > 0 ? '#A32D2D' : '#0F6D52') + '">' + inativos.length + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">precisam de atenção</div></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+      + '<div><div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px">⚠️ Inativos 14+ dias</div>' + inativosHtml + '</div>'
+      + '<div><div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px">🔥 Abas mais visitadas (7 dias)</div>' + abasHtml + '</div>'
+    + '</div>'
+  + '</div>';
+}
+
+function mntRenderErrosCard(d){
+  if(!d) return '';
+  var total24 = d.total_24h || 0;
+  var total7 = d.total_7d || 0;
+  var pendentes = d.pendentes || 0;
+  var topErros = d.top_erros || [];
+  
+  var cor = pendentes === 0 ? '#1D9E75' : pendentes < 5 ? '#EF9F27' : '#E24B4A';
+  
+  var errosHtml = topErros.length === 0
+    ? '<div style="padding:20px;text-align:center;color:#1D9E75;font-size:12px;background:#EAF7DD;border-radius:8px">🎉 Nenhum erro nos últimos 7 dias!</div>'
+    : '<div style="display:flex;flex-direction:column;gap:6px">' + topErros.map(function(e){
+        var pessoas = (e.pessoas || []).slice(0, 3).join(', ');
+        var extras = (e.pessoas || []).length > 3 ? ' +' + ((e.pessoas || []).length - 3) : '';
+        return '<div style="padding:10px 12px;background:var(--surface2);border-left:3px solid #E24B4A;border-radius:6px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px">'
+            + '<div style="font-size:11px;color:var(--text);font-weight:600;line-height:1.3;flex:1;font-family:monospace;word-break:break-word">' + (e.mensagem || '—') + '</div>'
+            + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'
+              + '<span style="font-size:10px;padding:2px 8px;background:#FCE6E6;color:#A32D2D;border-radius:10px;font-weight:700">' + e.qtd + 'x</span>'
+              + '<button onclick="mntErroResolver(\'' + (e.mensagem || '').replace(/'/g,"\\'").slice(0,100) + '\')" style="padding:3px 8px;border:1px solid #1D9E7555;background:#EAF7DD;color:#0F6D52;font-size:9px;font-weight:700;border-radius:4px;cursor:pointer;font-family:inherit" title="Marcar como resolvido">✓</button>'
+            + '</div>'
+          + '</div>'
+          + '<div style="font-size:9px;color:var(--text3)">👤 ' + (e.qtd_pessoas || 1) + ' pessoa(s)' + (pessoas ? ': ' + pessoas + extras : '') + '</div>'
+        + '</div>';
+      }).join('') + '</div>';
+  
+  return '<div class="card" style="padding:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>🐛</span> Erros capturados <span style="font-size:10px;background:' + cor + '22;color:' + cor + ';padding:2px 8px;border-radius:10px;font-weight:700">' + pendentes + ' pendentes</span></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">'
+      + '<div style="padding:10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Últimas 24h</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--text)">' + total24 + '</div></div>'
+      + '<div style="padding:10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Últimos 7 dias</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--text)">' + total7 + '</div></div>'
+      + '<div style="padding:10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Tipos distintos</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--text)">' + topErros.length + '</div></div>'
+    + '</div>'
+    + errosHtml
+  + '</div>';
+}
+
+function mntRenderFeedbackCard(d){
+  if(!d) return '';
+  var pendentes = d.pendentes || 0;
+  var total7 = d.total_7d || 0;
+  var lista = d.lista || [];
+  var porTipo = d.por_tipo || {};
+  
+  var iconTipo = { bug: '🐛', sugestao: '💡', duvida: '❓', outro: '📝' };
+  var corTipo = { bug: '#E24B4A', sugestao: '#1AB8F0', duvida: '#EF9F27', outro: '#5A6678' };
+  
+  var listaHtml = lista.length === 0
+    ? '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhum feedback pendente.</div>'
+    : '<div style="display:flex;flex-direction:column;gap:8px">' + lista.slice(0, 15).map(function(f){
+        var c = corTipo[f.tipo] || '#5A6678';
+        var ico = iconTipo[f.tipo] || '📝';
+        var data = f.created_at ? new Date(f.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+        return '<div style="padding:12px 14px;background:var(--surface2);border-left:3px solid ' + c + ';border-radius:8px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">'
+            + '<div style="display:flex;align-items:center;gap:8px">'
+              + '<span style="font-size:16px">' + ico + '</span>'
+              + '<div>'
+                + '<div style="font-size:12px;color:var(--text);font-weight:700">' + (f.nome || '—') + '</div>'
+                + '<div style="font-size:9px;color:var(--text3)">' + data + (f.pagina ? ' · ' + f.pagina : '') + '</div>'
+              + '</div>'
+            + '</div>'
+            + '<button onclick="mntMarcarLido(' + f.id + ')" style="padding:4px 10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:10px;font-weight:600;border-radius:4px;cursor:pointer;font-family:inherit">✓ Lido</button>'
+          + '</div>'
+          + '<div style="font-size:12px;color:var(--text);line-height:1.4;padding-left:24px">' + (f.descricao || '').replace(/</g,'&lt;').slice(0, 300) + '</div>'
+        + '</div>';
+      }).join('') + '</div>';
+  
+  return '<div class="card" style="padding:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>💬</span> Feedback dos usuários <span style="font-size:10px;background:#1AB8F022;color:#0E7AB8;padding:2px 8px;border-radius:10px;font-weight:700">' + pendentes + ' pendentes</span></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">'
+      + '<div style="padding:8px 10px;background:#FCE6E6;border-radius:6px;text-align:center"><div style="font-size:9px;color:#A32D2D;text-transform:uppercase;font-weight:700">🐛 Bugs</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#A32D2D">' + (porTipo.bug || 0) + '</div></div>'
+      + '<div style="padding:8px 10px;background:#E6F6FE;border-radius:6px;text-align:center"><div style="font-size:9px;color:#0E7AB8;text-transform:uppercase;font-weight:700">💡 Sugestões</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#0E7AB8">' + (porTipo.sugestao || 0) + '</div></div>'
+      + '<div style="padding:8px 10px;background:#FFF8E1;border-radius:6px;text-align:center"><div style="font-size:9px;color:#854F0B;text-transform:uppercase;font-weight:700">❓ Dúvidas</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#854F0B">' + (porTipo.duvida || 0) + '</div></div>'
+      + '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:700">📝 Outros</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--text)">' + (porTipo.outro || 0) + '</div></div>'
+    + '</div>'
+    + listaHtml
+  + '</div>';
+}
+
+window.mntMarcarLido = async function(id){
+  try {
+    await _mntRPC('feedback_marcar_lido', { p_id: id });
+    if(typeof renderSaudeSistema === 'function') renderSaudeSistema();
+    setTimeout(function(){
+      var el = document.getElementById('mnt-saude-extras');
+      if(el) el.remove();
+      mntRenderExtrasSaude();
+    }, 500);
+  } catch(e){ alert('Erro: ' + e.message); }
+};
+
+window.mntErroResolver = async function(msg){
+  if(!confirm('Marcar TODOS os erros com essa mensagem como resolvidos?')) return;
+  try {
+    var r = await _mntRPC('erro_marcar_resolvido', { p_mensagem: msg });
+    if(typeof toast === 'function'){
+      toast('✓ ' + ((r && r.atualizados) || 0) + ' erros marcados como resolvidos', 'success');
+    }
+    setTimeout(function(){
+      var el = document.getElementById('mnt-saude-extras');
+      if(el) el.remove();
+      mntRenderExtrasSaude();
+    }, 500);
+  } catch(e){ alert('Erro: ' + e.message); }
+};
+
+// Hook na função renderSaudeSistema pra disparar as extras
+(function(){
+  var origRender = window.renderSaudeSistema;
+  if(typeof origRender === 'function'){
+    window.renderSaudeSistema = async function(){
+      var r = origRender.apply(this, arguments);
+      // Aguarda render base
+      setTimeout(function(){
+        var el = document.getElementById('mnt-saude-extras');
+        if(el) el.remove();
+        mntRenderExtrasSaude();
+      }, 1500);
+      return r;
+    };
+  }
+})();
+
 </script>
 </html>
