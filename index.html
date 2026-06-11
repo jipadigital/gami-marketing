@@ -1,4 +1,4 @@
-<!-- v25.83 - Notificacoes Real-time + Push - 10/06/2026 -->
+<!-- v25.84 - Push Notification PWA real - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -34082,6 +34082,21 @@ async function criarNotificacao(paraPessoaId, tipo, titulo, mensagem, link){
       link: link || null,
       lida: false
     });
+    
+    // 🔔 Dispara Push Notification via Netlify Function (se configurado)
+    try {
+      fetch('/.netlify/functions/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pessoa_id: paraPessoaId,
+          titulo: titulo,
+          mensagem: mensagem || '',
+          tipo: tipo,
+          url: link ? ('/?aba=' + link) : '/'
+        })
+      }).catch(function(){ /* silencioso: push é best-effort */ });
+    } catch(e){ /* silencioso */ }
   }catch(e){}
 }
 
