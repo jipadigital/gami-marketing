@@ -1,4 +1,4 @@
-<!-- v25.82 - Monitoramento de lancamento - 10/06/2026 -->
+<!-- v25.83 - Notificacoes Real-time + Push - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -42099,6 +42099,395 @@ window.mntErroResolver = async function(msg){
       return r;
     };
   }
+})();
+
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🔔 NOTIFICAÇÕES EM TEMPO REAL ============================
+// ================================================================
+// Polling 30s · Toast pop-up · Som ding · Permission Notification
+// + Push notification PWA (quando configurar VAPID)
+// ================================================================
+
+var NOTIF_RT = {
+  polling: null,
+  ultimaContagem: 0,
+  ultimaCheck: 0,
+  notifsConhecidas: new Set(),
+  somHabilitado: localStorage.getItem('gami_notif_som') !== 'off',
+  toastHabilitado: localStorage.getItem('gami_notif_toast') !== 'off',
+  sistemaHabilitado: localStorage.getItem('gami_notif_sistema') !== 'off',
+  permissaoSolicitada: false
+};
+
+// ============ ÁUDIO ============
+// Beep sintético via Web Audio (sem precisar de arquivo)
+function _notifDing(){
+  if(!NOTIF_RT.somHabilitado) return;
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+    
+    // Segundo tom (ding-dong)
+    setTimeout(function(){
+      try {
+        var osc2 = ctx.createOscillator();
+        var gain2 = ctx.createGain();
+        osc2.connect(gain2); gain2.connect(ctx.destination);
+        osc2.frequency.value = 660;
+        gain2.gain.setValueAtTime(0, ctx.currentTime);
+        gain2.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc2.start(ctx.currentTime);
+        osc2.stop(ctx.currentTime + 0.3);
+      } catch(e){}
+    }, 200);
+  } catch(e){ /* sem som */ }
+}
+
+// ============ TOAST POP-UP ============
+function _notifMostrarToast(notif){
+  if(!NOTIF_RT.toastHabilitado) return;
+  
+  var icones = {
+    'tarefa_nova': '📋',
+    'tarefa_concluida': '✅',
+    'reconhecimento': '🌟',
+    'mural': '📣',
+    'aniversario': '🎂',
+    'mensagem': '💬'
+  };
+  var icone = icones[notif.tipo] || '🔔';
+  
+  // Container de toasts
+  var container = document.getElementById('notif-toast-container');
+  if(!container){
+    container = document.createElement('div');
+    container.id = 'notif-toast-container';
+    container.style.cssText = 'position:fixed;top:80px;right:16px;z-index:9998;display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:340px;width:calc(100% - 32px)';
+    document.body.appendChild(container);
+  }
+  
+  var toast = document.createElement('div');
+  toast.style.cssText = 'background:white;border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:10px;padding:12px 14px;box-shadow:0 6px 20px rgba(0,0,0,0.15);display:flex;align-items:flex-start;gap:10px;pointer-events:auto;cursor:pointer;font-family:inherit;animation:notifSlideIn 0.3s ease;color:#2A3340';
+  toast.innerHTML = ''
+    + '<div style="font-size:24px;line-height:1;flex-shrink:0">' + icone + '</div>'
+    + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:700;color:#0D2B5C;margin-bottom:2px">' + (notif.titulo || 'Notificação') + '</div>'
+      + (notif.mensagem ? '<div style="font-size:11px;color:#5A6678;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + notif.mensagem + '</div>' : '')
+    + '</div>'
+    + '<button onclick="event.stopPropagation();this.parentNode.remove()" style="border:none;background:transparent;font-size:16px;color:#5A6678;cursor:pointer;padding:0;line-height:1;flex-shrink:0">✕</button>';
+  
+  // Click no toast leva pra Inbox
+  toast.addEventListener('click', function(){
+    if(typeof nav === 'function'){
+      var inboxNav = document.querySelector('.nav-item[onclick*="inbox"]');
+      if(inboxNav) nav(inboxNav, 'inbox');
+    }
+    toast.remove();
+  });
+  
+  container.appendChild(toast);
+  
+  // Remove após 6s
+  setTimeout(function(){
+    if(toast.parentNode){
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(20px)';
+      toast.style.transition = 'all 0.3s';
+      setTimeout(function(){ toast.remove(); }, 300);
+    }
+  }, 6000);
+}
+
+// CSS da animação
+(function(){
+  if(document.getElementById('notif-rt-css')) return;
+  var st = document.createElement('style');
+  st.id = 'notif-rt-css';
+  st.textContent = '@keyframes notifSlideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}';
+  document.head.appendChild(st);
+})();
+
+// ============ NOTIFICAÇÃO DO SISTEMA (quando aba não tá visível) ============
+function _notifSistema(notif){
+  if(!NOTIF_RT.sistemaHabilitado) return;
+  if(!('Notification' in window)) return;
+  if(Notification.permission !== 'granted') return;
+  if(document.visibilityState === 'visible') return; // só quando aba tá em background
+  
+  var icones = {
+    'tarefa_nova': '📋',
+    'tarefa_concluida': '✅',
+    'reconhecimento': '🌟',
+    'mural': '📣'
+  };
+  
+  try {
+    var n = new Notification('Gâmi · ' + (notif.titulo || 'Nova notificação'), {
+      body: notif.mensagem || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: 'gami-' + notif.id,
+      requireInteraction: false
+    });
+    n.onclick = function(){
+      window.focus();
+      n.close();
+    };
+  } catch(e){}
+}
+
+// ============ PEDE PERMISSÃO (1ª vez) ============
+async function _notifPedirPermissao(){
+  if(NOTIF_RT.permissaoSolicitada) return;
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted' || Notification.permission === 'denied') return;
+  
+  // Só pede após o usuário fazer algumas ações (não no boot)
+  var jaVoltou = localStorage.getItem('gami_notif_perm_perguntado');
+  if(jaVoltou) return;
+  
+  NOTIF_RT.permissaoSolicitada = true;
+  localStorage.setItem('gami_notif_perm_perguntado', '1');
+  
+  // Mostra banner amigável antes de pedir
+  var banner = document.createElement('div');
+  banner.id = 'notif-permissao-banner';
+  banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:380px;margin:auto;background:white;border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(0,0,0,0.18);z-index:9998;font-family:inherit;animation:notifSlideIn 0.3s ease;color:#2A3340';
+  banner.innerHTML = ''
+    + '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">'
+      + '<div style="font-size:24px;line-height:1">🔔</div>'
+      + '<div style="flex:1">'
+        + '<div style="font-size:13px;font-weight:700;color:#0D2B5C;margin-bottom:2px">Quer receber notificações?</div>'
+        + '<div style="font-size:11px;color:#5A6678;line-height:1.4">Avisa quando alguém te delegar uma tarefa, te reconhecer ou postar algo importante.</div>'
+      + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;justify-content:flex-end">'
+      + '<button onclick="document.getElementById(\'notif-permissao-banner\').remove()" style="padding:6px 12px;border:1px solid #D6DEE8;background:white;color:#5A6678;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit">Agora não</button>'
+      + '<button onclick="_notifAceitarPermissao()" style="padding:6px 14px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">🔔 Permitir</button>'
+    + '</div>';
+  document.body.appendChild(banner);
+}
+
+window._notifAceitarPermissao = async function(){
+  var banner = document.getElementById('notif-permissao-banner');
+  if(banner) banner.remove();
+  try {
+    var p = await Notification.requestPermission();
+    if(p === 'granted'){
+      // Subscribe pra push
+      _notifSubscribePush();
+      if(typeof toast === 'function') toast('🔔 Notificações ativadas!', 'success');
+    }
+  } catch(e){}
+};
+
+// ============ POLLING DE NOTIFICAÇÕES ============
+async function _notifChecar(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return;
+  if(u._impersonacao) return; // não checa em modo teste
+  
+  try {
+    // Busca notificações recentes (últimas 5 min)
+    var horaCheck = NOTIF_RT.ultimaCheck || (Date.now() - 5*60*1000);
+    var desde = new Date(horaCheck).toISOString();
+    
+    var r = await fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+      + '&created_at=gte.' + encodeURIComponent(desde)
+      + '&select=id,tipo,titulo,mensagem,lida,created_at,de_nome'
+      + '&order=created_at.desc&limit=10', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
+      cache: 'no-store'
+    });
+    if(!r.ok) return;
+    
+    var notifs = await r.json();
+    if(!Array.isArray(notifs)) return;
+    
+    NOTIF_RT.ultimaCheck = Date.now();
+    
+    // Filtra só as novas (não vistas ainda)
+    var novas = notifs.filter(function(n){ return !NOTIF_RT.notifsConhecidas.has(n.id); });
+    
+    // Marca todas como conhecidas
+    notifs.forEach(function(n){ NOTIF_RT.notifsConhecidas.add(n.id); });
+    
+    // Pra cada NOVA, dispara toast + som + notificação sistema
+    if(novas.length > 0 && NOTIF_RT.notifsConhecidas.size > novas.length){
+      // Não dispara tudo na primeira carga (evita spam ao abrir o app)
+      novas.forEach(function(n, i){
+        setTimeout(function(){
+          _notifMostrarToast(n);
+          if(i === 0) _notifDing(); // só primeiro toca
+          _notifSistema(n);
+        }, i * 800);
+      });
+    }
+    
+    // Atualiza badge da Inbox
+    _notifAtualizarBadge();
+    
+  } catch(e){ /* silencioso */ }
+}
+
+async function _notifAtualizarBadge(){
+  try {
+    if(typeof contarNotificacoesNaoLidas !== 'function') return;
+    var qtd = await contarNotificacoesNaoLidas();
+    
+    // Atualiza badge na sidebar
+    var navInbox = document.querySelector('.nav-item[onclick*="inbox"]');
+    if(!navInbox) return;
+    
+    var badge = navInbox.querySelector('.notif-badge-rt');
+    if(qtd > 0){
+      if(!badge){
+        badge = document.createElement('span');
+        badge.className = 'notif-badge-rt';
+        badge.style.cssText = 'display:inline-block;margin-left:6px;padding:1px 7px;background:#E24B4A;color:white;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;text-align:center;animation:notifSlideIn 0.3s ease';
+        navInbox.appendChild(badge);
+      }
+      badge.textContent = qtd > 99 ? '99+' : qtd;
+    } else if(badge){
+      badge.remove();
+    }
+  } catch(e){}
+}
+
+// ============ PUSH NOTIFICATION (PWA) ============
+async function _notifSubscribePush(){
+  // Verifica suporte
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)){
+    console.warn('[Push] Browser sem suporte');
+    return;
+  }
+  
+  var VAPID_PUBLIC = window.GAMI_VAPID_PUBLIC_KEY || null;
+  if(!VAPID_PUBLIC){
+    console.warn('[Push] VAPID key não configurada — push fica desabilitado (notificações in-app continuam funcionando)');
+    return;
+  }
+  
+  try {
+    var registration = await navigator.serviceWorker.ready;
+    var existing = await registration.pushManager.getSubscription();
+    
+    if(!existing){
+      var sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC)
+      });
+      
+      // Salva no Supabase pra o backend enviar pushes
+      var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+      if(u && u.id){
+        await fetch(SUPA_URL + '/rest/v1/rpc/salvar_push_subscription', {
+          method: 'POST',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            p_pessoa_id: u.id,
+            p_subscription: JSON.stringify(sub)
+          })
+        });
+      }
+      console.log('[Push] subscription salva');
+    }
+  } catch(e){
+    console.warn('[Push] erro ao subscrever:', e);
+  }
+}
+
+function _urlBase64ToUint8Array(base64String){
+  var padding = '='.repeat((4 - base64String.length % 4) % 4);
+  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var rawData = window.atob(base64);
+  var outputArray = new Uint8Array(rawData.length);
+  for(var i = 0; i < rawData.length; ++i){ outputArray[i] = rawData.charCodeAt(i); }
+  return outputArray;
+}
+
+// ============ TOGGLE NAS CONFIGURAÇÕES ============
+window.notifAlternarSom = function(){
+  NOTIF_RT.somHabilitado = !NOTIF_RT.somHabilitado;
+  localStorage.setItem('gami_notif_som', NOTIF_RT.somHabilitado ? 'on' : 'off');
+  if(NOTIF_RT.somHabilitado) _notifDing();
+  return NOTIF_RT.somHabilitado;
+};
+window.notifAlternarToast = function(){
+  NOTIF_RT.toastHabilitado = !NOTIF_RT.toastHabilitado;
+  localStorage.setItem('gami_notif_toast', NOTIF_RT.toastHabilitado ? 'on' : 'off');
+  return NOTIF_RT.toastHabilitado;
+};
+window.notifAlternarSistema = function(){
+  NOTIF_RT.sistemaHabilitado = !NOTIF_RT.sistemaHabilitado;
+  localStorage.setItem('gami_notif_sistema', NOTIF_RT.sistemaHabilitado ? 'on' : 'off');
+  return NOTIF_RT.sistemaHabilitado;
+};
+
+window.notifTestarPopup = function(){
+  _notifMostrarToast({
+    id: 'teste-' + Date.now(),
+    tipo: 'tarefa_nova',
+    titulo: 'Teste de notificação',
+    mensagem: 'Se você está vendo isso, o sistema de notificações está funcionando perfeitamente! 🎉'
+  });
+  _notifDing();
+};
+
+// ============ INIT ============
+function _notifIniciar(){
+  // Carrega o "fingerprint" inicial: marca todas as notificações atuais como já conhecidas
+  // (pra não disparar 50 toasts no boot)
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return;
+  
+  fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+    + '&select=id&order=created_at.desc&limit=50', {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+  }).then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(arr){
+      (arr || []).forEach(function(n){ NOTIF_RT.notifsConhecidas.add(n.id); });
+      NOTIF_RT.ultimaCheck = Date.now();
+      
+      // Inicia polling a cada 30s
+      if(NOTIF_RT.polling) clearInterval(NOTIF_RT.polling);
+      NOTIF_RT.polling = setInterval(_notifChecar, 30 * 1000);
+      
+      // Atualiza badge inicial
+      _notifAtualizarBadge();
+      
+      // Pede permissão depois de 60s de uso (se já tá logado e ativo)
+      setTimeout(_notifPedirPermissao, 60 * 1000);
+      
+      console.log('[🔔 Notif Real-time] iniciado · polling 30s · ' + NOTIF_RT.notifsConhecidas.size + ' notifs no histórico');
+    });
+}
+
+// Espera login pra iniciar
+(function _notifAguardarLogin(){
+  var tries = 0;
+  var iv = setInterval(function(){
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(u && u.id && !u._impersonacao){
+      clearInterval(iv);
+      setTimeout(_notifIniciar, 2000);
+    }
+    tries++;
+    if(tries > 60) clearInterval(iv); // para após 1 min sem login
+  }, 1000);
 })();
 
 </script>
