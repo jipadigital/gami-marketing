@@ -1,4 +1,4 @@
-<!-- v25.87 - Login limpo + bugs corrigidos - 10/06/2026 -->
+<!-- v25.88 - Fix Inbox debug + acessos_log + mntRPC - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -29884,12 +29884,15 @@ async function sincronizarInbox(){
           cidade: cidade,
           status: d.error ? 'erro' : (lista.length ? 'ok' : 'sem_msg'),
           totalConversas: lista.length,
-          erro: d.error || null,
-          tip: d.tip || null
+          erro: (typeof d.error === 'object' ? (d.error.message || d.error.error || JSON.stringify(d.error)) : (d.error || null)),
+          erroDetalhe: d.error,
+          tip: d.tip || null,
+          respostaCompleta: d
         });
         if(d.error){
-          console.warn('[Inbox] erro em '+c.ig_username+':', d.error);
-          _inboxDiagnostico.erros.push({etapa:'conversations '+c.ig_username, erro:d.error, tip:d.tip||''});
+          var msgErro = (typeof d.error === 'object') ? (d.error.message || d.error.error || JSON.stringify(d.error)) : d.error;
+          console.warn('[Inbox] erro em '+c.ig_username+':', d.error, '· resposta completa:', d);
+          _inboxDiagnostico.erros.push({etapa:'conversations '+c.ig_username, erro: msgErro, tip:d.tip||'', respostaCompleta:d});
           return;
         }
         lista.forEach(function(conv){
@@ -30040,7 +30043,11 @@ function _renderInboxDiagnosticoCard(){
     +(_inboxDiagnostico.erros.length
       ? '<div style="margin-top:12px;padding:10px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px"><div style="font-size:11px;font-weight:700;color:#A32D2D;margin-bottom:6px">⚠️ Erros encontrados ('+_inboxDiagnostico.erros.length+')</div>'
         + _inboxDiagnostico.erros.map(function(er){
-          return '<div style="font-size:10px;color:#A32D2D;padding:3px 0;line-height:1.4"><strong>'+er.etapa+':</strong> '+er.erro+(er.tip?' — '+er.tip:'')+'</div>';
+          var msgErro = (typeof er.erro === 'object' && er.erro !== null) 
+            ? (er.erro.message || er.erro.error_user_msg || er.erro.error || JSON.stringify(er.erro))
+            : (er.erro || 'erro desconhecido');
+          var detalhes = er.respostaCompleta ? '<details style="margin-top:4px"><summary style="cursor:pointer;font-size:9px;color:#5A6678">ver resposta completa</summary><pre style="font-size:9px;background:#fff;padding:4px;margin:2px 0;overflow:auto;max-height:120px;border:1px solid #eee">'+JSON.stringify(er.respostaCompleta, null, 2).replace(/</g,'&lt;')+'</pre></details>' : '';
+          return '<div style="font-size:10px;color:#A32D2D;padding:3px 0;line-height:1.4"><strong>'+er.etapa+':</strong> '+msgErro+(er.tip?' — '+er.tip:'')+detalhes+'</div>';
         }).join('')
       +'</div>'
       : '')
@@ -41690,7 +41697,10 @@ async function _mntRPC(fn, params){
       body: JSON.stringify(params || {})
     });
     if(!r.ok) return null;
-    return r.json();
+    // Tenta parse JSON; se response for vazia (RPC VOID), retorna {ok:true}
+    var txt = await r.text();
+    if(!txt || !txt.trim()) return { ok: true };
+    try { return JSON.parse(txt); } catch(e){ return { raw: txt }; }
   } catch(e){ return null; }
 }
 
