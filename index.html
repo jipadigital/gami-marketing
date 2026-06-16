@@ -1,4 +1,4 @@
-<!-- v25.95 - Raio info oculto + raio 100m via SQL - 16/06/2026 -->
+<!-- v25.97 - Card tarefas delegadas no dashboard - 16/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -61,7 +61,7 @@
         var u = JSON.parse(raw);
         if(u && u.id && ultimaAt){
           var diff = Date.now() - parseInt(ultimaAt);
-          if(diff < 20 * 60 * 1000) temSessao = true;
+          if(diff < 60 * 60 * 1000) temSessao = true;
         }
       } catch(e){}
     }
@@ -1907,9 +1907,23 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
   </div>
 
-  <!-- ====== BLOCO PONTUAÇÃO GÂMI (pessoal) ====== -->
-  <!-- Bloco de pontuação antigo removido (substituído pelo card abaixo do versículo) -->
-  <div id="dash-bloco-pontuacao" style="display:none"></div>
+  <!-- ====== 🎯 CARD TAREFAS DELEGADAS (alerta quando tem tarefa nova delegada pra você) ====== -->
+  <div id="dash-card-delegadas" style="display:none;margin:14px 0;background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-left:4px solid #8B5CF6;border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(139,92,246,0.10);position:relative;overflow:hidden">
+    <div style="position:absolute;top:-20px;right:-15px;font-size:90px;opacity:.07">📥</div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px;position:relative">
+      <div style="font-size:36px;line-height:1">📥</div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:15px;font-weight:700;color:#6B21A8">Tarefas Delegadas pra Você</div>
+        <div id="dash-delegadas-info" style="font-size:11px;color:var(--text2);margin-top:2px">—</div>
+      </div>
+      <button onclick="nav(null,'tarefas')" style="padding:8px 14px;border:none;background:linear-gradient(135deg,#8B5CF6,#6B21A8);color:white;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(139,92,246,0.3)" title="Ver todas as tarefas">Ver tudo →</button>
+    </div>
+    
+    <!-- Lista das tarefas delegadas (max 3 mais recentes) -->
+    <div id="dash-delegadas-lista" style="display:flex;flex-direction:column;gap:8px">
+      <!-- preenchido pelo JS -->
+    </div>
+  </div>
 
   <!-- ====== FOCO DO DIA (sincronizado com Tarefas) ====== -->
   <div id="dash-foco-bloco" data-mf-keep="true" style="margin-bottom:14px;display:none">
@@ -8382,7 +8396,7 @@ async function obterExtratoPessoa(pessoaId){
 
 /* ============================================================== */
 /* SISTEMA DE LOGIN GÂMI                                          */
-/* Email + PIN | Username + PIN | Sessão 20min | Multi-usuário    */
+/* Email + PIN | Username + PIN | Sessão 1h | Multi-usuário    */
 /* ============================================================== */
 
 /* SESSION HELPERS */
@@ -8412,7 +8426,7 @@ function _getUsuarioLogadoReal(){
     var u = JSON.parse(saved);
     var ultimaAtividade = parseInt(localStorage.getItem('gami_ultima_atividade') || '0', 10);
     var agora = Date.now();
-    if(ultimaAtividade && (agora - ultimaAtividade) > 20 * 60 * 1000){
+    if(ultimaAtividade && (agora - ultimaAtividade) > 60 * 60 * 1000){
       setUsuarioLogado(null);
       return null;
     }
@@ -9556,6 +9570,12 @@ function iniciarTimerInatividade(){
 ['click','keydown','scroll','mousemove'].forEach(function(ev){
   document.addEventListener(ev, function(){ tocarAtividade(); }, { passive: true });
 });
+
+/* Quando volta pra aba (foco/visibilidade), também reseta */
+window.addEventListener('focus', function(){ tocarAtividade(); }, { passive: true });
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible'){ tocarAtividade(); }
+}, { passive: true });
 
 /* Dispara verificação inicial — rápido pra não deixar dashboard piscar */
 if(document.readyState === 'loading'){
@@ -41755,6 +41775,140 @@ function dashPedirGeoPonto(){
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
 }
+
+// ============================================================
+// 🎯 CARD DE TAREFAS DELEGADAS NO DASHBOARD
+// Mostra alerta quando user tem tarefas delegadas não concluídas
+// ============================================================
+async function dashRenderTarefasDelegadas(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var card = document.getElementById('dash-card-delegadas');
+  if(!card || !u || !u.id){
+    if(card) card.style.display = 'none';
+    return;
+  }
+  
+  try {
+    // Busca tarefas delegadas pra esse usuário (não concluídas)
+    var r = await fetch(SUPA_URL + 
+      '/rest/v1/tarefas?pessoa_id=eq.' + encodeURIComponent(u.id) + 
+      '&delegada_por=not.is.null' +
+      '&feito=eq.false' +
+      '&select=id,texto,delegada_por_nome,delegada_em,prioridade_deleg,mensagem_delegacao,vista_em,hora_limite,data_limite' +
+      '&order=delegada_em.desc&limit=10', 
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' }
+    );
+    
+    if(!r.ok){
+      console.warn('[dashDelegadas] HTTP', r.status);
+      card.style.display = 'none';
+      return;
+    }
+    
+    var lista = await r.json();
+    
+    if(!lista || lista.length === 0){
+      card.style.display = 'none';
+      return;
+    }
+    
+    // Conta não vistas
+    var naoVistas = lista.filter(function(t){ return !t.vista_em; }).length;
+    var totalPendentes = lista.length;
+    
+    var infoEl = document.getElementById('dash-delegadas-info');
+    if(infoEl){
+      var msg = '';
+      if(naoVistas > 0){
+        msg = '🔔 ' + naoVistas + ' nova' + (naoVistas > 1 ? 's' : '') + ' · ';
+      }
+      msg += totalPendentes + ' pendente' + (totalPendentes > 1 ? 's' : '');
+      infoEl.innerHTML = msg;
+    }
+    
+    // Renderiza as 3 mais recentes
+    var top3 = lista.slice(0, 3);
+    var html = top3.map(function(t){
+      var prioCor = '#5A6678', prioBg = 'var(--surface2)', prioLbl = 'Normal';
+      if(t.prioridade_deleg === 'urgente'){
+        prioCor = '#A32D2D'; prioBg = '#FCE6E6'; prioLbl = '🔥 Urgente';
+      } else if(t.prioridade_deleg === 'importante'){
+        prioCor = '#854F0B'; prioBg = '#FFF8E1'; prioLbl = '⚡ Importante';
+      }
+      
+      var corNova = !t.vista_em;
+      var bgCard = corNova ? '#FFFFFF' : '#FAFAFA';
+      var borderCard = corNova ? '#8B5CF6' : 'var(--border)';
+      
+      var dataDeleg = '';
+      if(t.delegada_em){
+        try {
+          var d = new Date(t.delegada_em);
+          dataDeleg = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        } catch(e){}
+      }
+      
+      var horaLimite = '';
+      if(t.hora_limite){
+        horaLimite = ' · ⏰ até ' + t.hora_limite.slice(0,5);
+      }
+      
+      return '<div style="padding:10px 12px;background:' + bgCard + ';border:1px solid ' + borderCard + ';border-left:3px solid #8B5CF6;border-radius:8px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px;margin-bottom:4px">'
+          + '<div style="font-size:13px;font-weight:600;color:var(--text);flex:1;line-height:1.3">' 
+            + (corNova ? '<span style="color:#8B5CF6;font-weight:700">🔔 </span>' : '')
+            + _escapeHtml(t.texto || '—') 
+          + '</div>'
+          + '<span style="font-size:10px;padding:2px 8px;background:' + prioBg + ';color:' + prioCor + ';border-radius:10px;font-weight:600;white-space:nowrap">' + prioLbl + '</span>'
+        + '</div>'
+        + '<div style="font-size:10px;color:var(--text3);margin-top:4px">'
+          + '📥 ' + _escapeHtml(t.delegada_por_nome || 'Alguém') 
+          + (dataDeleg ? ' · ' + dataDeleg : '')
+          + horaLimite
+        + '</div>'
+        + (t.mensagem_delegacao ? '<div style="font-size:10px;color:var(--text2);font-style:italic;margin-top:4px;padding:4px 8px;background:rgba(139,92,246,0.05);border-radius:4px">"' + _escapeHtml(t.mensagem_delegacao) + '"</div>' : '')
+      + '</div>';
+    }).join('');
+    
+    var listaEl = document.getElementById('dash-delegadas-lista');
+    if(listaEl){
+      listaEl.innerHTML = html;
+      if(lista.length > 3){
+        listaEl.innerHTML += '<div style="text-align:center;font-size:11px;color:var(--text3);margin-top:4px">+ ' + (lista.length - 3) + ' outra' + (lista.length - 3 > 1 ? 's' : '') + ' tarefa' + (lista.length - 3 > 1 ? 's' : '') + ' delegada' + (lista.length - 3 > 1 ? 's' : '') + '</div>';
+      }
+    }
+    
+    card.style.display = '';
+  } catch(e){
+    console.warn('[dashDelegadas] erro:', e);
+    card.style.display = 'none';
+  }
+}
+
+// Helper escapeHtml (caso não exista)
+if(typeof _escapeHtml !== 'function'){
+  window._escapeHtml = function(s){
+    if(s == null) return '';
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  };
+}
+
+// Auto-init quando dashboard carrega
+setTimeout(dashRenderTarefasDelegadas, 1500);
+setTimeout(dashRenderTarefasDelegadas, 4000);
+
+// Recarrega ao navegar pro dashboard
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(t && t.classList && t.classList.contains('nav-item')){
+    var txt = (t.textContent || '').toLowerCase();
+    if(txt.indexOf('dashboard') >= 0 || txt.indexOf('início') >= 0 || txt.indexOf('inicio') >= 0){
+      setTimeout(dashRenderTarefasDelegadas, 400);
+    }
+  }
+});
 
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
