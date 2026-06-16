@@ -1,4 +1,4 @@
-<!-- v25.93 - Instrucoes GPS bloqueado - 10/06/2026 -->
+<!-- v25.95 - Raio info oculto + raio 100m via SQL - 16/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40388,7 +40388,7 @@ function mpPedirGeolocation(){
           statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
           document.getElementById('mp-justificativa-box').style.display = 'none';
         } else {
-          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m (raio ' + MP_CONFIG.raio_metros + 'm)';
+          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
           document.getElementById('mp-justificativa-box').style.display = 'block';
         }
       } else {
@@ -40535,11 +40535,28 @@ function mpRenderCardsDia(dados){
 async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
+  // Garante GPS
+  if(!MP_GEO){
+    alert('📡 Aguarde a localização ser capturada (alguns segundos)...');
+    mpPedirGeolocation();
+    return;
+  }
+  
+  var justifBox = document.getElementById('mp-justificativa-box');
+  var justifInput = document.getElementById('mp-justificativa');
+  var justif = justifInput.value.trim() || null;
+  
+  // Verifica raio
+  if(MP_GEO.distancia && !MP_GEO.dentro && !justif){
+    justifBox.style.display = 'block';
+    justifInput.focus();
+    alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório.\n\nPreencha uma justificativa antes de bater o ponto.');
+    return;
+  }
+  
   var btn = document.getElementById('mp-btn-bater');
   btn.disabled = true;
   btn.textContent = '⏳ Registrando...';
-  
-  var justif = document.getElementById('mp-justificativa').value.trim() || null;
   
   try {
     var resp = await _mpRPC('ponto_bater', {
@@ -40566,6 +40583,7 @@ async function mpBaterPonto(){
   } catch(e){
     alert('❌ ' + (e.message || 'Erro ao bater ponto'));
   } finally {
+    btn.disabled = false;
     btn.textContent = '🕒 BATER PONTO';
   }
 }
@@ -41741,12 +41759,30 @@ function dashPedirGeoPonto(){
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
+  // Garante que GPS foi capturado
+  if(!MP_GEO){
+    alert('📡 Aguarde a localização ser capturada (alguns segundos)...');
+    dashPedirGeoPonto();
+    return;
+  }
+  
+  // Verifica se está fora do raio E ainda não tem justificativa
+  var justifBox = document.getElementById('dash-ponto-justif-box');
+  var justifInput = document.getElementById('dash-ponto-justif');
+  var justif = justifInput.value.trim() || null;
+  
+  if(MP_GEO.distancia && !MP_GEO.dentro && !justif){
+    // Mostra o campo de justificativa e foca nele
+    justifBox.style.display = 'block';
+    justifInput.focus();
+    alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório.\n\nPreencha uma justificativa antes de bater o ponto.');
+    return;
+  }
+  
   var btn = document.getElementById('dash-btn-bater-ponto');
   var originalText = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '⏳ Registrando...';
-  
-  var justif = document.getElementById('dash-ponto-justif').value.trim() || null;
   
   try {
     var resp = await _mpRPC('ponto_bater', {
@@ -41771,6 +41807,7 @@ async function dashBaterPontoRapido(){
   } catch(e){
     alert('❌ ' + (e.message || 'Erro ao bater ponto'));
     btn.innerHTML = originalText;
+    btn.disabled = false;
   }
 }
 
