@@ -1,4 +1,4 @@
-<!-- v25.92 - Sem info de tolerancia pra colaboradora - 10/06/2026 -->
+<!-- v25.93 - Instrucoes GPS bloqueado - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40397,7 +40397,49 @@ function mpPedirGeolocation(){
     },
     function(err){
       MP_GEO = null;
-      statusEl.innerHTML = '❌ Erro: ' + (err.message || 'não foi possível obter localização. Permita acesso ao GPS.');
+      var statusEl = document.getElementById('mp-status-geo');
+      
+      // PERMISSION_DENIED = 1 (usuário clicou bloquear)
+      // POSITION_UNAVAILABLE = 2 (GPS indisponível)
+      // TIMEOUT = 3 (demorou muito)
+      
+      if(err.code === 1){
+        // Bloqueou — mostra instruções de como liberar
+        statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:12px;font-size:12px;text-align:left;color:#A32D2D;line-height:1.5">'
+          + '<div style="font-weight:700;margin-bottom:8px;font-size:13px">🚫 Localização bloqueada</div>'
+          + '<div style="margin-bottom:8px;color:#5A6678">Pra bater ponto, precisa permitir o GPS. Faça assim:</div>'
+          + '<div style="background:#fff;padding:8px 10px;border-radius:6px;color:#5A6678;font-size:11px;line-height:1.6">'
+            + '<strong style="color:#0E7AB8">📱 No celular (Chrome):</strong><br>'
+            + '1. Toque no <strong>cadeado 🔒</strong> ao lado do endereço no topo<br>'
+            + '2. Toque em <strong>Permissões</strong> → <strong>Localização</strong><br>'
+            + '3. Mude pra <strong>Permitir</strong><br>'
+            + '4. Recarregue a página (puxe pra baixo)<br><br>'
+            + '<strong style="color:#0E7AB8">🍎 No iPhone (Safari):</strong><br>'
+            + '1. Vá em <strong>Ajustes</strong> do iPhone<br>'
+            + '2. <strong>Safari → Localização → Permitir</strong><br>'
+            + '3. Volte ao app e recarregue<br><br>'
+            + '<strong style="color:#0E7AB8">💻 No PC:</strong><br>'
+            + '1. Clique no <strong>cadeado 🔒</strong> da barra de endereço<br>'
+            + '2. <strong>Permissões → Localização → Permitir</strong>'
+          + '</div>'
+          + '<button onclick="mpPedirGeolocation()" style="margin-top:10px;width:100%;padding:10px;background:#0E7AB8;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
+        + '</div>';
+      } else if(err.code === 2){
+        // GPS indisponível
+        statusEl.innerHTML = '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:10px;font-size:12px;color:#854F0B">'
+          + '⚠️ <strong>GPS indisponível.</strong> Verifique se o GPS do celular está ligado. <button onclick="mpPedirGeolocation()" style="margin-left:6px;padding:4px 10px;background:#EF9F27;color:white;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
+        + '</div>';
+      } else if(err.code === 3){
+        // Timeout
+        statusEl.innerHTML = '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:10px;font-size:12px;color:#854F0B">'
+          + '⏱️ <strong>Demorou pra captar o GPS.</strong> Vá pra um lugar com sinal melhor (perto da janela ou ao ar livre). <button onclick="mpPedirGeolocation()" style="margin-left:6px;padding:4px 10px;background:#EF9F27;color:white;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
+        + '</div>';
+      } else {
+        statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:10px;font-size:12px;color:#A32D2D">'
+          + '❌ Erro: ' + (err.message || 'não foi possível obter localização') 
+          + ' <button onclick="mpPedirGeolocation()" style="margin-left:6px;padding:4px 10px;background:#E24B4A;color:white;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
+        + '</div>';
+      }
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
