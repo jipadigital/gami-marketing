@@ -1,4 +1,4 @@
-<!-- v25.77 - Sistema Ponto COMPLETO (Etapa 3 - Gestao) - 03/06/2026 -->
+<!-- v25.92 - Sem info de tolerancia pra colaboradora - 10/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -9,6 +9,9 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Gâmi Delivery - Gestão Operacional</title>
+
+<!-- 🔔 Push Notification VAPID public key -->
+<script>window.GAMI_VAPID_PUBLIC_KEY = 'BIfoGIcpBnsbeLHds-gtSttTql0DVnc4_PJzpc3hkeTk-544faCo35k-wnJMjww0jfNy_Xk2Kp4LO2yZ-lg1sYw';</script>
 
 <!-- 📱 PWA -->
 <link rel="manifest" href="/manifest.json">
@@ -1713,7 +1716,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div class="sb-section">
     <div class="sb-label">Gestão</div>
     <div class="nav-item" onclick="nav(this,'marketing')">📣 Marketing</div>
-    <div class="nav-item" onclick="nav(this,'inbox')">📷 Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
+    <div class="nav-item" onclick="nav(this,'inbox')" style="display:none" data-feature-flag="inbox-instagram">📷 Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas<span class="nav-badge" id="badge-pess">2</span></div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
@@ -1733,6 +1736,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'portal')">🌐 Portal Gâmi</div>
     <div class="nav-item" onclick="nav(this,'relatorios')">📊 Relatórios</div>
     <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')">🩺 Saúde</div>
+    <div class="nav-item" onclick="mntReportarAbrir()" title="Reportar bug, sugestão ou dúvida">💬 Reportar</div>
     <div class="nav-item" data-permissao="clima" id="nav-clima" onclick="nav(this,'clima')">💙 Clima do time</div>
     <div class="nav-item" onclick="nav(this,'manual')">📘 Manual</div>
   </div>
@@ -1870,6 +1874,36 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           Modo foco
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ====== 🕒 CARD BATER PONTO (só pra colaboradoras com bate_ponto=TRUE) ====== -->
+  <div id="dash-card-ponto" style="display:none;margin:14px 0;background:linear-gradient(135deg,#E6F6FE,#FFFFFF);border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(26,184,240,0.10)">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+      <div style="font-size:36px;line-height:1">🕒</div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:15px;font-weight:700;color:var(--text)">Bater Ponto</div>
+        <div id="dash-ponto-info" style="font-size:11px;color:var(--text2);margin-top:2px">Carregando...</div>
+      </div>
+      <button onclick="abrirMeuPonto(document.getElementById('nav-meu-ponto'))" style="padding:7px 14px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit" title="Abrir página completa">📋 Ver mês</button>
+    </div>
+    
+    <!-- Mini status do dia (4 micro-pílulas) -->
+    <div id="dash-ponto-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
+      <!-- preenchido pelo JS -->
+    </div>
+    
+    <button id="dash-btn-bater-ponto" onclick="dashBaterPontoRapido()" style="width:100%;padding:14px 20px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,184,240,0.3);transition:transform .15s"
+      onmouseover="this.style.transform='translateY(-1px)'"
+      onmouseout="this.style.transform=''">
+      🕒 BATER PONTO
+    </button>
+    
+    <div id="dash-ponto-geo" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px;text-align:center">📡 Detectando localização...</div>
+    
+    <div id="dash-ponto-justif-box" style="display:none;margin-top:10px;padding:10px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:6px">
+      <label style="display:block;font-size:10px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio. Justifique:</label>
+      <textarea id="dash-ponto-justif" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px;border:1px solid #EF9F27;border-radius:5px;background:white;color:var(--text);font-size:11px;font-family:inherit;resize:vertical"></textarea>
     </div>
   </div>
 
@@ -3969,7 +4003,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
           <span id="machine-status-txt" style="font-size:12px;color:var(--text2)">API Machine conectada — clique em Sincronizar</span>
         </div>
         <button onclick="sincronizarMachine()" id="btn-sync-machine" style="padding:8px 16px;border:none;border-radius:8px;background:var(--orange);color:white;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↻ Sincronizar</button>
-        <button onclick="analisarCidadeIA()" style="padding:8px 16px;border:1px solid #8B5CF6;border-radius:8px;background:rgba(139,92,246,.1);color:#8B5CF6;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🤖 IA Analisar</button>
+        <button onclick="diagnosticoIACidade()" style="padding:8px 16px;border:1px solid #8B5CF6;border-radius:8px;background:rgba(139,92,246,.1);color:#8B5CF6;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">🤖 IA Analisar</button>
       </div>
       <div id="mch-ia-resultado" style="display:none;margin-bottom:14px;padding:14px;background:rgba(139,92,246,.06);border:1px solid #8B5CF644;border-radius:12px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span style="font-size:16px">🤖</span><span style="font-size:12px;font-weight:700;color:#C4B5FD">Análise IA — <span id="mch-ia-cidade"></span></span><button onclick="document.getElementById('mch-ia-resultado').style.display='none'" style="margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px">×</button></div>
@@ -4903,7 +4937,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <div id="rank-destaques-semana">
           <div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">
             Reconhecimentos publicados aparecem aqui.<br>
-            <button class="btn btn-ghost" style="font-size:11px;margin-top:8px" onclick="abrirPainelReconhecimento()">+ Publicar reconhecimento</button>
+            <button class="btn btn-ghost" style="font-size:11px;margin-top:8px" onclick="abrirModalReconhecimento()">+ Publicar reconhecimento</button>
           </div>
         </div>
       </div>
@@ -5031,7 +5065,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
           <span style="font-size:16px;width:24px;text-align:center">☀️</span>
           <span style="flex:1;font-size:12px">Logar no dashboard (1×/dia)</span>
-          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+1</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+2</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
           <span style="font-size:16px;width:24px;text-align:center">💭</span>
@@ -5042,6 +5076,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
           <span style="font-size:16px;width:24px;text-align:center">✅</span>
           <span style="flex:1;font-size:12px">Marcar tarefa como concluída</span>
           <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+1</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
+          <span style="font-size:16px;width:24px;text-align:center">📋</span>
+          <span style="flex:1;font-size:12px">Responder acompanhamento mensal</span>
+          <span style="font-weight:800;color:var(--gami-blue-d);font-size:13px">+5</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--surface2);border-radius:6px">
           <span style="font-size:16px;width:24px;text-align:center">💛</span>
@@ -5114,10 +5153,6 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
           <span style="flex:1">☕ Café/conversa de 30min com Diretor</span>
           <span style="font-weight:700;color:var(--gami-blue-d)">500 pts</span>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface2);border-radius:6px;font-size:12px">
-          <span style="flex:1">⏰ Hora de almoço estendida (1 dia)</span>
-          <span style="font-weight:700;color:var(--gami-blue-d)">300 pts</span>
-        </div>
       </div>
       
       <div style="font-size:12px;font-weight:700;color:#F57F17;margin:14px 0 6px">💰 Com prêmio real (custeado pela Gâmi)</div>
@@ -5131,20 +5166,8 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
           <span style="font-weight:700;color:#F57F17">1.500 pts</span>
         </div>
         <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
-          <span style="flex:1">🌅 Folga 4h (sexta cedo)</span>
-          <span style="font-weight:700;color:#F57F17">1.000 pts</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
-          <span style="flex:1">🏖️ Folga sexta inteira</span>
-          <span style="font-weight:700;color:#F57F17">2.500 pts</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
           <span style="flex:1">🎁 Vale-presente R$ 100</span>
           <span style="font-weight:700;color:#F57F17">3.000 pts</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:#FFF8E1;border-radius:6px;font-size:12px">
-          <span style="flex:1">🎂 Folga no seu aniversário</span>
-          <span style="font-weight:700;color:#F57F17">1.000 pts</span>
         </div>
       </div>
       
@@ -5718,15 +5741,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div class="card carr-section" style="margin-bottom:14px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border:none;color:white;padding:0;overflow:hidden;position:relative">
     <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(255,217,61,.18),transparent 70%);pointer-events:none"></div>
     <div style="position:absolute;bottom:-40px;left:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.1),transparent 70%);pointer-events:none"></div>
-    <div style="position:relative;padding:24px 26px;display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center">
+    <div style="position:relative;padding:24px 26px">
       <div>
         <div style="display:inline-block;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;background:rgba(255,255,255,.2);padding:4px 12px;border-radius:14px;margin-bottom:10px;font-weight:700">TRILHA GÂMI</div>
         <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px;line-height:1.15">Crescer aqui é <span style="background:linear-gradient(90deg,#FFD93D,#FFB300);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">construir uma história</span></div>
-        <div style="font-size:12px;opacity:.92;line-height:1.6;max-width:520px">10 níveis · 5 fases · cada faixa com 6 meses. Toda promoção é resultado de aprendizado real, não tempo de casa.</div>
-      </div>
-      <div style="text-align:center;background:rgba(255,255,255,.13);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px 18px;min-width:120px">
-        <div style="font-family:'Syne',sans-serif;font-size:30px;font-weight:800;color:#FFD93D">4,5</div>
-        <div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.85">anos até Gerente</div>
+        <div style="font-size:12px;opacity:.92;line-height:1.6;max-width:620px">10 níveis · 5 fases · toda promoção é resultado de aprendizado real e desempenho, sugerida pela diretoria com base nos critérios abaixo.</div>
       </div>
     </div>
   </div>
@@ -5740,7 +5759,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <!-- TRILHA DOS 10 NÍVEIS -->
   <div class="card" style="margin-bottom:14px">
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🏆</span> Trilha de Níveis</div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">10 faixas com 6 meses cada — total de 4 anos e 6 meses até Gerente</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">10 faixas de progressão — promoções sugeridas pela diretoria com base em desempenho</div>
     <div id="carreira-trilha" style="display:flex;flex-wrap:wrap;gap:8px"></div>
   </div>
 
@@ -5761,9 +5780,6 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
   <!-- DISTRIBUIÇÃO POR CIDADE -->
   <div class="card" id="carreira-cidades" style="margin-bottom:14px"></div>
-
-  <!-- PRÓXIMOS DA PROMOÇÃO -->
-  <div class="card" id="carreira-promocao" style="margin-bottom:14px"></div>
 
   <!-- CRITÉRIOS DE PROMOÇÃO -->
   <div class="card" id="carreira-criterios" style="margin-bottom:14px"></div>
@@ -8018,7 +8034,7 @@ var PESSOAS_DEFAULT = [
 /* CATÁLOGO DE AÇÕES E PONTOS */
 var PONTOS_CATALOGO = {
   // ENGAJAMENTO DIÁRIO
-  'login_diario':         { pontos: 1,  categoria: 'engajamento', label: 'Login no dashboard', limite_dia: 1 },
+  'login_diario':         { pontos: 2,  categoria: 'engajamento', label: 'Login no dashboard', limite_dia: 1 },
   'pulse_respondido':     { pontos: 2,  categoria: 'engajamento', label: 'Respondeu Pulse', limite_dia: 1 },
   'tarefa_concluida':     { pontos: 1,  categoria: 'engajamento', label: 'Tarefa concluída' },
   'anotacao_calendario':  { pontos: 1,  categoria: 'engajamento', label: 'Anotação no calendário', limite_dia: 1 },
@@ -8035,19 +8051,17 @@ var PONTOS_CATALOGO = {
   // CULTURA E TIME
   'reconheceu_colega':    { pontos: 5,   categoria: 'cultura', label: 'Reconheceu um colega' },
   'foi_reconhecido':      { pontos: 15,  categoria: 'cultura', label: 'Foi reconhecido por colega' },
-  'reconhec_inspirador_de':   { pontos: 3,   categoria: 'cultura', label: 'Marcou reconhecimento Inspirador' },
-  'reconhec_inspirador_para': { pontos: 8,   categoria: 'cultura', label: 'Reconhecimento marcado Inspirador' },
   'comentou_mural_de':    { pontos: 2,   categoria: 'cultura', label: 'Comentou no mural' },
-  'comentou_mural_para':  { pontos: 3,   categoria: 'cultura', label: 'Recebeu comentário no mural' },
   'recado_positivo':      { pontos: 5,   categoria: 'cultura', label: 'Postou recado positivo' },
   'recebeu_curtida':      { pontos: 1,   categoria: 'cultura', label: 'Recebeu curtida (até 5)' },
   'dica_util':            { pontos: 5,   categoria: 'cultura', label: 'Postou dica útil pra equipe' },
   'aniversario_dia':      { pontos: 20,  categoria: 'cultura', label: 'Aniversário do dia' },
-  'parabens_aniversariante': { pontos: 3, categoria: 'cultura', label: 'Mandou parabéns' },
   'aniversario_empresa_1ano': { pontos: 50, categoria: 'cultura', label: '1 ano de Gâmi (aniversário empresa)' },
   'aniversario_empresa_ano':  { pontos: 50, categoria: 'cultura', label: 'Aniversário de empresa anual' },
   'devocional':           { pontos: 10,  categoria: 'cultura', label: 'Participou do devocional' },
-  'versiculo_compartilhado': { pontos: 5, categoria: 'cultura', label: 'Compartilhou versículo no mural' },
+  
+  // ACOMPANHAMENTO MENSAL (universal)
+  'acompanhamento_mensal':{ pontos: 5,   categoria: 'engajamento', label: 'Respondeu acompanhamento mensal', limite_mes: 1 },
   
   // TRABALHO - DIRETORIA
   'reuniao_gestores':     { pontos: 20,  categoria: 'trabalho', label: 'Reunião mensal com gestores', funcao: 'diretoria' },
@@ -8063,7 +8077,7 @@ var PONTOS_CATALOGO = {
   'indicadores_dash':     { pontos: 20,  categoria: 'trabalho', label: 'Indicadores no dashboard', funcao: 'gerencia' },
   
   // TRABALHO - GESTOR
-  'cidade_top3':          { pontos: 50,  categoria: 'trabalho', label: 'Cidade no Top 3', funcao: 'gestor' },
+  'cidade_crescimento':   { pontos: 50,  categoria: 'trabalho', label: 'Cidade entre as Top 3 em crescimento %', funcao: 'gestor' },
   'cidade_cresceu':       { pontos: 40,  categoria: 'trabalho', label: 'Cidade cresceu vs mês anterior', funcao: 'gestor' },
   'equipe_engajada':      { pontos: 30,  categoria: 'trabalho', label: 'Todos da equipe logaram >15 dias', funcao: 'gestor' },
   'recrutou_colaborador': { pontos: 30,  categoria: 'trabalho', label: 'Recrutou novo colaborador', funcao: 'gestor' },
@@ -8091,7 +8105,6 @@ var PONTOS_CATALOGO = {
   'visita_tecnica':       { pontos: 15,  categoria: 'trabalho', label: 'Visita técnica', funcao: 'prospeccao' },
   
   // BÔNUS UNIVERSAIS
-  'ideia_aceita':         { pontos: 50,  categoria: 'trabalho', label: 'Ideia aceita no Banco de Ideias' },
   'problema_critico':     { pontos: 40,  categoria: 'trabalho', label: 'Resolveu problema crítico de cidade' },
   'mentorou_colega':      { pontos: 50,  categoria: 'trabalho', label: 'Mentorou colega novo' },
   'ajudou_outra_cidade':  { pontos: 15,  categoria: 'trabalho', label: 'Ajudou colega de outra cidade/área' },
@@ -8459,6 +8472,74 @@ async function hashPIN(pin){
 }
 
 /* LOGIN — busca por email OU username */
+// ============================================================
+// 🔌 TESTAR CONEXÃO COM SUPABASE (botão da tela de login)
+// ============================================================
+async function testarConexaoSupabase(){
+  var statusEl = document.getElementById('login-conexao-status');
+  if(!statusEl) return;
+  statusEl.innerHTML = '<span style="color:#0E7AB8">⏳ Testando conexão...</span>';
+  
+  var resultados = [];
+  var t0 = Date.now();
+  
+  // Teste 1: Supabase REST
+  try {
+    var ctrl = new AbortController();
+    var to = setTimeout(function(){ ctrl.abort(); }, 8000);
+    var r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?select=count&limit=1', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Prefer': 'count=exact' },
+      signal: ctrl.signal
+    });
+    clearTimeout(to);
+    var ms = Date.now() - t0;
+    if(r.ok){
+      resultados.push({ etapa: 'Supabase REST', ok: true, ms: ms, info: 'HTTP ' + r.status });
+    } else {
+      resultados.push({ etapa: 'Supabase REST', ok: false, ms: ms, info: 'HTTP ' + r.status + ' — servidor sobrecarregado' });
+    }
+  } catch(e){
+    var ms = Date.now() - t0;
+    if(e.name === 'AbortError'){
+      resultados.push({ etapa: 'Supabase REST', ok: false, ms: ms, info: '⏱️ Timeout 8s — servidor não responde' });
+    } else {
+      resultados.push({ etapa: 'Supabase REST', ok: false, ms: ms, info: '❌ Sem internet ou bloqueado' });
+    }
+  }
+  
+  // Teste 2: Netlify Function (health)
+  var t1 = Date.now();
+  try {
+    var ctrl2 = new AbortController();
+    var to2 = setTimeout(function(){ ctrl2.abort(); }, 8000);
+    var r2 = await fetch('/.netlify/functions/health', { signal: ctrl2.signal });
+    clearTimeout(to2);
+    var ms2 = Date.now() - t1;
+    if(r2.ok || r2.status === 404){
+      resultados.push({ etapa: 'Netlify', ok: true, ms: ms2, info: 'HTTP ' + r2.status });
+    } else {
+      resultados.push({ etapa: 'Netlify', ok: false, ms: ms2, info: 'HTTP ' + r2.status });
+    }
+  } catch(e){
+    var ms2 = Date.now() - t1;
+    resultados.push({ etapa: 'Netlify', ok: false, ms: ms2, info: e.name === 'AbortError' ? '⏱️ Timeout' : 'erro' });
+  }
+  
+  // Monta resultado visual
+  var html = resultados.map(function(r){
+    var cor = r.ok ? '#1D9E75' : '#A32D2D';
+    var icone = r.ok ? '✓' : '✗';
+    return '<div style="color:' + cor + ';font-size:11px">' + icone + ' ' + r.etapa + ' (' + r.ms + 'ms): ' + r.info + '</div>';
+  }).join('');
+  
+  var todosOk = resultados.every(function(r){ return r.ok; });
+  var resumo = todosOk 
+    ? '<div style="color:#1D9E75;font-weight:700;margin-top:4px">✅ Tudo OK — pode logar!</div>'
+    : '<div style="color:#A32D2D;font-weight:700;margin-top:4px">⚠️ Backend com problema. Aguarde 1 min e tente novamente.</div>';
+  
+  statusEl.innerHTML = html + resumo;
+}
+
 async function tentarLogin(identificador, pin){
   if(!identificador || !pin){
     return { sucesso: false, erro: 'Preencha usuário e PIN' };
@@ -8471,11 +8552,31 @@ async function tentarLogin(identificador, pin){
     var query = SUPA_URL + '/rest/v1/usuarios_login?or=(email.ilike.' 
       + encodeURIComponent(idLower) + ',username.ilike.' + encodeURIComponent(idLower) 
       + ')&select=*&limit=1';
-    var r = await fetch(query, {
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
-    });
+    // Timeout de 15s pra não ficar pendurado se Supabase travar
+    var ctrl = new AbortController();
+    var timeoutId = setTimeout(function(){ ctrl.abort(); }, 15000);
+    var r;
+    try {
+      r = await fetch(query, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
+        signal: ctrl.signal
+      });
+    } catch(fetchErr){
+      clearTimeout(timeoutId);
+      if(fetchErr.name === 'AbortError'){
+        return { sucesso: false, erro: 'Servidor demorou pra responder (15s+). Tente novamente em 1 minuto.' };
+      }
+      return { sucesso: false, erro: 'Sem conexão com o servidor. Verifique sua internet.' };
+    }
+    clearTimeout(timeoutId);
     if(!r.ok){
-      return { sucesso: false, erro: 'Erro de conexão. Tente novamente.' };
+      var errTxt = '';
+      try { errTxt = await r.text(); } catch(e){}
+      console.error('[LOGIN] HTTP', r.status, errTxt);
+      if(r.status === 504 || r.status === 503){
+        return { sucesso: false, erro: 'Servidor sobrecarregado (HTTP ' + r.status + '). Aguarde 1 minuto e tente novamente.' };
+      }
+      return { sucesso: false, erro: 'Erro de conexão (HTTP ' + r.status + '). Tente novamente.' };
     }
     var lista = await r.json();
     if(!lista.length){
@@ -8767,8 +8868,8 @@ function mostrarTelaLogin(){
   var html = '<div id="login-overlay" style="position:fixed;inset:0;background:linear-gradient(135deg,#0B2542 0%,#0E7AB8 50%,#1AB8F0 100%);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;animation:loginFadeIn .3s ease">'
     + '<div style="background:#fff;border-radius:16px;max-width:400px;width:100%;padding:32px 26px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">'
     + '<div style="text-align:center;margin-bottom:24px">'
-    + '<div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#0B2542;letter-spacing:-0.5px">Gâmi</div>'
-    + '<div style="font-size:12px;color:#0E7AB8;font-weight:600;margin-top:2px">Gestão Operacional 💛</div>'
+    + '<div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#0B2542;letter-spacing:-0.5px">Gâmi Delivery</div>'
+    + '<div style="font-size:12px;color:#0E7AB8;font-weight:600;margin-top:2px">Gestão Operacional</div>'
     + '</div>'
     + '<form id="login-form" onsubmit="return handleLoginSubmit(event)">'
     + '<div style="margin-bottom:14px">'
@@ -8789,6 +8890,9 @@ function mostrarTelaLogin(){
     + '</form>'
     + '<div style="text-align:center;margin-top:18px;padding-top:14px;border-top:1px solid #EEF2F7">'
     + '<button type="button" onclick="abrirEsqueciPin()" style="background:none;border:none;color:#0E7AB8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline;padding:4px 8px;margin-bottom:8px">🔑 Esqueci meu PIN</button>'
+    + ' &nbsp;·&nbsp; '
+    + '<button type="button" onclick="testarConexaoSupabase()" style="background:none;border:none;color:#5A6678;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:underline;padding:4px 8px;margin-bottom:8px">🔌 Testar conexão</button>'
+    + '<div id="login-conexao-status" style="font-size:10px;margin:4px 0 8px 0;min-height:14px"></div>'
     + '<div style="font-size:10px;color:#9DB4D6">🙏 <em>"Fé com Respeito" — Gâmi Delivery</em></div>'
     + '</div>'
     + '</div>'
@@ -29868,12 +29972,15 @@ async function sincronizarInbox(){
           cidade: cidade,
           status: d.error ? 'erro' : (lista.length ? 'ok' : 'sem_msg'),
           totalConversas: lista.length,
-          erro: d.error || null,
-          tip: d.tip || null
+          erro: (typeof d.error === 'object' ? (d.error.message || d.error.error || JSON.stringify(d.error)) : (d.error || null)),
+          erroDetalhe: d.error,
+          tip: d.tip || null,
+          respostaCompleta: d
         });
         if(d.error){
-          console.warn('[Inbox] erro em '+c.ig_username+':', d.error);
-          _inboxDiagnostico.erros.push({etapa:'conversations '+c.ig_username, erro:d.error, tip:d.tip||''});
+          var msgErro = (typeof d.error === 'object') ? (d.error.message || d.error.error || JSON.stringify(d.error)) : d.error;
+          console.warn('[Inbox] erro em '+c.ig_username+':', d.error, '· resposta completa:', d);
+          _inboxDiagnostico.erros.push({etapa:'conversations '+c.ig_username, erro: msgErro, tip:d.tip||'', respostaCompleta:d});
           return;
         }
         lista.forEach(function(conv){
@@ -30024,7 +30131,11 @@ function _renderInboxDiagnosticoCard(){
     +(_inboxDiagnostico.erros.length
       ? '<div style="margin-top:12px;padding:10px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px"><div style="font-size:11px;font-weight:700;color:#A32D2D;margin-bottom:6px">⚠️ Erros encontrados ('+_inboxDiagnostico.erros.length+')</div>'
         + _inboxDiagnostico.erros.map(function(er){
-          return '<div style="font-size:10px;color:#A32D2D;padding:3px 0;line-height:1.4"><strong>'+er.etapa+':</strong> '+er.erro+(er.tip?' — '+er.tip:'')+'</div>';
+          var msgErro = (typeof er.erro === 'object' && er.erro !== null) 
+            ? (er.erro.message || er.erro.error_user_msg || er.erro.error || JSON.stringify(er.erro))
+            : (er.erro || 'erro desconhecido');
+          var detalhes = er.respostaCompleta ? '<details style="margin-top:4px"><summary style="cursor:pointer;font-size:9px;color:#5A6678">ver resposta completa</summary><pre style="font-size:9px;background:#fff;padding:4px;margin:2px 0;overflow:auto;max-height:120px;border:1px solid #eee">'+JSON.stringify(er.respostaCompleta, null, 2).replace(/</g,'&lt;')+'</pre></details>' : '';
+          return '<div style="font-size:10px;color:#A32D2D;padding:3px 0;line-height:1.4"><strong>'+er.etapa+':</strong> '+msgErro+(er.tip?' — '+er.tip:'')+detalhes+'</div>';
         }).join('')
       +'</div>'
       : '')
@@ -34074,6 +34185,21 @@ async function criarNotificacao(paraPessoaId, tipo, titulo, mensagem, link){
       link: link || null,
       lida: false
     });
+    
+    // 🔔 Dispara Push Notification via Netlify Function (se configurado)
+    try {
+      fetch('/.netlify/functions/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pessoa_id: paraPessoaId,
+          titulo: titulo,
+          mensagem: mensagem || '',
+          tipo: tipo,
+          url: link ? ('/?aba=' + link) : '/'
+        })
+      }).catch(function(){ /* silencioso: push é best-effort */ });
+    } catch(e){ /* silencioso */ }
   }catch(e){}
 }
 
@@ -36503,16 +36629,16 @@ function renderCarreira(){
   var trilhaHost = document.getElementById('carreira-trilha');
   if(trilhaHost){
     var niveis = [
-      {nome:'Júnior I',  faixa:'6 meses', total:'-'},
-      {nome:'Júnior II', faixa:'6 meses', total:'6 meses'},
-      {nome:'Júnior III',faixa:'6 meses', total:'1 ano'},
-      {nome:'Pleno I',   faixa:'6 meses', total:'1 ano e 6 meses'},
-      {nome:'Pleno II',  faixa:'6 meses', total:'2 anos'},
-      {nome:'Pleno III', faixa:'6 meses', total:'2 anos e 6 meses'},
-      {nome:'Sênior I',  faixa:'6 meses', total:'3 anos'},
-      {nome:'Sênior II', faixa:'6 meses', total:'3 anos e 6 meses'},
-      {nome:'Sênior III',faixa:'6 meses', total:'4 anos'},
-      {nome:'Gerente',   faixa:'6 meses', total:'4 anos e 6 meses'},
+      {nome:'Júnior I'},
+      {nome:'Júnior II'},
+      {nome:'Júnior III'},
+      {nome:'Pleno I'},
+      {nome:'Pleno II'},
+      {nome:'Pleno III'},
+      {nome:'Sênior I'},
+      {nome:'Sênior II'},
+      {nome:'Sênior III'},
+      {nome:'Gerente'},
     ];
     
     // Renderiza com cor neutra primeiro, depois extrai cor de cada broche e aplica
@@ -36536,8 +36662,6 @@ function renderCarreira(){
         '<div id="'+cardId+'" data-broche="'+brocheUrl+'" style="border:1px solid #E1E7EE;border-radius:10px;padding:12px 10px 10px;background:#F5F7FA;color:#0B2542;min-width:130px;text-align:center;transition:all 0.4s ease">'+
           brocheHTML +
           '<div style="font-size:11px;font-weight:700;letter-spacing:.2px">'+n.nome+'</div>'+
-          '<div style="font-size:9px;opacity:.85;margin-top:2px">'+n.faixa+' na faixa</div>'+
-          '<div style="font-size:9px;opacity:.7">tempo: '+n.total+'</div>'+
           (qtd>0 ? '<div class="trilha-badge-qtd" style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.55);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
         '</div>'+
         arrow+
@@ -36698,65 +36822,12 @@ function renderCarreira(){
       }).join('') + '</div>';
   }
 
-  // ----- PRÓXIMOS DA PROMOÇÃO -----
-  var promHost = document.getElementById('carreira-promocao');
-  if(promHost){
-    var hoje = new Date();
-    var proximos = pessoas.map(function(p){
-      if(!p.entrada || !p.nivel) return null;
-      // Gestor/Gerente/Diretor não fazem trilha automática de senioridade
-      if(p.nivel === 'Gestor' || p.nivel === 'Diretor' || p.nivel === 'Gerente') return null;
-      var entrada = new Date(p.entrada);
-      if(isNaN(entrada.getTime())) return null;
-      var meses = (hoje.getFullYear() - entrada.getFullYear())*12 + (hoje.getMonth() - entrada.getMonth());
-      // Se está há 6+ meses na empresa (mínimo para promoção)
-      // Para simplicidade, considera "próximo da promoção" quem tem 5+ meses no nível atual
-      // (assume que cada nível dura 6 meses)
-      var mesesNoNivel = meses % 6;
-      var mesesParaProm = 6 - mesesNoNivel;
-      if(meses < 5) return null;
-      return Object.assign({}, p, {meses:meses, mesesParaProm:mesesParaProm});
-    }).filter(Boolean).sort(function(a,b){ return a.mesesParaProm - b.mesesParaProm; }).slice(0,8);
-
-    if(proximos.length === 0){
-      promHost.innerHTML =
-        '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🎯</span> Próximos da promoção</div>'+
-        '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Time elegível para subir de nível em breve</div>'+
-        '<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">Cadastre as datas de entrada das pessoas para ver quem está próximo da promoção.</div>';
-    } else {
-      promHost.innerHTML =
-        '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🎯</span> Próximos da promoção</div>'+
-        '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">Time elegível para subir de nível em breve · '+proximos.length+' pessoa'+(proximos.length>1?'s':'')+'</div>'+
-        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px">'+
-        proximos.map(function(p){
-          var ac = (function(nome){ try{ return avColor(nome); }catch(e){ return {bg:'#EEE',color:'#333'}; } })(p.nome);
-          var ini = (function(nome){ try{ return initials(nome); }catch(e){ return (nome||'?')[0]; } })(p.nome);
-          var statusCor = p.mesesParaProm <= 1 ? '#1D9E75' : (p.mesesParaProm <= 2 ? '#FFB300' : '#1E88E5');
-          var statusTxt = p.mesesParaProm <= 1 ? 'Pronto!' : (p.mesesParaProm <= 2 ? 'Quase lá' : 'Em desenvolvimento');
-          // Avatar com foto OU iniciais (fallback)
-          var avatarConteudo = p.foto 
-            ? '<img src="'+p.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>'
-            : ini;
-          return '<div style="border:1px solid var(--border);border-left:3px solid '+statusCor+';border-radius:10px;padding:10px 12px;background:var(--surface);display:flex;gap:10px;align-items:center">'+
-            '<div style="width:40px;height:40px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;overflow:hidden">'+avatarConteudo+'</div>'+
-            '<div style="flex:1;min-width:0">'+
-              '<div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.nome+'</div>'+
-              '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(p.nivel||'')+' · '+(p.cidade||'')+'</div>'+
-            '</div>'+
-            '<div style="text-align:right;flex-shrink:0">'+
-              '<div style="font-size:9px;font-weight:700;color:'+statusCor+';text-transform:uppercase;letter-spacing:.5px">'+statusTxt+'</div>'+
-              '<div style="font-size:9px;color:var(--text3);margin-top:1px">'+p.meses+' meses</div>'+
-            '</div>'+
-          '</div>';
-        }).join('') + '</div>';
-    }
-  }
+  // ----- PRÓXIMOS DA PROMOÇÃO removido em v25.79 (promoção é sugerida pela diretoria, não por tempo) -----
 
   // ----- CRITÉRIOS -----
   var critHost = document.getElementById('carreira-criterios');
   if(critHost){
     var criterios = [
-      ['⏱️','Tempo de empresa','Cumprir o tempo mínimo de 6 meses na faixa atual'],
       ['📈','Evolução técnica','Domínio das ferramentas e processos da função'],
       ['🎯','Performance no atendimento (IA)','Qualidade nas interações via IA e suporte'],
       ['🤝','Alinhamento cultural e comportamental','Vivenciar os valores Gâmi no dia a dia'],
@@ -36764,6 +36835,7 @@ function renderCarreira(){
       ['🔄','Aplicação no dia a dia','Colocar em prática o que aprendeu'],
       ['💪','Performance diante das demandas','Entregar com consistência e qualidade'],
       ['🏆','Geração de resultados','O critério mais importante — gerar impacto real'],
+      ['👀','Avaliação da diretoria','Cada promoção é sugerida pela diretoria após análise individual'],
     ];
     critHost.innerHTML =
       '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">📋</span> Critérios de Promoção</div>'+
@@ -38810,7 +38882,7 @@ function _construirIndicePesquisa(){
     { tipo:'Navegação', emoji:'📅', nome:'Calendário', acao:"nav(null,'calendario')" },
     { tipo:'Navegação', emoji:'✅', nome:'Tarefas', acao:"nav(null,'tarefas')" },
     { tipo:'Navegação', emoji:'📣', nome:'Marketing', acao:"nav(null,'marketing')" },
-    { tipo:'Navegação', emoji:'📧', nome:'Inbox Instagram', acao:"nav(null,'inbox')" },
+    // { tipo:'Navegação', emoji:'📧', nome:'Inbox Instagram', acao:"nav(null,'inbox')" },  // desabilitado até config Meta
     { tipo:'Navegação', emoji:'🏙️', nome:'Cidades', acao:"nav(null,'cidades')" },
     { tipo:'Navegação', emoji:'👥', nome:'Pessoas', acao:"nav(null,'pessoas')" },
     { tipo:'Navegação', emoji:'🏆', nome:'Ranking Gâmi', acao:"nav(null,'ranking')" },
@@ -40177,26 +40249,44 @@ async function mpVerificarAcessoSidebar(){
   var navGestao = document.getElementById('nav-ponto-gestao');
   if(!u) return;
   
-  // Pra Meu Ponto: precisa estar logada como pessoa com bate_ponto = TRUE
-  // Busca no Supabase pra saber se essa pessoa bate ponto
-  try {
-    var email = u.email || '';
-    var id = u.id || u.pessoa_id;
-    var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
-    var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto&limit=1', {
-      headers: _mpSupaHeaders(), cache: 'no-store'
-    });
-    var arr = r.ok ? await r.json() : [];
-    var p = arr[0];
-    if(p && p.bate_ponto){
-      MP_PESSOA = p;
+  // 🆕 MODO TESTE: se o perfil é impersonado e tem bate_ponto, usa direto (não consulta banco)
+  if(u._impersonacao){
+    if(u.bate_ponto){
+      MP_PESSOA = {
+        id: u.id || u.pessoa_id,
+        nome: u.nome,
+        foto: u.foto || null,
+        cargo: u.cargo,
+        bate_ponto: true,
+        _impersonacao: true
+      };
       if(navMp) navMp.style.display = '';
     } else {
+      MP_PESSOA = null;
       if(navMp) navMp.style.display = 'none';
     }
-  } catch(e){ console.warn('[MP] verificar acesso:', e); }
+  } else {
+    // Verificação normal via banco
+    try {
+      var email = u.email || '';
+      var id = u.id || u.pessoa_id;
+      var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
+      var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto&limit=1', {
+        headers: _mpSupaHeaders(), cache: 'no-store'
+      });
+      var arr = r.ok ? await r.json() : [];
+      var p = arr[0];
+      if(p && p.bate_ponto){
+        MP_PESSOA = p;
+        if(navMp) navMp.style.display = '';
+      } else {
+        MP_PESSOA = null;
+        if(navMp) navMp.style.display = 'none';
+      }
+    } catch(e){ console.warn('[MP] verificar acesso:', e); }
+  }
   
-  // Pra Gestão: super_admin, diretoria, gerência
+  // Pra Gestão: super_admin, diretoria, gerência (FUNCIONA em impersonação tb)
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   if(navGestao){
     if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
@@ -40361,10 +40451,10 @@ function mpRenderCardsDia(dados){
         var atrasoMin = (rh*60+rm) - (eh*60+em);
         if(atrasoMin > tolerancia){
           corBg = '#FFF8E1'; corBorda = '#EF9F27';
-          lbl = '⏰ +' + atrasoMin + 'min'; lblCor = '#854F0B';
+          lbl = '⏰ Atrasada'; lblCor = '#854F0B';
         } else {
           corBg = '#EAF7DD'; corBorda = '#1D9E75';
-          lbl = '✅ No prazo'; lblCor = '#0F6D52';
+          lbl = '✅ Pontual'; lblCor = '#0F6D52';
         }
       } else {
         corBg = '#EAF7DD'; corBorda = '#1D9E75';
@@ -41464,6 +41554,1062 @@ function pgExportarExcel(){
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 100);
 }
+
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🕒 CARD BATER PONTO NO DASHBOARD =========================
+// ================================================================
+async function dashRenderCardPonto(){
+  var card = document.getElementById('dash-card-ponto');
+  if(!card) return;
+  
+  // Garante que MP_PESSOA está carregada
+  if(!MP_PESSOA){
+    await mpVerificarAcessoSidebar();
+  }
+  
+  // Se não bate ponto, esconde card
+  if(!MP_PESSOA){
+    card.style.display = 'none';
+    return;
+  }
+  
+  card.style.display = 'block';
+  
+  // 🆕 Modo teste: mostra banner informativo
+  if(MP_PESSOA._impersonacao){
+    document.getElementById('dash-ponto-info').innerHTML = '🎭 <strong style="color:#8B5CF6">Modo Teste</strong> · botão de bater ponto não funciona (perfil fictício)';
+    document.getElementById('dash-ponto-status').innerHTML = 
+      '<div style="grid-column:1/-1;padding:14px;background:#F3E8FF;border:1px dashed #8B5CF6;border-radius:8px;text-align:center;color:#6A1B9A;font-size:11px">'
+      + 'Aqui apareceriam os 4 cards de batida (Entrada · Almoço · Volta · Saída) com horários esperados e realizados.'
+      + '</div>';
+    var btn = document.getElementById('dash-btn-bater-ponto');
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.innerHTML = '🎭 Bater Ponto · (desativado em modo teste)';
+    document.getElementById('dash-ponto-geo').innerHTML = '📍 Em uso real, mostraria a localização da pessoa aqui';
+    return;
+  }
+  
+  // Carrega config (se ainda não tem)
+  if(!MP_CONFIG) await mpCarregarConfig();
+  
+  // Carrega dia atual via RPC
+  try {
+    var dados = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
+    dashRenderPontoStatus(dados);
+  } catch(e){
+    document.getElementById('dash-ponto-info').textContent = '⚠️ Erro ao carregar: ' + e.message;
+    console.error('[Dash Ponto] erro:', e);
+  }
+  
+  // Pede GPS
+  dashPedirGeoPonto();
+}
+
+function dashRenderPontoStatus(dados){
+  var horario = dados.horario_esperado;
+  var registros = {};
+  (dados.registros || []).forEach(function(r){ registros[r.tipo] = r; });
+  
+  var tipos = ['entrada1','saida1','entrada2','saida2'];
+  var tiposLbl = ['🌅 Entrada','🍽️ Saída','↩️ Volta','🌆 Saída'];
+  var proximo = null;
+  
+  // Linha info
+  if(horario){
+    document.getElementById('dash-ponto-info').textContent = 
+      'Esperado hoje: ' + horario.entrada1 + ' · ' + horario.saida1 + ' · ' + horario.entrada2 + ' · ' + horario.saida2;
+  } else {
+    document.getElementById('dash-ponto-info').textContent = 'Sem horário cadastrado pra hoje (dia útil?)';
+  }
+  
+  // Mini-pílulas
+  document.getElementById('dash-ponto-status').innerHTML = tipos.map(function(t, i){
+    var reg = registros[t];
+    var esperado = horario ? horario[t] : null;
+    if(!reg && !proximo) proximo = t;
+    
+    var corBg, corTxt;
+    if(reg){
+      corBg = '#EAF7DD'; corTxt = '#0F6D52';
+    } else {
+      corBg = 'var(--surface2)'; corTxt = 'var(--text3)';
+    }
+    
+    return '<div style="padding:7px 4px;background:' + corBg + ';border-radius:6px;text-align:center;font-size:10px">'
+      + '<div style="font-weight:700;color:' + corTxt + ';font-size:9px;margin-bottom:2px">' + tiposLbl[i] + '</div>'
+      + '<div style="font-weight:700;color:' + (reg ? '#0E7AB8' : 'var(--text3)') + ';font-size:13px">' + (reg ? reg.hora : '—') + '</div>'
+      + (esperado ? '<div style="color:var(--text3);font-size:8px;margin-top:1px">esp ' + esperado + '</div>' : '')
+    + '</div>';
+  }).join('');
+  
+  // Botão
+  var btn = document.getElementById('dash-btn-bater-ponto');
+  if(proximo){
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.innerHTML = '🕒 BATER PONTO · ' + (MP_TIPO_LABEL[proximo] || proximo);
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.style.cursor = 'not-allowed';
+    btn.innerHTML = '✅ Todos os pontos batidos hoje';
+  }
+}
+
+function dashPedirGeoPonto(){
+  var statusEl = document.getElementById('dash-ponto-geo');
+  if(!statusEl) return;
+  if(!navigator.geolocation){
+    statusEl.innerHTML = '❌ Sem suporte a GPS';
+    return;
+  }
+  
+  navigator.geolocation.getCurrentPosition(
+    function(pos){
+      MP_GEO = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy };
+      
+      if(MP_CONFIG){
+        var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
+        MP_GEO.distancia = d;
+        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+        
+        if(MP_GEO.dentro){
+          statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
+          document.getElementById('dash-ponto-justif-box').style.display = 'none';
+        } else {
+          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
+          document.getElementById('dash-ponto-justif-box').style.display = 'block';
+        }
+      }
+    },
+    function(err){
+      MP_GEO = null;
+      statusEl.innerHTML = '❌ Permita acesso ao GPS pra bater ponto';
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+}
+
+async function dashBaterPontoRapido(){
+  if(!MP_PESSOA){ alert('Não autenticado'); return; }
+  
+  var btn = document.getElementById('dash-btn-bater-ponto');
+  var originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Registrando...';
+  
+  var justif = document.getElementById('dash-ponto-justif').value.trim() || null;
+  
+  try {
+    var resp = await _mpRPC('ponto_bater', {
+      p_pessoa_id: MP_PESSOA.id,
+      p_latitude: MP_GEO ? MP_GEO.lat : null,
+      p_longitude: MP_GEO ? MP_GEO.lng : null,
+      p_justificativa: justif,
+      p_user_agent: navigator.userAgent.slice(0, 150)
+    });
+    
+    if(typeof toast === 'function'){
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' registrado às ' + resp.hora, 'success');
+    } else {
+      alert('✅ Ponto registrado às ' + resp.hora);
+    }
+    
+    document.getElementById('dash-ponto-justif').value = '';
+    document.getElementById('dash-ponto-justif-box').style.display = 'none';
+    
+    // Recarrega o status
+    await dashRenderCardPonto();
+  } catch(e){
+    alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+    btn.innerHTML = originalText;
+  }
+}
+
+// Auto-init quando dashboard carregar
+setTimeout(dashRenderCardPonto, 1200);
+setTimeout(dashRenderCardPonto, 3000);
+// Reage a navegação pra dashboard
+document.addEventListener('click', function(e){
+  var t = e.target;
+  if(t && t.classList && t.classList.contains('nav-item')){
+    var txt = (t.textContent || '').toLowerCase();
+    if(txt.indexOf('dashboard') >= 0 || txt.indexOf('início') >= 0 || txt.indexOf('inicio') >= 0){
+      setTimeout(dashRenderCardPonto, 300);
+    }
+  }
+});
+</script>
+
+<script>
+
+// ================================================================
+// ===== 📊 MÓDULO DE MONITORAMENTO ===============================
+// ================================================================
+// Captura erros JS · Rastreia navegação · Botão Reportar Problema
+// Tabelas: log_erros_js, log_feedback, log_navegacao
+// ================================================================
+
+var MNT_LAST_NAV = { pagina: null, ts: 0 };
+var MNT_ERROS_RECENTES = {}; // throttle local: hash → ts
+
+function _mntHeaders(){
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
+}
+
+function _mntUsuario(){
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u) return null;
+    // Pula em modo teste (não polui banco com perfis fake)
+    if(u._impersonacao) return null;
+    return {
+      id: u.id || u.pessoa_id || null,
+      nome: u.nome || '—',
+      email: u.email || null
+    };
+  } catch(e){ return null; }
+}
+
+async function _mntRPC(fn, params){
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST', headers: _mntHeaders(),
+      cache: 'no-store',
+      body: JSON.stringify(params || {})
+    });
+    if(!r.ok) return null;
+    // Tenta parse JSON; se response for vazia (RPC VOID), retorna {ok:true}
+    var txt = await r.text();
+    if(!txt || !txt.trim()) return { ok: true };
+    try { return JSON.parse(txt); } catch(e){ return { raw: txt }; }
+  } catch(e){ return null; }
+}
+
+// ============================================================
+// 🐛 CAPTURA AUTOMÁTICA DE ERROS JS
+// ============================================================
+function _mntCapturarErro(mensagem, stack, url){
+  var u = _mntUsuario();
+  if(!u) return; // sem usuário logado ou em modo teste, não registra
+  
+  // Throttle local: mesmo erro não envia 2x em 5min
+  var hash = String(mensagem).slice(0, 100);
+  var agora = Date.now();
+  if(MNT_ERROS_RECENTES[hash] && (agora - MNT_ERROS_RECENTES[hash]) < 5 * 60 * 1000) return;
+  MNT_ERROS_RECENTES[hash] = agora;
+  
+  // Ignora erros muito genéricos / de extensões
+  if(!mensagem || mensagem.indexOf('ResizeObserver') >= 0 || 
+     mensagem.indexOf('Script error') >= 0 ||
+     mensagem.indexOf('Failed to fetch') >= 0 && !stack) return;
+  
+  var pagina = '';
+  try { 
+    var ativa = document.querySelector('.page.active'); 
+    if(ativa) pagina = ativa.id || ''; 
+  } catch(e){}
+  
+  _mntRPC('registrar_erro', {
+    p_pessoa_id: u.id,
+    p_pessoa_nome: u.nome,
+    p_pessoa_email: u.email,
+    p_mensagem: String(mensagem).slice(0, 500),
+    p_stack: String(stack || '').slice(0, 3000),
+    p_url: String(url || location.href).slice(0, 500),
+    p_pagina: pagina,
+    p_user_agent: navigator.userAgent.slice(0, 200)
+  });
+}
+
+window.addEventListener('error', function(e){
+  _mntCapturarErro(
+    e.message || 'Erro desconhecido',
+    (e.error && e.error.stack) || '',
+    e.filename || ''
+  );
+});
+
+window.addEventListener('unhandledrejection', function(e){
+  var msg = '';
+  var stack = '';
+  try {
+    if(e.reason && typeof e.reason === 'object'){
+      msg = e.reason.message || JSON.stringify(e.reason).slice(0, 200);
+      stack = e.reason.stack || '';
+    } else {
+      msg = String(e.reason);
+    }
+  } catch(_){ msg = 'Promise rejeitada'; }
+  _mntCapturarErro('UnhandledPromise: ' + msg, stack, '');
+});
+
+// ============================================================
+// 📍 RASTREIO DE NAVEGAÇÃO (silencioso)
+// ============================================================
+function _mntRegistrarAcesso(pagina){
+  var u = _mntUsuario();
+  if(!u || !u.id) return;
+  
+  // Throttle: mesma pagina = 1x por minuto
+  var agora = Date.now();
+  if(MNT_LAST_NAV.pagina === pagina && (agora - MNT_LAST_NAV.ts) < 60 * 1000) return;
+  MNT_LAST_NAV.pagina = pagina;
+  MNT_LAST_NAV.ts = agora;
+  
+  _mntRPC('registrar_acesso_aba', { p_pessoa_id: u.id, p_pagina: pagina });
+}
+
+// Hook em todos os clicks de nav-item
+document.addEventListener('click', function(e){
+  var t = e.target;
+  while(t && t !== document){
+    if(t.classList && t.classList.contains('nav-item')){
+      // Extrai nome da página do texto (limpo)
+      var txt = (t.textContent || '').replace(/[^\w\sÀ-ÿ]/g, '').trim();
+      if(txt) _mntRegistrarAcesso(txt.toLowerCase().slice(0, 80));
+      return;
+    }
+    t = t.parentNode;
+  }
+}, true);
+
+// Registra acesso inicial após login
+setTimeout(function(){
+  var u = _mntUsuario();
+  if(u && u.id) _mntRegistrarAcesso('dashboard');
+}, 3000);
+
+// ============================================================
+// 💬 BOTÃO REPORTAR PROBLEMA
+// ============================================================
+window.mntReportarAbrir = function(){
+  // Remove modal anterior se houver
+  var antigo = document.getElementById('modal-reportar');
+  if(antigo) antigo.remove();
+  
+  var u = _mntUsuario();
+  var pagina = '';
+  try { var ativa = document.querySelector('.page.active'); if(ativa) pagina = ativa.id || ''; } catch(e){}
+  
+  var overlay = document.createElement('div');
+  overlay.id = 'modal-reportar';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
+  
+  overlay.innerHTML = ''
+    + '<div style="background:var(--surface);border-radius:14px;max-width:500px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);font-family:inherit;max-height:90vh;overflow-y:auto">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        + '<div style="font-size:18px;font-weight:700;color:var(--text)">💬 Reportar problema</div>'
+        + '<button onclick="document.getElementById(\'modal-reportar\').remove()" style="border:none;background:transparent;font-size:22px;color:var(--text3);cursor:pointer;line-height:1">✕</button>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">Encontrou um bug, tem uma sugestão ou dúvida? Conta aqui que a gente resolve. Sua mensagem chega direto pro time técnico.</div>'
+      
+      + '<div style="margin-bottom:14px">'
+        + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">TIPO</label>'
+        + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="bug" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid #E24B4A55;border-radius:8px;background:#FCE6E6;color:#A32D2D;text-align:center;font-size:12px;font-weight:700">🐛 Bug</div></label>'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="sugestao" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid #1AB8F055;border-radius:8px;background:#E6F6FE;color:#0E7AB8;text-align:center;font-size:12px;font-weight:700">💡 Sugestão</div></label>'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="duvida" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid #EF9F2755;border-radius:8px;background:#FFF8E1;color:#854F0B;text-align:center;font-size:12px;font-weight:700">❓ Dúvida</div></label>'
+          + '<label style="cursor:pointer"><input type="radio" name="mnt-tipo" value="outro" style="display:none"/><div class="mnt-radio" style="padding:10px;border:2px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);text-align:center;font-size:12px;font-weight:700">📝 Outro</div></label>'
+        + '</div>'
+      + '</div>'
+      
+      + '<div style="margin-bottom:14px">'
+        + '<label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">DESCRIÇÃO <span style="color:#A32D2D">*</span></label>'
+        + '<textarea id="mnt-descricao" rows="5" placeholder="Descreva o que aconteceu. Quanto mais detalhes, melhor!" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>'
+        + '<div style="font-size:10px;color:var(--text3);margin-top:4px">Mínimo 5 caracteres</div>'
+      + '</div>'
+      
+      + (pagina ? '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:10px;color:var(--text3);margin-bottom:14px">📍 Página: <strong>' + pagina + '</strong></div>' : '')
+      + (u ? '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;font-size:10px;color:var(--text3);margin-bottom:14px">👤 Enviando como: <strong>' + u.nome + '</strong></div>' : '<div style="padding:8px 10px;background:#FCE6E6;border-radius:6px;font-size:10px;color:#A32D2D;margin-bottom:14px">⚠️ Você precisa estar logado pra enviar reporte</div>')
+      
+      + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="document.getElementById(\'modal-reportar\').remove()" style="padding:10px 16px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>'
+        + '<button onclick="mntReportarEnviar()" id="mnt-btn-enviar"' + (u ? '' : ' disabled') + ' style="padding:10px 18px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit' + (u ? '' : ';opacity:0.5') + '">📤 Enviar</button>'
+      + '</div>'
+    + '</div>';
+  
+  document.body.appendChild(overlay);
+  
+  // Radio buttons: muda visual ao selecionar
+  overlay.querySelectorAll('input[name="mnt-tipo"]').forEach(function(r){
+    r.addEventListener('change', function(){
+      overlay.querySelectorAll('.mnt-radio').forEach(function(d){
+        d.style.boxShadow = 'none';
+        d.style.transform = '';
+      });
+      var div = r.nextElementSibling;
+      if(div){
+        div.style.boxShadow = '0 0 0 3px rgba(26,184,240,0.25)';
+        div.style.transform = 'scale(1.02)';
+      }
+    });
+  });
+  
+  // Click fora fecha
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
+  
+  // Foco no textarea
+  setTimeout(function(){ var ta = document.getElementById('mnt-descricao'); if(ta) ta.focus(); }, 100);
+};
+
+window.mntReportarEnviar = async function(){
+  var u = _mntUsuario();
+  if(!u){ alert('Você precisa estar logado.'); return; }
+  
+  var tipoEl = document.querySelector('input[name="mnt-tipo"]:checked');
+  if(!tipoEl){ alert('Escolha o tipo de reporte (Bug, Sugestão, Dúvida ou Outro)'); return; }
+  var descricao = document.getElementById('mnt-descricao').value.trim();
+  if(descricao.length < 5){ alert('Descrição muito curta (mínimo 5 caracteres)'); return; }
+  
+  var pagina = '';
+  try { var ativa = document.querySelector('.page.active'); if(ativa) pagina = ativa.id || ''; } catch(e){}
+  
+  var btn = document.getElementById('mnt-btn-enviar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+  
+  try {
+    await _mntRPC('registrar_feedback', {
+      p_pessoa_id: u.id,
+      p_pessoa_nome: u.nome,
+      p_pessoa_email: u.email,
+      p_tipo: tipoEl.value,
+      p_descricao: descricao,
+      p_pagina: pagina,
+      p_user_agent: navigator.userAgent.slice(0, 200)
+    });
+    
+    document.getElementById('modal-reportar').remove();
+    if(typeof toast === 'function'){
+      toast('✅ Reporte enviado! Obrigado pela contribuição.', 'success');
+    } else {
+      alert('✅ Reporte enviado! Obrigado pela contribuição.');
+    }
+  } catch(e){
+    btn.disabled = false;
+    btn.textContent = '📤 Enviar';
+    alert('❌ Erro ao enviar: ' + (e.message || e));
+  }
+};
+
+// ============================================================
+// 🩺 SEÇÕES EXTRAS NA PÁGINA DE SAÚDE DO SISTEMA
+// ============================================================
+async function mntRenderExtrasSaude(){
+  var host = document.getElementById('saude-content');
+  if(!host) return;
+  
+  // Verifica se já foi renderizado o conteúdo base
+  if(!host.innerHTML || host.innerHTML.indexOf('Verificando') >= 0) {
+    // Espera renderSaudeSistema terminar primeiro
+    setTimeout(mntRenderExtrasSaude, 1000);
+    return;
+  }
+  
+  // Não duplica
+  if(document.getElementById('mnt-saude-extras')) return;
+  
+  // Container das seções novas
+  var container = document.createElement('div');
+  container.id = 'mnt-saude-extras';
+  container.style.cssText = 'margin-top:18px;display:grid;gap:14px';
+  container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">⏳ Carregando métricas de adoção...</div>';
+  host.appendChild(container);
+  
+  // Busca dados em paralelo
+  try {
+    var [adocao, erros, feedback] = await Promise.all([
+      _mntRPC('saude_adocao'),
+      _mntRPC('saude_erros_recentes'),
+      _mntRPC('saude_feedback_pendente')
+    ]);
+    
+    container.innerHTML = mntRenderAdocaoCard(adocao) + 
+                          mntRenderErrosCard(erros) + 
+                          mntRenderFeedbackCard(feedback);
+  } catch(e){
+    container.innerHTML = '<div style="padding:20px;background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;color:#A32D2D;font-size:12px">⚠️ Erro ao carregar métricas: ' + e.message + '</div>';
+  }
+}
+
+function mntRenderAdocaoCard(d){
+  if(!d) return '';
+  var total = d.total_pessoas || 0;
+  var a7 = d.ativos_7d || 0;
+  var a30 = d.ativos_30d || 0;
+  var pct7 = total > 0 ? Math.round(100*a7/total) : 0;
+  var inativos = d.inativos_14d_lista || [];
+  var topAbas = d.top_abas_7d || [];
+  
+  var corPct = pct7 >= 70 ? '#1D9E75' : pct7 >= 40 ? '#EF9F27' : '#E24B4A';
+  
+  var inativosHtml = inativos.length === 0 
+    ? '<div style="padding:14px;text-align:center;color:var(--text3);font-size:11px">🎉 Todos os colaboradores acessaram nos últimos 14 dias!</div>'
+    : '<div style="display:flex;flex-direction:column;gap:6px">' + 
+      inativos.slice(0, 8).map(function(p){
+        var ult = p.ultimo_acesso ? new Date(p.ultimo_acesso).toLocaleDateString('pt-BR') : 'Nunca acessou';
+        var fotoHtml = p.foto 
+          ? '<img src="' + p.foto + '" style="width:28px;height:28px;border-radius:50%;object-fit:cover"/>'
+          : '<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:12px">👤</div>';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface2);border-radius:6px;font-size:11px">'
+          + fotoHtml
+          + '<div style="flex:1;min-width:0">'
+            + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (p.nome || '—') + '</div>'
+            + '<div style="font-size:9px;color:var(--text3)">' + (p.cargo || '') + '</div>'
+          + '</div>'
+          + '<div style="font-size:10px;color:#A32D2D;font-weight:600">⌛ ' + ult + '</div>'
+        + '</div>';
+      }).join('') + 
+      (inativos.length > 8 ? '<div style="font-size:10px;color:var(--text3);text-align:center;padding:4px">+' + (inativos.length-8) + ' outros</div>' : '') +
+      '</div>';
+  
+  var abasHtml = topAbas.length === 0
+    ? '<div style="padding:10px;text-align:center;color:var(--text3);font-size:11px">Sem dados ainda. Aparece após algumas navegações.</div>'
+    : topAbas.map(function(a, i){
+        var max = topAbas[0].hits;
+        var pctBar = max > 0 ? Math.round(100 * a.hits / max) : 0;
+        return '<div style="margin-bottom:6px">'
+          + '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px">'
+            + '<span style="color:var(--text);font-weight:600">' + (i+1) + '. ' + a.pagina + '</span>'
+            + '<span style="color:var(--text3)">' + a.hits + '</span>'
+          + '</div>'
+          + '<div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pctBar + '%;background:linear-gradient(90deg,#1AB8F0,#0E7AB8);border-radius:3px"></div></div>'
+        + '</div>';
+      }).join('');
+  
+  return '<div class="card" style="padding:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>📊</span> Adoção da plataforma</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px">'
+      + '<div style="padding:12px;background:var(--surface2);border-left:3px solid ' + corPct + ';border-radius:8px"><div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Ativos · 7 dias</div><div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:' + corPct + '">' + a7 + '/' + total + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + pct7 + '% do time</div></div>'
+      + '<div style="padding:12px;background:var(--surface2);border-left:3px solid #1AB8F0;border-radius:8px"><div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Ativos · 30 dias</div><div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#0E7AB8">' + a30 + '/' + total + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + (total>0 ? Math.round(100*a30/total) : 0) + '% do time</div></div>'
+      + '<div style="padding:12px;background:var(--surface2);border-left:3px solid ' + (inativos.length > 0 ? '#E24B4A' : '#1D9E75') + ';border-radius:8px"><div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase">Inativos · 14+ dias</div><div style="font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:' + (inativos.length > 0 ? '#A32D2D' : '#0F6D52') + '">' + inativos.length + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">precisam de atenção</div></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+      + '<div><div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px">⚠️ Inativos 14+ dias</div>' + inativosHtml + '</div>'
+      + '<div><div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px">🔥 Abas mais visitadas (7 dias)</div>' + abasHtml + '</div>'
+    + '</div>'
+  + '</div>';
+}
+
+function mntRenderErrosCard(d){
+  if(!d) return '';
+  var total24 = d.total_24h || 0;
+  var total7 = d.total_7d || 0;
+  var pendentes = d.pendentes || 0;
+  var topErros = d.top_erros || [];
+  
+  var cor = pendentes === 0 ? '#1D9E75' : pendentes < 5 ? '#EF9F27' : '#E24B4A';
+  
+  var errosHtml = topErros.length === 0
+    ? '<div style="padding:20px;text-align:center;color:#1D9E75;font-size:12px;background:#EAF7DD;border-radius:8px">🎉 Nenhum erro nos últimos 7 dias!</div>'
+    : '<div style="display:flex;flex-direction:column;gap:6px">' + topErros.map(function(e){
+        var pessoas = (e.pessoas || []).slice(0, 3).join(', ');
+        var extras = (e.pessoas || []).length > 3 ? ' +' + ((e.pessoas || []).length - 3) : '';
+        return '<div style="padding:10px 12px;background:var(--surface2);border-left:3px solid #E24B4A;border-radius:6px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px">'
+            + '<div style="font-size:11px;color:var(--text);font-weight:600;line-height:1.3;flex:1;font-family:monospace;word-break:break-word">' + (e.mensagem || '—') + '</div>'
+            + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'
+              + '<span style="font-size:10px;padding:2px 8px;background:#FCE6E6;color:#A32D2D;border-radius:10px;font-weight:700">' + e.qtd + 'x</span>'
+              + '<button onclick="mntErroResolver(\'' + (e.mensagem || '').replace(/'/g,"\\'").slice(0,100) + '\')" style="padding:3px 8px;border:1px solid #1D9E7555;background:#EAF7DD;color:#0F6D52;font-size:9px;font-weight:700;border-radius:4px;cursor:pointer;font-family:inherit" title="Marcar como resolvido">✓</button>'
+            + '</div>'
+          + '</div>'
+          + '<div style="font-size:9px;color:var(--text3)">👤 ' + (e.qtd_pessoas || 1) + ' pessoa(s)' + (pessoas ? ': ' + pessoas + extras : '') + '</div>'
+        + '</div>';
+      }).join('') + '</div>';
+  
+  return '<div class="card" style="padding:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>🐛</span> Erros capturados <span style="font-size:10px;background:' + cor + '22;color:' + cor + ';padding:2px 8px;border-radius:10px;font-weight:700">' + pendentes + ' pendentes</span></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px">'
+      + '<div style="padding:10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Últimas 24h</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--text)">' + total24 + '</div></div>'
+      + '<div style="padding:10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Últimos 7 dias</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--text)">' + total7 + '</div></div>'
+      + '<div style="padding:10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase">Tipos distintos</div><div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:var(--text)">' + topErros.length + '</div></div>'
+    + '</div>'
+    + errosHtml
+  + '</div>';
+}
+
+function mntRenderFeedbackCard(d){
+  if(!d) return '';
+  var pendentes = d.pendentes || 0;
+  var total7 = d.total_7d || 0;
+  var lista = d.lista || [];
+  var porTipo = d.por_tipo || {};
+  
+  var iconTipo = { bug: '🐛', sugestao: '💡', duvida: '❓', outro: '📝' };
+  var corTipo = { bug: '#E24B4A', sugestao: '#1AB8F0', duvida: '#EF9F27', outro: '#5A6678' };
+  
+  var listaHtml = lista.length === 0
+    ? '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhum feedback pendente.</div>'
+    : '<div style="display:flex;flex-direction:column;gap:8px">' + lista.slice(0, 15).map(function(f){
+        var c = corTipo[f.tipo] || '#5A6678';
+        var ico = iconTipo[f.tipo] || '📝';
+        var data = f.created_at ? new Date(f.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+        return '<div style="padding:12px 14px;background:var(--surface2);border-left:3px solid ' + c + ';border-radius:8px">'
+          + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">'
+            + '<div style="display:flex;align-items:center;gap:8px">'
+              + '<span style="font-size:16px">' + ico + '</span>'
+              + '<div>'
+                + '<div style="font-size:12px;color:var(--text);font-weight:700">' + (f.nome || '—') + '</div>'
+                + '<div style="font-size:9px;color:var(--text3)">' + data + (f.pagina ? ' · ' + f.pagina : '') + '</div>'
+              + '</div>'
+            + '</div>'
+            + '<button onclick="mntMarcarLido(' + f.id + ')" style="padding:4px 10px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-size:10px;font-weight:600;border-radius:4px;cursor:pointer;font-family:inherit">✓ Lido</button>'
+          + '</div>'
+          + '<div style="font-size:12px;color:var(--text);line-height:1.4;padding-left:24px">' + (f.descricao || '').replace(/</g,'&lt;').slice(0, 300) + '</div>'
+        + '</div>';
+      }).join('') + '</div>';
+  
+  return '<div class="card" style="padding:18px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px"><span>💬</span> Feedback dos usuários <span style="font-size:10px;background:#1AB8F022;color:#0E7AB8;padding:2px 8px;border-radius:10px;font-weight:700">' + pendentes + ' pendentes</span></div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:14px">'
+      + '<div style="padding:8px 10px;background:#FCE6E6;border-radius:6px;text-align:center"><div style="font-size:9px;color:#A32D2D;text-transform:uppercase;font-weight:700">🐛 Bugs</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#A32D2D">' + (porTipo.bug || 0) + '</div></div>'
+      + '<div style="padding:8px 10px;background:#E6F6FE;border-radius:6px;text-align:center"><div style="font-size:9px;color:#0E7AB8;text-transform:uppercase;font-weight:700">💡 Sugestões</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#0E7AB8">' + (porTipo.sugestao || 0) + '</div></div>'
+      + '<div style="padding:8px 10px;background:#FFF8E1;border-radius:6px;text-align:center"><div style="font-size:9px;color:#854F0B;text-transform:uppercase;font-weight:700">❓ Dúvidas</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:#854F0B">' + (porTipo.duvida || 0) + '</div></div>'
+      + '<div style="padding:8px 10px;background:var(--surface2);border-radius:6px;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;font-weight:700">📝 Outros</div><div style="font-family:Syne,sans-serif;font-size:18px;font-weight:800;color:var(--text)">' + (porTipo.outro || 0) + '</div></div>'
+    + '</div>'
+    + listaHtml
+  + '</div>';
+}
+
+window.mntMarcarLido = async function(id){
+  try {
+    await _mntRPC('feedback_marcar_lido', { p_id: id });
+    if(typeof renderSaudeSistema === 'function') renderSaudeSistema();
+    setTimeout(function(){
+      var el = document.getElementById('mnt-saude-extras');
+      if(el) el.remove();
+      mntRenderExtrasSaude();
+    }, 500);
+  } catch(e){ alert('Erro: ' + e.message); }
+};
+
+window.mntErroResolver = async function(msg){
+  if(!confirm('Marcar TODOS os erros com essa mensagem como resolvidos?')) return;
+  try {
+    var r = await _mntRPC('erro_marcar_resolvido', { p_mensagem: msg });
+    if(typeof toast === 'function'){
+      toast('✓ ' + ((r && r.atualizados) || 0) + ' erros marcados como resolvidos', 'success');
+    }
+    setTimeout(function(){
+      var el = document.getElementById('mnt-saude-extras');
+      if(el) el.remove();
+      mntRenderExtrasSaude();
+    }, 500);
+  } catch(e){ alert('Erro: ' + e.message); }
+};
+
+// Hook na função renderSaudeSistema pra disparar as extras
+(function(){
+  var origRender = window.renderSaudeSistema;
+  if(typeof origRender === 'function'){
+    window.renderSaudeSistema = async function(){
+      var r = origRender.apply(this, arguments);
+      // Aguarda render base
+      setTimeout(function(){
+        var el = document.getElementById('mnt-saude-extras');
+        if(el) el.remove();
+        mntRenderExtrasSaude();
+      }, 1500);
+      return r;
+    };
+  }
+})();
+
+</script>
+
+<script>
+
+// ================================================================
+// ===== 🔔 NOTIFICAÇÕES EM TEMPO REAL ============================
+// ================================================================
+// Polling 30s · Toast pop-up · Som ding · Permission Notification
+// + Push notification PWA (quando configurar VAPID)
+// ================================================================
+
+var NOTIF_RT = {
+  polling: null,
+  ultimaContagem: 0,
+  ultimaCheck: 0,
+  notifsConhecidas: new Set(),
+  somHabilitado: localStorage.getItem('gami_notif_som') !== 'off',
+  toastHabilitado: localStorage.getItem('gami_notif_toast') !== 'off',
+  sistemaHabilitado: localStorage.getItem('gami_notif_sistema') !== 'off',
+  permissaoSolicitada: false
+};
+
+// ============ ÁUDIO ============
+// Beep sintético via Web Audio (sem precisar de arquivo)
+function _notifDing(){
+  if(!NOTIF_RT.somHabilitado) return;
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+    
+    // Segundo tom (ding-dong)
+    setTimeout(function(){
+      try {
+        var osc2 = ctx.createOscillator();
+        var gain2 = ctx.createGain();
+        osc2.connect(gain2); gain2.connect(ctx.destination);
+        osc2.frequency.value = 660;
+        gain2.gain.setValueAtTime(0, ctx.currentTime);
+        gain2.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.01);
+        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc2.start(ctx.currentTime);
+        osc2.stop(ctx.currentTime + 0.3);
+      } catch(e){}
+    }, 200);
+  } catch(e){ /* sem som */ }
+}
+
+// ============ TOAST POP-UP ============
+function _notifMostrarToast(notif){
+  if(!NOTIF_RT.toastHabilitado) return;
+  
+  var icones = {
+    'tarefa_nova': '📋',
+    'tarefa_concluida': '✅',
+    'reconhecimento': '🌟',
+    'mural': '📣',
+    'aniversario': '🎂',
+    'mensagem': '💬'
+  };
+  var icone = icones[notif.tipo] || '🔔';
+  
+  // Container de toasts
+  var container = document.getElementById('notif-toast-container');
+  if(!container){
+    container = document.createElement('div');
+    container.id = 'notif-toast-container';
+    container.style.cssText = 'position:fixed;top:80px;right:16px;z-index:9998;display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:340px;width:calc(100% - 32px)';
+    document.body.appendChild(container);
+  }
+  
+  var toast = document.createElement('div');
+  toast.style.cssText = 'background:white;border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:10px;padding:12px 14px;box-shadow:0 6px 20px rgba(0,0,0,0.15);display:flex;align-items:flex-start;gap:10px;pointer-events:auto;cursor:pointer;font-family:inherit;animation:notifSlideIn 0.3s ease;color:#2A3340';
+  toast.innerHTML = ''
+    + '<div style="font-size:24px;line-height:1;flex-shrink:0">' + icone + '</div>'
+    + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:700;color:#0D2B5C;margin-bottom:2px">' + (notif.titulo || 'Notificação') + '</div>'
+      + (notif.mensagem ? '<div style="font-size:11px;color:#5A6678;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + notif.mensagem + '</div>' : '')
+    + '</div>'
+    + '<button onclick="event.stopPropagation();this.parentNode.remove()" style="border:none;background:transparent;font-size:16px;color:#5A6678;cursor:pointer;padding:0;line-height:1;flex-shrink:0">✕</button>';
+  
+  // Click no toast leva pra Inbox
+  toast.addEventListener('click', function(){
+    if(typeof nav === 'function'){
+      var inboxNav = document.querySelector('.nav-item[onclick*="inbox"]');
+      if(inboxNav) nav(inboxNav, 'inbox');
+    }
+    toast.remove();
+  });
+  
+  container.appendChild(toast);
+  
+  // Remove após 6s
+  setTimeout(function(){
+    if(toast.parentNode){
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(20px)';
+      toast.style.transition = 'all 0.3s';
+      setTimeout(function(){ toast.remove(); }, 300);
+    }
+  }, 6000);
+}
+
+// CSS da animação
+(function(){
+  if(document.getElementById('notif-rt-css')) return;
+  var st = document.createElement('style');
+  st.id = 'notif-rt-css';
+  st.textContent = '@keyframes notifSlideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}';
+  document.head.appendChild(st);
+})();
+
+// ============ NOTIFICAÇÃO DO SISTEMA (quando aba não tá visível) ============
+function _notifSistema(notif){
+  if(!NOTIF_RT.sistemaHabilitado) return;
+  if(!('Notification' in window)) return;
+  if(Notification.permission !== 'granted') return;
+  if(document.visibilityState === 'visible') return; // só quando aba tá em background
+  
+  var icones = {
+    'tarefa_nova': '📋',
+    'tarefa_concluida': '✅',
+    'reconhecimento': '🌟',
+    'mural': '📣'
+  };
+  
+  try {
+    var n = new Notification('Gâmi · ' + (notif.titulo || 'Nova notificação'), {
+      body: notif.mensagem || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: 'gami-' + notif.id,
+      requireInteraction: false
+    });
+    n.onclick = function(){
+      window.focus();
+      n.close();
+    };
+  } catch(e){}
+}
+
+// ============ PEDE PERMISSÃO (1ª vez) ============
+async function _notifPedirPermissao(){
+  if(NOTIF_RT.permissaoSolicitada) return;
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted' || Notification.permission === 'denied') return;
+  
+  // Só pede após o usuário fazer algumas ações (não no boot)
+  var jaVoltou = localStorage.getItem('gami_notif_perm_perguntado');
+  if(jaVoltou) return;
+  
+  NOTIF_RT.permissaoSolicitada = true;
+  localStorage.setItem('gami_notif_perm_perguntado', '1');
+  
+  // Mostra banner amigável antes de pedir
+  var banner = document.createElement('div');
+  banner.id = 'notif-permissao-banner';
+  banner.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:380px;margin:auto;background:white;border:1px solid #1AB8F033;border-left:4px solid #1AB8F0;border-radius:12px;padding:14px;box-shadow:0 6px 20px rgba(0,0,0,0.18);z-index:9998;font-family:inherit;animation:notifSlideIn 0.3s ease;color:#2A3340';
+  banner.innerHTML = ''
+    + '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">'
+      + '<div style="font-size:24px;line-height:1">🔔</div>'
+      + '<div style="flex:1">'
+        + '<div style="font-size:13px;font-weight:700;color:#0D2B5C;margin-bottom:2px">Quer receber notificações?</div>'
+        + '<div style="font-size:11px;color:#5A6678;line-height:1.4">Avisa quando alguém te delegar uma tarefa, te reconhecer ou postar algo importante.</div>'
+      + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;justify-content:flex-end">'
+      + '<button onclick="document.getElementById(\'notif-permissao-banner\').remove()" style="padding:6px 12px;border:1px solid #D6DEE8;background:white;color:#5A6678;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit">Agora não</button>'
+      + '<button onclick="_notifAceitarPermissao()" style="padding:6px 14px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">🔔 Permitir</button>'
+    + '</div>';
+  document.body.appendChild(banner);
+}
+
+window._notifAceitarPermissao = async function(){
+  var banner = document.getElementById('notif-permissao-banner');
+  if(banner) banner.remove();
+  try {
+    var p = await Notification.requestPermission();
+    if(p === 'granted'){
+      // Subscribe pra push
+      _notifSubscribePush();
+      if(typeof toast === 'function') toast('🔔 Notificações ativadas!', 'success');
+    }
+  } catch(e){}
+};
+
+// ============ POLLING DE NOTIFICAÇÕES ============
+async function _notifChecar(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return;
+  if(u._impersonacao) return; // não checa em modo teste
+  
+  try {
+    // Busca notificações recentes (últimas 5 min)
+    var horaCheck = NOTIF_RT.ultimaCheck || (Date.now() - 5*60*1000);
+    var desde = new Date(horaCheck).toISOString();
+    
+    var r = await fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+      + '&created_at=gte.' + encodeURIComponent(desde)
+      + '&select=id,tipo,titulo,mensagem,lida,created_at,de_nome'
+      + '&order=created_at.desc&limit=10', {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
+      cache: 'no-store'
+    });
+    if(!r.ok) return;
+    
+    var notifs = await r.json();
+    if(!Array.isArray(notifs)) return;
+    
+    NOTIF_RT.ultimaCheck = Date.now();
+    
+    // Filtra só as novas (não vistas ainda)
+    var novas = notifs.filter(function(n){ return !NOTIF_RT.notifsConhecidas.has(n.id); });
+    
+    // Marca todas como conhecidas
+    notifs.forEach(function(n){ NOTIF_RT.notifsConhecidas.add(n.id); });
+    
+    // Pra cada NOVA, dispara toast + som + notificação sistema
+    if(novas.length > 0 && NOTIF_RT.notifsConhecidas.size > novas.length){
+      // Não dispara tudo na primeira carga (evita spam ao abrir o app)
+      novas.forEach(function(n, i){
+        setTimeout(function(){
+          _notifMostrarToast(n);
+          if(i === 0) _notifDing(); // só primeiro toca
+          _notifSistema(n);
+        }, i * 800);
+      });
+    }
+    
+    // Atualiza badge da Inbox
+    _notifAtualizarBadge();
+    
+  } catch(e){ /* silencioso */ }
+}
+
+async function _notifAtualizarBadge(){
+  try {
+    if(typeof contarNotificacoesNaoLidas !== 'function') return;
+    var qtd = await contarNotificacoesNaoLidas();
+    
+    // Atualiza badge na sidebar
+    var navInbox = document.querySelector('.nav-item[onclick*="inbox"]');
+    if(!navInbox) return;
+    
+    var badge = navInbox.querySelector('.notif-badge-rt');
+    if(qtd > 0){
+      if(!badge){
+        badge = document.createElement('span');
+        badge.className = 'notif-badge-rt';
+        badge.style.cssText = 'display:inline-block;margin-left:6px;padding:1px 7px;background:#E24B4A;color:white;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;text-align:center;animation:notifSlideIn 0.3s ease';
+        navInbox.appendChild(badge);
+      }
+      badge.textContent = qtd > 99 ? '99+' : qtd;
+    } else if(badge){
+      badge.remove();
+    }
+  } catch(e){}
+}
+
+// ============ PUSH NOTIFICATION (PWA) ============
+async function _notifSubscribePush(){
+  // Verifica suporte
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)){
+    console.warn('[Push] Browser sem suporte');
+    return;
+  }
+  
+  var VAPID_PUBLIC = window.GAMI_VAPID_PUBLIC_KEY || null;
+  if(!VAPID_PUBLIC){
+    console.warn('[Push] VAPID key não configurada — push fica desabilitado (notificações in-app continuam funcionando)');
+    return;
+  }
+  
+  try {
+    var registration = await navigator.serviceWorker.ready;
+    var existing = await registration.pushManager.getSubscription();
+    
+    if(!existing){
+      var sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC)
+      });
+      
+      // Salva no Supabase pra o backend enviar pushes
+      var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+      if(u && u.id){
+        await fetch(SUPA_URL + '/rest/v1/rpc/salvar_push_subscription', {
+          method: 'POST',
+          headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            p_pessoa_id: u.id,
+            p_subscription: JSON.stringify(sub)
+          })
+        });
+      }
+      console.log('[Push] subscription salva');
+    }
+  } catch(e){
+    console.warn('[Push] erro ao subscrever:', e);
+  }
+}
+
+function _urlBase64ToUint8Array(base64String){
+  var padding = '='.repeat((4 - base64String.length % 4) % 4);
+  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var rawData = window.atob(base64);
+  var outputArray = new Uint8Array(rawData.length);
+  for(var i = 0; i < rawData.length; ++i){ outputArray[i] = rawData.charCodeAt(i); }
+  return outputArray;
+}
+
+// ============ TOGGLE NAS CONFIGURAÇÕES ============
+window.notifAlternarSom = function(){
+  NOTIF_RT.somHabilitado = !NOTIF_RT.somHabilitado;
+  localStorage.setItem('gami_notif_som', NOTIF_RT.somHabilitado ? 'on' : 'off');
+  if(NOTIF_RT.somHabilitado) _notifDing();
+  return NOTIF_RT.somHabilitado;
+};
+window.notifAlternarToast = function(){
+  NOTIF_RT.toastHabilitado = !NOTIF_RT.toastHabilitado;
+  localStorage.setItem('gami_notif_toast', NOTIF_RT.toastHabilitado ? 'on' : 'off');
+  return NOTIF_RT.toastHabilitado;
+};
+window.notifAlternarSistema = function(){
+  NOTIF_RT.sistemaHabilitado = !NOTIF_RT.sistemaHabilitado;
+  localStorage.setItem('gami_notif_sistema', NOTIF_RT.sistemaHabilitado ? 'on' : 'off');
+  return NOTIF_RT.sistemaHabilitado;
+};
+
+window.notifTestarPopup = function(){
+  _notifMostrarToast({
+    id: 'teste-' + Date.now(),
+    tipo: 'tarefa_nova',
+    titulo: 'Teste de notificação',
+    mensagem: 'Se você está vendo isso, o sistema de notificações está funcionando perfeitamente! 🎉'
+  });
+  _notifDing();
+};
+
+// ============ INIT ============
+function _notifIniciar(){
+  // Carrega o "fingerprint" inicial: marca todas as notificações atuais como já conhecidas
+  // (pra não disparar 50 toasts no boot)
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return;
+  
+  fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+    + '&select=id&order=created_at.desc&limit=50', {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+  }).then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(arr){
+      (arr || []).forEach(function(n){ NOTIF_RT.notifsConhecidas.add(n.id); });
+      NOTIF_RT.ultimaCheck = Date.now();
+      
+      // Inicia polling a cada 30s
+      if(NOTIF_RT.polling) clearInterval(NOTIF_RT.polling);
+      NOTIF_RT.polling = setInterval(_notifChecar, 30 * 1000);
+      
+      // Atualiza badge inicial
+      _notifAtualizarBadge();
+      
+      // Pede permissão depois de 60s de uso (se já tá logado e ativo)
+      setTimeout(_notifPedirPermissao, 60 * 1000);
+      
+      console.log('[🔔 Notif Real-time] iniciado · polling 30s · ' + NOTIF_RT.notifsConhecidas.size + ' notifs no histórico');
+    });
+}
+
+// Espera login pra iniciar
+(function _notifAguardarLogin(){
+  var tries = 0;
+  var iv = setInterval(function(){
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(u && u.id && !u._impersonacao){
+      clearInterval(iv);
+      setTimeout(_notifIniciar, 2000);
+    }
+    tries++;
+    if(tries > 60) clearInterval(iv); // para após 1 min sem login
+  }, 1000);
+})();
 
 </script>
 </html>
