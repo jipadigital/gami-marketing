@@ -1,4 +1,4 @@
-<!-- v26.37 - Dashboard reorganizado hierarquia UX otimizada - 17/06/2026 -->
+<!-- v26.38 - Sino mostra notificacoes reais Supabase + click navega - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -927,12 +927,44 @@ function _notifSalvarLidas(map){
 }
 function marcarNotifLida(id){
   var m = _notifLidas(); m[id] = Date.now(); _notifSalvarLidas(m);
+  // Se for notificação do Supabase (prefixo 'supa-'), marca como lida lá tb
+  if(id && id.indexOf('supa-') === 0){
+    var realId = id.substring(5);
+    try {
+      fetch(SUPA_URL + '/rest/v1/notificacoes?id=eq.' + encodeURIComponent(realId), {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPA_KEY,
+          'Authorization': 'Bearer ' + SUPA_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ lida: true })
+      }).catch(function(){});
+    } catch(e){}
+  }
   renderNotificacoes();
 }
 function marcarTodasNotifLidas(){
-  var notifs = coletarNotificacoes();
+  var notifs = _ultimasNotifsRender || coletarNotificacoes();
   var m = _notifLidas();
-  notifs.forEach(function(n){ m[n.id] = Date.now(); });
+  notifs.forEach(function(n){ 
+    m[n.id] = Date.now();
+    // Marca lida no Supabase tb
+    if(n.id && n.id.indexOf('supa-') === 0){
+      var realId = n.id.substring(5);
+      try {
+        fetch(SUPA_URL + '/rest/v1/notificacoes?id=eq.' + encodeURIComponent(realId), {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPA_KEY,
+            'Authorization': 'Bearer ' + SUPA_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ lida: true })
+        }).catch(function(){});
+      } catch(e){}
+    }
+  });
   _notifSalvarLidas(m);
   renderNotificacoes();
 }
@@ -943,11 +975,106 @@ function toggleNotifPanel(){
   if(panel.classList.contains('open')) renderNotificacoes();
 }
 
+/* Cache + busca de notificações REAIS do Supabase ==========*/
+var _supaNotifsCache = [];
+var _supaNotifsLoadedAt = 0;
+
+async function _carregarNotificacoesSupa(){
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u || !u.id) return [];
+    
+    var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+      + '&select=id,tipo,titulo,mensagem,link,lida,criado_em,de_nome'
+      + '&order=criado_em.desc.nullslast&limit=30';
+    
+    var r = await fetch(url, {
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY
+      },
+      cache: 'no-store'
+    });
+    if(!r.ok) return [];
+    var data = await r.json();
+    if(!Array.isArray(data)) return [];
+    
+    _supaNotifsCache = data;
+    _supaNotifsLoadedAt = Date.now();
+    return data;
+  } catch(e){ 
+    console.warn('[Notif] erro buscar Supabase:', e);
+    return []; 
+  }
+}
+
+/* Mapeia tipo → emoji (fallback se título não trouxer emoji) */
+function _iconeNotifTipo(tipo){
+  var map = {
+    'ponto_batido':       '🕒',
+    'tarefa_concluida':   '✅',
+    'delegacao_tarefa':   '📥',
+    'tarefa_delegada':    '📥',
+    'mencao':             '💬',
+    'recado':             '📌',
+    'reconhecimento':     '🏆',
+    'direcao_gami':       '💎',
+    'aniversario':        '🎂',
+    'sistema':            '⚙️'
+  };
+  return map[tipo] || '🔔';
+}
+
+/* Mapeia link string → aba */
+function _linkAbaNotif(link){
+  if(!link) return null;
+  var map = {
+    'ponto-gestao': 'ponto-gestao',
+    'meu-ponto':    'meu-ponto',
+    'tarefas':      'tarefas',
+    'dashboard':    'dashboard',
+    'cidades':      'cidades',
+    'inbox':        'inbox',
+    'equipe':       'equipe',
+    'pessoas':      'pessoas'
+  };
+  return map[link] || link;
+}
+
 /* Coleta de notificacoes — agrega varias fontes do dashboard
    NAO usa dados da Machine (motoboys/empresas sumidos) por decisao do produto */
 function coletarNotificacoes(){
   var notifs = [];
   var hoje = new Date(); hoje.setHours(0,0,0,0);
+  
+  // 0) 🆕 Notificações REAIS do Supabase (carregadas via _carregarNotificacoesSupa)
+  if(_supaNotifsCache && _supaNotifsCache.length){
+    _supaNotifsCache.forEach(function(s){
+      // Extrai emoji do título se já tiver, senão usa do tipo
+      var titulo = s.titulo || '(sem título)';
+      var icon = '';
+      // Se o título começa com emoji, separa
+      var emojiMatch = titulo.match(/^([\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{2700}-\u{27BF}]+)\s*/u);
+      if(emojiMatch){
+        icon = emojiMatch[1];
+        titulo = titulo.substring(emojiMatch[0].length);
+      } else {
+        icon = _iconeNotifTipo(s.tipo);
+      }
+      
+      var ts = s.criado_em ? new Date(s.criado_em).getTime() : Date.now();
+      
+      notifs.push({
+        id: 'supa-' + s.id,
+        icon: icon,
+        titulo: titulo,
+        sub: s.mensagem || '',
+        linkAba: _linkAbaNotif(s.link),
+        ts: ts,
+        _supaLida: !!s.lida
+      });
+    });
+  }
 
   try{
     // 1) Tarefas atrasadas (do localStorage gami_tarefas_v1 ou similar)
@@ -1037,14 +1164,30 @@ function coletarNotificacoes(){
   return notifs.sort(function(a,b){ return (b.ts||0) - (a.ts||0); });
 }
 
-function renderNotificacoes(){
+var _ultimasNotifsRender = [];
+
+async function renderNotificacoes(){
   var list = document.getElementById('gami-notif-list');
   var badge = document.getElementById('gami-bell-badge');
   if(!list || !badge) return;
+  
+  // Carrega notificações REAIS do Supabase (background, com cache 30s)
+  if(Date.now() - _supaNotifsLoadedAt > 30000){
+    await _carregarNotificacoesSupa();
+  }
 
   var notifs = coletarNotificacoes();
-  var lidas = _notifLidas();
-  var naoLidas = notifs.filter(function(n){ return !lidas[n.id]; });
+  _ultimasNotifsRender = notifs;
+  var lidasLocal = _notifLidas();
+  
+  // Considera lida se: já marcamos no localStorage OU se já vem lida=true do Supabase
+  var ehLida = function(n){
+    if(lidasLocal[n.id]) return true;
+    if(n._supaLida) return true;
+    return false;
+  };
+  
+  var naoLidas = notifs.filter(function(n){ return !ehLida(n); });
 
   if(naoLidas.length){
     badge.style.display = 'flex';
@@ -1059,14 +1202,35 @@ function renderNotificacoes(){
   }
 
   list.innerHTML = notifs.map(function(n){
-    var unread = !lidas[n.id];
-    return '<div class="gami-notif-item'+(unread?' unread':'')+'" onclick="marcarNotifLida(\''+n.id+'\')'+(n.linkAba?';nav(null,\''+n.linkAba+'\')':'')+'">'
-      + '<div class="gami-notif-icon">'+n.icon+'</div>'
-      + '<div class="gami-notif-body">'
-        + '<div class="gami-notif-title">'+n.titulo+'</div>'
-        + '<div class="gami-notif-sub">'+(n.sub||'')+'</div>'
+    var unread = !ehLida(n);
+    // Formata tempo relativo (ex: "Há 5 min")
+    var tempo = '';
+    if(n.ts){
+      var diff = Date.now() - n.ts;
+      if(diff < 60000) tempo = 'Agora';
+      else if(diff < 3600000) tempo = 'Há ' + Math.floor(diff/60000) + ' min';
+      else if(diff < 86400000) tempo = 'Há ' + Math.floor(diff/3600000) + 'h';
+      else if(diff < 604800000) tempo = 'Há ' + Math.floor(diff/86400000) + 'd';
+      else { var d = new Date(n.ts); tempo = d.getDate().toString().padStart(2,'0') + '/' + (d.getMonth()+1).toString().padStart(2,'0'); }
+    }
+    
+    // Click handler: marca lida + navega
+    var navStr = '';
+    if(n.linkAba){
+      // Procura nav-item correspondente
+      navStr = ';try{var nv=document.querySelector(\'.nav-item[onclick*="\'+\'' + n.linkAba + '\'+\'"]\');if(nv){nv.click();}else{nav(null,\'' + n.linkAba + '\');}document.getElementById(\'gami-bell-panel\').classList.remove(\'open\');}catch(e){}';
+    }
+    
+    return '<div class="gami-notif-item'+(unread?' unread':'')+'" onclick="marcarNotifLida(\''+n.id+'\')'+navStr+'" style="cursor:pointer">'
+      + '<div class="gami-notif-icon" style="font-size:20px;flex-shrink:0">'+(n.icon||'🔔')+'</div>'
+      + '<div class="gami-notif-body" style="flex:1;min-width:0">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px">'
+          + '<div class="gami-notif-title" style="font-size:13px;font-weight:600;color:var(--text);line-height:1.3;flex:1;min-width:0;overflow-wrap:break-word">'+n.titulo+'</div>'
+          + (tempo ? '<div style="font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0">'+tempo+'</div>' : '')
+        + '</div>'
+        + (n.sub ? '<div class="gami-notif-sub" style="font-size:11.5px;color:var(--text2);line-height:1.4;overflow-wrap:break-word">'+n.sub+'</div>' : '')
       + '</div>'
-      + (unread?'<span style="width:8px;height:8px;border-radius:50%;background:var(--gami-blue);flex-shrink:0;margin-top:4px"></span>':'')
+      + (unread?'<span style="width:8px;height:8px;border-radius:50%;background:var(--gami-blue);flex-shrink:0;margin-top:6px"></span>':'')
     + '</div>';
   }).join('');
 }
