@@ -1,4 +1,4 @@
-<!-- v26.23 - Direcao Gami texto direto sem aspas/italico - 17/06/2026 -->
+<!-- v26.24 - Leomara recebe notificacao no sino de cada batida de ponto - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40597,7 +40597,79 @@ async function _mpRPC(fn, params){
     body: JSON.stringify(params || {})
   });
   if(!r.ok){ var t = await r.text(); throw new Error('RPC ' + fn + ': HTTP ' + r.status + ' ' + t); }
-  return r.json();
+  var resp = await r.json();
+  
+  // 🔔 Pós-processamento: notifica gestores quando alguém bate ponto
+  if(fn === 'ponto_bater' && resp && !resp.erro){
+    try { _notificarGestoresDoPonto(resp, params); } catch(e){ /* silencioso */ }
+  }
+  
+  return resp;
+}
+
+// Cache do ID de quem recebe notificações de ponto (Leomara, Thiago, etc)
+var _PONTO_GESTORES_IDS = null;
+
+async function _getPontoGestoresIds(){
+  if(_PONTO_GESTORES_IDS) return _PONTO_GESTORES_IDS;
+  try {
+    // Busca pessoas com cargo de Gerência Financeira (Leomara) por padrão
+    var r = await fetch(SUPA_URL 
+      + '/rest/v1/pessoas?or=(cargo.ilike.*Gerente%20Financeiro*,cargo.ilike.*Ger%C3%AAncia%20Financeira*,nome.ilike.*Leomara*)'
+      + '&select=id,nome&limit=5', 
+      { headers: _mpSupaHeaders() }
+    );
+    if(r.ok){
+      var lista = await r.json();
+      _PONTO_GESTORES_IDS = lista.map(function(p){ return { id: p.id, nome: p.nome }; });
+      return _PONTO_GESTORES_IDS;
+    }
+  } catch(e){ console.warn('[Ponto-Notif] erro buscar gestores:', e); }
+  return [];
+}
+
+async function _notificarGestoresDoPonto(resp, params){
+  if(typeof criarNotificacao !== 'function') return;
+  
+  var gestores = await _getPontoGestoresIds();
+  if(!gestores || !gestores.length) return;
+  
+  // Nome da pessoa que bateu
+  var pessoaNome = (MP_PESSOA && MP_PESSOA.nome) ? MP_PESSOA.nome : 'Alguém';
+  
+  // Tipo da batida em português
+  var tipoLabel = {
+    entrada1: 'Entrada',
+    saida1:   'Saída pro almoço',
+    entrada2: 'Volta do almoço',
+    saida2:   'Saída'
+  }[resp.tipo] || 'Ponto';
+  
+  // Hora bate
+  var hora = resp.hora || '';
+  
+  // Detecta atraso/justificativa pra deixar título mais útil
+  var justif = (params && params.p_justificativa) ? String(params.p_justificativa) : '';
+  var temJustif = justif.length > 0;
+  var isAtraso  = justif.indexOf('atraso') !== -1 || justif.indexOf('trânsito') !== -1 || /^\d/.test(justif);
+  var isLiberacaoTemporaria = justif.indexOf('[LIBERAÇÃO TEMPORÁRIA]') === 0;
+  var isIP = justif.indexOf('[IP ESCRITÓRIO') === 0;
+  
+  var emoji = '🟢';
+  if(isLiberacaoTemporaria) emoji = '🆓';
+  else if(isAtraso) emoji = '🟡';
+  else if(isIP) emoji = '📡';
+  else if(temJustif) emoji = '📝';
+  
+  var titulo = emoji + ' ' + pessoaNome + ' bateu ' + tipoLabel;
+  var mensagem = 'às ' + hora + (temJustif ? ' · ' + justif.slice(0, 100) : '');
+  
+  // Cria notificação pra cada gestor configurado
+  for(var i=0; i<gestores.length; i++){
+    try {
+      await criarNotificacao(gestores[i].id, 'ponto_batido', titulo, mensagem, 'ponto-gestao');
+    } catch(e){ /* silencioso */ }
+  }
 }
 
 // ============ Verifica acesso ============
