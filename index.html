@@ -1,4 +1,4 @@
-<!-- v26.15 - Liberacao temporaria de validacao GPS/IP por pessoa - 17/06/2026 -->
+<!-- v26.16 - Tolerancia 5min + balao justif por atraso - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1911,7 +1911,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dash-ponto-geo" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px;text-align:center">📡 Detectando localização...</div>
     
     <div id="dash-ponto-justif-box" style="display:none;margin-top:10px;padding:10px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:6px">
-      <label style="display:block;font-size:10px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio. Justifique:</label>
+      <label class="justif-label" style="display:block;font-size:10px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio. Justifique:</label>
       <textarea id="dash-ponto-justif" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px;border:1px solid #EF9F27;border-radius:5px;background:white;color:var(--text);font-size:11px;font-family:inherit;resize:vertical"></textarea>
     </div>
   </div>
@@ -4606,7 +4606,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div id="mp-status-geo" style="margin-top:14px;font-size:11px;color:var(--text3);min-height:18px">Aguardando localização...</div>
     
     <div id="mp-justificativa-box" style="display:none;margin-top:14px;padding:12px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;text-align:left">
-      <label style="display:block;font-size:11px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio do escritório. Justifique:</label>
+      <label class="justif-label" style="display:block;font-size:11px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio do escritório. Justifique:</label>
       <textarea id="mp-justificativa" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px 10px;border:1px solid #EF9F27;border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>
     </div>
   </div>
@@ -40360,7 +40360,8 @@ document.addEventListener('DOMContentLoaded', estVerificarAcessoSidebar);
 
 var MP_PESSOA = null;
 var MP_GEO = null;       // {lat, lng, distancia, dentro}
-var MP_CONFIG = null;    // {latitude, longitude, raio_metros, timezone, ...}
+var MP_CONFIG = null;    // {latitude, longitude, raio_metros, timezone, tolerancia_atraso_min, ...}
+var MP_DIA_DADOS = null; // {horario_esperado, registros} — atualizado por dashRenderCardPonto
 
 var MP_TIPO_LABEL = {
   entrada1: '🌅 Entrada',
@@ -40593,6 +40594,7 @@ function _mpHaversine(lat1, lng1, lat2, lng2){
 async function mpCarregarDia(){
   try {
     var dados = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
+    MP_DIA_DADOS = dados;
     mpRenderCardsDia(dados);
   } catch(e){
     console.error('[MP] dia:', e);
@@ -40718,6 +40720,26 @@ async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
   var btn = document.getElementById('mp-btn-bater');
+  var justifInput = document.getElementById('mp-justificativa');
+  var justifBox = document.getElementById('mp-justificativa-box');
+  
+  // 🕐 VERIFICA ATRASO: se passou da tolerância, exige justificativa
+  var info = _calcularProximaBatidaEAtraso();
+  if(info && info.exigeJustificativa){
+    var justifAtual = (justifInput && justifInput.value || '').trim();
+    if(!justifAtual){
+      if(justifBox){
+        justifBox.style.display = 'block';
+        var labelBox = justifBox.querySelector('.justif-label');
+        if(labelBox){
+          labelBox.textContent = '⏰ Atraso de ' + info.atrasoMin + ' min em "' + info.label + '" (esperado ' + info.esperado + '). Justifique:';
+        }
+      }
+      if(justifInput) justifInput.focus();
+      alert('⏰ Você está ' + info.atrasoMin + ' minutos atrasada na batida "' + info.label + '" (esperado ' + info.esperado + ').\n\nPreencha a justificativa antes de bater.');
+      return;
+    }
+  }
   
   // 🆓 LIBERAÇÃO TEMPORÁRIA: home office / viagem (configurado no banco)
   if(_pessoaLiberadaValidacao(MP_PESSOA)){
@@ -41931,6 +41953,7 @@ async function dashRenderCardPonto(){
   // Carrega dia atual via RPC
   try {
     var dados = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
+    MP_DIA_DADOS = dados;
     dashRenderPontoStatus(dados);
   } catch(e){
     document.getElementById('dash-ponto-info').textContent = '⚠️ Erro ao carregar: ' + e.message;
@@ -42482,11 +42505,74 @@ function _pessoaLiberadaValidacao(pessoa){
   } catch(e){ return false; }
 }
 
+// Calcula próxima batida + atraso vs horário esperado
+// Retorna: { tipo, label, esperado, atrasoMin, exigeJustificativa }
+function _calcularProximaBatidaEAtraso(){
+  if(!MP_DIA_DADOS) return null;
+  var horario = MP_DIA_DADOS.horario_esperado;
+  if(!horario) return null;
+  
+  var registros = {};
+  (MP_DIA_DADOS.registros || []).forEach(function(r){ registros[r.tipo] = r; });
+  
+  var tipos = ['entrada1', 'saida1', 'entrada2', 'saida2'];
+  var tiposLbl = {
+    entrada1: '🌅 Entrada',
+    saida1:   '🍽️ Saída pro almoço',
+    entrada2: '↩️ Volta do almoço',
+    saida2:   '🌆 Saída'
+  };
+  
+  // Acha a próxima batida não registrada
+  var proximo = null;
+  for(var i=0; i<tipos.length; i++){
+    if(!registros[tipos[i]]){ proximo = tipos[i]; break; }
+  }
+  if(!proximo) return null; // todas batidas já registradas
+  
+  var esperado = horario[proximo];
+  if(!esperado) return { tipo: proximo, label: tiposLbl[proximo], esperado: null, atrasoMin: 0, exigeJustificativa: false };
+  
+  var partsE = esperado.split(':').map(Number);
+  var agora = new Date();
+  var atrasoMin = (agora.getHours()*60 + agora.getMinutes()) - (partsE[0]*60 + partsE[1]);
+  var tolerancia = (MP_CONFIG && typeof MP_CONFIG.tolerancia_atraso_min === 'number') ? MP_CONFIG.tolerancia_atraso_min : 5;
+  
+  return {
+    tipo: proximo,
+    label: tiposLbl[proximo],
+    esperado: esperado,
+    atrasoMin: atrasoMin,
+    exigeJustificativa: atrasoMin > tolerancia
+  };
+}
+
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
   var btn = document.getElementById('dash-btn-bater-ponto');
   var originalText = btn ? btn.innerHTML : '';
+  var justifInput = document.getElementById('dash-ponto-justif');
+  var justifBox = document.getElementById('dash-ponto-justif-box');
+  
+  // 🕐 VERIFICA ATRASO: se passou da tolerância, exige justificativa
+  var info = _calcularProximaBatidaEAtraso();
+  if(info && info.exigeJustificativa){
+    var justifAtual = (justifInput && justifInput.value || '').trim();
+    if(!justifAtual){
+      if(justifBox){
+        justifBox.style.display = 'block';
+        // Personaliza o label do balão
+        var labelBox = justifBox.querySelector('.justif-label');
+        if(labelBox){
+          labelBox.textContent = '⏰ Atraso de ' + info.atrasoMin + ' min em "' + info.label + '" (esperado ' + info.esperado + '). Justifique:';
+        }
+      }
+      if(justifInput) justifInput.focus();
+      alert('⏰ Você está ' + info.atrasoMin + ' minutos atrasada na batida "' + info.label + '" (esperado ' + info.esperado + ').\n\nPreencha a justificativa antes de bater.');
+      return;
+    }
+  }
   
   // 🆓 LIBERAÇÃO TEMPORÁRIA: home office / viagem (configurado no banco)
   if(_pessoaLiberadaValidacao(MP_PESSOA)){
