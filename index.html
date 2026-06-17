@@ -1,4 +1,4 @@
-<!-- v26.02 - Removido botao sem GPS - 17/06/2026 -->
+<!-- v26.03 - Validacao por IP do escritorio - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40613,9 +40613,46 @@ async function mpBaterPonto(){
       btn.textContent = '🕒 BATER PONTO';
     }
     if(!MP_GEO){
-      alert('⏱️ Não conseguimos obter sua localização.\n\n💡 Se você ESTÁ no escritório agora, use o botão "Bater ponto sem GPS" que apareceu abaixo.');
-      var btnSem = document.getElementById('mp-btn-bater-sem-gps');
-      if(btnSem) btnSem.style.display = '';
+      // GPS falhou — tenta validar por IP do escritório
+      if(btn) btn.textContent = '📍 Verificando rede...';
+      var presenca = await _verificarPresencaPorIP();
+      
+      if(presenca.autorizado){
+        // IP confere → registra como "no escritório validado por IP"
+        if(btn) btn.textContent = '⏳ Registrando...';
+        try {
+          var resp = await _mpRPC('ponto_bater', {
+            p_pessoa_id: MP_PESSOA.id,
+            p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+            p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+            p_justificativa: '[IP ESCRITÓRIO ' + presenca.ip + '] Presença validada pela rede do escritório.',
+            p_user_agent: navigator.userAgent.slice(0, 150)
+          });
+          if(typeof toast === 'function'){
+            toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora + ' (validado pela rede)', 'success');
+          } else {
+            alert('✅ Ponto registrado às ' + resp.hora + '\n\n📍 Validado pela rede do escritório.');
+          }
+          await mpCarregarDia();
+          await mpCarregarMes();
+        } catch(e){
+          alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+        } finally {
+          if(btn){
+            btn.disabled = false;
+            btn.textContent = '🕒 BATER PONTO';
+          }
+        }
+        return;
+      }
+      
+      // GPS falhou E IP não bate
+      if(btn){
+        btn.disabled = false;
+        btn.textContent = '🕒 BATER PONTO';
+      }
+      var detalheIp = presenca.ip ? '\n\n🌐 Seu IP atual: ' + presenca.ip + ' (não é da rede do escritório)' : '';
+      alert('⏱️ Não conseguimos obter sua localização.' + detalheIp + '\n\nSe você ESTÁ no escritório agora, entre em contato com o Cleyton.');
       return;
     }
   }
@@ -41800,6 +41837,75 @@ function dashRenderPontoStatus(dados){
   }
 }
 
+// ============================================================
+// 📍 VALIDAÇÃO POR IP DO ESCRITÓRIO
+// Fallback quando GPS não funciona (PC sem Wi-Fi positioning)
+// ============================================================
+var ESCRITORIO_IPS_AUTORIZADOS = [
+  '138.97.145.189',     // IP fixo do escritório Gâmi Ji-Paraná
+];
+var ESCRITORIO_FAIXAS_AUTORIZADAS = [
+  '138.97.145.',        // Faixa /24 (caso IP mude no mesmo bloco da Rede Completa)
+];
+
+// Cache do IP detectado (válido por 5min)
+var _ipCache = null;
+var _ipCacheTime = 0;
+
+async function _obterIPPublico(){
+  // Cache de 5 min pra não bombardear o serviço
+  if(_ipCache && (Date.now() - _ipCacheTime) < 5*60*1000){
+    return _ipCache;
+  }
+  
+  // 3 serviços de fallback
+  var servicos = [
+    'https://api.ipify.org?format=json',
+    'https://api.my-ip.io/v2/ip.json',
+    'https://ipapi.co/json/'
+  ];
+  
+  for(var i=0; i<servicos.length; i++){
+    try {
+      var ctrl = new AbortController();
+      var to = setTimeout(function(){ ctrl.abort(); }, 4000);
+      var r = await fetch(servicos[i], { signal: ctrl.signal });
+      clearTimeout(to);
+      if(!r.ok) continue;
+      var data = await r.json();
+      var ip = data.ip || data.IPv4 || data.query;
+      if(ip){
+        _ipCache = ip;
+        _ipCacheTime = Date.now();
+        return ip;
+      }
+    } catch(e){
+      console.warn('[IP] Serviço falhou:', servicos[i]);
+    }
+  }
+  return null;
+}
+
+function _ipEhAutorizado(ip){
+  if(!ip) return false;
+  // Match exato
+  if(ESCRITORIO_IPS_AUTORIZADOS.indexOf(ip) !== -1) return true;
+  // Match por faixa (ex: "138.97.145." → autoriza 138.97.145.*)
+  for(var i=0; i<ESCRITORIO_FAIXAS_AUTORIZADAS.length; i++){
+    if(ip.indexOf(ESCRITORIO_FAIXAS_AUTORIZADAS[i]) === 0) return true;
+  }
+  return false;
+}
+
+async function _verificarPresencaPorIP(){
+  var ip = await _obterIPPublico();
+  return {
+    ip: ip,
+    autorizado: _ipEhAutorizado(ip),
+    metodo: 'ip'
+  };
+}
+
 // Tenta obter localização com 2 estratégias (alta precisão primeiro, depois fallback)
 function _obterLocalizacao(){
   return new Promise(function(resolve, reject){
@@ -42213,6 +42319,48 @@ async function dashBaterPontoRapido(){
   var btn = document.getElementById('dash-btn-bater-ponto');
   var originalText = btn ? btn.innerHTML : '';
   
+  // 🚀 ATALHO: se já está no IP do escritório, bate direto (não precisa de GPS)
+  if(btn){
+    btn.disabled = true;
+    btn.innerHTML = '📍 Verificando...';
+  }
+  
+  try {
+    var presencaIP = await _verificarPresencaPorIP();
+    if(presencaIP && presencaIP.autorizado){
+      // Atalho rápido: registra direto pelo IP do escritório
+      btn.innerHTML = '⏳ Registrando...';
+      try {
+        var resp = await _mpRPC('ponto_bater', {
+          p_pessoa_id: MP_PESSOA.id,
+          p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+          p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+          p_justificativa: '[IP ESCRITÓRIO ' + presencaIP.ip + '] Presença validada pela rede do escritório.',
+          p_user_agent: navigator.userAgent.slice(0, 150)
+        });
+        if(typeof toast === 'function'){
+          toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+        } else {
+          alert('✅ Ponto registrado às ' + resp.hora);
+        }
+        await dashRenderCardPonto();
+        return;
+      } catch(e){
+        alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+        if(btn){ btn.disabled = false; btn.innerHTML = originalText; }
+        return;
+      }
+    }
+  } catch(e){
+    // Falha na verificação de IP → continua pro fluxo de GPS normal
+    console.warn('[IP] verificação falhou:', e);
+  }
+  
+  if(btn){
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+  
   // Se ainda não temos GPS, AGUARDA capturar antes de fazer qualquer coisa
   if(!MP_GEO){
     if(btn){
@@ -42222,16 +42370,43 @@ async function dashBaterPontoRapido(){
     try {
       await dashPedirGeoPonto();  // ESPERA o GPS
     } catch(err){
+      // GPS falhou — tenta validar por IP do escritório
+      if(btn) btn.innerHTML = '📍 Verificando rede...';
+      var presenca = await _verificarPresencaPorIP();
+      
+      if(presenca.autorizado){
+        // IP confere → registra como "no escritório validado por IP"
+        if(btn) btn.innerHTML = '⏳ Registrando...';
+        try {
+          var resp = await _mpRPC('ponto_bater', {
+            p_pessoa_id: MP_PESSOA.id,
+            p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+            p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+            p_justificativa: '[IP ESCRITÓRIO ' + presenca.ip + '] Presença validada pela rede do escritório.',
+            p_user_agent: navigator.userAgent.slice(0, 150)
+          });
+          if(typeof toast === 'function'){
+            toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora + ' (validado pela rede)', 'success');
+          } else {
+            alert('✅ Ponto registrado às ' + resp.hora + '\n\n📍 Validado pela rede do escritório.');
+          }
+          await dashRenderCardPonto();
+          return;
+        } catch(e){
+          alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+          if(btn){ btn.disabled = false; btn.innerHTML = originalText; }
+          return;
+        }
+      }
+      
+      // GPS falhou E IP não é do escritório → mostra erro
       if(btn){
         btn.disabled = false;
         btn.innerHTML = originalText;
       }
-      // Mostra o botão alternativo "sem GPS"
-      var btnSemGps = document.getElementById('dash-btn-bater-sem-gps');
-      if(btnSemGps) btnSemGps.style.display = '';
-      
       var msg = (typeof _msgErroGeo === 'function') ? _msgErroGeo(err) : { longa: 'Não foi possível obter sua localização.' };
-      alert(msg.longa + '\n\n💡 Se você ESTÁ no escritório agora, use o botão "Bater ponto sem GPS" que apareceu abaixo.');
+      var detalheIp = presenca.ip ? '\n\n🌐 Seu IP atual: ' + presenca.ip + ' (não é da rede do escritório)' : '';
+      alert(msg.longa + detalheIp);
       return;
     }
   }
