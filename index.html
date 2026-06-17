@@ -1,4 +1,4 @@
-<!-- v26.20 - Tarefa concluida +1pt (mantido) - 17/06/2026 -->
+<!-- v26.21 - Card Direcao Gami (vinho+bronze) - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1913,6 +1913,9 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <textarea id="dash-ponto-justif" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px;border:1px solid #EF9F27;border-radius:5px;background:white;color:var(--text);font-size:11px;font-family:inherit;resize:vertical"></textarea>
     </div>
   </div>
+
+  <!-- ====== 💎 CARD DIREÇÃO GÂMI (mensagem da Diretoria + Cleyton + Gerência) ====== -->
+  <div id="dash-direcao" style="margin:14px 0"></div>
 
   <!-- ====== 🎯 CARD TAREFAS DELEGADAS (alerta quando tem tarefa nova delegada pra você) ====== -->
   <div id="dash-card-delegadas" style="display:none;margin:14px 0;background:linear-gradient(135deg,#F3E8FF,#FFFFFF);border:1px solid #8B5CF633;border-left:4px solid #8B5CF6;border-radius:14px;padding:18px;box-shadow:0 4px 14px rgba(139,92,246,0.10);position:relative;overflow:hidden">
@@ -28554,6 +28557,228 @@ function limparReconhecimento(){
   document.getElementById('modal-reconhecimento').classList.remove('open');
   renderReconhecimento();
 }
+
+/* ============================
+   💎 DIREÇÃO GÂMI
+   Mensagem da Diretoria/Cleyton/Gerência pra todo o time
+   ============================ */
+function _direcaoKey(){ return 'gami_direcao'; }
+
+// Apenas Cleyton (super_admin), Diretoria e Gerência podem editar
+function _podePostarDirecao(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return false;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  return nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia';
+}
+
+function getDirecao(){
+  try { return JSON.parse(localStorage.getItem(_direcaoKey())||'null'); } catch(e){ return null; }
+}
+
+function saveDirecao(obj){
+  try { localStorage.setItem(_direcaoKey(), JSON.stringify(obj)); } catch(e){}
+  if(typeof syncConfig === 'function'){
+    if(typeof mostrarSalvando === 'function') mostrarSalvando();
+    syncConfig('direcao_gami', obj)
+      .then(function(){ if(typeof mostrarSalvo === 'function') mostrarSalvo(); })
+      .catch(function(err){ 
+        console.warn('Erro ao salvar Direção Gâmi:', err);
+        if(typeof mostrarErroSalvar === 'function') mostrarErroSalvar(err);
+      });
+  }
+}
+
+async function loadDirecaoFromSupa(){
+  if(typeof loadConfigFromSupa !== 'function') return null;
+  try {
+    var d = await loadConfigFromSupa('direcao_gami');
+    if(d && d.texto){
+      try { localStorage.setItem(_direcaoKey(), JSON.stringify(d)); } catch(e){}
+      return d;
+    }
+  } catch(e){ console.warn('loadDirecao:', e); }
+  return null;
+}
+
+function renderDirecao(){
+  var host = document.getElementById('dash-direcao');
+  if(!host) return;
+  var dir = getDirecao();
+  var podePostar = _podePostarDirecao();
+  
+  // Estado vazio: aparece botão "Postar" só pra quem pode
+  if(!dir || !dir.texto){
+    if(!podePostar){
+      host.innerHTML = '';
+      return;
+    }
+    host.innerHTML = ''
+      + '<div style="padding:14px 18px;background:linear-gradient(135deg,#3D0F1A,#4A1929);border:1px solid #B08D57;border-radius:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 14px rgba(74,25,41,0.25)">'
+      + '<div style="display:flex;align-items:center;gap:12px">'
+      +   '<div style="font-size:24px">💎</div>'
+      +   '<div>'
+      +     '<div style="font-size:9px;letter-spacing:1.8px;color:#DDB47F;font-weight:700;text-transform:uppercase;margin-bottom:3px">DIREÇÃO GÂMI</div>'
+      +     '<div style="font-size:12px;color:#F5E6CC;opacity:.85">Compartilhe uma mensagem com toda a equipe</div>'
+      +   '</div>'
+      + '</div>'
+      + '<button onclick="abrirModalDirecao()" style="padding:9px 16px;border:1px solid #B08D57;border-radius:8px;background:#B08D57;color:#3D0F1A;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px">✏️ POSTAR</button>'
+      + '</div>';
+    return;
+  }
+  
+  // Card preenchido - vinho + bronze
+  var fotoHTML = dir.autor_foto 
+    ? '<img src="'+dir.autor_foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' 
+    : '<span style="font-size:24px;font-weight:700;color:#3D0F1A">'+((dir.autor_nome||'').split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase())+'</span>';
+  
+  var dataFmt = '';
+  try {
+    var d = new Date(dir.data_postado);
+    var hoje = new Date();
+    var diff = Math.floor((hoje - d) / 86400000);
+    if(diff === 0){
+      dataFmt = 'Hoje às ' + d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    } else if(diff === 1){
+      dataFmt = 'Ontem';
+    } else if(diff < 7){
+      dataFmt = 'Há ' + diff + ' dias';
+    } else {
+      dataFmt = d.getDate().toString().padStart(2,'0') + '/' + (d.getMonth()+1).toString().padStart(2,'0') + '/' + d.getFullYear();
+    }
+  } catch(e){ dataFmt = ''; }
+  
+  var botoes = podePostar
+    ? '<div style="display:flex;gap:6px">'
+      + '<button onclick="abrirModalDirecao()" title="Editar mensagem" style="padding:6px 11px;border:1px solid #B08D57;border-radius:7px;background:transparent;color:#DDB47F;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✏️ Editar</button>'
+      + '<button onclick="limparDirecao()" title="Apagar mensagem" style="padding:6px 11px;border:1px solid #B08D57;border-radius:7px;background:transparent;color:#DDB47F;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🗑️</button>'
+      + '</div>'
+    : '';
+  
+  host.innerHTML = ''
+    + '<div style="padding:0;background:linear-gradient(135deg,#3D0F1A 0%,#4A1929 45%,#5C1F32 100%);border:1px solid #B08D57;border-radius:14px;overflow:hidden;box-shadow:0 6px 20px rgba(74,25,41,0.30);position:relative">'
+    +   '<div style="position:absolute;top:-20px;right:-15px;font-size:140px;opacity:.05;color:#DDB47F">💎</div>'
+    
+    // Topo: badge "Direção Gâmi"
+    +   '<div style="padding:11px 18px 0;display:flex;justify-content:space-between;align-items:center">'
+    +     '<div style="font-size:9px;letter-spacing:2px;color:#DDB47F;font-weight:700;text-transform:uppercase">💎 Direção Gâmi</div>'
+    +     '<div style="font-size:10px;color:#DDB47F;opacity:.7">'+dataFmt+'</div>'
+    +   '</div>'
+    
+    // Corpo: foto + texto
+    +   '<div style="padding:14px 20px 18px;display:flex;gap:16px;align-items:flex-start;position:relative">'
+    +     '<div style="width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#DDB47F,#B08D57);border:2px solid #DDB47F;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.3)">'+fotoHTML+'</div>'
+    +     '<div style="flex:1;min-width:0">'
+    +       '<div style="font-family:Georgia,serif;font-size:14px;color:#F5E6CC;line-height:1.55;font-style:italic;margin-bottom:10px;position:relative;padding-left:10px;border-left:2px solid #B08D57">"'+(dir.texto||'').replace(/</g,'&lt;').replace(/\n/g,'<br>')+'"</div>'
+    +       '<div style="font-size:13px;font-weight:700;color:#DDB47F;letter-spacing:.3px">'+(dir.autor_nome||'')+'</div>'
+    +       '<div style="font-size:10.5px;color:#DDB47F;opacity:.7;margin-top:1px">'+(dir.autor_cargo||'')+'</div>'
+    +     '</div>'
+    +   '</div>'
+    
+    // Rodapé: botões só pra quem pode
+    + (botoes ? '<div style="padding:8px 18px 14px;display:flex;justify-content:flex-end">'+botoes+'</div>' : '')
+    + '</div>';
+}
+
+function abrirModalDirecao(){
+  if(!_podePostarDirecao()){
+    alert('Apenas Cleyton, Diretoria e Gerência podem postar a Direção Gâmi.');
+    return;
+  }
+  var dir = getDirecao() || {};
+  
+  var modal = document.getElementById('modal-direcao');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'modal-direcao';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = '<div class="modal" style="max-width:500px"></div>';
+    document.body.appendChild(modal);
+  }
+  
+  var inner = modal.querySelector('.modal');
+  inner.innerHTML = '<div class="modal-head">'
+    + '<div class="modal-title">💎 Direção Gâmi</div>'
+    + '<button class="modal-close" onclick="document.getElementById(\'modal-direcao\').classList.remove(\'open\')">×</button></div>'
+    + '<div style="padding:4px 0">'
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;font-style:italic">Sua mensagem vai aparecer em destaque no dashboard de toda a equipe. Capricha! ✨</div>'
+    + '<div class="field-label" style="margin-bottom:5px">Mensagem</div>'
+    + '<textarea id="direcao-texto" class="inp" style="width:100%;min-height:110px;resize:vertical;font-family:Georgia,serif;font-size:13px" placeholder="Ex: Equipe, essa semana batemos meta nas 11 cidades. Que vitória! Obrigado pela dedicação de cada um. Vamos pra próxima 💛">'+(dir.texto||'')+'</textarea>'
+    + '<div style="font-size:10.5px;color:var(--text3);margin-top:4px;font-style:italic">Sua foto, nome e cargo aparecem automaticamente no card</div>'
+    + '<div style="display:flex;gap:8px;margin-top:16px">'
+    +   '<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'modal-direcao\').classList.remove(\'open\')">Cancelar</button>'
+    +   '<button class="btn btn-primary" style="flex:1" onclick="salvarDirecao()">💎 Postar</button>'
+    + '</div></div>';
+  
+  modal.classList.add('open');
+}
+
+function salvarDirecao(){
+  if(!_podePostarDirecao()){ alert('Sem permissão.'); return; }
+  var texto = (document.getElementById('direcao-texto').value || '').trim();
+  if(!texto || texto.length < 5){
+    alert('Escreva uma mensagem (mínimo 5 caracteres).');
+    return;
+  }
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){ alert('Não autenticado.'); return; }
+  
+  // Busca foto e cargo na lista de pessoas
+  var foto = u.foto_url || '';
+  var cargo = u.cargo || '';
+  try {
+    if(typeof getPessoas === 'function'){
+      var p = getPessoas().find(function(x){ return x.id === u.id; });
+      if(p){
+        foto = foto || p.foto_url || p.foto || '';
+        cargo = cargo || p.cargo || '';
+      }
+    }
+  } catch(e){}
+  
+  saveDirecao({
+    autor_id: u.id,
+    autor_nome: u.nome,
+    autor_foto: foto,
+    autor_cargo: cargo,
+    texto: texto,
+    data_postado: new Date().toISOString()
+  });
+  
+  document.getElementById('modal-direcao').classList.remove('open');
+  renderDirecao();
+  if(typeof toast === 'function') toast('💎 Direção Gâmi postada para toda a equipe!', 'success');
+}
+
+function limparDirecao(){
+  if(!_podePostarDirecao()){ alert('Sem permissão.'); return; }
+  if(!confirm('Apagar a mensagem atual da Direção Gâmi?')) return;
+  try { localStorage.removeItem(_direcaoKey()); } catch(e){}
+  if(typeof syncConfig === 'function'){
+    syncConfig('direcao_gami', {}).catch(function(e){ console.warn(e); });
+  }
+  renderDirecao();
+}
+
+/* Init: carrega do Supabase quando dashboard abre */
+(function(){
+  function initDirecao(){
+    if(typeof loadDirecaoFromSupa === 'function'){
+      loadDirecaoFromSupa().then(function(){ renderDirecao(); });
+    } else {
+      renderDirecao();
+    }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(initDirecao, 800); });
+  } else {
+    setTimeout(initDirecao, 800);
+  }
+  // Re-render se mudar de usuário
+  window.addEventListener('storage', function(e){
+    if(e.key && e.key.indexOf('gami_direcao') !== -1) renderDirecao();
+  });
+})();
 
 /* ============================
    4) ANIVERSARIANTES DO MÊS
