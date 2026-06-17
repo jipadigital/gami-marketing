@@ -1,4 +1,4 @@
-<!-- v26.27 - Saudacao + Versiculo unificados em 1 card azul escuro - 17/06/2026 -->
+<!-- v26.28 - Tema e Modo Foco junto ao sino no topo - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -769,10 +769,22 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
   100%{ background-position: -200% 0; }
 }
 
-/* === Sino de notificacoes === */
+/* === Botões fixos top-right (Tema, Modo Foco, Sino) === */
 .gami-bell-wrap{
   position: fixed; top: 12px; right: 14px; z-index: 200;
+  display: flex; align-items: center; gap: 8px;
 }
+.gami-top-btn{
+  width: 38px; height: 38px;
+  border: none; border-radius: 50%;
+  background: white; color: var(--text);
+  font-size: 16px; cursor: pointer;
+  box-shadow: 0 3px 10px rgba(11,37,66,.10);
+  transition: transform .15s ease;
+  display: flex; align-items: center; justify-content: center;
+  font-family: inherit;
+}
+.gami-top-btn:hover{ transform: scale(1.06); }
 .gami-bell-btn{
   position: relative; width: 38px; height: 38px;
   border: none; border-radius: 50%;
@@ -839,8 +851,20 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
 <!-- Toast container (notificacoes flutuantes) -->
 <div id="gami-toast-host" aria-live="polite"></div>
 
-<!-- Sino de notificacoes (top right - aparece quando logado) -->
+<!-- Botões fixos no topo: Tema + Modo Foco + Sino (aparecem quando logado) -->
 <div class="gami-bell-wrap" id="gami-bell-wrap" style="display:none">
+  <!-- 🌙 Toggle tema claro/escuro -->
+  <button class="gami-top-btn" id="btn-tema-top" onclick="toggleTema()" title="Alternar tema claro/escuro" style="position:relative">
+    <span id="tema-icon-claro" style="display:inline-flex;align-items:center;justify-content:center;width:100%;height:100%">☀️</span>
+    <span id="tema-icon-escuro" style="display:none;align-items:center;justify-content:center;width:100%;height:100%">🌙</span>
+  </button>
+  
+  <!-- 🎯 Modo Foco -->
+  <button class="gami-top-btn" id="btn-foco-top" onclick="toggleModoFoco()" title="Modo Foco" style="font-size:15px">
+    🎯
+  </button>
+  
+  <!-- 🔔 Sino de notificações -->
   <button class="gami-bell-btn" onclick="toggleNotifPanel()" title="Notificações" id="gami-bell-btn">
     🔔
     <span class="gami-bell-badge" id="gami-bell-badge" style="display:none">0</span>
@@ -1883,17 +1907,6 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           <!-- Mantém o elemento da frase motivacional oculto pra não quebrar funções existentes -->
           <div id="dash-frase-motivacional" style="display:none"></div>
         </div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:flex-end;flex-direction:column;flex-wrap:wrap">
-        <!-- 🆕 Toggle Modo Escuro (bolinhas) -->
-        <div id="btn-tema" onclick="toggleTema()" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:20px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);cursor:pointer;font-family:inherit;transition:all .2s;backdrop-filter:blur(10px)" onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.12)'" title="Alternar tema claro/escuro">
-          <span id="tema-bolinha-sol" style="width:22px;height:22px;border-radius:50%;background:#FFD93D;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 0 8px rgba(255,217,61,.6);transition:all .25s">☀️</span>
-          <span id="tema-bolinha-lua" style="width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:13px;opacity:.5;transition:all .25s">🌙</span>
-        </div>
-        <button onclick="toggleModoFoco()" id="btn-foco" style="padding:9px 14px;border:1px solid rgba(255,255,255,.25);border-radius:9px;background:rgba(255,255,255,.12);color:white;font-size:12px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px;backdrop-filter:blur(10px)">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          Modo foco
-        </button>
       </div>
     </div>
   </div>
@@ -29663,7 +29676,19 @@ var _modoFoco = false;
 // ============================================================
 function aplicarTema(tema){
   document.documentElement.setAttribute('data-theme', tema);
-  // Atualiza bolinhas (sol/lua)
+  // Atualiza ícones (sol/lua) no novo botão fixo do topo
+  var iconClaro = document.getElementById('tema-icon-claro');
+  var iconEscuro = document.getElementById('tema-icon-escuro');
+  if(iconClaro && iconEscuro){
+    if(tema === 'dark'){
+      iconClaro.style.display = 'none';
+      iconEscuro.style.display = 'inline-flex';
+    } else {
+      iconClaro.style.display = 'inline-flex';
+      iconEscuro.style.display = 'none';
+    }
+  }
+  // Legado: também atualiza as bolinhas se ainda existirem
   var sol = document.getElementById('tema-bolinha-sol');
   var lua = document.getElementById('tema-bolinha-lua');
   if(sol && lua){
@@ -29697,17 +29722,12 @@ function toggleTema(){
     var salvo = localStorage.getItem('gami_tema');
     if(salvo === 'dark'){
       document.documentElement.setAttribute('data-theme', 'dark');
-      // Atualiza bolinhas quando DOM carregar
       document.addEventListener('DOMContentLoaded', function(){
-        var sol = document.getElementById('tema-bolinha-sol');
-        var lua = document.getElementById('tema-bolinha-lua');
-        if(sol && lua){
-          sol.style.background = 'rgba(255,255,255,.12)';
-          sol.style.opacity = '.5';
-          sol.style.boxShadow = 'none';
-          lua.style.background = '#FFD93D';
-          lua.style.opacity = '1';
-          lua.style.boxShadow = '0 0 8px rgba(255,217,61,.6)';
+        var iconClaro = document.getElementById('tema-icon-claro');
+        var iconEscuro = document.getElementById('tema-icon-escuro');
+        if(iconClaro && iconEscuro){
+          iconClaro.style.display = 'none';
+          iconEscuro.style.display = 'inline-flex';
         }
       });
     }
