@@ -1,4 +1,4 @@
-<!-- v26.17 - Filtro menos restritivo: tarefas sem pessoa_id sao publicas (legado) - 17/06/2026 -->
+<!-- v26.18 - Filtro estrito ALL: cada um vê e edita SO as suas - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1318,11 +1318,10 @@ function filtrarTarefasPorPermissao(tarefas){
   var u = getUsuarioLogado();
   if(!u) return [];
   
+  // ESTRITO: cada um vê SÓ suas tarefas (com pessoa_id igual)
   return tarefas.filter(function(t){
     if(!t) return false;
-    // Tarefas SEM pessoa_id = legadas → todos veem (não causam "sumiu")
-    if(!t.pessoa_id) return true;
-    // Tarefas COM pessoa_id → só a dona vê
+    if(!t.pessoa_id) return false;  // tarefas órfãs = não aparecem (rode AZ pra atribuir)
     return t.pessoa_id === u.id;
   });
 }
@@ -28004,36 +28003,31 @@ function coletarItensAgendaHoje(){
     }
   } catch(e){ console.warn('coletar tarefas:', e); }
   
-  // 2. Posts agendados pra hoje (filtrados por pessoa logada; sem pessoa_id = legado, todos veem)
+  // 2. Posts agendados pra hoje — só do usuário logado
   try {
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     var meuId = u ? u.id : null;
     var posts = JSON.parse(localStorage.getItem('gami_posts')||'[]');
     posts.filter(function(p){ 
       if(p.data !== hojeStr || p.status === 'publicado') return false;
-      // Sem pessoa_id = legado → todos veem
-      if(!p.pessoa_id) return true;
-      // Com pessoa_id → só a dona vê
-      return meuId && p.pessoa_id === meuId;
+      if(!meuId) return false;
+      return p.pessoa_id === meuId;
     })
          .forEach(function(p){
            itens.push({tipo:'post', icone:'🎨', titulo:'Post: '+(p.titulo||p.tema||'sem título'), hora:p.hora||'', cor:'#7F77DD', origem:'conteudo', dados:p});
          });
   } catch(e){}
   
-  // 3. Eventos do calendário pra hoje (filtrados por pessoa logada; sem pessoa_id = legado, todos veem)
+  // 3. Eventos do calendário pra hoje — só do usuário logado (aniversários são públicos)
   try {
     var u3 = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     var meuId3 = u3 ? u3.id : null;
     var eventos = JSON.parse(localStorage.getItem('gami_cal')||'[]');
     eventos.filter(function(e){ 
       if(e.data !== hojeStr) return false;
-      // Aniversários são públicos pra todos
-      if(e.tipo === 'aniversario') return true;
-      // Sem pessoa_id = legado → todos veem
-      if(!e.pessoa_id) return true;
-      // Com pessoa_id → só a dona vê
-      return meuId3 && e.pessoa_id === meuId3;
+      if(e.tipo === 'aniversario') return true; // públicos pra todos
+      if(!meuId3) return false;
+      return e.pessoa_id === meuId3;
     })
            .forEach(function(e){
              itens.push({tipo:'evento', icone:e.tipo==='aniversario'?'🎂':'📅', titulo:e.titulo||e.nome||'Evento', hora:e.hora||'', cor:'#378ADD', origem:'calendario'});
@@ -31516,29 +31510,26 @@ function getTarefasRaw(tipo, sufixo){
   try{ return JSON.parse(localStorage.getItem(tfKey(tipo,sufixo))||'[]'); }catch(e){ return []; }
 }
 function saveTarefas(tipo, sufixo, lista){
-  // Quando filtrado, precisa mesclar com tarefas de outros usuários
-  // Pega lista atual SEM filtro
   var listaCompleta = (typeof getTarefasRaw === 'function') ? getTarefasRaw(tipo, sufixo) : (function(){
     try{ return JSON.parse(localStorage.getItem(tfKey(tipo,sufixo))||'[]'); }catch(e){ return []; }
   })();
   
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-  var ehSuperAdmin = u && u.email && u.email.toLowerCase() === 'jipadigital@gmail.com';
-  
-  if(ehSuperAdmin || !u){
-    // Salva tudo direto
+  if(!u){
+    // Sem usuário logado: salva direto (não deveria acontecer)
     try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(lista)); }catch(e){}
     return;
   }
   
-  // Pra usuário normal: mantém tarefas de outros + atualiza as próprias
+  // REGRA: TODA tarefa salva ganha pessoa_id = usuário logado (se ainda não tiver)
+  // Mantém as tarefas de outros usuários, atualiza só as do usuário atual
   var ids = {}; lista.forEach(function(t){ if(t && t.id) ids[t.id] = true; });
   var outros = listaCompleta.filter(function(t){
     if(!t) return false;
-    if(ids[t.id]) return false; // já está em lista (vai sobrescrever)
-    return t.pessoa_id !== u.id; // mantém só de outros
+    if(ids[t.id]) return false; // vai sobrescrever
+    return t.pessoa_id && t.pessoa_id !== u.id; // mantém só de outros donos
   });
-  // Garante que toda tarefa salva tem pessoa_id
+  // Garante pessoa_id em todas as tarefas salvas
   lista.forEach(function(t){ if(t && !t.pessoa_id) t.pessoa_id = u.id; });
   var merged = outros.concat(lista);
   try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(merged)); }catch(e){}
