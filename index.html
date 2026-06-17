@@ -1,4 +1,4 @@
-<!-- v26.00 - GPS com fallback automatico + mensagens especificas por codigo - 17/06/2026 -->
+<!-- v26.02 - Removido botao sem GPS - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40419,6 +40419,11 @@ function mpPedirGeolocation(){
     }
   }).catch(function(err){
     MP_GEO = null;
+    
+    // Mostra o botão alternativo "sem GPS"
+    var btnSem = document.getElementById('mp-btn-bater-sem-gps');
+    if(btnSem) btnSem.style.display = '';
+    
     var msg = _msgErroGeo(err);
     var btnRetry = '<button onclick="mpPedirGeolocation()" style="margin-top:10px;width:100%;padding:10px;background:#0E7AB8;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>';
     
@@ -40536,6 +40541,55 @@ function mpRenderCardsDia(dados){
 }
 
 // ============ BATER PONTO ============
+// Bater ponto sem GPS (fallback quando localização falha)
+async function mpBaterPontoSemGPS(){
+  if(!MP_PESSOA){ alert('Não autenticado.'); return; }
+  
+  var justif = prompt(
+    '📍 BATER PONTO SEM GPS\n\n' +
+    'O sistema não conseguiu detectar sua localização.\n\n' +
+    'Confirme que você está no escritório agora:',
+    'Estou no escritório, GPS do PC não está funcionando.'
+  );
+  
+  if(!justif || justif.trim().length < 10){
+    alert('⚠️ Justificativa muito curta. Escreva pelo menos 10 caracteres confirmando sua presença.');
+    return;
+  }
+  
+  var btn = document.getElementById('mp-btn-bater-sem-gps');
+  if(btn){
+    btn.disabled = true;
+    btn.textContent = '⏳ Registrando...';
+  }
+  
+  try {
+    var resp = await _mpRPC('ponto_bater', {
+      p_pessoa_id: MP_PESSOA.id,
+      p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+      p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+      p_justificativa: '[SEM GPS] ' + justif.trim(),
+      p_user_agent: navigator.userAgent.slice(0, 150)
+    });
+    
+    if(typeof toast === 'function'){
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora + ' (sem GPS)', 'success');
+    } else {
+      alert('✅ Ponto registrado às ' + resp.hora + '\n\n⚠️ Registrado sem GPS. O Cleyton vai revisar.');
+    }
+    
+    if(btn) btn.style.display = 'none';
+    await mpCarregarDia();
+    await mpCarregarMes();
+  } catch(e){
+    alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = '📍 Bater ponto sem GPS (presença confirmada manualmente)';
+    }
+  }
+}
+
 async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
@@ -40559,7 +40613,9 @@ async function mpBaterPonto(){
       btn.textContent = '🕒 BATER PONTO';
     }
     if(!MP_GEO){
-      alert('⏱️ Não conseguimos obter sua localização. Verifique:\n\n1. GPS do celular está ligado?\n2. Permitiu localização no navegador?\n\nDepois clique em BATER PONTO de novo.');
+      alert('⏱️ Não conseguimos obter sua localização.\n\n💡 Se você ESTÁ no escritório agora, use o botão "Bater ponto sem GPS" que apareceu abaixo.');
+      var btnSem = document.getElementById('mp-btn-bater-sem-gps');
+      if(btnSem) btnSem.style.display = '';
       return;
     }
   }
@@ -42102,6 +42158,55 @@ document.addEventListener('click', function(e){
   }
 });
 
+// Função pra bater ponto sem GPS (quando localização falha)
+async function dashBaterPontoSemGPS(){
+  if(!MP_PESSOA){ alert('Não autenticado'); return; }
+  
+  var justif = prompt(
+    '📍 BATER PONTO SEM GPS\n\n' +
+    'O sistema não conseguiu detectar sua localização.\n\n' +
+    'Confirme que você está no escritório agora:',
+    'Estou no escritório, GPS do PC não está funcionando.'
+  );
+  
+  if(!justif || justif.trim().length < 10){
+    alert('⚠️ Justificativa muito curta. Escreva pelo menos 10 caracteres confirmando sua presença.');
+    return;
+  }
+  
+  var btn = document.getElementById('dash-btn-bater-sem-gps');
+  var originalText = btn ? btn.innerHTML : '';
+  if(btn){
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Registrando...';
+  }
+  
+  try {
+    var resp = await _mpRPC('ponto_bater', {
+      p_pessoa_id: MP_PESSOA.id,
+      p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+      p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+      p_justificativa: '[SEM GPS] ' + justif.trim(),
+      p_user_agent: navigator.userAgent.slice(0, 150)
+    });
+    
+    if(typeof toast === 'function'){
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' registrado às ' + resp.hora + ' (sem GPS)', 'success');
+    } else {
+      alert('✅ Ponto registrado às ' + resp.hora + '\n\n⚠️ Registro sem GPS. O Cleyton vai revisar.');
+    }
+    
+    if(btn) btn.style.display = 'none';
+    await dashRenderCardPonto();
+  } catch(e){
+    alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+    if(btn){
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  }
+}
+
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
@@ -42121,8 +42226,12 @@ async function dashBaterPontoRapido(){
         btn.disabled = false;
         btn.innerHTML = originalText;
       }
-      var msg = (typeof _msgErroGeo === 'function') ? _msgErroGeo(err) : { longa: 'Não foi possível obter sua localização. Verifique e tente novamente.' };
-      alert(msg.longa);
+      // Mostra o botão alternativo "sem GPS"
+      var btnSemGps = document.getElementById('dash-btn-bater-sem-gps');
+      if(btnSemGps) btnSemGps.style.display = '';
+      
+      var msg = (typeof _msgErroGeo === 'function') ? _msgErroGeo(err) : { longa: 'Não foi possível obter sua localização.' };
+      alert(msg.longa + '\n\n💡 Se você ESTÁ no escritório agora, use o botão "Bater ponto sem GPS" que apareceu abaixo.');
       return;
     }
   }
