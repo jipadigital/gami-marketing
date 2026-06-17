@@ -1,4 +1,4 @@
-<!-- v26.10 - Botao mostrar PIN no login (debug celular) - 17/06/2026 -->
+<!-- v26.12 - URL ?reset=1 limpa cache local + SW + recarrega - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8007,7 +8007,7 @@ var CARGO_CATS = [
   { nome:'Financeiro', bg:'#E0F2F1', color:'#00695C', dot:'#26A69A',
     funcoes:['Auxiliar Financeiro','Analista Financeiro','Assistente Financeiro'] },
   { nome:'Colaborador',bg:'#E6F1FB', color:'#185FA5', dot:'#378ADD',
-    funcoes:['Marketing','Prospecção','Suporte Home','Suporte Escritório','Administrativo'] },
+    funcoes:['Marketing','Prospecção','Suporte Home','Suporte Escritório','Administrativo','Financeiro'] },
   { nome:'Motoboy',    bg:'#EAF3DE', color:'#3B6D11', dot:'#1D9E75',
     funcoes:['Motoboy','Supervisor de Entrega'] },
 ];
@@ -9517,6 +9517,44 @@ if(document.readyState !== 'loading'){
 /* INICIALIZAÇÃO — Verifica login ao carregar página              */
 /* ============================================================== */
 function checarLoginInicial(){
+  // 🔄 Modo RESET: ?reset=1 limpa todo cache local + service workers + recarrega
+  if(typeof location !== 'undefined' && location.search && location.search.indexOf('reset=1') !== -1){
+    console.log('[RESET] Limpando todo cache local...');
+    try {
+      // Preserva só o ip cache (não atrapalha nada)
+      var keysParaApagar = [];
+      for(var i=0; i<localStorage.length; i++){
+        keysParaApagar.push(localStorage.key(i));
+      }
+      keysParaApagar.forEach(function(k){ 
+        try { localStorage.removeItem(k); } catch(e){}
+      });
+      sessionStorage.clear();
+    } catch(e){ console.warn('[RESET] erro localStorage:', e); }
+    
+    try {
+      if('serviceWorker' in navigator){
+        navigator.serviceWorker.getRegistrations().then(function(regs){
+          regs.forEach(function(r){ r.unregister(); });
+        });
+      }
+    } catch(e){ console.warn('[RESET] erro SW:', e); }
+    
+    try {
+      if('caches' in window){
+        caches.keys().then(function(names){
+          names.forEach(function(n){ caches.delete(n); });
+        });
+      }
+    } catch(e){ console.warn('[RESET] erro cache:', e); }
+    
+    // Redireciona pra raiz sem parametros após 800ms
+    setTimeout(function(){
+      location.replace(location.origin + location.pathname);
+    }, 800);
+    return false;
+  }
+  
   var u = getUsuarioLogado();
   if(!u){
     // Não logado → mostra tela de login imediatamente
@@ -11363,14 +11401,14 @@ function selectFuncao(btn, funcao){
 
 // ---- CIDADE PICKER ----
 /* Categorias que podem atuar em múltiplas cidades */
-var CATEGORIAS_MULTICIDADE = ['Suporte', 'Marketing', 'Gerência', 'Gerencia', 'Prospecção', 'Prospeccao', 'Diretoria', 'Gestor'];
+var CATEGORIAS_MULTICIDADE = ['Suporte', 'Marketing', 'Gerência', 'Gerencia', 'Prospecção', 'Prospeccao', 'Diretoria', 'Gestor', 'Financeiro'];
 var NIVEIS_MULTICIDADE     = ['Gestor', 'Gerente', 'Diretor'];
 
 function isMultiCidade(){
   const cat = (document.getElementById('pf-categoria')||{}).value || '';
   const cargo = (document.getElementById('pf-cargo')||{}).value || '';
   if(CATEGORIAS_MULTICIDADE.includes(cat)) return true;
-  if(/Suporte|Marketing|Prospec|Ger[eê]nci|Gerente|Diretor/i.test(cargo)) return true;
+  if(/Suporte|Marketing|Prospec|Ger[eê]nci|Gerente|Diretor|Financ/i.test(cargo)) return true;
   // Se algum dos níveis selecionados é Gestor/Gerente/Diretor → multi-cidade
   try{
     const niveisRaw = (document.getElementById('pf-niveis')||{}).value || '[]';
