@@ -1,4 +1,4 @@
-<!-- v26.06 - Forca Cidades sempre quando ve todas - 17/06/2026 -->
+<!-- v26.09 - Reconhecimento apenas Cleyton/Diretoria - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1179,6 +1179,9 @@ function detectarNivelPermissao(usuario){
   // Gestor de Cidade
   if(cargo.includes('gestor')) return 'gestor';
   
+  // 🆕 Financeiro — colaborador que pode editar pessoas (Leomara e equipe)
+  if(cargo.includes('financ') || categoria === 'financeiro') return 'financeiro';
+  
   // Marketing (caso outros marketers entrem futuramente — hoje só Cleyton)
   if(cargo.includes('marketing')) return 'super_admin';
   
@@ -1249,6 +1252,16 @@ var MATRIZ_PERMISSOES = {
     filtra_inbox: true
   },
   colaborador: {
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false
+  },
+  financeiro: {
     abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
@@ -7991,6 +8004,8 @@ var CARGO_CATS = [
     funcoes:['Gestor de Cidade','Gestor Regional','Gestor de Operações'] },
   { nome:'Gerência',   bg:'#FAEEDA', color:'#0E7AB8', dot:'#EF9F27',
     funcoes:['Gerente Financeiro','Gerente de Operações'] },
+  { nome:'Financeiro', bg:'#E0F2F1', color:'#00695C', dot:'#26A69A',
+    funcoes:['Auxiliar Financeiro','Analista Financeiro','Assistente Financeiro'] },
   { nome:'Colaborador',bg:'#E6F1FB', color:'#185FA5', dot:'#378ADD',
     funcoes:['Marketing','Prospecção','Suporte Home','Suporte Escritório','Administrativo'] },
   { nome:'Motoboy',    bg:'#EAF3DE', color:'#3B6D11', dot:'#1D9E75',
@@ -8009,6 +8024,10 @@ var FUNCAO_COLOR = {
   // Gerência
   'Gerente Financeiro':   { bg:'#FAEEDA', color:'#854F0B', dot:'#EF9F27' },
   'Gerente de Operações': { bg:'#E6F6FE', color:'#0E7AB8', dot:'#BA7517' },
+  // Financeiro
+  'Auxiliar Financeiro':  { bg:'#E0F2F1', color:'#00695C', dot:'#26A69A' },
+  'Analista Financeiro':  { bg:'#E0F2F1', color:'#00695C', dot:'#00897B' },
+  'Assistente Financeiro':{ bg:'#E0F2F1', color:'#00695C', dot:'#4DB6AC' },
   // Colaborador
   'Marketing':            { bg:'#EEEDFE', color:'#534AB7', dot:'#7F77DD' },
   'Prospecção':           { bg:'#FBEAF0', color:'#993556', dot:'#D4537E' },
@@ -28296,6 +28315,14 @@ async function projetarDiaIA(){
    ============================ */
 function _reconhecimentoKey(){ return 'gami_reconhecimento_semana'; }
 
+// Apenas Cleyton (super_admin) e Diretoria podem editar o reconhecimento da semana
+function _podeGerenciarReconhecimento(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u) return false;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  return nivel === 'super_admin' || nivel === 'diretoria';
+}
+
 function getReconhecimento(){
   try { return JSON.parse(localStorage.getItem(_reconhecimentoKey())||'null'); } catch(e){ return null; }
 }
@@ -28335,7 +28362,14 @@ function renderReconhecimento(){
   var rec = getReconhecimento();
   
   if(!rec || !rec.nome){
-    // Estado vazio + botão para adicionar (Diretoria edita)
+    var podeEditar = _podeGerenciarReconhecimento();
+    // Se ninguém ainda foi escolhido pra essa semana
+    // Pra quem NÃO pode editar: oculta totalmente
+    if(!podeEditar){
+      host.innerHTML = '';
+      return;
+    }
+    // Estado vazio + botão para adicionar (apenas Cleyton/Diretoria)
     host.innerHTML = '<div class="card" style="margin:0;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,#FAEEDA,#FFF8E1);border:1px solid #FFD180">'
       + '<div style="display:flex;align-items:center;gap:10px">'
       + '<div style="font-size:28px">🏆</div>'
@@ -28352,6 +28386,11 @@ function renderReconhecimento(){
     ? '<img src="'+rec.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' 
     : '<span style="font-size:22px;font-weight:700">'+(rec.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase())+'</span>';
   
+  var podeEditar = _podeGerenciarReconhecimento();
+  var botaoEditar = podeEditar 
+    ? '<button onclick="abrirModalReconhecimento()" title="Editar" style="padding:7px 10px;border:none;border-radius:7px;background:rgba(255,255,255,.3);color:#854F0B;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✏️</button>'
+    : '';
+  
   host.innerHTML = '<div style="padding:0;background:linear-gradient(135deg,#FFD180,#FFAB40);border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(255,171,64,.2)">'
     + '<div style="padding:16px 18px;display:flex;align-items:center;gap:14px">'
     + '<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.3);border:3px solid white;display:flex;align-items:center;justify-content:center;color:#854F0B;flex-shrink:0;overflow:hidden">'+fotoHTML+'</div>'
@@ -28360,11 +28399,16 @@ function renderReconhecimento(){
     + '<div style="font-size:17px;font-weight:700;color:#854F0B;margin-bottom:3px">'+rec.nome+'</div>'
     + '<div style="font-size:12px;color:#854F0B;line-height:1.4;opacity:.9">'+rec.texto+'</div>'
     + '</div>'
-    + '<button onclick="abrirModalReconhecimento()" title="Editar" style="padding:7px 10px;border:none;border-radius:7px;background:rgba(255,255,255,.3);color:#854F0B;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✏️</button>'
+    + botaoEditar
     + '</div></div>';
 }
 
 function abrirModalReconhecimento(){
+  if(!_podeGerenciarReconhecimento()){
+    if(typeof toast === 'function') toast('Apenas Cleyton e Diretoria podem editar o reconhecimento.', 'warn');
+    else alert('Apenas Cleyton e Diretoria podem editar o reconhecimento da semana.');
+    return;
+  }
   var rec = getReconhecimento() || {};
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
   
@@ -28403,6 +28447,10 @@ function abrirModalReconhecimento(){
 }
 
 function salvarReconhecimento(){
+  if(!_podeGerenciarReconhecimento()){
+    alert('Sem permissão.');
+    return;
+  }
   var pessoaId = document.getElementById('rec-pessoa').value;
   var texto = document.getElementById('rec-texto').value.trim();
   if(!pessoaId){ alert('Escolha uma pessoa.'); return; }
@@ -28425,6 +28473,10 @@ function salvarReconhecimento(){
 }
 
 function limparReconhecimento(){
+  if(!_podeGerenciarReconhecimento()){
+    alert('Sem permissão.');
+    return;
+  }
   if(!confirm('Apagar o reconhecimento atual?')) return;
   try { localStorage.removeItem(_reconhecimentoKey()); } catch(e){}
   // Limpa também no Supabase (escreve objeto vazio)
