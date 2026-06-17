@@ -1,4 +1,4 @@
-<!-- v25.97 - Card tarefas delegadas no dashboard - 16/06/2026 -->
+<!-- v25.99 - GPS bloqueante no bater ponto + erros claros - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40555,18 +40555,35 @@ function mpRenderCardsDia(dados){
 async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
-  // Garante GPS
+  var btn = document.getElementById('mp-btn-bater');
+  
+  // Aguarda GPS se ainda não foi capturado
   if(!MP_GEO){
-    alert('📡 Aguarde a localização ser capturada (alguns segundos)...');
+    if(btn){
+      btn.disabled = true;
+      btn.textContent = '📡 Detectando GPS...';
+    }
+    // mpPedirGeolocation pode não retornar Promise — usa polling
     mpPedirGeolocation();
-    return;
+    var tentativas = 0;
+    while(!MP_GEO && tentativas < 30){  // até 15s
+      await new Promise(function(r){ setTimeout(r, 500); });
+      tentativas++;
+    }
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = '🕒 BATER PONTO';
+    }
+    if(!MP_GEO){
+      alert('⏱️ Não conseguimos obter sua localização. Verifique:\n\n1. GPS do celular está ligado?\n2. Permitiu localização no navegador?\n\nDepois clique em BATER PONTO de novo.');
+      return;
+    }
   }
   
   var justifBox = document.getElementById('mp-justificativa-box');
   var justifInput = document.getElementById('mp-justificativa');
   var justif = justifInput.value.trim() || null;
   
-  // Verifica raio
   if(MP_GEO.distancia && !MP_GEO.dentro && !justif){
     justifBox.style.display = 'block';
     justifInput.focus();
@@ -40574,9 +40591,10 @@ async function mpBaterPonto(){
     return;
   }
   
-  var btn = document.getElementById('mp-btn-bater');
-  btn.disabled = true;
-  btn.textContent = '⏳ Registrando...';
+  if(btn){
+    btn.disabled = true;
+    btn.textContent = '⏳ Registrando...';
+  }
   
   try {
     var resp = await _mpRPC('ponto_bater', {
@@ -40593,18 +40611,18 @@ async function mpBaterPonto(){
       alert('✅ Ponto registrado às ' + resp.hora);
     }
     
-    // Limpa justificativa
     document.getElementById('mp-justificativa').value = '';
     document.getElementById('mp-justificativa-box').style.display = 'none';
     
-    // Recarrega
     await mpCarregarDia();
     await mpCarregarMes();
   } catch(e){
     alert('❌ ' + (e.message || 'Erro ao bater ponto'));
   } finally {
-    btn.disabled = false;
-    btn.textContent = '🕒 BATER PONTO';
+    if(btn){
+      btn.disabled = false;
+      btn.textContent = '🕒 BATER PONTO';
+    }
   }
 }
 
@@ -41743,44 +41761,69 @@ function dashRenderPontoStatus(dados){
 }
 
 function dashPedirGeoPonto(){
-  var statusEl = document.getElementById('dash-ponto-geo');
-  if(!statusEl) return;
-  if(!navigator.geolocation){
-    statusEl.innerHTML = '❌ Sem suporte a GPS';
-    return;
-  }
-  
-  navigator.geolocation.getCurrentPosition(
-    function(pos){
-      MP_GEO = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy };
-      
-      if(MP_CONFIG){
-        var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
-        MP_GEO.distancia = d;
-        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+  return new Promise(function(resolve, reject){
+    var statusEl = document.getElementById('dash-ponto-geo');
+    if(!navigator.geolocation){
+      if(statusEl) statusEl.innerHTML = '❌ Sem suporte a GPS';
+      return reject(new Error('GPS não suportado'));
+    }
+    
+    if(statusEl) statusEl.innerHTML = '<span style="color:#0E7AB8">📡 Detectando localização...</span>';
+    
+    navigator.geolocation.getCurrentPosition(
+      function(pos){
+        MP_GEO = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy };
         
-        if(MP_GEO.dentro){
-          statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
-          document.getElementById('dash-ponto-justif-box').style.display = 'none';
-        } else {
-          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
-          document.getElementById('dash-ponto-justif-box').style.display = 'block';
+        if(MP_CONFIG){
+          var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
+          MP_GEO.distancia = d;
+          MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+          
+          if(statusEl){
+            if(MP_GEO.dentro){
+              statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
+              var jb = document.getElementById('dash-ponto-justif-box');
+              if(jb) jb.style.display = 'none';
+            } else {
+              statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
+              var jb = document.getElementById('dash-ponto-justif-box');
+              if(jb) jb.style.display = 'block';
+            }
+          }
         }
-      }
-    },
-    function(err){
-      MP_GEO = null;
-      statusEl.innerHTML = '❌ Permita acesso ao GPS pra bater ponto';
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-  );
+        resolve(MP_GEO);
+      },
+      function(err){
+        MP_GEO = null;
+        if(statusEl){
+          if(err.code === 1){
+            statusEl.innerHTML = '<div style="color:#A32D2D;font-size:11px">🚫 GPS bloqueado. Click no <strong>cadeado 🔒</strong> da barra de endereço → Permissões → Localização → Permitir. Depois F5.</div>';
+          } else if(err.code === 2){
+            statusEl.innerHTML = '⚠️ GPS indisponível. Verifique se o GPS do celular está ligado.';
+          } else if(err.code === 3){
+            statusEl.innerHTML = '⏱️ GPS demorou pra responder. Vá pra um lugar com sinal melhor.';
+          } else {
+            statusEl.innerHTML = '❌ Erro ao obter localização: ' + (err.message || 'desconhecido');
+          }
+        }
+        reject(err);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  });
 }
 
 // ============================================================
 // 🎯 CARD DE TAREFAS DELEGADAS NO DASHBOARD
 // Mostra alerta quando user tem tarefas delegadas não concluídas
+// + Polling automático a cada 30s pra detectar novas (sem F5!)
 // ============================================================
-async function dashRenderTarefasDelegadas(){
+
+// Guarda IDs das delegadas conhecidas pra detectar novas
+window._dashDelegadasConhecidas = window._dashDelegadasConhecidas || new Set();
+
+async function dashRenderTarefasDelegadas(opts){
+  opts = opts || {};
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var card = document.getElementById('dash-card-delegadas');
   if(!card || !u || !u.id){
@@ -41806,6 +41849,77 @@ async function dashRenderTarefasDelegadas(){
     }
     
     var lista = await r.json();
+    
+    // ====== DETECÇÃO DE NOVAS TAREFAS ======
+    // Compara IDs atuais com os conhecidos pra detectar tarefas novas
+    var idsAtuais = new Set(lista.map(function(t){ return t.id; }));
+    var novas = lista.filter(function(t){ 
+      return !window._dashDelegadasConhecidas.has(t.id); 
+    });
+    
+    // Se não é primeira carga E tem tarefas novas → notifica!
+    if(window._dashDelegadasConhecidas.size > 0 && novas.length > 0 && !opts.silent){
+      // Toast pra cada nova
+      novas.forEach(function(t){
+        var msg = '📥 Nova tarefa: ' + (t.texto || '').slice(0, 60);
+        if(typeof toast === 'function'){
+          toast(msg, 'info', 6000);
+        }
+      });
+      
+      // Som de notificação
+      try {
+        if(window._notifTocarSom){ 
+          window._notifTocarSom(); 
+        } else if(typeof Audio !== 'undefined'){
+          // Beep sintético
+          var ctx = new (window.AudioContext || window.webkitAudioContext)();
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.frequency.value = 880; gain.gain.value = 0.1;
+          osc.start(); osc.stop(ctx.currentTime + 0.15);
+          setTimeout(function(){
+            var o2 = ctx.createOscillator(); var g2 = ctx.createGain();
+            o2.connect(g2); g2.connect(ctx.destination);
+            o2.frequency.value = 660; g2.gain.value = 0.1;
+            o2.start(); o2.stop(ctx.currentTime + 0.15);
+          }, 200);
+        }
+      } catch(e){}
+      
+      // Notification API (se permitido)
+      try {
+        if('Notification' in window && Notification.permission === 'granted'){
+          novas.forEach(function(t){
+            new Notification('📥 Nova tarefa delegada', {
+              body: (t.delegada_por_nome ? t.delegada_por_nome + ': ' : '') + (t.texto || '').slice(0, 100),
+              icon: '/icon-192.png',
+              tag: 'tarefa-' + t.id
+            });
+          });
+        }
+      } catch(e){}
+      
+      // Animação no card
+      card.style.animation = 'none';
+      setTimeout(function(){ 
+        card.style.animation = 'pulse-purple 1.5s ease 3'; 
+      }, 50);
+    }
+    
+    // Atualiza set de conhecidas
+    window._dashDelegadasConhecidas = idsAtuais;
+    
+    // ====== ATUALIZA BADGE NA SIDEBAR ======
+    var badge = document.getElementById('badge-tar');
+    if(badge){
+      var naoFeitas = lista.length;
+      if(naoFeitas > 0){
+        badge.textContent = naoFeitas;
+        badge.style.display = '';
+      }
+    }
     
     if(!lista || lista.length === 0){
       card.style.display = 'none';
@@ -41895,9 +42009,37 @@ if(typeof _escapeHtml !== 'function'){
   };
 }
 
-// Auto-init quando dashboard carrega
-setTimeout(dashRenderTarefasDelegadas, 1500);
-setTimeout(dashRenderTarefasDelegadas, 4000);
+// CSS da animação pulse roxo
+(function(){
+  var st = document.createElement('style');
+  st.textContent = '@keyframes pulse-purple { 0%,100% { box-shadow: 0 4px 14px rgba(139,92,246,0.10); } 50% { box-shadow: 0 4px 30px rgba(139,92,246,0.55); } }';
+  document.head.appendChild(st);
+})();
+
+// ============================================================
+// 🔁 POLLING AUTOMÁTICO — verifica novas tarefas a cada 30s
+// Sem precisar dar F5!
+// ============================================================
+(function _iniciarPollingDelegadas(){
+  // Primeira carga: silenciosa (popula a memória sem tocar som)
+  setTimeout(function(){ dashRenderTarefasDelegadas({ silent: true }); }, 1500);
+  setTimeout(function(){ dashRenderTarefasDelegadas({ silent: true }); }, 4000);
+  
+  // Polling a cada 30 segundos
+  setInterval(function(){
+    // Só roda se a aba estiver visível pra não gastar bateria
+    if(document.visibilityState === 'visible'){
+      dashRenderTarefasDelegadas();
+    }
+  }, 30 * 1000);
+  
+  // Quando volta pra aba, força verificação imediata
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible'){
+      setTimeout(function(){ dashRenderTarefasDelegadas(); }, 500);
+    }
+  });
+})();
 
 // Recarrega ao navegar pro dashboard
 document.addEventListener('click', function(e){
@@ -41905,7 +42047,19 @@ document.addEventListener('click', function(e){
   if(t && t.classList && t.classList.contains('nav-item')){
     var txt = (t.textContent || '').toLowerCase();
     if(txt.indexOf('dashboard') >= 0 || txt.indexOf('início') >= 0 || txt.indexOf('inicio') >= 0){
-      setTimeout(dashRenderTarefasDelegadas, 400);
+      setTimeout(function(){ dashRenderTarefasDelegadas({ silent: true }); }, 400);
+    }
+    // Ao abrir Tarefas, sincroniza do Supabase (puxa as delegadas novas pra cache local)
+    if(txt.indexOf('tarefas') >= 0){
+      if(typeof tfSincronizarDoSupabase === 'function'){
+        setTimeout(function(){
+          tfSincronizarDoSupabase().then(function(){
+            // Re-renderiza tudo
+            if(typeof tfRenderDiario === 'function') tfRenderDiario();
+            if(typeof tfRenderXpCard === 'function') tfRenderXpCard();
+          });
+        }, 300);
+      }
     }
   }
 });
@@ -41913,30 +42067,51 @@ document.addEventListener('click', function(e){
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
-  // Garante que GPS foi capturado
+  var btn = document.getElementById('dash-btn-bater-ponto');
+  var originalText = btn ? btn.innerHTML : '';
+  
+  // Se ainda não temos GPS, AGUARDA capturar antes de fazer qualquer coisa
   if(!MP_GEO){
-    alert('📡 Aguarde a localização ser capturada (alguns segundos)...');
-    dashPedirGeoPonto();
-    return;
+    if(btn){
+      btn.disabled = true;
+      btn.innerHTML = '📡 Detectando GPS...';
+    }
+    try {
+      await dashPedirGeoPonto();  // ESPERA o GPS
+    } catch(err){
+      if(btn){
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+      if(err && err.code === 1){
+        alert('🚫 A localização está bloqueada no navegador.\n\nClick no cadeado 🔒 ao lado do endereço → Permissões → Localização → Permitir.\n\nDepois recarregue a página.');
+      } else {
+        alert('⏱️ Não foi possível obter sua localização. Verifique se o GPS está ligado e tente novamente.');
+      }
+      return;
+    }
   }
   
-  // Verifica se está fora do raio E ainda não tem justificativa
+  // Agora temos GPS. Verifica se está fora do raio E sem justificativa
   var justifBox = document.getElementById('dash-ponto-justif-box');
   var justifInput = document.getElementById('dash-ponto-justif');
   var justif = justifInput.value.trim() || null;
   
-  if(MP_GEO.distancia && !MP_GEO.dentro && !justif){
-    // Mostra o campo de justificativa e foca nele
+  if(MP_GEO && MP_GEO.distancia && !MP_GEO.dentro && !justif){
     justifBox.style.display = 'block';
     justifInput.focus();
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
     alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório.\n\nPreencha uma justificativa antes de bater o ponto.');
     return;
   }
   
-  var btn = document.getElementById('dash-btn-bater-ponto');
-  var originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '⏳ Registrando...';
+  if(btn){
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Registrando...';
+  }
   
   try {
     var resp = await _mpRPC('ponto_bater', {
@@ -41956,12 +42131,13 @@ async function dashBaterPontoRapido(){
     document.getElementById('dash-ponto-justif').value = '';
     document.getElementById('dash-ponto-justif-box').style.display = 'none';
     
-    // Recarrega o status
     await dashRenderCardPonto();
   } catch(e){
     alert('❌ ' + (e.message || 'Erro ao bater ponto'));
-    btn.innerHTML = originalText;
-    btn.disabled = false;
+    if(btn){
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
   }
 }
 
