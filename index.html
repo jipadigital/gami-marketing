@@ -1,4 +1,4 @@
-<!-- v26.14 - Dashboard pessoal so com tarefas do usuario logado - 17/06/2026 -->
+<!-- v26.15 - Liberacao temporaria de validacao GPS/IP por pessoa - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40415,7 +40415,7 @@ async function mpVerificarAcessoSidebar(){
       var email = u.email || '';
       var id = u.id || u.pessoa_id;
       var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
-      var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto&limit=1', {
+      var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto,ponto_sem_validacao_ate&limit=1', {
         headers: _mpSupaHeaders(), cache: 'no-store'
       });
       var arr = r.ok ? await r.json() : [];
@@ -40718,6 +40718,38 @@ async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
   var btn = document.getElementById('mp-btn-bater');
+  
+  // 🆓 LIBERAÇÃO TEMPORÁRIA: home office / viagem (configurado no banco)
+  if(_pessoaLiberadaValidacao(MP_PESSOA)){
+    if(btn){
+      btn.disabled = true;
+      btn.textContent = '⏳ Registrando...';
+    }
+    try {
+      var resp = await _mpRPC('ponto_bater', {
+        p_pessoa_id: MP_PESSOA.id,
+        p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+        p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+        p_justificativa: '[LIBERAÇÃO TEMPORÁRIA] Liberada de validação GPS/IP até ' + (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10) + '.',
+        p_user_agent: navigator.userAgent.slice(0, 150)
+      });
+      if(typeof toast === 'function'){
+        toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+      } else {
+        alert('✅ Ponto registrado às ' + resp.hora);
+      }
+      await mpCarregarDia();
+      await mpCarregarMes();
+    } catch(e){
+      alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+    } finally {
+      if(btn){
+        btn.disabled = false;
+        btn.textContent = '🕒 BATER PONTO';
+      }
+    }
+    return;
+  }
   
   // Aguarda GPS se ainda não foi capturado
   if(!MP_GEO){
@@ -42439,11 +42471,50 @@ async function dashBaterPontoSemGPS(){
   }
 }
 
+// Verifica se a pessoa está temporariamente liberada de validação GPS/IP
+// (ex: home office, viagem). Definido em pessoas.ponto_sem_validacao_ate
+function _pessoaLiberadaValidacao(pessoa){
+  if(!pessoa || !pessoa.ponto_sem_validacao_ate) return false;
+  try {
+    var ate = new Date(pessoa.ponto_sem_validacao_ate);
+    ate.setHours(23, 59, 59, 999);  // libera até o fim do dia
+    return ate >= new Date();
+  } catch(e){ return false; }
+}
+
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
   var btn = document.getElementById('dash-btn-bater-ponto');
   var originalText = btn ? btn.innerHTML : '';
+  
+  // 🆓 LIBERAÇÃO TEMPORÁRIA: home office / viagem (configurado no banco)
+  if(_pessoaLiberadaValidacao(MP_PESSOA)){
+    if(btn){
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Registrando...';
+    }
+    try {
+      var resp = await _mpRPC('ponto_bater', {
+        p_pessoa_id: MP_PESSOA.id,
+        p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+        p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+        p_justificativa: '[LIBERAÇÃO TEMPORÁRIA] Liberada de validação GPS/IP até ' + (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10) + '.',
+        p_user_agent: navigator.userAgent.slice(0, 150)
+      });
+      if(typeof toast === 'function'){
+        toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+      } else {
+        alert('✅ Ponto registrado às ' + resp.hora);
+      }
+      await dashRenderCardPonto();
+      return;
+    } catch(e){
+      alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+      if(btn){ btn.disabled = false; btn.innerHTML = originalText; }
+      return;
+    }
+  }
   
   // 🚀 ATALHO: se já está no IP do escritório, bate direto (não precisa de GPS)
   if(btn){
