@@ -1,4 +1,4 @@
-<!-- v25.99 - GPS bloqueante no bater ponto + erros claros - 17/06/2026 -->
+<!-- v26.00 - GPS com fallback automatico + mensagens especificas por codigo - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40383,86 +40383,70 @@ function mpRenderBanner(){
 // ============ Geolocalização ============
 function mpPedirGeolocation(){
   var statusEl = document.getElementById('mp-status-geo');
+  if(!statusEl) return;
   if(!navigator.geolocation){
     statusEl.innerHTML = '❌ Seu navegador não suporta geolocalização';
     return;
   }
   
-  statusEl.innerHTML = '📡 Capturando localização...';
+  statusEl.innerHTML = '<span style="color:#0E7AB8">📡 Capturando localização...</span>';
   
-  navigator.geolocation.getCurrentPosition(
-    function(pos){
-      MP_GEO = {
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        precisao: pos.coords.accuracy
-      };
+  _obterLocalizacao().then(function(result){
+    var coords = result.coords;
+    MP_GEO = {
+      lat: coords.latitude,
+      lng: coords.longitude,
+      precisao: coords.accuracy,
+      viaFallback: result.viaFallback
+    };
+    
+    if(MP_CONFIG){
+      var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
+      MP_GEO.distancia = d;
+      MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
       
-      // Calcula distância usando Haversine
-      if(MP_CONFIG){
-        var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
-        MP_GEO.distancia = d;
-        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
-        
-        if(MP_GEO.dentro){
-          statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
-          document.getElementById('mp-justificativa-box').style.display = 'none';
-        } else {
-          statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
-          document.getElementById('mp-justificativa-box').style.display = 'block';
-        }
+      if(MP_GEO.dentro){
+        statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
+        var jb = document.getElementById('mp-justificativa-box');
+        if(jb) jb.style.display = 'none';
       } else {
-        statusEl.innerHTML = '📍 Localização capturada (config não disponível)';
+        statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
+        var jb = document.getElementById('mp-justificativa-box');
+        if(jb) jb.style.display = 'block';
       }
-    },
-    function(err){
-      MP_GEO = null;
-      var statusEl = document.getElementById('mp-status-geo');
-      
-      // PERMISSION_DENIED = 1 (usuário clicou bloquear)
-      // POSITION_UNAVAILABLE = 2 (GPS indisponível)
-      // TIMEOUT = 3 (demorou muito)
-      
-      if(err.code === 1){
-        // Bloqueou — mostra instruções de como liberar
-        statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:12px;font-size:12px;text-align:left;color:#A32D2D;line-height:1.5">'
-          + '<div style="font-weight:700;margin-bottom:8px;font-size:13px">🚫 Localização bloqueada</div>'
-          + '<div style="margin-bottom:8px;color:#5A6678">Pra bater ponto, precisa permitir o GPS. Faça assim:</div>'
-          + '<div style="background:#fff;padding:8px 10px;border-radius:6px;color:#5A6678;font-size:11px;line-height:1.6">'
-            + '<strong style="color:#0E7AB8">📱 No celular (Chrome):</strong><br>'
-            + '1. Toque no <strong>cadeado 🔒</strong> ao lado do endereço no topo<br>'
-            + '2. Toque em <strong>Permissões</strong> → <strong>Localização</strong><br>'
-            + '3. Mude pra <strong>Permitir</strong><br>'
-            + '4. Recarregue a página (puxe pra baixo)<br><br>'
-            + '<strong style="color:#0E7AB8">🍎 No iPhone (Safari):</strong><br>'
-            + '1. Vá em <strong>Ajustes</strong> do iPhone<br>'
-            + '2. <strong>Safari → Localização → Permitir</strong><br>'
-            + '3. Volte ao app e recarregue<br><br>'
-            + '<strong style="color:#0E7AB8">💻 No PC:</strong><br>'
-            + '1. Clique no <strong>cadeado 🔒</strong> da barra de endereço<br>'
-            + '2. <strong>Permissões → Localização → Permitir</strong>'
-          + '</div>'
-          + '<button onclick="mpPedirGeolocation()" style="margin-top:10px;width:100%;padding:10px;background:#0E7AB8;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
-        + '</div>';
-      } else if(err.code === 2){
-        // GPS indisponível
-        statusEl.innerHTML = '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:10px;font-size:12px;color:#854F0B">'
-          + '⚠️ <strong>GPS indisponível.</strong> Verifique se o GPS do celular está ligado. <button onclick="mpPedirGeolocation()" style="margin-left:6px;padding:4px 10px;background:#EF9F27;color:white;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
-        + '</div>';
-      } else if(err.code === 3){
-        // Timeout
-        statusEl.innerHTML = '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:10px;font-size:12px;color:#854F0B">'
-          + '⏱️ <strong>Demorou pra captar o GPS.</strong> Vá pra um lugar com sinal melhor (perto da janela ou ao ar livre). <button onclick="mpPedirGeolocation()" style="margin-left:6px;padding:4px 10px;background:#EF9F27;color:white;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
-        + '</div>';
-      } else {
-        statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:10px;font-size:12px;color:#A32D2D">'
-          + '❌ Erro: ' + (err.message || 'não foi possível obter localização') 
-          + ' <button onclick="mpPedirGeolocation()" style="margin-left:6px;padding:4px 10px;background:#E24B4A;color:white;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>'
-        + '</div>';
-      }
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-  );
+    } else {
+      statusEl.innerHTML = '📍 Localização capturada';
+    }
+  }).catch(function(err){
+    MP_GEO = null;
+    var msg = _msgErroGeo(err);
+    var btnRetry = '<button onclick="mpPedirGeolocation()" style="margin-top:10px;width:100%;padding:10px;background:#0E7AB8;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>';
+    
+    if(err.code === 1){
+      statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:12px;font-size:12px;text-align:left;color:#A32D2D;line-height:1.5">'
+        + '<div style="font-weight:700;margin-bottom:8px;font-size:13px">' + msg.curta + '</div>'
+        + '<div style="color:#5A6678;white-space:pre-line">' + msg.longa + '</div>'
+        + btnRetry
+      + '</div>';
+    } else if(err.code === 2){
+      statusEl.innerHTML = '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:12px;font-size:12px;text-align:left;color:#854F0B;line-height:1.5">'
+        + '<div style="font-weight:700;margin-bottom:8px;font-size:13px">' + msg.curta + '</div>'
+        + '<div style="color:#5A6678;white-space:pre-line">' + msg.longa + '</div>'
+        + btnRetry
+      + '</div>';
+    } else if(err.code === 3){
+      statusEl.innerHTML = '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:12px;font-size:12px;text-align:left;color:#854F0B;line-height:1.5">'
+        + '<div style="font-weight:700;margin-bottom:8px;font-size:13px">' + msg.curta + '</div>'
+        + '<div style="color:#5A6678;white-space:pre-line">' + msg.longa + '</div>'
+        + btnRetry
+      + '</div>';
+    } else {
+      statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:10px;font-size:12px;color:#A32D2D">'
+        + msg.curta
+        + btnRetry
+      + '</div>';
+    }
+  });
 }
 
 function _mpHaversine(lat1, lng1, lat2, lng2){
@@ -41760,56 +41744,110 @@ function dashRenderPontoStatus(dados){
   }
 }
 
+// Tenta obter localização com 2 estratégias (alta precisão primeiro, depois fallback)
+function _obterLocalizacao(){
+  return new Promise(function(resolve, reject){
+    if(!navigator.geolocation){
+      return reject({ code: 0, message: 'GPS não suportado neste navegador' });
+    }
+    
+    function tentar(opts, viaFallback){
+      navigator.geolocation.getCurrentPosition(
+        function(pos){
+          resolve({
+            coords: pos.coords,
+            viaFallback: viaFallback || false
+          });
+        },
+        function(err){
+          // Se erro foi POSITION_UNAVAILABLE (2) ou TIMEOUT (3) e ainda não tentou fallback
+          if(!viaFallback && (err.code === 2 || err.code === 3)){
+            console.log('[GPS] Alta precisão falhou (' + err.code + '), tentando fallback...');
+            tentar({ enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }, true);
+            return;
+          }
+          reject(err);
+        },
+        opts
+      );
+    }
+    
+    // Tentativa 1: alta precisão
+    tentar({ enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }, false);
+  });
+}
+
+// Mensagem de erro específica por código
+function _msgErroGeo(err){
+  if(!err || typeof err.code !== 'number'){
+    return { 
+      curta: '❌ Erro ao obter localização', 
+      longa: 'Não conseguimos sua localização. Tente novamente.' 
+    };
+  }
+  if(err.code === 0){
+    return {
+      curta: '❌ Sem suporte a GPS',
+      longa: 'Esse navegador não suporta localização. Tente outro navegador (Chrome ou Edge).'
+    };
+  }
+  if(err.code === 1){
+    return {
+      curta: '🚫 Permissão negada no navegador',
+      longa: 'A localização foi bloqueada no navegador.\n\n💻 PC: clique no cadeado 🔒 ao lado do endereço → Permissões → Localização → Permitir.\n📱 Celular: cadeado 🔒 → Permissões do site → Localização → Permitir.\n\nDepois recarregue a página (F5).'
+    };
+  }
+  if(err.code === 2){
+    return {
+      curta: '⚠️ Serviços de Localização desligados',
+      longa: 'O navegador está liberado, mas o Windows não consegue achar sua posição.\n\n💻 PC Windows:\n1. Pressione tecla Windows + I\n2. Privacidade e segurança → Localização\n3. Ative "Serviços de localização"\n4. Ative também "Permitir que aplicativos acessem sua localização"\n5. Volte ao app e tente de novo'
+    };
+  }
+  if(err.code === 3){
+    return {
+      curta: '⏱️ GPS demorou pra responder',
+      longa: 'A localização demorou demais. Tente:\n\n1. Vá pra perto de uma janela (sinal melhor)\n2. Aguarde 30 segundos\n3. Clique BATER PONTO de novo'
+    };
+  }
+  return {
+    curta: '❌ Erro: ' + (err.message || 'desconhecido'),
+    longa: 'Erro inesperado ao obter localização: ' + (err.message || err.code)
+  };
+}
+
 function dashPedirGeoPonto(){
   return new Promise(function(resolve, reject){
     var statusEl = document.getElementById('dash-ponto-geo');
-    if(!navigator.geolocation){
-      if(statusEl) statusEl.innerHTML = '❌ Sem suporte a GPS';
-      return reject(new Error('GPS não suportado'));
-    }
-    
     if(statusEl) statusEl.innerHTML = '<span style="color:#0E7AB8">📡 Detectando localização...</span>';
     
-    navigator.geolocation.getCurrentPosition(
-      function(pos){
-        MP_GEO = { lat: pos.coords.latitude, lng: pos.coords.longitude, precisao: pos.coords.accuracy };
+    _obterLocalizacao().then(function(result){
+      var coords = result.coords;
+      MP_GEO = { lat: coords.latitude, lng: coords.longitude, precisao: coords.accuracy, viaFallback: result.viaFallback };
+      
+      if(MP_CONFIG){
+        var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
+        MP_GEO.distancia = d;
+        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
         
-        if(MP_CONFIG){
-          var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
-          MP_GEO.distancia = d;
-          MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
-          
-          if(statusEl){
-            if(MP_GEO.dentro){
-              statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
-              var jb = document.getElementById('dash-ponto-justif-box');
-              if(jb) jb.style.display = 'none';
-            } else {
-              statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
-              var jb = document.getElementById('dash-ponto-justif-box');
-              if(jb) jb.style.display = 'block';
-            }
-          }
-        }
-        resolve(MP_GEO);
-      },
-      function(err){
-        MP_GEO = null;
         if(statusEl){
-          if(err.code === 1){
-            statusEl.innerHTML = '<div style="color:#A32D2D;font-size:11px">🚫 GPS bloqueado. Click no <strong>cadeado 🔒</strong> da barra de endereço → Permissões → Localização → Permitir. Depois F5.</div>';
-          } else if(err.code === 2){
-            statusEl.innerHTML = '⚠️ GPS indisponível. Verifique se o GPS do celular está ligado.';
-          } else if(err.code === 3){
-            statusEl.innerHTML = '⏱️ GPS demorou pra responder. Vá pra um lugar com sinal melhor.';
+          if(MP_GEO.dentro){
+            statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
+            var jb = document.getElementById('dash-ponto-justif-box');
+            if(jb) jb.style.display = 'none';
           } else {
-            statusEl.innerHTML = '❌ Erro ao obter localização: ' + (err.message || 'desconhecido');
+            statusEl.innerHTML = '📍 <strong style="color:#A32D2D">⚠️ Fora do escritório</strong> · ' + Math.round(d) + ' m';
+            var jb = document.getElementById('dash-ponto-justif-box');
+            if(jb) jb.style.display = 'block';
           }
         }
-        reject(err);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-    );
+      }
+      resolve(MP_GEO);
+    }).catch(function(err){
+      MP_GEO = null;
+      var msg = _msgErroGeo(err);
+      if(statusEl) statusEl.innerHTML = '<div style="color:#A32D2D;font-size:12px">' + msg.curta + '</div>';
+      reject(err);
+    });
   });
 }
 
@@ -42083,11 +42121,8 @@ async function dashBaterPontoRapido(){
         btn.disabled = false;
         btn.innerHTML = originalText;
       }
-      if(err && err.code === 1){
-        alert('🚫 A localização está bloqueada no navegador.\n\nClick no cadeado 🔒 ao lado do endereço → Permissões → Localização → Permitir.\n\nDepois recarregue a página.');
-      } else {
-        alert('⏱️ Não foi possível obter sua localização. Verifique se o GPS está ligado e tente novamente.');
-      }
+      var msg = (typeof _msgErroGeo === 'function') ? _msgErroGeo(err) : { longa: 'Não foi possível obter sua localização. Verifique e tente novamente.' };
+      alert(msg.longa);
       return;
     }
   }
