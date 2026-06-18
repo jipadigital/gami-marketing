@@ -1,4 +1,4 @@
-<!-- v26.87 - Console limpo: logs MP/Modo Teste/Notif aparecem 1x só + query notif simplificada - 18/06/2026 -->
+<!-- v26.88 - Tarefa pra EQUIPE (broadcast): admin cria, todos veem, marca individual - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1391,6 +1391,23 @@ function coletarNotificacoes(){
           sub: detalhesH + extraH, linkAba:'tarefas', ts:hoje.getTime()
         });
       }
+      
+      // 🆕 v26.88: Tarefas de EQUIPE pra hoje (não concluídas pelo usuário atual)
+      try {
+        var equipeHoje = (typeof getTarefasEquipeDoDia === 'function') ? getTarefasEquipeDoDia(hoje) : [];
+        var equipeNaoFeitas = equipeHoje.filter(function(t){ return !t.feito; });
+        if(equipeNaoFeitas.length){
+          var detalhesEq = equipeNaoFeitas.slice(0,3).map(function(t){
+            var prioIcon = t.prioridade==='urgente'?'🔥':(t.prioridade==='importante'?'⭐':'📋');
+            return '• ' + prioIcon + ' ' + (t.titulo || t.texto || '?').slice(0,40) + (t.hora ? ' às '+t.hora : '');
+          }).join('\n');
+          notifs.push({
+            id:'task-equipe-'+hojeStr,
+            icon:'📢', titulo:'Tarefa'+(equipeNaoFeitas.length>1?'s':'')+' pra equipe hoje',
+            sub: detalhesEq, linkAba:'tarefas', ts:hoje.getTime()
+          });
+        }
+      } catch(e){}
     }
   }catch(e){ console.warn('[Notif] tarefas:', e); }
 
@@ -2004,8 +2021,178 @@ function podeVerTarefa(tarefa){
   var u = getUsuarioLogado();
   if(!u) return false;
   if(u.email && u.email.toLowerCase() === 'jipadigital@gmail.com') return true;
+  // 🆕 v26.88: Tarefas de equipe (tipo='equipe') aparecem pra todos
+  if(tarefa.tipo === 'equipe' || tarefa.equipe) return true;
   if(!tarefa.pessoa_id) return false;
   return tarefa.pessoa_id === u.id;
+}
+
+// 🆕 v26.88: TAREFAS DE EQUIPE — aparecem pra TODOS os colaboradores
+// Cleyton/Diretoria criam, qualquer um vê + marca como concluído (individual)
+var GAMI_TF_EQUIPE_KEY = 'gami_tarefas_equipe_v1';
+
+function getTarefasEquipe(){
+  try { return JSON.parse(localStorage.getItem(GAMI_TF_EQUIPE_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+
+function saveTarefasEquipe(arr){
+  try { 
+    localStorage.setItem(GAMI_TF_EQUIPE_KEY, JSON.stringify(arr));
+    // Sincroniza com Supabase via syncConfig (chave entra na tabela configuracoes)
+    if(typeof syncConfig === 'function'){
+      syncConfig('tarefas_equipe', arr).catch(function(){});
+    }
+  } catch(e){}
+}
+
+// Retorna as tarefas de equipe que valem pra um dia específico
+function getTarefasEquipeDoDia(dataObj){
+  var dataStr = dataObj.toISOString().slice(0,10);
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var meuId = u ? u.id : null;
+  
+  return getTarefasEquipe()
+    .filter(function(t){ return t && t.prazo === dataStr; })
+    .map(function(t){
+      // Marca como concluída se este usuário já marcou
+      var feita = Array.isArray(t.concluida_por) && meuId && t.concluida_por.indexOf(meuId) >= 0;
+      return Object.assign({}, t, {
+        feito: feita,
+        concluida: feita,
+        _ehEquipe: true
+      });
+    });
+}
+
+// Concluir/desconcluir uma tarefa de equipe (individual por usuário)
+function concluirTarefaEquipe(id, concluir){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return;
+  var arr = getTarefasEquipe();
+  var idx = arr.findIndex(function(t){ return t.id === id; });
+  if(idx < 0) return;
+  arr[idx].concluida_por = arr[idx].concluida_por || [];
+  if(concluir){
+    if(arr[idx].concluida_por.indexOf(u.id) < 0) arr[idx].concluida_por.push(u.id);
+  } else {
+    arr[idx].concluida_por = arr[idx].concluida_por.filter(function(x){ return x !== u.id; });
+  }
+  saveTarefasEquipe(arr);
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
+}
+
+// Abre modal pra criar tarefa de equipe
+function abrirModalTarefaEquipe(){
+  // Verifica permissão
+  var u = getUsuarioLogado();
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  if(nivel !== 'super_admin' && nivel !== 'diretoria'){
+    alert('🚫 Apenas super_admin e diretoria podem criar tarefas pra equipe.');
+    return;
+  }
+  
+  // Remove modal anterior
+  var existente = document.getElementById('modal-tarefa-equipe');
+  if(existente) existente.remove();
+  
+  var hoje = new Date().toISOString().slice(0,10);
+  var amanha = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+  
+  var modal = document.createElement('div');
+  modal.id = 'modal-tarefa-equipe';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px';
+  modal.innerHTML = '<div style="background:var(--surface);border-radius:16px;max-width:500px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4)">'
+    + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">'
+      + '<span style="font-size:32px">📢</span>'
+      + '<div style="flex:1">'
+        + '<div style="font-size:17px;font-weight:800;color:var(--text)">Nova Tarefa pra Equipe</div>'
+        + '<div style="font-size:11.5px;color:var(--text3);margin-top:2px">Aparece pra TODOS os colaboradores no dia escolhido</div>'
+      + '</div>'
+    + '</div>'
+    
+    + '<div style="margin-bottom:14px">'
+      + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;letter-spacing:.4px">📝 TÍTULO DA TAREFA *</label>'
+      + '<input id="te-titulo" placeholder="Ex: ROLE PLAY" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:14px;font-weight:600;font-family:inherit"/>'
+    + '</div>'
+    
+    + '<div style="margin-bottom:14px">'
+      + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;letter-spacing:.4px">📋 DETALHES (opcional)</label>'
+      + '<textarea id="te-detalhes" rows="2" placeholder="Ex: Treinamento de simulação de atendimento — todas as cidades" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>'
+    + '</div>'
+    
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'
+      + '<div>'
+        + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;letter-spacing:.4px">📅 DATA *</label>'
+        + '<input id="te-data" type="date" value="'+amanha+'" min="'+hoje+'" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>'
+      + '</div>'
+      + '<div>'
+        + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;letter-spacing:.4px">🕐 HORA</label>'
+        + '<input id="te-hora" type="time" value="09:30" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>'
+      + '</div>'
+    + '</div>'
+    
+    + '<div style="margin-bottom:18px">'
+      + '<label style="display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px;letter-spacing:.4px">⚡ PRIORIDADE</label>'
+      + '<select id="te-prioridade" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">'
+        + '<option value="normal">📋 Normal</option>'
+        + '<option value="importante" selected>⭐ Importante</option>'
+        + '<option value="urgente">🔥 Urgente</option>'
+      + '</select>'
+    + '</div>'
+    
+    + '<div style="background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;padding:10px 12px;margin-bottom:18px;font-size:11.5px;color:#854F0B;line-height:1.5">'
+      + '💡 Esta tarefa vai aparecer pra <strong>TODOS os colaboradores</strong> na aba Tarefas + sino de notificações no dia agendado. Cada um marca como concluído individualmente.'
+    + '</div>'
+    
+    + '<div style="display:flex;gap:8px">'
+      + '<button onclick="document.getElementById(\'modal-tarefa-equipe\').remove()" style="flex:1;padding:11px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Cancelar</button>'
+      + '<button onclick="salvarTarefaEquipe()" style="flex:1.5;padding:11px;border:none;border-radius:9px;background:linear-gradient(135deg,#FF7B3C,#E24B4A);color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📢 Publicar pra Equipe</button>'
+    + '</div>'
+  + '</div>';
+  
+  document.body.appendChild(modal);
+  setTimeout(function(){ var ti = document.getElementById('te-titulo'); if(ti) ti.focus(); }, 100);
+}
+
+function salvarTarefaEquipe(){
+  var u = getUsuarioLogado();
+  var titulo = (document.getElementById('te-titulo')||{}).value.trim();
+  var detalhes = (document.getElementById('te-detalhes')||{}).value.trim();
+  var data = (document.getElementById('te-data')||{}).value;
+  var hora = (document.getElementById('te-hora')||{}).value;
+  var prioridade = (document.getElementById('te-prioridade')||{}).value || 'normal';
+  
+  if(!titulo){ alert('Informe o título da tarefa.'); return; }
+  if(!data){ alert('Escolha a data.'); return; }
+  
+  var tarefa = {
+    id: 'eq-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    tipo: 'equipe',
+    texto: titulo + (hora ? ' · ' + hora : ''),
+    titulo: titulo,
+    detalhes: detalhes || null,
+    prazo: data,
+    hora: hora || null,
+    prioridade: prioridade,
+    criada_por: u ? u.id : null,
+    criada_por_nome: u ? u.nome : 'Admin',
+    criada_em: new Date().toISOString(),
+    concluida_por: [],
+    feito: false
+  };
+  
+  var arr = getTarefasEquipe();
+  arr.push(tarefa);
+  saveTarefasEquipe(arr);
+  
+  document.getElementById('modal-tarefa-equipe').remove();
+  if(typeof toast === 'function') toast('📢 Tarefa "'+titulo+'" publicada pra equipe!', 'success');
+  else alert('✅ Tarefa publicada pra equipe!');
+  
+  // Re-renderiza tarefas
+  if(typeof tfRenderDiario === 'function') tfRenderDiario();
+  if(typeof renderNotificacoes === 'function') renderNotificacoes();
 }
 
 function aplicarPermissoesVisuais(){
@@ -2039,6 +2226,13 @@ function aplicarPermissoesVisuais(){
     } else {
       el.style.display = 'none';
     }
+  });
+  
+  // 🆕 v26.88: Botão "Tarefa pra Equipe" só pra super_admin + diretoria
+  var podeEquipe = (nivel === 'super_admin' || nivel === 'diretoria');
+  var btnsEquipe = document.querySelectorAll('[data-perm-equipe-tarefa="true"]');
+  btnsEquipe.forEach(function(el){
+    el.style.display = podeEquipe ? '' : 'none';
   });
   
   // Mapeamento aba → texto no sidebar pra esconder itens
@@ -3038,6 +3232,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-primary" id="tf-btn-nova" onclick="abrirModalNovaTarefa()" style="font-size:12px">+ Nova tarefa</button>
+      <!-- 🆕 v26.88: Tarefa pra TODOS (Cleyton + Diretoria) -->
+      <button class="btn" id="tf-btn-equipe" onclick="abrirModalTarefaEquipe()" data-perm-equipe-tarefa="true" style="font-size:12px;background:linear-gradient(135deg,#FF7B3C,#E24B4A);color:white;border:none;font-weight:700;display:none">📢 Tarefa pra Equipe</button>
     </div>
   </div>
 
@@ -36703,6 +36899,12 @@ function tfRenderDiario(){
       // Coloca no INÍCIO da lista
       lista = fixasHoje.concat(lista);
     }
+  } catch(e){}
+  
+  // 🆕 v26.88: Injeta tarefas de EQUIPE (vindas do admin pra todos)
+  try {
+    var equipeHoje = getTarefasEquipeDoDia(new Date());
+    if(equipeHoje.length) lista = equipeHoje.concat(lista);
   } catch(e){}
 
   // Injeta tarefas DE PROJETOS (aparecem com ícone 🚀)
