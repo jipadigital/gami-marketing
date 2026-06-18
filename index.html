@@ -1,4 +1,4 @@
-<!-- v26.86 - Campo Email + Telefone no cadastro de pessoa (formulário antes não tinha) - 18/06/2026 -->
+<!-- v26.87 - Console limpo: logs MP/Modo Teste/Notif aparecem 1x só + query notif simplificada - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1188,44 +1188,25 @@ async function _carregarNotificacoesSupa(){
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     if(!u || !u.id) return [];
     
-    // 🆕 v26.80: testa vários schemas E loga o erro real pra diagnosticar
-    async function _tentaQuery(campoTs, campos){
-      var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-        + '&select=' + campos
-        + '&order='+campoTs+'.desc.nullslast&limit=30';
-      return await fetch(url, {
-        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
-        cache: 'no-store'
-      });
-    }
+    // 🆕 v26.87: Se já constatamos erro de schema, retorna lista vazia sem tentar de novo
+    if(window._notifErroLogado) return [];
     
-    // Tentativa 1: schema novo Supabase (created_at + colunas completas)
-    var r = await _tentaQuery('created_at', 'id,tipo,titulo,mensagem,link,lida,created_at,de_nome');
-    if(!r.ok && r.status === 400){
-      // Tentativa 2: schema antigo (criado_em)
-      r = await _tentaQuery('criado_em', 'id,tipo,titulo,mensagem,link,lida,criado_em,de_nome');
-    }
-    if(!r.ok && r.status === 400){
-      // Tentativa 3: created_at sem 'link' e 'de_nome' (caso essas colunas não existam)
-      r = await _tentaQuery('created_at', 'id,tipo,titulo,mensagem,lida,created_at');
-    }
-    if(!r.ok && r.status === 400){
-      // Tentativa 4: usa "*" (todas as colunas)
-      var urlAll = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-        + '&select=*&limit=30';
-      r = await fetch(urlAll, {
-        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
-        cache: 'no-store'
-      });
-    }
+    // 🆕 v26.87: SIMPLIFICADO — uma única query com select=* (mais resiliente a schemas)
+    var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+      + '&select=*&limit=30';
+    
+    var r = await fetch(url, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
+      cache: 'no-store'
+    });
+    
     if(!r.ok){
-      // 🆕 v26.80: Loga o erro real pra diagnosticar de uma vez
-      var errBody = '';
-      try { errBody = await r.text(); } catch(e){}
+      // Loga o erro real UMA vez só e marca pra parar de tentar
       if(!window._notifErroLogado){
-        console.error('[Notif] ERRO ' + r.status + ' do Supabase. Detalhe:', errBody);
-        console.error('[Notif] Provável: tabela notificacoes não existe OU schema diferente. Schema esperado: id, tipo, titulo, mensagem, lida, created_at (ou criado_em), de_nome, link, para_pessoa_id');
-        window._notifErroLogado = true; // Loga só 1x pra não poluir o console
+        var errBody = '';
+        try { errBody = await r.text(); } catch(e){}
+        console.warn('[Notif] Tabela notificacoes não disponível (HTTP ' + r.status + '). Notificações reais desabilitadas. Detalhe:', errBody.slice(0, 200));
+        window._notifErroLogado = true;
       }
       return [];
     }
@@ -1241,7 +1222,10 @@ async function _carregarNotificacoesSupa(){
     _supaNotifsLoadedAt = Date.now();
     return data;
   } catch(e){ 
-    console.warn('[Notif] erro buscar Supabase:', e);
+    if(!window._notifErroLogado){
+      console.warn('[Notif] erro buscar Supabase:', e);
+      window._notifErroLogado = true;
+    }
     return []; 
   }
 }
@@ -46204,18 +46188,24 @@ async function mpVerificarAcessoSidebar(){
       if(p && p.bate_ponto){
         MP_PESSOA = p;
         if(navMp) navMp.style.display = '';
-        console.log('[MP] ✓ Acesso liberado pra ' + p.nome + ' (encontrada por ' + caminho + ')');
+        if(!window._mpLogadoOk){
+          console.log('[MP] ✓ Acesso liberado pra ' + p.nome + ' (encontrada por ' + caminho + ')');
+          window._mpLogadoOk = true;
+        }
       } else {
-        // Log detalhado pra diagnosticar quando esconde
-        if(!p){
-          console.warn('[MP] 🕒 Meu Ponto escondido: pessoa NÃO ENCONTRADA no Supabase.');
-          console.warn('   • Email tentado:', email || '(vazio)');
-          console.warn('   • ID tentado:', id || '(vazio)');
-          console.warn('   • Nome tentado:', nome || '(vazio)');
-          console.warn('   • SOLUÇÃO: confira que o email/nome no Supabase bate com o do login.');
-        } else if(!p.bate_ponto){
-          console.warn('[MP] 🕒 Meu Ponto escondido: ' + p.nome + ' tem bate_ponto=' + p.bate_ponto + ' (ID: ' + p.id + ')');
-          console.warn('   • SOLUÇÃO no Supabase: UPDATE pessoas SET bate_ponto=true WHERE id=\'' + p.id + '\';');
+        // 🆕 v26.87: Log detalhado APENAS uma vez (evita poluir console)
+        if(!window._mpLogadoErro){
+          if(!p){
+            console.warn('[MP] 🕒 Meu Ponto escondido: pessoa NÃO ENCONTRADA no Supabase.');
+            console.warn('   • Email tentado:', email || '(vazio)');
+            console.warn('   • ID tentado:', id || '(vazio)');
+            console.warn('   • Nome tentado:', nome || '(vazio)');
+            console.warn('   • SOLUÇÃO: confira que o email/nome no Supabase bate com o do login.');
+          } else if(!p.bate_ponto){
+            console.warn('[MP] 🕒 Meu Ponto escondido: ' + p.nome + ' tem bate_ponto=' + p.bate_ponto + ' (ID: ' + p.id + ')');
+            console.warn('   • SOLUÇÃO no Supabase: UPDATE pessoas SET bate_ponto=true WHERE id=\'' + p.id + '\';');
+          }
+          window._mpLogadoErro = true;
         }
         MP_PESSOA = null;
         if(navMp) navMp.style.display = 'none';
@@ -47412,7 +47402,10 @@ function _gamiInitImpersonacao(){
   try {
     var real = _getUsuarioLogadoReal();
     var ehAdmin = _gamiEhSuperAdminReal();
-    console.log('[🎭 Modo Teste] Usuário real:', real ? (real.nome + ' · ' + real.email) : 'nenhum', '· super_admin?', ehAdmin);
+    if(!window._modoTesteLogado){
+      console.log('[🎭 Modo Teste] Usuário real:', real ? (real.nome + ' · ' + real.email) : 'nenhum', '· super_admin?', ehAdmin);
+      window._modoTesteLogado = true;
+    }
     gamiRenderBannerImpersonacao();
     gamiRenderBotaoModoTeste();
   } catch(e){ console.error('[🎭] init:', e); }
