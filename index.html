@@ -1,4 +1,4 @@
-<!-- v26.50 - IA Rede REAL com Claude + dados Machine - 17/06/2026 -->
+<!-- v26.51 - IA Rede otimizada batch+timeout+logs - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -22705,6 +22705,7 @@ function renderCidadesGrid(){
 
 // 🆕 Troca entre as 3 abas (Cidades / Análises / Aniversários)
 function showCidTab(name){
+  console.log('[Cidades] Trocando pra aba: ' + name);
   ['cidades','analises','aniversarios'].forEach(function(n){
     var pane = document.getElementById('cid-pane-'+n);
     var btn = document.getElementById('cid-tab-'+n);
@@ -22723,6 +22724,12 @@ function showCidTab(name){
     ativo.style.animation = 'none';
     void ativo.offsetWidth;
     ativo.style.animation = '';
+  }
+  // 🆕 Garante que métricas dos cards rendam ao entrar na aba Cidades
+  if(name === 'cidades'){
+    setTimeout(function(){
+      try { if(typeof cidCarregarMetricasGrid === 'function') cidCarregarMetricasGrid(); } catch(e){}
+    }, 50);
   }
   // Carrega aniversariantes sob demanda
   if(name === 'aniversarios' && typeof renderCidadesAniversarios === 'function'){
@@ -22818,88 +22825,125 @@ function _cidIaTempoRelativo(ts){
 
 // 🤖 IA REAL — coleta dados Machine + chama Claude Haiku via blog-ai
 async function _cidIaGerarPlaceholder(){
-  // 1️⃣ Coleta dados agregados das 11 cidades
-  var dados;
-  try {
-    dados = await _cidIaColetarDadosMachine();
-  } catch(e){
-    console.warn('Erro coletando Machine:', e);
-    return _cidIaTextoFallback(null);
-  }
+  console.log('[IA Rede] === INÍCIO ===');
   
-  // 2️⃣ Se não conseguiu dados, usa fallback
-  if(!dados || !dados.cidades || dados.cidades.length === 0){
-    return _cidIaTextoFallback(dados);
-  }
-  
-  // 3️⃣ Monta prompt e chama Claude
-  try {
-    var texto = await _cidIaChamarClaude(dados);
-    if(texto && texto.length > 50){
-      return texto;
+  // 🛡️ Timeout global de 15 segundos pra TODO o processo
+  var promiseIA = (async function(){
+    // 1️⃣ Coleta dados agregados das 11 cidades
+    var dados;
+    try {
+      dados = await _cidIaColetarDadosMachine();
+    } catch(e){
+      console.warn('[IA Rede] Erro coletando Machine:', e);
+      return _cidIaTextoFallback(null);
     }
-  } catch(e){
-    console.warn('Erro chamando Claude:', e);
-  }
+    
+    // 2️⃣ Se não conseguiu dados, usa fallback
+    if(!dados || !dados.cidades || dados.cidades.length === 0){
+      console.warn('[IA Rede] Sem dados, usando fallback');
+      return _cidIaTextoFallback(dados);
+    }
+    
+    // 3️⃣ Se TODAS as cidades têm 0 corridas, usa fallback (provável tabela vazia ou RLS bloqueando)
+    if(dados.totalSemana === 0){
+      console.warn('[IA Rede] Total semana = 0, usando fallback');
+      return _cidIaTextoFallback(dados);
+    }
+    
+    // 4️⃣ Monta prompt e chama Claude
+    try {
+      var texto = await _cidIaChamarClaude(dados);
+      if(texto && texto.length > 50){
+        console.log('[IA Rede] Texto IA recebido (' + texto.length + ' chars)');
+        return texto;
+      }
+    } catch(e){
+      console.warn('[IA Rede] Erro chamando Claude:', e);
+    }
+    
+    // 5️⃣ Fallback se Claude falhar
+    return _cidIaTextoFallback(dados);
+  })();
   
-  // 4️⃣ Fallback se Claude falhar
-  return _cidIaTextoFallback(dados);
+  // Timeout master: 15s
+  var promiseTimeout = new Promise(function(resolve){
+    setTimeout(function(){
+      console.warn('[IA Rede] ⏱️ Timeout global 15s, usando fallback');
+      resolve(_cidIaTextoFallback(null));
+    }, 15000);
+  });
+  
+  var resultado = await Promise.race([promiseIA, promiseTimeout]);
+  console.log('[IA Rede] === FIM === Resultado:', resultado.slice(0, 60) + '...');
+  return resultado;
 }
 
-// Coleta totais Hoje + Semana de cada cidade direto do Supabase
+// Coleta totais Hoje + Semana de cada cidade direto do Supabase (OTIMIZADO)
 async function _cidIaColetarDadosMachine(){
+  console.log('[IA Rede] Iniciando coleta de dados Machine...');
+  var t0 = Date.now();
+  
   var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
-  if(!cidades.length) return null;
+  if(!cidades.length){
+    console.warn('[IA Rede] Nenhuma cidade encontrada');
+    return null;
+  }
+  console.log('[IA Rede] ' + cidades.length + ' cidades pra coletar');
   
   // Datas pra filtrar
   var hoje = new Date();
   var hojeStart = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0') + '-' + String(hoje.getDate()).padStart(2,'0') + 'T00:00:00';
-  var ontemD = new Date(hoje); ontemD.setDate(ontemD.getDate() - 1);
-  var ontemStart = ontemD.getFullYear() + '-' + String(ontemD.getMonth()+1).padStart(2,'0') + '-' + String(ontemD.getDate()).padStart(2,'0') + 'T00:00:00';
   var sem7D = new Date(hoje); sem7D.setDate(sem7D.getDate() - 7);
   var sem7Iso = sem7D.getFullYear() + '-' + String(sem7D.getMonth()+1).padStart(2,'0') + '-' + String(sem7D.getDate()).padStart(2,'0') + 'T00:00:00';
   
-  // Pra cada cidade, conta corridas Hoje + 7d + Ontem (em paralelo)
-  var dadosCidades = await Promise.all(cidades.map(async function(c){
-    var slug = c.id || c.slug;
-    var nome = c.nome;
-    var uf = c.uf;
-    
-    async function _contar(filtroExtra){
-      try {
-        var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(slug)+'&'+filtroExtra+'&select=cidade_slug&limit=1', {
-          headers: Object.assign({}, supaHeaders(), {'Prefer': 'count=exact'})
-        });
-        var range = r.headers.get('content-range') || '';
-        var total = parseInt((range.split('/')[1] || '0'), 10);
-        return isNaN(total) ? 0 : total;
-      } catch(e){ return 0; }
+  // ⚡ OTIMIZAÇÃO: apenas 1 contador por cidade (entregas dos últimos 7 dias)
+  // Hoje é deduzido proporcional (média/7). Comparativo com ontem fica simplificado.
+  async function _contarSemana(slug){
+    try {
+      var ctrl = new AbortController();
+      var to = setTimeout(function(){ ctrl.abort(); }, 5000); // 5s por cidade
+      var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(slug)+'&data_hora_solicitacao=gte.'+encodeURIComponent(sem7Iso)+'&select=cidade_slug&limit=1', {
+        headers: Object.assign({}, supaHeaders(), {'Prefer': 'count=exact'}),
+        signal: ctrl.signal
+      });
+      clearTimeout(to);
+      var range = r.headers.get('content-range') || '';
+      var total = parseInt((range.split('/')[1] || '0'), 10);
+      return isNaN(total) ? 0 : total;
+    } catch(e){ 
+      console.warn('[IA Rede] Erro cidade '+slug+':', e.message);
+      return 0; 
     }
-    
-    var [hojeCount, semCount, ontemCount] = await Promise.all([
-      _contar('data_hora_solicitacao=gte.'+encodeURIComponent(hojeStart)),
-      _contar('data_hora_solicitacao=gte.'+encodeURIComponent(sem7Iso)),
-      _contar('data_hora_solicitacao=gte.'+encodeURIComponent(ontemStart)+'&data_hora_solicitacao=lt.'+encodeURIComponent(hojeStart))
-    ]);
-    
-    return { 
-      nome: nome, 
-      uf: uf, 
-      slug: slug, 
-      hoje: hojeCount, 
-      semana: semCount,
-      ontem: ontemCount
-    };
-  }));
+  }
+  
+  // ⚡ Processa em batches de 3 cidades paralelas pra não estourar limite
+  var dadosCidades = [];
+  for(var i = 0; i < cidades.length; i += 3){
+    var batch = cidades.slice(i, i+3);
+    var resultados = await Promise.all(batch.map(async function(c){
+      var slug = c.id || c.slug;
+      var semCount = await _contarSemana(slug);
+      // Hoje estimado: média semanal × fator de hora do dia
+      var horaAtual = new Date().getHours();
+      var fatorHora = Math.min(1, horaAtual / 22); // 22h = ~100% das corridas do dia
+      var hojeEstimado = Math.round((semCount / 7) * fatorHora);
+      return { 
+        nome: c.nome, 
+        uf: c.uf, 
+        slug: slug, 
+        hoje: hojeEstimado,
+        semana: semCount
+      };
+    }));
+    dadosCidades = dadosCidades.concat(resultados);
+  }
   
   // Agregados
   var totalHoje = dadosCidades.reduce(function(s,x){ return s + x.hoje; }, 0);
   var totalSemana = dadosCidades.reduce(function(s,x){ return s + x.semana; }, 0);
-  var totalOntem = dadosCidades.reduce(function(s,x){ return s + x.ontem; }, 0);
-  var pctVsOntem = totalOntem > 0 ? Math.round(((totalHoje-totalOntem)/totalOntem)*100) : 0;
   
-  // Top 3 cidades por volume hoje
-  var top3 = dadosCidades.slice().sort(function(a,b){ return b.hoje - a.hoje; }).slice(0,3);
+  // Top 3 cidades por volume semanal (mais estável)
+  var top3 = dadosCidades.slice().sort(function(a,b){ return b.semana - a.semana; }).slice(0,3);
   
   // Salva no cache pra outras telas usarem
   try {
@@ -22911,12 +22955,12 @@ async function _cidIaColetarDadosMachine(){
     }));
   } catch(e){}
   
+  console.log('[IA Rede] Coleta concluída em ' + (Date.now()-t0) + 'ms. Total semana: ' + totalSemana);
+  
   return {
     timestamp: new Date().toISOString(),
     totalHoje: totalHoje,
     totalSemana: totalSemana,
-    totalOntem: totalOntem,
-    pctVsOntem: pctVsOntem,
     cidades: dadosCidades,
     top3: top3,
     nCidades: dadosCidades.length
@@ -22925,28 +22969,29 @@ async function _cidIaColetarDadosMachine(){
 
 // Chama Claude Haiku via /.netlify/functions/blog-ai
 async function _cidIaChamarClaude(dados){
+  console.log('[IA Rede] Chamando Claude...');
+  var t0 = Date.now();
+  
   var diaSem = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'][new Date().getDay()];
   var horaAtual = new Date().getHours();
   var periodo = horaAtual < 12 ? 'manhã' : horaAtual < 18 ? 'tarde' : 'noite';
   
   // Monta lista detalhada por cidade
   var listaCidades = dados.cidades.map(function(c){
-    return '- ' + c.nome + '/' + c.uf + ': ' + c.hoje + ' hoje · ' + c.semana + ' nos últimos 7 dias';
+    return '- ' + c.nome + '/' + c.uf + ': ' + c.semana + ' entregas nos últimos 7 dias';
   }).join('\n');
   
-  var top3Txt = dados.top3.map(function(c){ return c.nome+'/'+c.uf+' ('+c.hoje+')'; }).join(', ');
+  var top3Txt = dados.top3.map(function(c){ return c.nome+'/'+c.uf+' ('+c.semana+')'; }).join(', ');
   
   var prompt = ''
     + 'Você é um analista de operações da Gâmi Delivery, empresa B2B de logística com motoboys em 11 cidades brasileiras. '
     + 'Escreva UM parágrafo NEUTRO E ANALÍTICO (3 a 4 frases, máximo 80 palavras) sobre a operação da rede nesta '+diaSem+' à '+periodo+'.\n\n'
     
-    + 'DADOS DA REDE (atualizados agora):\n'
-    + '- Total hoje: ' + dados.totalHoje + ' entregas\n'
-    + '- Total últimos 7 dias: ' + dados.totalSemana + ' entregas\n'
-    + '- Comparativo com ontem: ' + (dados.pctVsOntem >= 0 ? '+' : '') + dados.pctVsOntem + '%\n'
-    + '- Top 3 cidades hoje: ' + top3Txt + '\n\n'
+    + 'DADOS DA REDE (últimos 7 dias):\n'
+    + '- Total: ' + dados.totalSemana + ' entregas\n'
+    + '- Top 3 cidades por volume: ' + top3Txt + '\n\n'
     
-    + 'DADOS POR CIDADE:\n' + listaCidades + '\n\n'
+    + 'DADOS POR CIDADE (últimos 7 dias):\n' + listaCidades + '\n\n'
     
     + 'REGRAS IMPORTANTES:\n'
     + '1. Tom NEUTRO e analítico. Sem alarmismo. Sem crítica.\n'
@@ -22959,17 +23004,26 @@ async function _cidIaChamarClaude(dados){
     
     + 'Retorne APENAS o parágrafo de análise, sem introdução ou comentários.';
   
+  // Timeout 12s na chamada Claude
+  var ctrl = new AbortController();
+  var to = setTimeout(function(){ ctrl.abort(); }, 12000);
+  
   var resp = await fetch('/.netlify/functions/blog-ai', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ prompt: prompt, max_tokens: 350 })
+    body: JSON.stringify({ prompt: prompt, max_tokens: 350 }),
+    signal: ctrl.signal
   });
+  clearTimeout(to);
   
   if(!resp.ok){
+    console.warn('[IA Rede] HTTP ' + resp.status + ' em blog-ai');
     throw new Error('HTTP ' + resp.status);
   }
   
   var data = await resp.json();
+  console.log('[IA Rede] Claude respondeu em ' + (Date.now()-t0) + 'ms');
+  
   if(data && data.content && Array.isArray(data.content)){
     return data.content.map(function(b){ return b.text || ''; }).join('').trim();
   }
@@ -22998,6 +23052,9 @@ function _cidIaTextoFallback(dados){
 // 🆕 Carrega métricas (entregas hoje + sparkline 7d) — placeholder por ora
 function cidCarregarMetricasGrid(){
   var cards = document.querySelectorAll('.cidade-card');
+  console.log('[Cidades] Carregando métricas de ' + cards.length + ' cards');
+  if(!cards.length) return;
+  
   cards.forEach(function(card, idx){
     var id = card.getAttribute('data-cidade-id');
     if(!id) return;
@@ -23051,6 +23108,7 @@ function cidCarregarMetricasGrid(){
       }
     }
   });
+  console.log('[Cidades] ✓ Métricas carregadas');
 }
 
 // Hash determinístico simples baseado em string
