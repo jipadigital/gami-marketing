@@ -1,4 +1,4 @@
-<!-- v26.75 - Estoque: Suporte sem aba Adicionar, Nova Venda com Pagamento + Nominal + Obs obrigatória - 18/06/2026 -->
+<!-- v26.79 - Diagnóstico de ponto sumido (gamiDiagPonto) + log detalhado quando esconde - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1188,20 +1188,30 @@ async function _carregarNotificacoesSupa(){
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     if(!u || !u.id) return [];
     
-    var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-      + '&select=id,tipo,titulo,mensagem,link,lida,criado_em,de_nome'
-      + '&order=criado_em.desc.nullslast&limit=30';
+    // 🆕 v26.76: tenta primeiro com 'created_at' (padrão Supabase); se 400, fallback para 'criado_em'
+    async function _tentaQuery(campoTs){
+      var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+        + '&select=id,tipo,titulo,mensagem,link,lida,'+campoTs+',de_nome'
+        + '&order='+campoTs+'.desc.nullslast&limit=30';
+      return await fetch(url, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
+        cache: 'no-store'
+      });
+    }
     
-    var r = await fetch(url, {
-      headers: {
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer ' + SUPA_KEY
-      },
-      cache: 'no-store'
-    });
+    var r = await _tentaQuery('created_at');
+    if(!r.ok && r.status === 400){
+      // Fallback: schema antigo
+      r = await _tentaQuery('criado_em');
+    }
     if(!r.ok) return [];
     var data = await r.json();
     if(!Array.isArray(data)) return [];
+    
+    // Normaliza: garantir que cada item tenha sempre .criado_em (interno) 
+    data.forEach(function(s){
+      if(!s.criado_em && s.created_at) s.criado_em = s.created_at;
+    });
     
     _supaNotifsCache = data;
     _supaNotifsLoadedAt = Date.now();
@@ -1311,10 +1321,21 @@ function coletarNotificacoes(){
       });
       
       if(atrasadas.length){
+        // 🆕 v26.76: Mostra primeiras 3 tarefas COM TEXTO
+        var detalhes = atrasadas.slice(0, 3).map(function(t){
+          var diasAtraso = 0;
+          try {
+            var diff = hoje.getTime() - new Date(t.prazo+'T00:00:00').getTime();
+            diasAtraso = Math.floor(diff / 86400000);
+          } catch(e){}
+          var txt = (t.texto || t.titulo || '(sem título)').slice(0, 40);
+          return '• ' + txt + (diasAtraso > 0 ? ' (' + diasAtraso + 'd)' : '');
+        }).join('\n');
+        var extra = atrasadas.length > 3 ? '\n+ ' + (atrasadas.length-3) + ' outras' : '';
         notifs.push({
           id:'task-atrasadas-'+hojeStr,
           icon:'🔴', titulo:atrasadas.length+' tarefa'+(atrasadas.length>1?'s':'')+' atrasada'+(atrasadas.length>1?'s':''),
-          sub:'Veja na aba Tarefas', linkAba:'tarefas', ts:Date.now()
+          sub: detalhes + extra, linkAba:'tarefas', ts:Date.now()
         });
       }
       
@@ -1328,10 +1349,17 @@ function coletarNotificacoes(){
       });
       
       if(delegadas.length){
+        // 🆕 v26.76: Mostra quem delegou e qual tarefa
+        var detalhesD = delegadas.slice(0, 3).map(function(t){
+          var quem = t.delegada_por_nome || t.delegada_por || 'alguém';
+          var txt = (t.texto || t.titulo || '(sem título)').slice(0, 35);
+          return '• ' + quem + ': ' + txt;
+        }).join('\n');
+        var extraD = delegadas.length > 3 ? '\n+ ' + (delegadas.length-3) + ' outras' : '';
         notifs.push({
           id:'task-delegadas-'+hojeStr+'-'+delegadas.length,
           icon:'📥', titulo:delegadas.length+' tarefa'+(delegadas.length>1?'s':'')+' delegada'+(delegadas.length>1?'s':'')+' pra você',
-          sub:'Da diretoria/gerência · Veja em Tarefas', linkAba:'tarefas', ts:Date.now()
+          sub: detalhesD + extraD, linkAba:'tarefas', ts:Date.now()
         });
       }
       
@@ -1343,10 +1371,16 @@ function coletarNotificacoes(){
       });
       
       if(hojeTarefas.length){
+        // 🆕 v26.76: Mostra primeiras tarefas
+        var detalhesH = hojeTarefas.slice(0, 3).map(function(t){
+          var txt = (t.texto || t.titulo || '(sem título)').slice(0, 45);
+          return '• ' + txt;
+        }).join('\n');
+        var extraH = hojeTarefas.length > 3 ? '\n+ ' + (hojeTarefas.length-3) + ' outras' : '';
         notifs.push({
           id:'task-hoje-'+hojeStr,
           icon:'📋', titulo:hojeTarefas.length+' tarefa'+(hojeTarefas.length>1?'s':'')+' pra hoje',
-          sub:'Veja na aba Tarefas', linkAba:'tarefas', ts:hoje.getTime()
+          sub: detalhesH + extraH, linkAba:'tarefas', ts:hoje.getTime()
         });
       }
     }
@@ -1516,7 +1550,7 @@ async function renderNotificacoes(){
           + '<div class="gami-notif-title" style="font-size:13px;font-weight:600;color:var(--text);line-height:1.3;flex:1;min-width:0;overflow-wrap:break-word">'+n.titulo+'</div>'
           + (tempo ? '<div style="font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0">'+tempo+'</div>' : '')
         + '</div>'
-        + (n.sub ? '<div class="gami-notif-sub" style="font-size:11.5px;color:var(--text2);line-height:1.4;overflow-wrap:break-word">'+n.sub+'</div>' : '')
+        + (n.sub ? '<div class="gami-notif-sub" style="font-size:11.5px;color:var(--text2);line-height:1.4;overflow-wrap:break-word;white-space:pre-line">'+n.sub+'</div>' : '')
       + '</div>'
       + (unread?'<span style="width:8px;height:8px;border-radius:50%;background:var(--gami-blue);flex-shrink:0;margin-top:6px"></span>':'')
     + '</div>';
@@ -5667,24 +5701,18 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       <!-- 🆕 v26.75: NOMINAL DO COMPROVANTE -->
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📋 NOMINAL DO COMPROVANTE</label>
-        <input id="est-vd-nominal" placeholder="Em nome de quem emitir o comprovante" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
+        <input id="est-vd-nominal" placeholder="Em nome de quem recebeu o comprovante" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
       </div>
       
-      <!-- 🆕 v26.75: FORMA DE PAGAMENTO -->
+      <!-- 🆕 v26.77/78: FORMA DE PAGAMENTO (simplificada) -->
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💳 FORMA DE PAGAMENTO</label>
         <select id="est-vd-pagamento" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
           <option value="">— escolha —</option>
           <option value="pix">💚 Pix</option>
-          <option value="dinheiro">💵 Dinheiro</option>
-          <option value="credito">💳 Cartão de crédito</option>
-          <option value="credito_parcelado">💳 Crédito parcelado</option>
-          <option value="debito">💳 Cartão de débito</option>
-          <option value="boleto">📄 Boleto</option>
-          <option value="transferencia">🏦 Transferência</option>
-          <option value="permuta">🤝 Permuta / Troca</option>
+          <option value="cartao_credito">💳 Cartão de crédito</option>
+          <option value="credito_plataforma">🪙 Crédito da Plataforma</option>
           <option value="cortesia">🎁 Cortesia</option>
-          <option value="outro">❓ Outro</option>
         </select>
       </div>
       
@@ -21838,7 +21866,14 @@ async function diagnosticoSemanalCidades(forceNew){
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
-    if(!texto) throw new Error('Resposta vazia');
+    if(!texto){
+      // 🆕 v26.76: Log detalhado pra diagnosticar erro IA
+      console.error('[IA] Resposta vazia. Data retornada:', JSON.stringify(data).slice(0, 500));
+      if(data && data.error){
+        throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
+      }
+      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+    }
     
     var cacheObj = {
       texto: texto,
@@ -22342,7 +22377,14 @@ async function relatorioMensalCidades(forceNew){
     if(!resp) throw new Error(ultimoErro || 'Sem resposta');
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
-    if(!texto) throw new Error('Resposta vazia');
+    if(!texto){
+      // 🆕 v26.76: Log detalhado pra diagnosticar erro IA
+      console.error('[IA] Resposta vazia. Data retornada:', JSON.stringify(data).slice(0, 500));
+      if(data && data.error){
+        throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
+      }
+      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+    }
     return texto;
   }
   
@@ -23004,7 +23046,14 @@ async function relatorioMensalCidade(cidadeId, forceNew){
     if(!resp) throw new Error(ultimoErro || 'Sem resposta');
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
-    if(!texto) throw new Error('Resposta vazia');
+    if(!texto){
+      // 🆕 v26.76: Log detalhado pra diagnosticar erro IA
+      console.error('[IA] Resposta vazia. Data retornada:', JSON.stringify(data).slice(0, 500));
+      if(data && data.error){
+        throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
+      }
+      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+    }
     
     var cacheObj = {
       texto: texto,
@@ -24160,7 +24209,14 @@ async function diagnosticoIACidade(cidadeId, forceNew){
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
-    if(!texto) throw new Error('Resposta vazia');
+    if(!texto){
+      // 🆕 v26.76: Log detalhado pra diagnosticar erro IA
+      console.error('[IA] Resposta vazia. Data retornada:', JSON.stringify(data).slice(0, 500));
+      if(data && data.error){
+        throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
+      }
+      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+    }
     
     // Salva no cache compartilhado (todos veem a mesma) com dados extras
     var cacheObj = {
@@ -40908,7 +40964,14 @@ async function gerarRelatorioExecutivoMensal(){
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
     var texto = _extrairTextoIA(data);
-    if(!texto) throw new Error('Resposta vazia');
+    if(!texto){
+      // 🆕 v26.76: Log detalhado pra diagnosticar erro IA
+      console.error('[IA] Resposta vazia. Data retornada:', JSON.stringify(data).slice(0, 500));
+      if(data && data.error){
+        throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
+      }
+      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+    }
 
     // Renderiza
     content.innerHTML = '<div style="padding:16px;background:var(--surface2);border-radius:10px;font-size:12.5px;line-height:1.75;color:var(--text);white-space:pre-line;font-family:inherit">'+texto.replace(/</g,'&lt;')+'</div>';
@@ -45681,7 +45744,7 @@ async function estConfirmarVenda(){
   
   // 🆕 v26.75: Validações dos novos campos
   if(!pagamento){ alert('Escolha a forma de pagamento.'); return; }
-  if(!nominal){ alert('Informe o nominal do comprovante (em nome de quem emitir).'); return; }
+  if(!nominal){ alert('Informe o nominal do comprovante (em nome de quem recebeu).'); return; }
   if(!obsValor){ alert('Preencha as observações da venda (obrigatório).'); return; }
   
   // Valida que a cidade está nas permissões
@@ -46009,6 +46072,12 @@ async function mpVerificarAcessoSidebar(){
         MP_PESSOA = p;
         if(navMp) navMp.style.display = '';
       } else {
+        // 🆕 v26.79: Log detalhado pra diagnosticar quando esconde
+        if(!p){
+          console.warn('[MP] 🕒 Meu Ponto escondido: pessoa NÃO ENCONTRADA no Supabase. Email/ID:', email || id, '· HTTP:', r.status);
+        } else if(!p.bate_ponto){
+          console.warn('[MP] 🕒 Meu Ponto escondido: pessoa encontrada mas bate_ponto=' + p.bate_ponto + ' (Nome: ' + p.nome + ' · ID: ' + p.id + ')');
+        }
         MP_PESSOA = null;
         if(navMp) navMp.style.display = 'none';
       }
@@ -46025,6 +46094,94 @@ async function mpVerificarAcessoSidebar(){
     }
   }
 }
+
+// 🆕 v26.79: DIAGNÓSTICO COMPLETO do sistema de Ponto (rodar no console F12)
+// Use: gamiDiagPonto()
+// Mostra: quem está cadastrado como bate_ponto, quem tem registros este mês, problemas detectados
+window.gamiDiagPonto = async function(){
+  console.group('🕒 DIAGNÓSTICO COMPLETO — Sistema de Ponto');
+  
+  try {
+    // 1) Busca TODAS as pessoas marcadas como bate_ponto=true
+    var r = await fetch(SUPA_URL + '/rest/v1/pessoas?bate_ponto=eq.true&select=id,nome,email,cargo,bate_ponto,ponto_sem_validacao_ate&order=nome.asc', {
+      headers: _mpSupaHeaders(), cache: 'no-store'
+    });
+    var pessoasCom = r.ok ? await r.json() : [];
+    
+    console.log('1️⃣ Pessoas com bate_ponto=TRUE no Supabase: ' + pessoasCom.length);
+    console.table(pessoasCom.map(function(p){
+      return {
+        nome: p.nome,
+        email: p.email || '—',
+        cargo: p.cargo || '—',
+        liberada_ate: p.ponto_sem_validacao_ate || '—'
+      };
+    }));
+    
+    // 2) Verifica lista esperada (suporte Ji-Paraná)
+    var nomesEsperados = ['Andréia Luiza Damke','Bruna Eduarda','Camily Barbosa','Estefânia Cavalcante','Gabriella da Cruz','Jessica Nayara','Jheniffer Andrade','Karen de Andrade Lipinski','Whiny Fernandes de Souza'];
+    console.log('2️⃣ Verificação contra lista esperada (9 suporte Ji-Paraná):');
+    var nomesEncontrados = pessoasCom.map(function(p){ return (p.nome||'').toLowerCase(); });
+    
+    var faltando = [];
+    nomesEsperados.forEach(function(nm){
+      var achei = nomesEncontrados.some(function(n){
+        // Match por primeiro nome OU nome inteiro
+        var primeiro = nm.split(' ')[0].toLowerCase();
+        return n.indexOf(primeiro) === 0 || n === nm.toLowerCase();
+      });
+      if(!achei){
+        faltando.push(nm);
+        console.warn('   ❌ FALTANDO: ' + nm);
+      } else {
+        console.log('   ✅ ' + nm);
+      }
+    });
+    
+    if(faltando.length){
+      console.warn('⚠️ PESSOAS COM bate_ponto SUMIDO: ' + faltando.length);
+      console.warn('   Pra recadastrar, roda SQL no Supabase:');
+      faltando.forEach(function(nm){
+        console.warn(`   UPDATE pessoas SET bate_ponto=true WHERE nome ilike '%${nm}%';`);
+      });
+    } else {
+      console.log('✅ Todas as 9 esperadas estão com bate_ponto=true');
+    }
+    
+    // 3) Verifica se TEM REGISTROS do mês corrente
+    var hojeMes = new Date().toISOString().slice(0,7);
+    var rReg = await fetch(SUPA_URL + '/rest/v1/ponto_registros?data=gte.' + hojeMes + '-01&select=pessoa_id,data&order=data.desc&limit=1000', {
+      headers: _mpSupaHeaders(), cache: 'no-store'
+    });
+    var regs = rReg.ok ? await rReg.json() : [];
+    var pessoasComReg = {};
+    regs.forEach(function(r){ pessoasComReg[r.pessoa_id] = (pessoasComReg[r.pessoa_id]||0) + 1; });
+    
+    console.log('3️⃣ Registros do mês corrente (' + hojeMes + '): ' + regs.length + ' batidas no total');
+    pessoasCom.forEach(function(p){
+      var qtd = pessoasComReg[p.id] || 0;
+      console.log('   • ' + p.nome + ': ' + qtd + ' batidas');
+    });
+    
+    // 4) Cleyton/admin pode rodar isso
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('💡 PRÓXIMOS PASSOS:');
+    if(faltando.length){
+      console.log('  1. Cleyton roda os SQLs acima no Supabase pra restaurar bate_ponto');
+      console.log('  2. Pede F5 nos PCs das pessoas afetadas');
+      console.log('  3. Roda gamiDiagPonto() de novo pra confirmar');
+    } else {
+      console.log('  ✅ Cadastros estão OK. Se alguém ainda não vê Meu Ponto, é cache do navegador (Ctrl+Shift+R)');
+    }
+    console.groupEnd();
+    
+    return { pessoasCom: pessoasCom, faltando: faltando, registros: regs.length };
+  } catch(e){
+    console.error('Erro no diagnóstico:', e);
+    console.groupEnd();
+    return null;
+  }
+};
 
 // ============ Abrir aba Meu Ponto ============
 async function abrirMeuPonto(navEl){
