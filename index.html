@@ -1,4 +1,4 @@
-<!-- v26.81 - Modal com 3 escolhas no fuso (não bloqueia) + ferramentas console pra Jheniffer - 18/06/2026 -->
+<!-- v26.83 - Validação por IP da rede do escritório (antes do GPS) + admin pra cadastrar IPs - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -6043,6 +6043,18 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
           <input id="pg-cfg-tolerancia" type="number" min="0" max="60" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
         </div>
       </div>
+      
+      <!-- 🆕 v26.83: IPs autorizados (rede do escritório) -->
+      <div style="margin-top:14px;padding:12px;background:#EAF6FE;border:1px solid #1AB8F0;border-radius:8px">
+        <label style="display:block;font-size:11.5px;color:#0E7AB8;font-weight:700;margin-bottom:6px">🌐 IPs PÚBLICOS DA REDE DO ESCRITÓRIO</label>
+        <div style="font-size:10.5px;color:#0E7AB8;opacity:.85;margin-bottom:8px;line-height:1.4">Quando a pessoa estiver conectada na rede do escritório, o ponto bate sem precisar de GPS. Separe os IPs por vírgula.</div>
+        <input id="pg-cfg-ips" placeholder="Ex: 187.45.12.34, 200.100.50.20" style="width:100%;padding:9px 11px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:var(--text);font-size:13px;font-family:inherit;letter-spacing:0.3px"/>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">
+          <button onclick="pgUsarIPAtual()" style="padding:6px 12px;border:1px solid #0E7AB8;background:white;color:#0E7AB8;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">📡 Adicionar meu IP atual</button>
+          <span id="pg-cfg-meu-ip" style="font-size:10.5px;color:var(--text3);font-family:'JetBrains Mono',monospace">Detectando IP...</span>
+        </div>
+      </div>
+      
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         <button onclick="pgUsarGpsAtual()" class="btn btn-ghost" style="font-size:11px">📡 Usar GPS atual</button>
         <button onclick="pgSalvarConfig()" class="btn btn-primary" style="font-size:12px">💾 Salvar Configurações</button>
@@ -46337,18 +46349,60 @@ function mpRenderBanner(){
   document.getElementById('mp-data-hoje').textContent = 'Hoje · ' + fmt.format(hoje);
 }
 
+// 🆕 v26.83: Valida se a pessoa está conectada na rede do escritório (via IP público)
+// Retorna { ip, dentro, ips_config } ou null se não foi possível verificar
+var MP_IP_INFO = null;
+async function _mpValidarIP(){
+  try {
+    if(MP_IP_INFO) return MP_IP_INFO;
+    if(!MP_CONFIG || !MP_CONFIG.ips_autorizados) return null;
+    
+    var ips = MP_CONFIG.ips_autorizados.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    if(!ips.length) return null;
+    
+    var resp = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+    if(!resp.ok) return null;
+    var data = await resp.json();
+    var meuIP = data.ip;
+    
+    MP_IP_INFO = {
+      ip: meuIP,
+      dentro: ips.indexOf(meuIP) >= 0,
+      ips_config: ips
+    };
+    console.log('[MP] IP atual:', meuIP, '· autorizado?', MP_IP_INFO.dentro);
+    return MP_IP_INFO;
+  } catch(e){ 
+    console.warn('[MP] erro ao validar IP:', e); 
+    return null; 
+  }
+}
+
 // ============ Geolocalização ============
 function mpPedirGeolocation(){
   var statusEl = document.getElementById('mp-status-geo');
   if(!statusEl) return;
-  if(!navigator.geolocation){
-    statusEl.innerHTML = '❌ Seu navegador não suporta geolocalização';
-    return;
-  }
   
-  statusEl.innerHTML = '<span style="color:#0E7AB8">📡 Capturando localização...</span>';
-  
-  _obterLocalizacao().then(function(result){
+  // 🆕 v26.83: Valida IP PRIMEIRO. Se está na rede do escritório, libera sem precisar de GPS
+  statusEl.innerHTML = '<span style="color:#0E7AB8">🌐 Verificando rede...</span>';
+  _mpValidarIP().then(function(ipInfo){
+    if(ipInfo && ipInfo.dentro){
+      // ✅ Está na rede do escritório → libera direto
+      MP_GEO = { lat: null, lng: null, viaIP: true, dentro: true, distancia: 0 };
+      statusEl.innerHTML = '🌐 <strong style="color:#1D9E75">✓ Na rede do escritório</strong> (IP: ' + ipInfo.ip + ')';
+      var jb = document.getElementById('mp-justificativa-box');
+      if(jb) jb.style.display = 'none';
+      return;
+    }
+    
+    // IP não confere ou não configurado → tenta GPS
+    if(!navigator.geolocation){
+      statusEl.innerHTML = '❌ Seu navegador não suporta geolocalização';
+      return;
+    }
+    statusEl.innerHTML = '<span style="color:#0E7AB8">📡 Capturando localização...</span>';
+    
+    _obterLocalizacao().then(function(result){
     var coords = result.coords;
     MP_GEO = {
       lat: coords.latitude,
@@ -46374,20 +46428,23 @@ function mpPedirGeolocation(){
     } else {
       statusEl.innerHTML = '📍 Localização capturada';
     }
-  }).catch(function(err){
+    }).catch(function(err){
     MP_GEO = null;
     
-    // Mostra o botão alternativo "sem GPS"
-    var btnSem = document.getElementById('mp-btn-bater-sem-gps');
-    if(btnSem) btnSem.style.display = '';
-    
+    // 🆕 v26.83: Mostra mensagem clara + obriga justificativa (não tem mais "sem GPS")
     var msg = _msgErroGeo(err);
     var btnRetry = '<button onclick="mpPedirGeolocation()" style="margin-top:10px;width:100%;padding:10px;background:#0E7AB8;color:white;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Tentar de novo</button>';
+    
+    var ipMsg = '';
+    if(ipInfo && !ipInfo.dentro && ipInfo.ips_config && ipInfo.ips_config.length){
+      ipMsg = '<div style="margin-top:8px;padding:8px;background:white;border-radius:6px;font-size:11px;color:var(--text2)"><strong>🌐 Seu IP:</strong> ' + ipInfo.ip + ' não está na lista de IPs do escritório.<br>Se você está no escritório, peça pro Cleyton adicionar este IP.</div>';
+    }
     
     if(err.code === 1){
       statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:8px;padding:12px;font-size:12px;text-align:left;color:#A32D2D;line-height:1.5">'
         + '<div style="font-weight:700;margin-bottom:8px;font-size:13px">' + msg.curta + '</div>'
         + '<div style="color:#5A6678;white-space:pre-line">' + msg.longa + '</div>'
+        + ipMsg
         + btnRetry
       + '</div>';
     } else if(err.code === 2){
@@ -46409,6 +46466,7 @@ function mpPedirGeolocation(){
       + '</div>';
     }
   });
+  }); // fecha _mpValidarIP().then
 }
 
 function _mpHaversine(lat1, lng1, lat2, lng2){
@@ -47717,7 +47775,24 @@ async function pgCarregarConfig(){
     document.getElementById('pg-cfg-lng').value = PG_CONFIG.longitude || '';
     document.getElementById('pg-cfg-raio').value = PG_CONFIG.raio_metros || 150;
     document.getElementById('pg-cfg-tolerancia').value = PG_CONFIG.tolerancia_atraso_min || 10;
+    // 🆕 v26.83: Carrega IPs autorizados
+    var ipsInput = document.getElementById('pg-cfg-ips');
+    if(ipsInput) ipsInput.value = PG_CONFIG.ips_autorizados || '';
   } catch(e){ console.error('[PG] config:', e); }
+  
+  // 🆕 v26.83: Detecta IP atual em background pra mostrar no painel
+  try {
+    var span = document.getElementById('pg-cfg-meu-ip');
+    if(span){
+      span.innerHTML = 'Detectando IP...';
+      fetch('https://api.ipify.org?format=json', { cache: 'no-store' })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if(d.ip) span.innerHTML = '🖥️ Seu IP agora: <strong>' + d.ip + '</strong>';
+        })
+        .catch(function(){ span.innerHTML = '<span style="color:var(--text3)">(IP não detectado)</span>'; });
+    }
+  } catch(e){}
   
   // 🆕 v26.72: Renderiza lista de colaboradoras pra marcar/desmarcar horário Brasília
   pgRenderListaHorarioBrasilia();
@@ -47805,18 +47880,58 @@ async function pgSalvarConfig(){
   var tolerancia = parseInt(document.getElementById('pg-cfg-tolerancia').value);
   var nome = document.getElementById('pg-cfg-nome').value.trim();
   var endereco = document.getElementById('pg-cfg-endereco').value.trim();
+  // 🆕 v26.83: IPs autorizados (rede do escritório)
+  var ipsRaw = (document.getElementById('pg-cfg-ips')||{}).value || '';
+  var ipsAutorizados = ipsRaw.split(',').map(function(s){ return s.trim(); }).filter(Boolean).join(',');
   
   if(isNaN(lat) || isNaN(lng)){ alert('Lat/Lng inválidos.'); return; }
   if(raio < 20 || raio > 500){ alert('Raio deve ser entre 20m e 500m.'); return; }
   
   try {
+    // Salva config principal via RPC
     await _pgRPC('ponto_atualizar_config', {
       p_latitude: lat, p_longitude: lng, p_raio_metros: raio, p_tolerancia_atraso_min: tolerancia,
       p_nome_local: nome || null, p_endereco: endereco || null
     });
+    
+    // 🆕 v26.83: Salva IPs autorizados via UPDATE direto (campo pode não existir no RPC ainda)
+    try {
+      await fetch(SUPA_URL + '/rest/v1/ponto_config?id=eq.1', {
+        method: 'PATCH', headers: _pgSupaHeaders(),
+        body: JSON.stringify({ ips_autorizados: ipsAutorizados || null })
+      });
+    } catch(e){ console.warn('[PG] IPs autorizados não salvos no Supabase:', e); }
+    
     document.getElementById('pg-cfg-status').innerHTML = '✅ Configurações salvas!';
     pgCarregarConfig();
   } catch(e){ alert('❌ ' + e.message); }
+}
+
+// 🆕 v26.83: Detecta IP público do PC atual e adiciona ao campo
+async function pgUsarIPAtual(){
+  var span = document.getElementById('pg-cfg-meu-ip');
+  if(span) span.innerHTML = 'Buscando...';
+  try {
+    var r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+    var data = await r.json();
+    var meuIP = data.ip;
+    if(span) span.innerHTML = '🖥️ Seu IP: <strong>' + meuIP + '</strong>';
+    
+    var input = document.getElementById('pg-cfg-ips');
+    if(input){
+      var atual = input.value.trim();
+      var lista = atual ? atual.split(',').map(function(s){ return s.trim(); }) : [];
+      if(lista.indexOf(meuIP) < 0){
+        lista.push(meuIP);
+        input.value = lista.join(', ');
+        if(span) span.innerHTML += ' · <span style="color:#1D9E75">✓ adicionado</span>';
+      } else {
+        if(span) span.innerHTML += ' · <span style="color:#0E7AB8">já está na lista</span>';
+      }
+    }
+  } catch(e){
+    if(span) span.innerHTML = '<span style="color:#A32D2D">❌ Erro ao detectar IP</span>';
+  }
 }
 
 // ============ EXPORT EXCEL ============
@@ -48146,7 +48261,16 @@ function dashPedirGeoPonto(){
     }).catch(function(err){
       MP_GEO = null;
       var msg = _msgErroGeo(err);
-      if(statusEl) statusEl.innerHTML = '<div style="color:#A32D2D;font-size:12px">' + msg.curta + '</div>';
+      // 🆕 v26.82: Mostra mensagem completa + botão alternativo
+      if(statusEl){
+        statusEl.innerHTML = '<div style="background:#FCE6E6;border:1px solid #E24B4A;border-radius:6px;padding:10px;font-size:11.5px;text-align:left;color:#A32D2D;line-height:1.5">'
+          + '<div style="font-weight:700;margin-bottom:6px">' + msg.curta + '</div>'
+          + '<div style="color:#5A6678;white-space:pre-line;font-size:10.5px">' + msg.longa + '</div>'
+        + '</div>';
+      }
+      // Mostra botão alternativo "Sem GPS"
+      var btnSemGps = document.getElementById('dash-btn-bater-sem-gps');
+      if(btnSemGps) btnSemGps.style.display = '';
       reject(err);
     });
   });
