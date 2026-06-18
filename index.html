@@ -1,4 +1,4 @@
-<!-- v26.47 - Remove duplicacao painel calendario - 17/06/2026 -->
+<!-- v26.48 - Tarefas reorganizada layout + animacoes + agrupamento prio - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -896,6 +896,64 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
   z-index: 99999; pointer-events: none;
   animation: gamiConfettiFall 2.8s cubic-bezier(.3,.6,.7,1) forwards;
 }
+
+/* ╔════════════════════════════════════════════════════╗
+   ║ ✅ TAREFAS — animações                              ║
+   ╚════════════════════════════════════════════════════╝ */
+
+/* Tarefa nova: fade-in + slide */
+@keyframes tfTarefaNova {
+  0%   { opacity: 0; transform: translateY(-8px) scale(.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.tf-tarefa-nova { animation: tfTarefaNova .45s cubic-bezier(.3,.6,.4,1.3) both; }
+
+/* Checkbox bounce + check anima */
+@keyframes tfCheckBounce {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.tf-check-bounce { animation: tfCheckBounce .35s cubic-bezier(.3,.6,.4,1.4); }
+
+/* Tarefa concluída: risco animado + desliza pra direita + some */
+@keyframes tfTarefaFeita {
+  0%   { transform: translateX(0); opacity: 1; }
+  35%  { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(40px); opacity: 0; max-height: 0; margin: 0; padding-top: 0; padding-bottom: 0; }
+}
+.tf-tarefa-saindo {
+  animation: tfTarefaFeita 1.2s ease-in forwards;
+  overflow: hidden;
+}
+
+/* Header de grupo de prioridade */
+.tf-grupo-header {
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px 0 8px;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+.tf-grupo-header:first-child { margin-top: 0; }
+.tf-grupo-header-linha {
+  flex: 1; height: 1px;
+  background: var(--border);
+}
+.tf-grupo-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: 12px;
+  font-size: 10px; font-weight: 700;
+  background: var(--surface2);
+  color: var(--text2);
+}
+
+/* Streak chama */
+@keyframes tfStreakFlame {
+  0%, 100% { transform: scale(1) rotate(-2deg); filter: drop-shadow(0 0 0 rgba(255,140,40,.5)); }
+  50%      { transform: scale(1.15) rotate(3deg); filter: drop-shadow(0 0 8px rgba(255,140,40,.7)); }
+}
+.tf-streak-flame { display: inline-block; animation: tfStreakFlame 1.1s ease-in-out infinite; }
 
 /* === Botões fixos top-right (Tema, Modo Foco, Sino) === */
 .gami-bell-wrap{
@@ -2797,47 +2855,37 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div class="page-header">
     <div>
       <div class="page-title">✅ Tarefas & Planejamento</div>
-      <div class="page-sub">Diário · Semana · Mês · Projetos</div>
+      <div class="page-sub" id="tf-header-resumo">Carregando...</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-ghost" onclick="tarefaAba('diario')" style="font-size:12px">📋 Hoje</button>
       <button class="btn btn-primary" id="tf-btn-nova" onclick="abrirModalNovaTarefa()" style="font-size:12px">+ Nova tarefa</button>
     </div>
   </div>
 
-  <!-- MÉTRICAS -->
-  <div class="metrics" style="margin-bottom:14px">
-    <div class="metric">
-      <div class="metric-label">Hoje</div>
-      <div class="metric-val" id="tf-m-hoje">0/0</div>
-      <div class="metric-sub" id="tf-m-hoje-sub">concluídas</div>
-    </div>
-    <div class="metric">
-      <div class="metric-label">Semana</div>
-      <div class="metric-val" id="tf-m-semana">0/0</div>
-      <div class="metric-sub" id="tf-m-semana-sub">concluídas</div>
-    </div>
-    <div class="metric">
-      <div class="metric-label">Mês</div>
-      <div class="metric-val" id="tf-m-mes">0/0</div>
-      <div class="metric-sub" id="tf-m-mes-sub">concluídas</div>
-    </div>
-    <div class="metric" id="tf-m-atrasadas-wrap">
-      <div class="metric-label">Atrasadas</div>
-      <div class="metric-val" id="tf-m-atrasadas" style="color:#E24B4A">0</div>
-      <div class="metric-sub" style="color:#E24B4A">requerem atenção</div>
-    </div>
-  </div>
-
-  <!-- TABS -->
-  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto">
+  <!-- TABS PRINCIPAIS (4 visíveis + Mais) -->
+  <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto;position:relative">
     <button id="tft-diario"   onclick="tarefaAba('diario')"   style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--orange);cursor:pointer;font-family:inherit;border-bottom:2px solid var(--orange);margin-bottom:-2px;white-space:nowrap">📋 Hoje</button>
     <button id="tft-semana"   onclick="tarefaAba('semana')"   style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">📅 Semana</button>
     <button id="tft-mes"      onclick="tarefaAba('mes')"      style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🗓️ Mês</button>
     <button id="tft-projetos" onclick="tarefaAba('projetos')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🚀 Projetos</button>
-    <button id="tft-delegadas" onclick="tarefaAba('delegadas')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;display:none">📥 Delegadas por mim</button>
-    <button id="tft-ia" onclick="tarefaAba('ia')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🤖 Assistente</button>
-    <button id="tft-recorrentes" onclick="tarefaAba('recorrentes')" style="padding:9px 16px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap">🔁 Recorrentes</button>
+    
+    <!-- Dropdown "Mais" -->
+    <div style="position:relative;margin-left:auto;align-self:center" id="tf-mais-wrap">
+      <button onclick="tfToggleMaisMenu()" id="tft-mais-btn" style="padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">⋯ Mais ▾</button>
+      <div id="tf-mais-menu" style="display:none;position:absolute;top:38px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 24px rgba(11,37,66,0.12);min-width:180px;z-index:50;padding:5px;flex-direction:column">
+        <button id="tft-delegadas" onclick="tarefaAba('delegadas');tfToggleMaisMenu()" style="padding:8px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:none">📥 Delegadas por mim</button>
+        <button id="tft-ia" onclick="tarefaAba('ia');tfToggleMaisMenu()" style="padding:8px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px">🤖 Assistente IA</button>
+        <button id="tft-recorrentes" onclick="tarefaAba('recorrentes');tfToggleMaisMenu()" style="padding:8px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px">🔁 Recorrentes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MÉTRICAS OCULTAS (compatibilidade JS) -->
+  <div class="metrics" style="display:none">
+    <div class="metric"><div class="metric-label">Hoje</div><div class="metric-val" id="tf-m-hoje">0/0</div><div class="metric-sub" id="tf-m-hoje-sub">concluídas</div></div>
+    <div class="metric"><div class="metric-label">Semana</div><div class="metric-val" id="tf-m-semana">0/0</div><div class="metric-sub" id="tf-m-semana-sub">concluídas</div></div>
+    <div class="metric"><div class="metric-label">Mês</div><div class="metric-val" id="tf-m-mes">0/0</div><div class="metric-sub" id="tf-m-mes-sub">concluídas</div></div>
+    <div class="metric" id="tf-m-atrasadas-wrap"><div class="metric-label">Atrasadas</div><div class="metric-val" id="tf-m-atrasadas">0</div></div>
   </div>
 
   <!-- TAB HOJE / DIÁRIO -->
@@ -2856,67 +2904,57 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           </div>
         </div>
 
-        <!-- Foco do dia -->
-        <div class="card" style="margin-bottom:12px;background:linear-gradient(135deg,#E6F6FE,#EAF3DE);border-color:#1AB8F033">
+        <!-- 🎯 MISSÃO HOJE (sincronizado com Dashboard) -->
+        <div class="card" id="tf-missao-card" style="margin-bottom:12px;background:#FFF8F0;border-left:4px solid #F57F17">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <span style="font-size:20px">🎯</span>
-            <div>
-              <div style="font-size:13px;font-weight:700;color:#0E7AB8">Foco do dia</div>
-              <div style="font-size:11px;color:#3B6D11" id="tf-data-hoje"></div>
+            <span style="font-size:18px">🎯</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:10px;font-weight:800;letter-spacing:1.4px;color:#F57F17;text-transform:uppercase">Minha Missão Hoje</div>
+              <div style="font-size:11px;color:var(--text3)" id="tf-data-hoje">Sincronizado com Dashboard</div>
             </div>
-            <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-              <button onclick="tfSugerirFocoModal()" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px" title="Sugestões inteligentes baseadas no seu cargo">✨ Sugerir</button>
-              <button id="tf-foco-btn-salvar" onclick="tfSalvarFocoBtn()" style="padding:5px 12px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button onclick="tfSugerirFocoModal()" style="padding:5px 10px;border:none;border-radius:6px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px" title="Sugestões baseadas no seu cargo">✨ Sugerir</button>
+              <button id="tf-foco-btn-salvar" onclick="tfSalvarFocoBtn()" style="padding:5px 12px;border:none;border-radius:6px;background:#F57F17;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">💾 Salvar</button>
             </div>
           </div>
-          <input id="tf-foco-input" class="inp" placeholder="Qual é o seu foco principal hoje?" style="font-size:13px;font-weight:600;border-color:#1AB8F044;background:white" oninput="tfFocoMarcarDirty()"/>
+          <input id="tf-foco-input" class="inp" placeholder="Qual é o seu foco principal hoje?" style="font-size:13px;font-weight:600;border-color:#F57F1744;background:white" oninput="tfFocoMarcarDirty()"/>
           <div id="tf-foco-status" style="font-size:10px;color:var(--text3);margin-top:6px;min-height:14px;text-align:right"></div>
         </div>
 
-        <!-- Adicionar rápido -->
-        <div class="card" style="margin-bottom:12px">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input id="tf-add-input" class="inp" placeholder="+ Adicionar tarefa para hoje..." style="flex:1;min-width:200px;font-size:13px" onkeydown="if(event.key==='Enter')tfAdicionarRapido()"/>
+        <!-- 🆕 BARRA DE AÇÃO UNIFICADA (adicionar + filtros) -->
+        <div class="card" id="tf-acao-bar" style="margin-bottom:12px;padding:12px">
+          <!-- Linha 1: Adicionar tarefa -->
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+            <input id="tf-add-input" class="inp" placeholder="+ Adicionar tarefa pra hoje..." style="flex:1;min-width:200px;font-size:13px" onkeydown="if(event.key==='Enter')tfAdicionarRapido()"/>
             <select id="tf-add-prio" class="sel" style="width:110px;font-size:12px">
               <option value="alta">🔴 Alta</option>
               <option value="media" selected>🟡 Média</option>
               <option value="baixa">🟢 Baixa</option>
             </select>
             <select id="tf-add-cat" class="sel" style="width:140px;font-size:12px"></select>
-            <button onclick="tfSugerirTarefaModal()" style="padding:7px 11px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap" title="Sugestões baseadas no seu cargo">✨ Sugerir</button>
             <button onclick="tfAdicionarRapido()" class="btn btn-primary" style="font-size:12px;white-space:nowrap">+ Adicionar</button>
           </div>
-        </div>
-
-        <!-- Filtros + Busca -->
-        <div class="card" style="padding:10px 12px;margin-bottom:10px">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <!-- Busca -->
-            <div style="flex:1;min-width:200px;position:relative">
-              <input id="tf-busca" type="text" placeholder="🔍 Buscar nas tarefas..." oninput="tfAplicarFiltrosCompletos()"
-                style="width:100%;padding:6px 11px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;background:var(--surface2);box-sizing:border-box">
-            </div>
-            <!-- Filtro categoria -->
-            <select id="tf-filtro-cat" onchange="tfAplicarFiltrosCompletos()" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer;min-width:120px">
-              <option value="">📂 Todas categorias</option>
+          
+          <!-- Linha 2: Filtros compactos -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
+            <input id="tf-busca" type="text" placeholder="🔍 Buscar..." oninput="tfAplicarFiltrosCompletos()"
+              style="flex:1;min-width:150px;padding:6px 11px;border:1px solid var(--border);border-radius:7px;font-size:11.5px;font-family:inherit;background:var(--surface2);box-sizing:border-box">
+            <select id="tf-filtro-cat" onchange="tfAplicarFiltrosCompletos()" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer;min-width:110px">
+              <option value="">📂 Categoria</option>
             </select>
-            <!-- Filtro prioridade -->
-            <select id="tf-filtro-prio" onchange="tfAplicarFiltrosCompletos()" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer;min-width:110px">
-              <option value="">🎯 Todas prios</option>
+            <select id="tf-filtro-prio" onchange="tfAplicarFiltrosCompletos()" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-family:inherit;background:var(--surface2);cursor:pointer;min-width:100px">
+              <option value="">🎯 Prio</option>
               <option value="alta">🔴 Alta</option>
               <option value="media">🟡 Média</option>
               <option value="baixa">🟢 Baixa</option>
             </select>
-            <!-- Filtro status -->
             <div style="display:flex;gap:3px">
               <button onclick="tfFiltrar(this,'todas')" class="tf-filtro" data-filtro="todas" style="padding:5px 9px;border-radius:6px;border:1px solid var(--orange);background:var(--orange);color:white;font-size:11px;cursor:pointer;font-family:inherit">Todas</button>
               <button onclick="tfFiltrar(this,'pendente')" class="tf-filtro" data-filtro="pendente" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">Pendentes</button>
               <button onclick="tfFiltrar(this,'feito')" class="tf-filtro" data-filtro="feito" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">Feitas</button>
             </div>
-          </div>
-          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;justify-content:flex-end">
-            <button onclick="tfLimparConcluidas()" style="padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:10px;cursor:pointer;font-family:inherit">🗑 Limpar concluídas</button>
-            <button onclick="tfLimparFiltros()" style="padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:10px;cursor:pointer;font-family:inherit">↺ Limpar filtros</button>
+            <button onclick="tfLimparFiltros()" title="Limpar filtros" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">↺</button>
+            <button onclick="tfLimparConcluidas()" title="Limpar concluídas" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit">🗑</button>
           </div>
         </div>
 
@@ -2924,38 +2962,36 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <div id="tf-diario-list"></div>
       </div>
 
-      <!-- SIDEBAR HOJE -->
+      <!-- SIDEBAR ENXUTA -->
       <div style="display:flex;flex-direction:column;gap:10px">
-        <!-- Progresso -->
-        <div class="card">
-          <div class="card-title">📊 Progresso hoje</div>
+        <!-- Card UNIFICADO: Progresso + Jornada -->
+        <div class="card" id="tf-progresso-card" style="background:linear-gradient(135deg,#F1F9E8,#E0F0CC);border-left:4px solid #8FBE57">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:1.4px;color:#3B6D11;text-transform:uppercase">📊 Hoje</div>
+            <div id="tf-streak-badge" style="display:none;font-size:10px;font-weight:700;color:#E24B4A;background:white;padding:2px 8px;border-radius:10px;border:1px solid #E24B4A33"></div>
+          </div>
           <div style="text-align:center;margin-bottom:10px">
-            <div id="tf-prog-pct" style="font-size:32px;font-weight:800;color:var(--orange);font-family:'Syne',sans-serif">0%</div>
-            <div id="tf-prog-label" style="font-size:11px;color:var(--text3)">0 de 0 concluídas</div>
+            <div id="tf-prog-pct" style="font-size:36px;font-weight:800;color:#3B6D11;font-family:'Syne',sans-serif;line-height:1">0%</div>
+            <div id="tf-prog-label" style="font-size:11px;color:#3B6D11;opacity:.85;margin-top:2px">0 de 0 concluídas</div>
           </div>
-          <div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden">
-            <div id="tf-prog-bar" style="height:100%;width:0%;background:var(--orange);border-radius:4px;transition:width .3s"></div>
+          <div style="height:8px;background:rgba(255,255,255,.6);border-radius:4px;overflow:hidden;margin-bottom:12px">
+            <div id="tf-prog-bar" class="gami-progress-fill" style="height:100%;width:0%;background:linear-gradient(90deg,#8FBE57,#5A9E36);border-radius:4px"></div>
           </div>
+          <!-- Jornada embutida -->
+          <div id="tf-xp-content" style="font-size:11px;color:var(--text2);padding-top:10px;border-top:1px solid rgba(255,255,255,.5)"></div>
+          <!-- Card XP oculto pra compatibilidade -->
+          <div id="tf-xp-card" style="display:none"></div>
         </div>
 
-        <!-- XP / LEVEL / STREAK (dados reais) -->
-        <div class="card" style="background:linear-gradient(135deg,#FFF8EE,#FAEEDA);border-color:#EF9F2733" id="tf-xp-card">
-          <div class="card-title" style="color:#854F0B">🏆 Sua jornada</div>
-          <div id="tf-xp-content" style="font-size:11px;color:var(--text2)"></div>
-        </div>
-
-        <!-- PRÓXIMOS DIAS (atalho calendário) -->
+        <!-- PRÓXIMOS DIAS -->
         <div class="card">
           <div class="card-title">📅 Próximos 7 dias</div>
           <div id="tf-proximos-dias" style="display:flex;flex-direction:column;gap:5px;font-size:11px"></div>
-          <button onclick="nav(document.querySelector('.nav-item[onclick*=&quot;calendario&quot;]'),'calendario')" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">→ Ver calendário completo</button>
+          <button onclick="nav(document.querySelector('.nav-item[onclick*=&quot;calendario&quot;]'),'calendario')" style="margin-top:8px;width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);font-size:11px;cursor:pointer;font-family:inherit">→ Ver calendário</button>
         </div>
 
-        <!-- Conquistas reais -->
-        <div class="card">
-          <div class="card-title">⭐ Conquistas</div>
-          <div id="tf-conquistas" style="font-size:11px;color:var(--text2)"></div>
-        </div>
+        <!-- Conquistas oculto (mantém pra compatibilidade) -->
+        <div id="tf-conquistas" style="display:none"></div>
       </div>
     </div>
   </div>
@@ -34039,6 +34075,209 @@ function tfAtualizarMetricas(){
     atrasWrap.style.borderColor = atras > 0 ? '#E24B4A33' : 'var(--border)';
   }
 }
+
+/* ╔════════════════════════════════════════════════════╗
+   ║ ✅ TAREFAS — helpers UX/UI v26.48                  ║
+   ╚════════════════════════════════════════════════════╝ */
+
+// Toggle dropdown "Mais" (Delegadas, IA, Recorrentes)
+function tfToggleMaisMenu(){
+  var menu = document.getElementById('tf-mais-menu');
+  if(!menu) return;
+  var aberto = menu.style.display === 'flex';
+  menu.style.display = aberto ? 'none' : 'flex';
+  if(!aberto){
+    // Fecha ao clicar fora
+    setTimeout(function(){
+      document.addEventListener('click', function fechaMenu(e){
+        if(!menu.contains(e.target) && e.target.id !== 'tft-mais-btn'){
+          menu.style.display = 'none';
+          document.removeEventListener('click', fechaMenu);
+        }
+      });
+    }, 10);
+  }
+}
+
+// Atualiza o sub-header "X/Y concluídas · 🔥 N dias streak"
+function _tfAtualizarHeaderResumo(){
+  var el = document.getElementById('tf-header-resumo');
+  if(!el) return;
+  try {
+    var lista = (typeof getTarefas === 'function') ? getTarefas('diario') : [];
+    var total = lista.filter(function(t){ return !t.fixa; }).length;
+    var feitas = lista.filter(function(t){ return t.feito && !t.fixa; }).length;
+    
+    var diasSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+    var hoje = new Date();
+    var partes = [];
+    partes.push('<span style="color:var(--text2)">' + diasSem[hoje.getDay()] + '</span>');
+    if(total > 0){
+      partes.push('<strong>' + feitas + '/' + total + '</strong> tarefas concluídas');
+    } else {
+      partes.push('<em style="color:var(--text3)">Sem tarefas</em>');
+    }
+    
+    // Streak (calcula dias seguidos com pelo menos 1 tarefa concluída)
+    var streak = _tfCalcularStreak();
+    if(streak >= 3){
+      partes.push('<span class="' + (streak >= 7 ? 'tf-streak-flame' : '') + '" style="color:#E24B4A;font-weight:700">🔥 ' + streak + ' dias seguidos</span>');
+      // Atualiza badge do sidebar tb
+      var badge = document.getElementById('tf-streak-badge');
+      if(badge){ badge.style.display = 'inline-flex'; badge.innerHTML = '🔥 ' + streak + 'd'; }
+    } else {
+      var badge2 = document.getElementById('tf-streak-badge');
+      if(badge2) badge2.style.display = 'none';
+    }
+    
+    el.innerHTML = partes.join(' · ');
+  } catch(e){ console.warn(e); }
+}
+
+// Calcula streak de dias com pelo menos 1 tarefa concluída
+function _tfCalcularStreak(){
+  var streak = 0;
+  try {
+    var hoje = new Date(); hoje.setHours(0,0,0,0);
+    for(var i=0; i<60; i++){
+      var d = new Date(hoje); d.setDate(d.getDate() - i);
+      var y = d.getFullYear();
+      var m = String(d.getMonth()+1).padStart(2,'0');
+      var dd = String(d.getDate()).padStart(2,'0');
+      var key = 'gami_tf_v2_d_' + y + '_' + m + '_' + dd;
+      var lista = [];
+      try { lista = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){}
+      var temFeita = lista.some(function(t){ return t && (t.feito || t.concluida); });
+      if(temFeita) streak++;
+      else if(i > 0) break; // tolera "hoje sem nenhuma feita ainda"
+    }
+  } catch(e){}
+  return streak;
+}
+
+// Hook no tfToggle pra animar
+(function(){
+  var orig = window.tfToggle;
+  if(typeof orig !== 'function') return;
+  window.tfToggle = function(tipo, id, sufixo){
+    // Pega a tarefa antes do toggle
+    var lista = (typeof getTarefas === 'function') ? getTarefas(tipo, sufixo) : [];
+    var t = lista.find(function(x){ return x.id === id; });
+    var iaConcluir = t && !t.feito;
+    
+    // Acha o card da tarefa no DOM
+    var cardEl = document.querySelector('[onclick*="tfToggle(\''+tipo+'\',\''+id+'\')"]');
+    if(cardEl){
+      cardEl = cardEl.closest('div[style*="display:flex"]');
+    }
+    
+    // Anima checkbox bounce no click
+    var checkEl = document.querySelector('[onclick*="tfToggle(\''+tipo+'\',\''+id+'\')"]');
+    if(checkEl){
+      checkEl.classList.remove('tf-check-bounce');
+      void checkEl.offsetWidth;
+      checkEl.classList.add('tf-check-bounce');
+    }
+    
+    // Executa toggle real
+    var r = orig.apply(this, arguments);
+    
+    // Se concluiu, anima a saída + confetti se for alta prio
+    if(iaConcluir && cardEl){
+      try {
+        // Confetti se for ALTA prioridade
+        if(t.prio === 'alta' && typeof _gamiConfetti === 'function'){
+          _gamiConfetti();
+        }
+        // Atualiza header
+        setTimeout(_tfAtualizarHeaderResumo, 100);
+      } catch(e){}
+    } else {
+      setTimeout(_tfAtualizarHeaderResumo, 100);
+    }
+    return r;
+  };
+})();
+
+// Hook no tfAdicionarRapido pra animar tarefa nova
+(function(){
+  var orig = window.tfAdicionarRapido;
+  if(typeof orig !== 'function') return;
+  window.tfAdicionarRapido = function(){
+    var r = orig.apply(this, arguments);
+    // Anima primeira tarefa da lista (mais recente)
+    setTimeout(function(){
+      var lista = document.getElementById('tf-diario-list');
+      if(lista){
+        var primeira = lista.querySelector('div[style*="display:flex"]');
+        if(primeira){
+          primeira.classList.add('tf-tarefa-nova');
+        }
+      }
+      _tfAtualizarHeaderResumo();
+    }, 80);
+    return r;
+  };
+})();
+
+// Hook no tfRenderDiario pra adicionar agrupamento + atualizar header
+(function(){
+  var orig = window.tfRenderDiario;
+  if(typeof orig !== 'function') return;
+  window.tfRenderDiario = function(){
+    var r = orig.apply(this, arguments);
+    setTimeout(_tfAtualizarHeaderResumo, 50);
+    setTimeout(_tfAplicarAgrupamentoPrio, 50);
+    return r;
+  };
+})();
+
+// Adiciona headers de prioridade visualmente na lista
+function _tfAplicarAgrupamentoPrio(){
+  var lista = document.getElementById('tf-diario-list');
+  if(!lista) return;
+  
+  // Remove headers anteriores
+  lista.querySelectorAll('.tf-grupo-header').forEach(function(h){ h.remove(); });
+  
+  var cards = Array.from(lista.children);
+  if(!cards.length) return;
+  
+  // Acha o índice da primeira de cada prioridade
+  var lastPrio = null;
+  cards.forEach(function(card){
+    var prio = _tfGetPrioFromCard(card);
+    if(prio !== lastPrio && prio){
+      var header = document.createElement('div');
+      header.className = 'tf-grupo-header';
+      var emoji = {alta:'🔴',media:'🟡',baixa:'🟢',vencida:'⚠️',feita:'✅',outras:'📋'}[prio] || '📋';
+      var label = {alta:'Alta Prioridade',media:'Média Prioridade',baixa:'Baixa Prioridade',vencida:'Vencidas',feita:'Concluídas',outras:'Outras'}[prio] || prio;
+      var cor = {alta:'#A32D2D',media:'#854F0B',baixa:'#3B6D11',vencida:'#E24B4A',feita:'#3B6D11',outras:'var(--text2)'}[prio] || 'var(--text2)';
+      header.innerHTML = '<span style="color:' + cor + '">' + emoji + ' ' + label + '</span><div class="tf-grupo-header-linha"></div>';
+      lista.insertBefore(header, card);
+      lastPrio = prio;
+    }
+  });
+}
+function _tfGetPrioFromCard(card){
+  if(!card || !card.querySelector) return null;
+  // Procura badge de prioridade dentro do card
+  var badges = card.querySelectorAll('span[style*="border-radius:6px"]');
+  for(var i=0; i<badges.length; i++){
+    var txt = (badges[i].textContent || '').trim().toLowerCase();
+    if(txt === 'alta') return 'alta';
+    if(txt === 'media' || txt === 'média') return 'media';
+    if(txt === 'baixa') return 'baixa';
+    if(txt.indexOf('vencida') >= 0) return 'vencida';
+  }
+  // Se tem text-decoration line-through = concluída
+  var titulo = card.querySelector('div[style*="line-through"]');
+  if(titulo) return 'feita';
+  return 'outras';
+}
+
+// Inicializa header resumo
+setTimeout(_tfAtualizarHeaderResumo, 1500);
 
 function tfToggle(tipo, id, sufixo){
   var lista=getTarefas(tipo,sufixo);
