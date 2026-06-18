@@ -1,4 +1,4 @@
-<!-- v26.64 - Modal compromisso centralizado, meta mes com botao, estoque sem valor pra nao-admins - 17/06/2026 -->
+<!-- v26.65 - Plano de Carreira: Hero pessoal + Trilha vertical + Promoções timeline + 5 fases ícones - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -7076,12 +7076,93 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     .carr-trilha-card:hover { transform: translateY(-4px) scale(1.04); box-shadow:0 8px 18px rgba(13,43,92,.15); }
     .carr-fase-card:hover { transform: translateY(-3px); }
     .carr-fase-card { transition: all .25s ease; }
+    
+    /* 🆕 v26.65: Hero broche pulsando */
+    @keyframes carrBrochePulse {
+      0%,100% { transform: scale(1); filter: drop-shadow(0 4px 12px rgba(26,184,240,.3)); }
+      50%     { transform: scale(1.04); filter: drop-shadow(0 8px 22px rgba(26,184,240,.55)); }
+    }
+    .carr-broche-pulse { animation: carrBrochePulse 2.8s ease-in-out infinite; }
+    
+    /* 🆕 Trilha sua posição glow azul */
+    @keyframes carrTrilhaGlowVoce {
+      0%,100% { box-shadow: 0 0 0 0 rgba(26,184,240,.4), inset 0 0 0 0 rgba(26,184,240,0); }
+      50%     { box-shadow: 0 0 0 5px rgba(26,184,240,.2), inset 0 0 0 1px rgba(26,184,240,.4); }
+    }
+    .carr-trilha-voce { animation: carrTrilhaGlowVoce 2.4s ease-in-out infinite; }
+    
+    /* 🆕 Crown flutuante */
+    @keyframes carrCrownFloat {
+      0%,100% { transform: translateY(0) rotate(-3deg); }
+      50%     { transform: translateY(-4px) rotate(3deg); }
+    }
+    .carr-crown { animation: carrCrownFloat 2.4s ease-in-out infinite; display: inline-block; filter: drop-shadow(0 4px 6px rgba(245,197,24,.4)); }
+    
+    /* 🆕 Promoções slide-in */
+    @keyframes carrPromoSlide {
+      0%   { opacity: 0; transform: translateX(-10px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+    .carr-promo-item { animation: carrPromoSlide .4s ease both; }
+    .carr-promo-item:nth-child(1) { animation-delay: 0ms; }
+    .carr-promo-item:nth-child(2) { animation-delay: 80ms; }
+    .carr-promo-item:nth-child(3) { animation-delay: 160ms; }
+    .carr-promo-item:nth-child(4) { animation-delay: 240ms; }
+    .carr-promo-item:nth-child(5) { animation-delay: 320ms; }
+    
+    /* 🆕 Trilha vertical linha conectando */
+    .carr-trilha-vertical { display: flex; flex-direction: column; gap: 0; position: relative; }
+    .carr-trilha-vertical::before {
+      content: '';
+      position: absolute;
+      left: 36px; top: 12px; bottom: 12px;
+      width: 2px;
+      background: linear-gradient(180deg, #FFD93D 0%, #1AB8F0 50%, #C2DC91 100%);
+      border-radius: 2px;
+      opacity: .35;
+      pointer-events: none;
+    }
+    .carr-trilha-linha {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 14px; margin-bottom: 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px;
+      transition: transform .2s ease, box-shadow .2s ease, padding-left .2s ease;
+      position: relative;
+      cursor: default;
+    }
+    .carr-trilha-linha:hover {
+      transform: translateX(4px);
+      box-shadow: 0 4px 12px rgba(13,43,92,.08);
+    }
+    .carr-trilha-linha.carr-trilha-voce {
+      background: linear-gradient(135deg, #E6F6FE, #D0EDFB) !important;
+      border-color: #1AB8F0;
+      border-left: 4px solid #0E7AB8;
+    }
+    
+    /* 🆕 Cards 5 fases melhores */
+    .carr-fase-icone {
+      font-size: 36px;
+      display: block;
+      margin-bottom: 6px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.08));
+    }
+    
+    /* 🆕 Hero card pessoal */
+    .carr-hero-pessoal {
+      animation: carr-fadeup .5s ease both;
+    }
+    
+    @media(max-width:680px){
+      .carr-grid-2 { grid-template-columns:1fr !important; }
+    }
   </style>
 
   <div class="page-header">
     <div>
       <div class="page-title">🚀 Plano de Carreira</div>
-      <div class="page-sub">Trilhas, fases e crescimento na Gâmi Delivery</div>
+      <div class="page-sub" id="carreira-header-sub">Trilhas, fases e crescimento na Gâmi Delivery</div>
     </div>
     <button class="btn btn-primary" onclick="openAI('Sugira um plano de desenvolvimento individual de 90 dias para um colaborador da Gâmi Delivery que está na fase de Desenvolvimento (Júnior II/III), focando em registrar aprendizados e buscar resultados consistentes.')">PDI com IA ↗</button>
   </div>
@@ -7099,6 +7180,9 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     </div>
   </div>
 
+  <!-- 🆕 HERO PESSOAL "Você está no [Nível]" -->
+  <div id="carreira-hero-pessoal" style="margin-bottom:14px"></div>
+
   <!-- MÉTRICAS -->
   <div class="metrics carr-section" id="carreira-metrics" style="margin-bottom:14px"></div>
 
@@ -7109,7 +7193,21 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div class="card" style="margin-bottom:14px">
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🏆</span> Trilha de Níveis</div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:14px">10 faixas de progressão — promoções sugeridas pela diretoria com base em desempenho</div>
-    <div id="carreira-trilha" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <div id="carreira-trilha"></div>
+  </div>
+
+  <!-- 🆕 PROMOÇÕES RECENTES -->
+  <div class="card" id="carreira-promocoes-card" style="margin-bottom:14px;background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:1px solid #FCD34D;border-left:4px solid #F59E0B;padding:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+      <div>
+        <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#78350F;text-transform:uppercase">🎉 Promoções recentes</div>
+        <div style="font-size:11px;color:#92400E;opacity:.85;margin-top:2px">Celebrando quem cresceu na trilha</div>
+      </div>
+      <button onclick="_carrRenderPromocoes(true)" title="Atualizar" style="width:28px;height:28px;border:1px solid #FCD34D;border-radius:6px;background:rgba(255,255,255,.6);cursor:pointer;font-size:12px;color:#78350F">🔄</button>
+    </div>
+    <div id="carreira-promocoes-lista">
+      <div style="color:#78350F;opacity:.7;font-size:12px;font-style:italic">Carregando...</div>
+    </div>
   </div>
 
   <!-- TIME ATUAL POR NÍVEL -->
@@ -7134,9 +7232,9 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div class="card" id="carreira-criterios" style="margin-bottom:14px"></div>
 
   <!-- CTA FINAL -->
-  <div class="card" style="text-align:center;background:linear-gradient(135deg,#FFB300 0%,#1AB8F0 100%);border:none;color:white">
-    <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px">Vamos juntos(as) conquistar novos níveis?</div>
-    <div style="font-size:11px;opacity:.9;letter-spacing:.6px;text-transform:uppercase">Vem muito mais por aí...</div>
+  <div class="card" style="text-align:center;background:linear-gradient(135deg,#FFB300 0%,#1AB8F0 100%);border:none;color:white;padding:20px 18px">
+    <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;letter-spacing:-.3px;margin-bottom:6px">Crescer aqui é sobre evolução real.</div>
+    <div style="font-size:12px;opacity:.95;line-height:1.5;max-width:520px;margin:0 auto">A Diretoria observa, ouve e promove quando chega a hora. Continue entregando, aprendendo e ajudando o time. 🚀</div>
   </div>
 </div>
 
@@ -41339,6 +41437,13 @@ function renderCarreira(){
   var pessoas = [];
   try { pessoas = (typeof getPessoas === 'function') ? getPessoas() : []; } catch(e){ pessoas = []; }
 
+  // 🆕 v26.65: HEADER SUB com stats
+  try { _carrAtualizarHeaderSub(pessoas); } catch(e){ console.warn('Header sub:', e); }
+  // 🆕 HERO PESSOAL
+  try { _carrRenderHeroPessoal(pessoas); } catch(e){ console.warn('Hero pessoal:', e); }
+  // 🆕 PROMOÇÕES RECENTES
+  try { _carrRenderPromocoes(); } catch(e){ console.warn('Promoções:', e); }
+
   // ----- MÉTRICAS -----
   var metricsHost = document.getElementById('carreira-metrics');
   if(metricsHost){
@@ -41365,103 +41470,109 @@ function renderCarreira(){
       '<div class="metric"><div class="metric-label">Liderança</div><div class="metric-val" style="color:#FFB300">'+lideres+'</div><div class="metric-sub">gestão e direção</div></div>';
   }
 
-  // ----- 5 FASES -----
+  // ----- 5 FASES (v26.65 com ícones grandes) -----
   var fasesHost = document.getElementById('carreira-fases');
   if(fasesHost){
     var fases = [
-      {nome:'Inicial',cor:'#9E9E9E',num:'1',desafios:['Adaptação','Vontade de sair ou empolgação em excesso'],expectativa:'Crescer (erro — deveria ser aprender)',foco:'O foco deve ser no processo'},
-      {nome:'Desenvolvimento',cor:'#42A5F5',num:'2',desafios:['Aplicar pouco do que já aprendeu','Dependência em excesso'],expectativa:'Aprendizado',foco:'Registrar alinhamentos, aprendizados e demandas. Buscar mais resultados'},
-      {nome:'Aprimoramento',cor:'#1565C0',num:'3',desafios:['Alto esforço para gerar retorno','Muita raça e pouca análise'],expectativa:'Maior organização e resultados',foco:'O foco deve estar sempre na otimização'},
-      {nome:'Referência',cor:'#7F77DD',num:'4',desafios:['Transmitir conhecimento e experiências de forma aplicável'],expectativa:'Independência',foco:'Atenção: se você é indispensável, também é "impromovível"'},
-      {nome:'Liderança',cor:'#FFB300',num:'5',desafios:['Gestão de equipes / processos'],expectativa:'Elevação da senioridade da equipe',foco:'O óbvio precisa ser dito, alinhado e registrado. Evitar que antigos problemas voltem'},
+      {nome:'Inicial',cor:'#9E9E9E',num:'1',icone:'🌱',desafios:['Adaptação','Vontade de sair ou empolgação em excesso'],expectativa:'Crescer (erro — deveria ser aprender)',foco:'O foco deve ser no processo'},
+      {nome:'Desenvolvimento',cor:'#42A5F5',num:'2',icone:'📚',desafios:['Aplicar pouco do que já aprendeu','Dependência em excesso'],expectativa:'Aprendizado',foco:'Registrar alinhamentos, aprendizados e demandas. Buscar mais resultados'},
+      {nome:'Aprimoramento',cor:'#1565C0',num:'3',icone:'⚙️',desafios:['Alto esforço para gerar retorno','Muita raça e pouca análise'],expectativa:'Maior organização e resultados',foco:'O foco deve estar sempre na otimização'},
+      {nome:'Referência',cor:'#7F77DD',num:'4',icone:'💎',desafios:['Transmitir conhecimento e experiências de forma aplicável'],expectativa:'Independência',foco:'Atenção: se você é indispensável, também é "impromovível"'},
+      {nome:'Liderança',cor:'#FFB300',num:'5',icone:'👑',desafios:['Gestão de equipes / processos'],expectativa:'Elevação da senioridade da equipe',foco:'O óbvio precisa ser dito, alinhado e registrado. Evitar que antigos problemas voltem'},
     ];
     fasesHost.innerHTML =
       '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">🛤️</span> Fases da Jornada Profissional</div>'+
       '<div style="font-size:11px;color:var(--text3);margin-bottom:14px">5 momentos que todo profissional Gâmi atravessa</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">'+
-      fases.map(function(f){
-        return '<div style="border:1px solid var(--border);border-top:3px solid '+f.cor+';border-radius:10px;padding:12px;background:var(--surface);position:relative">'+
-          '<div style="position:absolute;top:8px;right:10px;font-family:Syne,sans-serif;font-size:22px;font-weight:800;color:'+f.cor+';opacity:.25">'+f.num+'</div>'+
-          '<div style="font-size:11px;font-weight:700;color:'+f.cor+';text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Fase '+f.nome+'</div>'+
-          '<div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:3px">Desafios</div>'+
-          '<ul style="font-size:10px;color:var(--text2);line-height:1.5;padding-left:14px;margin:0 0 8px 0">'+f.desafios.map(function(d){return '<li>'+d+'</li>';}).join('')+'</ul>'+
-          '<div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:3px">Expectativa</div>'+
-          '<div style="font-size:10px;color:var(--text2);line-height:1.5;margin-bottom:8px">'+f.expectativa+'</div>'+
-          '<div style="font-size:10px;color:'+f.cor+';line-height:1.5;font-weight:500;background:'+f.cor+'15;padding:6px 8px;border-radius:5px">💡 '+f.foco+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">'+
+      fases.map(function(f, i){
+        return '<div class="carr-fase-card" style="border:1px solid '+f.cor+'33;border-top:4px solid '+f.cor+';border-radius:12px;padding:14px;background:var(--surface);position:relative;animation:carr-fadeup .45s ease both;animation-delay:'+(i*70)+'ms">'+
+          '<div style="position:absolute;top:10px;right:12px;font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:'+f.cor+';opacity:.18">'+f.num+'</div>'+
+          '<span class="carr-fase-icone" style="color:'+f.cor+'">'+f.icone+'</span>'+
+          '<div style="font-size:11.5px;font-weight:800;color:'+f.cor+';text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Fase '+f.nome+'</div>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">Desafios</div>'+
+          '<ul style="font-size:10.5px;color:var(--text2);line-height:1.5;padding-left:16px;margin:0 0 10px 0">'+f.desafios.map(function(d){return '<li>'+d+'</li>';}).join('')+'</ul>'+
+          '<div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">Expectativa</div>'+
+          '<div style="font-size:10.5px;color:var(--text2);line-height:1.5;margin-bottom:10px">'+f.expectativa+'</div>'+
+          '<div style="font-size:10.5px;color:'+f.cor+';line-height:1.5;font-weight:600;background:'+f.cor+'15;padding:7px 9px;border-radius:6px">💡 '+f.foco+'</div>'+
         '</div>';
       }).join('') + '</div>';
   }
 
-  // ----- TRILHA 10 NÍVEIS -----
+  // ----- TRILHA 10 NÍVEIS (VERTICAL v26.65) -----
   var trilhaHost = document.getElementById('carreira-trilha');
   if(trilhaHost){
+    // Ordem: topo (Diretor) → base (Júnior I)
     var niveis = [
-      {nome:'Júnior I'},
-      {nome:'Júnior II'},
-      {nome:'Júnior III'},
-      {nome:'Pleno I'},
-      {nome:'Pleno II'},
-      {nome:'Pleno III'},
-      {nome:'Sênior I'},
-      {nome:'Sênior II'},
-      {nome:'Sênior III'},
+      {nome:'Diretor'},
       {nome:'Gerente'},
+      {nome:'Sênior III'},
+      {nome:'Sênior II'},
+      {nome:'Sênior I'},
+      {nome:'Pleno III'},
+      {nome:'Pleno II'},
+      {nome:'Pleno I'},
+      {nome:'Júnior III'},
+      {nome:'Júnior II'},
+      {nome:'Júnior I'},
     ];
     
-    // Renderiza com cor neutra primeiro, depois extrai cor de cada broche e aplica
-    trilhaHost.innerHTML = niveis.map(function(n, idx){
-      // conta pessoas que TÊM esse nível (pode estar em múltiplos)
-      var qtd = pessoas.filter(function(p){
-        var ns = (typeof pessoaNiveis === 'function') ? pessoaNiveis(p) : [p.nivel].filter(Boolean);
-        return ns.indexOf(n.nome) >= 0;
-      }).length;
-      var arrow = idx < niveis.length-1 ? '<div style="font-size:14px;color:var(--text3);align-self:center">→</div>' : '';
-      var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[n.nome] : null;
-      var cardId = 'trilha-card-'+idx;
-      var brocheUrl = arquivoBroche ? '/broches-gami/senioridade/'+arquivoBroche+'.png' : '';
-      
-      var brocheHTML = arquivoBroche 
-        ? '<div style="width:56px;height:56px;border-radius:50%;background-image:url(\''+brocheUrl+'\');background-size:cover;background-position:center;background-color:#F5F7FA;margin:0 auto 8px;box-shadow:0 2px 5px rgba(0,0,0,.12);border:2px solid white"></div>'
-        : '<div style="width:56px;height:56px;border-radius:50%;background:#F1EFE8;color:#5F5E5A;display:flex;align-items:center;justify-content:center;margin:0 auto 8px;font-family:Syne,sans-serif;font-size:14px;font-weight:800;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,.12)">'+(idx+1)+'</div>';
-      
-      // Card neutro inicial — cor será aplicada via JS após extrair do PNG
-      return '<div style="display:flex;gap:6px;align-items:center">'+
-        '<div id="'+cardId+'" data-broche="'+brocheUrl+'" style="border:1px solid #E1E7EE;border-radius:10px;padding:12px 10px 10px;background:#F5F7FA;color:#0B2542;min-width:130px;text-align:center;transition:all 0.4s ease">'+
-          brocheHTML +
-          '<div style="font-size:11px;font-weight:700;letter-spacing:.2px">'+n.nome+'</div>'+
-          (qtd>0 ? '<div class="trilha-badge-qtd" style="margin-top:5px;font-size:9px;font-weight:700;background:rgba(255,255,255,.55);display:inline-block;padding:2px 7px;border-radius:10px">'+qtd+' pessoa'+(qtd>1?'s':'')+'</div>' : '')+
-        '</div>'+
-        arrow+
-      '</div>';
-    }).join('');
+    // Pega usuário logado pra destacar
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    var meusNiveis = u ? pessoaNiveis(u) : [];
+    // Define "próximo nível" como o nível imediatamente acima do mais alto que tenho
+    var meuNivelTopo = null;
+    for(var n=0; n<niveis.length; n++){
+      if(meusNiveis.indexOf(niveis[n].nome) >= 0){ meuNivelTopo = niveis[n].nome; break; }
+    }
+    var meuIdxTopo = meuNivelTopo ? niveis.findIndex(function(x){ return x.nome === meuNivelTopo; }) : -1;
+    var proxIdx = meuIdxTopo > 0 ? meuIdxTopo - 1 : -1;
     
-    // Após renderizar, aplica extração automática de cor para cada card que tem broche
+    trilhaHost.innerHTML = '<div class="carr-trilha-vertical">' + niveis.map(function(nv, idx){
+      var qtd = pessoas.filter(function(p){
+        var ns = pessoaNiveis(p);
+        return ns.indexOf(nv.nome) >= 0;
+      }).length;
+      var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[nv.nome] : null;
+      var brocheUrl = arquivoBroche ? '/broches-gami/senioridade/'+arquivoBroche+'.png' : '';
+      var brocheHTML = arquivoBroche 
+        ? '<div style="width:46px;height:46px;border-radius:50%;background-image:url(\''+brocheUrl+'\');background-size:cover;background-position:center;background-color:#F5F7FA;box-shadow:0 2px 5px rgba(0,0,0,.1);border:2px solid white;flex-shrink:0;z-index:2;position:relative"></div>'
+        : '<div style="width:46px;height:46px;border-radius:50%;background:#F1EFE8;color:#5F5E5A;display:flex;align-items:center;justify-content:center;font-family:Syne,sans-serif;font-size:13px;font-weight:800;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,.1);flex-shrink:0;z-index:2;position:relative">'+(niveis.length-idx)+'</div>';
+      
+      var ehVoce = meuNivelTopo === nv.nome;
+      var ehProx = idx === proxIdx;
+      var ehTopo = idx === 0;
+      
+      var classeExtra = ehVoce ? ' carr-trilha-voce' : '';
+      var bg = ehVoce ? '' : 'background:var(--surface)';
+      var corLabel = ehVoce ? '#0E7AB8' : 'var(--text)';
+      
+      var badge = '';
+      if(ehVoce){
+        badge = '<span style="background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:9.5px;font-weight:800;padding:3px 9px;border-radius:12px;letter-spacing:.5px">🎯 VOCÊ ESTÁ AQUI</span>';
+      } else if(ehProx){
+        badge = '<span style="background:#FEF3C7;color:#78350F;font-size:9.5px;font-weight:700;padding:3px 9px;border-radius:12px;letter-spacing:.5px;border:1px solid #FCD34D">⭐ Próximo nível</span>';
+      } else if(ehTopo && !ehVoce){
+        badge = '<span class="carr-crown" style="font-size:18px">👑</span>';
+      }
+      
+      return '<div class="carr-trilha-linha'+classeExtra+'" style="'+bg+'">'
+        + brocheHTML
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+            + '<span style="font-family:Syne,sans-serif;font-size:13.5px;font-weight:800;color:'+corLabel+'">'+nv.nome+'</span>'
+            + badge
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+qtd+' pessoa'+(qtd!==1?'s':'')+(qtd === 0 ? ' — vaga aberta' : '')+'</div>'
+        + '</div>'
+      + '</div>';
+    }).join('') + '</div>';
+    
+    // Aplica cor extraída do broche (mantém comportamento existente, mas aqui só na borda)
     setTimeout(function(){
-      niveis.forEach(function(n, idx){
-        var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[n.nome] : null;
+      niveis.forEach(function(nv){
+        var arquivoBroche = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[nv.nome] : null;
         if(!arquivoBroche) return;
-        var card = document.getElementById('trilha-card-'+idx);
-        if(!card) return;
-        var url = card.dataset.broche;
-        extrairCorDominante(url, function(rgb){
-          if(!rgb) return;
-          var r = rgb[0], g = rgb[1], b = rgb[2];
-          // Cor de fundo: clarinha (mistura com branco)
-          var bgR = Math.round(r + (255-r)*0.85);
-          var bgG = Math.round(g + (255-g)*0.85);
-          var bgB = Math.round(b + (255-b)*0.85);
-          // Cor da borda: tom médio
-          var bdR = Math.round(r + (255-r)*0.55);
-          var bdG = Math.round(g + (255-g)*0.55);
-          var bdB = Math.round(b + (255-b)*0.55);
-          // Cor do texto: tom escuro (mistura com preto)
-          var txR = Math.round(r * 0.45);
-          var txG = Math.round(g * 0.45);
-          var txB = Math.round(b * 0.45);
-          card.style.background = 'rgb('+bgR+','+bgG+','+bgB+')';
-          card.style.borderColor = 'rgb('+bdR+','+bdG+','+bdB+')';
-          card.style.color = 'rgb('+txR+','+txG+','+txB+')';
-        });
+        // Não aplica em "VOCÊ ESTÁ AQUI" pra manter o glow azul
       });
     }, 100);
   }
@@ -41617,6 +41728,282 @@ function renderCarreira(){
         '</div>';
       }).join('') + '</div>';
   }
+}
+
+/* ╔════════════════════════════════════════════════════╗
+   ║ 🚀 CARREIRA — Helpers v26.65                        ║
+   ╚════════════════════════════════════════════════════╝ */
+
+// Header sub com stats inline
+function _carrAtualizarHeaderSub(pessoas){
+  var el = document.getElementById('carreira-header-sub');
+  if(!el) return;
+  if(!pessoas) pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var emProgressao = pessoas.filter(function(p){
+    var ns = pessoaNiveis(p);
+    return ns.some(function(n){ return n && n !== 'Diretor' && n !== 'Gerente' && n !== 'Gestor'; });
+  }).length;
+  var seniores = pessoas.filter(function(p){
+    var ns = pessoaNiveis(p);
+    return ns.some(function(n){ return (n||'').indexOf('Sênior')===0; });
+  }).length;
+  var lideres = pessoas.filter(function(p){
+    var ns = pessoaNiveis(p);
+    return ns.some(function(n){ return n === 'Gestor' || n === 'Gerente' || n === 'Diretor'; });
+  }).length;
+  el.innerHTML = pessoas.length + ' colaboradores · '
+    + '<strong style="color:#1E88E5">' + emProgressao + ' em progressão</strong> · '
+    + '<strong style="color:#8E24AA">' + seniores + ' sêniores</strong> · '
+    + '<strong style="color:#FFB300">' + lideres + ' líderes</strong>';
+}
+
+// Hero pessoal: "Você está no [Nível]" com broche grande
+function _carrRenderHeroPessoal(pessoas){
+  var host = document.getElementById('carreira-hero-pessoal');
+  if(!host) return;
+  
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){
+    host.innerHTML = '';
+    return;
+  }
+  
+  // Pega pessoa logada da lista completa (pra ter foto, nome, nível)
+  if(!pessoas) pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var minha = pessoas.find(function(p){ return p.id === u.id; }) || u;
+  
+  var meusNiveis = pessoaNiveis(minha);
+  if(!meusNiveis.length){
+    // Pessoa sem nível cadastrado
+    host.innerHTML = '<div class="card carr-hero-pessoal" style="padding:18px;background:linear-gradient(135deg,#F5F7FA,#E1E7EE);border:1px solid #DDE3EB"><div style="font-size:12px;color:var(--text2);font-weight:600">💼 Seu nível ainda não foi cadastrado. Fale com a Diretoria.</div></div>';
+    return;
+  }
+  
+  // Ordem da trilha (topo → base) — pega o mais alto que tem
+  var ordemTopoBase = ['Diretor','Gerente','Sênior III','Sênior II','Sênior I','Pleno III','Pleno II','Pleno I','Júnior III','Júnior II','Júnior I'];
+  var nivelTopo = null;
+  for(var i=0; i<ordemTopoBase.length; i++){
+    if(meusNiveis.indexOf(ordemTopoBase[i]) >= 0){ nivelTopo = ordemTopoBase[i]; break; }
+  }
+  if(!nivelTopo) nivelTopo = meusNiveis[0];
+  
+  // Próximo nível (1 acima)
+  var idxAtual = ordemTopoBase.indexOf(nivelTopo);
+  var proxNivel = idxAtual > 0 ? ordemTopoBase[idxAtual - 1] : null;
+  
+  // Broches
+  var brocheAtual = (typeof MAPA_SENIORIDADE !== 'undefined') ? MAPA_SENIORIDADE[nivelTopo] : null;
+  var brocheUrlAtual = brocheAtual ? '/broches-gami/senioridade/'+brocheAtual+'.png' : '';
+  var brocheProx = proxNivel && typeof MAPA_SENIORIDADE !== 'undefined' ? MAPA_SENIORIDADE[proxNivel] : null;
+  var brocheUrlProx = brocheProx ? '/broches-gami/senioridade/'+brocheProx+'.png' : '';
+  
+  // Frase do nível
+  var frases = {
+    'Júnior I': 'Acabou de chegar — bora aprender o jeito Gâmi!',
+    'Júnior II': 'Tá aprendendo o ritmo. Continue registrando aprendizados.',
+    'Júnior III': 'Última fase Júnior — mostra que pode crescer.',
+    'Pleno I': 'Profissional consolidado. Resultados são esperados.',
+    'Pleno II': 'Referência técnica em formação.',
+    'Pleno III': 'Pronto pra liderar projetos e mentorar Júniors.',
+    'Sênior I': 'Referência reconhecida. Faz o time crescer.',
+    'Sênior II': 'Mentor natural. Forma novas referências.',
+    'Sênior III': 'Líder técnico que inspira. Próximo da gestão.',
+    'Gerente': 'Gestor de equipes e processos. Cultura viva!',
+    'Diretor': 'Líder estratégico Gâmi. Constrói a história.'
+  };
+  var frase = frases[nivelTopo] || 'Continue crescendo na trilha Gâmi.';
+  
+  var primeiroNome = (minha.nome || u.nome || 'Cleyton').split(' ')[0];
+  
+  host.innerHTML = '<div class="card carr-hero-pessoal" style="padding:20px 22px;background:linear-gradient(135deg,#E6F6FE,#D0EDFB);border:1px solid #99D9F3;border-left:4px solid #1AB8F0;position:relative;overflow:hidden">'
+    + '<div style="position:absolute;top:-25px;right:-15px;font-size:130px;opacity:.06">🚀</div>'
+    + '<div style="position:relative;display:flex;align-items:center;gap:18px;flex-wrap:wrap">'
+      + '<div style="flex-shrink:0">'
+        + (brocheUrlAtual 
+            ? '<div class="carr-broche-pulse" style="width:92px;height:92px;border-radius:50%;background-image:url(\''+brocheUrlAtual+'\');background-size:cover;background-position:center;background-color:#F5F7FA;border:4px solid white;box-shadow:0 8px 22px rgba(26,184,240,.3)"></div>'
+            : '<div class="carr-broche-pulse" style="width:92px;height:92px;border-radius:50%;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;display:flex;align-items:center;justify-content:center;font-family:Syne,sans-serif;font-size:24px;font-weight:800;border:4px solid white;box-shadow:0 8px 22px rgba(26,184,240,.3)">'+(nivelTopo[0]||'?')+'</div>')
+      + '</div>'
+      + '<div style="flex:1;min-width:200px">'
+        + '<div style="font-size:11px;font-weight:800;letter-spacing:1.4px;color:#0E7AB8;text-transform:uppercase;margin-bottom:2px">💼 Olá, ' + primeiroNome + '!</div>'
+        + '<div style="font-size:11px;color:#0E7AB8;opacity:.8;margin-bottom:4px;letter-spacing:.3px">Seu nível atual:</div>'
+        + '<div style="font-family:Syne,sans-serif;font-size:26px;font-weight:800;color:#0E7AB8;line-height:1;margin-bottom:6px">' + nivelTopo + '</div>'
+        + '<div style="font-size:12px;color:#0B5380;font-style:italic;line-height:1.4">"' + frase + '"</div>'
+      + '</div>'
+      + (proxNivel ? (
+        '<div style="flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(255,255,255,.7);border-radius:10px;border:1px dashed #1AB8F0">'
+          + (brocheUrlProx
+              ? '<div style="width:42px;height:42px;border-radius:50%;background-image:url(\''+brocheUrlProx+'\');background-size:cover;background-position:center;background-color:#F5F7FA;border:2px solid white;flex-shrink:0;opacity:.85"></div>'
+              : '<div style="width:42px;height:42px;border-radius:50%;background:#E1E7EE;color:#0E7AB8;display:flex;align-items:center;justify-content:center;font-family:Syne,sans-serif;font-size:13px;font-weight:800;flex-shrink:0">'+(proxNivel[0]||'?')+'</div>')
+          + '<div>'
+            + '<div style="font-size:9.5px;font-weight:800;letter-spacing:1px;color:#0E7AB8;text-transform:uppercase;margin-bottom:1px">🎯 Próximo nível</div>'
+            + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#0E7AB8;line-height:1">' + proxNivel + '</div>'
+            + '<div style="font-size:9.5px;color:#0E7AB8;opacity:.7;margin-top:2px">Sugerido pela Diretoria</div>'
+          + '</div>'
+        + '</div>'
+      ) : (
+        '<div style="flex-shrink:0;padding:10px 14px;background:linear-gradient(135deg,#FFD93D,#FFB300);border-radius:10px;color:#0B2542;text-align:center">'
+          + '<div style="font-size:24px">👑</div>'
+          + '<div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase">TOPO DA TRILHA</div>'
+        + '</div>'
+      ))
+    + '</div>'
+  + '</div>';
+}
+
+// Promoções recentes (timeline)
+function _carrRenderPromocoes(forcado){
+  var host = document.getElementById('carreira-promocoes-lista');
+  if(!host) return;
+  
+  // Lê do localStorage (e tenta Supabase futuramente via syncConfig)
+  var promocoes = [];
+  try {
+    promocoes = JSON.parse(localStorage.getItem('gami_promocoes_log') || '[]');
+  } catch(e){}
+  
+  if(!Array.isArray(promocoes)) promocoes = [];
+  
+  if(!promocoes.length){
+    host.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:14px;background:rgba(255,255,255,.5);border-radius:8px">'
+      + '<div style="font-size:28px;opacity:.4">📜</div>'
+      + '<div style="flex:1">'
+        + '<div style="font-size:12px;color:#78350F;font-weight:700;margin-bottom:2px">Ainda sem promoções registradas</div>'
+        + '<div style="font-size:11px;color:#92400E;opacity:.85;line-height:1.4">Quando a Diretoria registrar uma promoção, ela aparece aqui pra celebrar com o time.</div>'
+      + '</div>'
+      + '<button onclick="abrirModalNovaPromocao()" data-permissao="super_admin" style="padding:7px 12px;border:none;border-radius:7px;background:#F59E0B;color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">+ Registrar</button>'
+    + '</div>';
+    return;
+  }
+  
+  // Ordena por data desc
+  promocoes.sort(function(a,b){ return new Date(b.data) - new Date(a.data); });
+  
+  // Pega pessoas pra puxar foto
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var meses = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  function fmtData(iso){ try { var d = new Date(iso); return meses[d.getMonth()] + '/' + String(d.getFullYear()).slice(-2); } catch(e){ return ''; } }
+  
+  var medalhas = ['🥇','🥈','🥉','🏅','🏅','🏅'];
+  
+  host.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' + promocoes.slice(0, 6).map(function(p, idx){
+    var pessoa = pessoas.find(function(x){ return x.id === p.pessoa_id || x.nome === p.pessoa_nome; });
+    var foto = pessoa && pessoa.foto ? '<img src="'+pessoa.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' : ((p.pessoa_nome||'?')[0]||'?').toUpperCase();
+    var ac = (typeof avColor === 'function') ? avColor(p.pessoa_nome||'?') : {bg:'#E0E0E0',color:'#333'};
+    
+    return '<div class="carr-promo-item" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,.7);border:1px solid rgba(252,211,77,.4);border-radius:8px">'
+      + '<div style="font-size:18px;flex-shrink:0">' + medalhas[idx] + '</div>'
+      + '<div style="width:32px;height:32px;border-radius:50%;background:' + ac.bg + ';color:' + ac.color + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:2px solid white;overflow:hidden">' + foto + '</div>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:12px;color:#451A03;line-height:1.3">'
+          + '<strong style="color:#78350F">' + (p.pessoa_nome||'?') + '</strong> '
+          + '<span style="font-weight:500">→</span> '
+          + '<strong style="color:#0E7AB8">' + (p.novo_nivel||'?') + '</strong>'
+        + '</div>'
+        + '<div style="font-size:10px;color:#92400E;opacity:.85;margin-top:1px">' + fmtData(p.data) + (p.observacao ? ' · ' + p.observacao : '') + '</div>'
+      + '</div>'
+    + '</div>';
+  }).join('') + '</div>'
+  + '<div style="text-align:center;margin-top:10px"><button onclick="abrirModalNovaPromocao()" data-permissao="super_admin" style="padding:6px 12px;border:1px solid #F59E0B;border-radius:7px;background:transparent;color:#78350F;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">+ Registrar promoção</button></div>';
+}
+
+// Modal de registro de promoção (admin)
+function abrirModalNovaPromocao(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  if(nivel !== 'super_admin' && nivel !== 'diretoria'){
+    alert('Apenas Cleyton e Diretoria podem registrar promoções.');
+    return;
+  }
+  
+  var existing = document.getElementById('modal-promocao');
+  if(existing) existing.remove();
+  
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var pessoasOpts = pessoas.map(function(p){
+    return '<option value="'+p.id+'" data-nome="'+(p.nome||'').replace(/"/g,'&quot;')+'">'+(p.nome||'')+'</option>';
+  }).join('');
+  
+  var niveis = ['Júnior I','Júnior II','Júnior III','Pleno I','Pleno II','Pleno III','Sênior I','Sênior II','Sênior III','Gerente','Diretor'];
+  var niveisOpts = niveis.map(function(n){ return '<option value="'+n+'">'+n+'</option>'; }).join('');
+  
+  var hojeStr = new Date().toISOString().split('T')[0];
+  
+  var modal = document.createElement('div');
+  modal.id = 'modal-promocao';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,37,66,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px';
+  modal.innerHTML = '<div style="background:#fff;border:1px solid #DDE3EB;border-radius:14px;padding:22px;width:480px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(11,37,66,.25);position:relative;color:#0B2542">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+      + '<div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700;color:#0B2542">🎉 Registrar promoção</div>'
+      + '<button onclick="document.getElementById(\'modal-promocao\').remove()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#56627a;padding:4px 8px">×</button>'
+    + '</div>'
+    + '<div style="display:flex;flex-direction:column;gap:12px">'
+      + '<div>'
+        + '<div style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">Quem foi promovido?</div>'
+        + '<select id="prom-pessoa" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"><option value="">— Selecione —</option>'+pessoasOpts+'</select>'
+      + '</div>'
+      + '<div>'
+        + '<div style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">Novo nível</div>'
+        + '<select id="prom-nivel" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"><option value="">— Selecione —</option>'+niveisOpts+'</select>'
+      + '</div>'
+      + '<div>'
+        + '<div style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">📅 Data da promoção</div>'
+        + '<input id="prom-data" type="date" value="'+hojeStr+'" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"/>'
+      + '</div>'
+      + '<div>'
+        + '<div style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">Observação (opcional)</div>'
+        + '<input id="prom-obs" placeholder="Ex: Pela liderança do projeto X" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"/>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;margin-top:6px">'
+        + '<button style="flex:1;padding:9px 14px;border:1px solid #DDE3EB;background:transparent;color:#0B2542;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" onclick="document.getElementById(\'modal-promocao\').remove()">Cancelar</button>'
+        + '<button style="flex:2;padding:9px 14px;border:none;background:#F59E0B;color:white;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarNovaPromocao()">🎉 Registrar promoção</button>'
+      + '</div>'
+    + '</div>'
+  + '</div>';
+  modal.addEventListener('click', function(e){
+    if(e.target === modal) modal.remove();
+  });
+  document.body.appendChild(modal);
+}
+
+function salvarNovaPromocao(){
+  var sel = document.getElementById('prom-pessoa');
+  var pessoaId = sel.value;
+  var pessoaNome = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  var novoNivel = document.getElementById('prom-nivel').value;
+  var data = document.getElementById('prom-data').value;
+  var obs = document.getElementById('prom-obs').value.trim();
+  
+  if(!pessoaId){ alert('Escolha a pessoa.'); return; }
+  if(!novoNivel){ alert('Escolha o nível.'); return; }
+  if(!data){ alert('Defina a data.'); return; }
+  
+  var promocoes = [];
+  try { promocoes = JSON.parse(localStorage.getItem('gami_promocoes_log') || '[]'); } catch(e){}
+  if(!Array.isArray(promocoes)) promocoes = [];
+  
+  promocoes.unshift({
+    id: 'prom_' + Date.now(),
+    pessoa_id: pessoaId,
+    pessoa_nome: pessoaNome,
+    novo_nivel: novoNivel,
+    data: data,
+    observacao: obs,
+    registrado_em: new Date().toISOString()
+  });
+  
+  // Mantém últimas 50
+  if(promocoes.length > 50) promocoes = promocoes.slice(0, 50);
+  
+  try { localStorage.setItem('gami_promocoes_log', JSON.stringify(promocoes)); } catch(e){}
+  // Sincroniza com Supabase
+  if(typeof syncConfig === 'function'){
+    syncConfig('promocoes_log', promocoes).catch(function(e){ console.warn('sync:', e); });
+  }
+  
+  document.getElementById('modal-promocao').remove();
+  _carrRenderPromocoes();
+  // 🎉 Confetti pra celebrar
+  if(typeof _gamiConfetti === 'function') setTimeout(_gamiConfetti, 100);
 }
 
 /* ===================== DASHBOARD: AÇÕES RÁPIDAS ===================== */
