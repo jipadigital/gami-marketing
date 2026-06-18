@@ -1,4 +1,4 @@
-<!-- v26.70 - Bate ponto detecta PC com fuso errado: bloqueia e mostra banner vermelho - 18/06/2026 -->
+<!-- v26.73 - Estoque liberado para Suporte com cidades atribuídas (Luiza, Jessica, Camily, Estefânia, Bruna) - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -5939,6 +5939,21 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       </div>
       <div id="pg-cfg-status" style="margin-top:10px;font-size:11px;color:var(--text3);min-height:16px"></div>
     </div>
+    
+    <!-- 🆕 v26.72: Gerenciamento de horário Brasília -->
+    <div class="card" style="padding:18px;margin-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:22px">🇧🇷</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:700;color:var(--text)">Colaboradoras com horário de Brasília</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Quem está em Rondônia mas atende cidades de Brasília (PC em UTC-3)</div>
+        </div>
+      </div>
+      <div style="background:#F5F7FA;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--text2);line-height:1.5">
+        💡 Pessoas marcadas aqui terão o atraso calculado usando <strong>horário de Brasília</strong> (não o fuso da cidade física). Isso evita registro errado quando o PC está configurado em outro fuso.
+      </div>
+      <div id="pg-cfg-hb-lista" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
   </div>
 </div>
 
@@ -11365,6 +11380,95 @@ async function tpSalvar(){
 /* ============================================================== */
 /* MENU DO USUÁRIO LOGADO (sidebar)                              */
 /* ============================================================== */
+// 🆕 v26.71: Diagnóstico completo do estado do usuário (roda no console F12)
+// Use: gamiDiagUsuario()
+window.gamiDiagUsuario = function(){
+  console.group('🔍 DIAGNÓSTICO USUÁRIO GÂMI');
+  
+  // 1) Usuário logado
+  var u = null;
+  try { u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null'); } catch(e){}
+  console.log('1️⃣ Usuário no localStorage:', u);
+  
+  // 2) Nome na sidebar
+  var elNome = document.getElementById('sb-user-nome');
+  console.log('2️⃣ Nome mostrado na sidebar:', elNome ? elNome.textContent : '(não encontrado)');
+  console.log('   • Bate com usuário logado?', (u && elNome && (elNome.textContent.indexOf(u.nome.split(' ')[0]) >= 0)) ? '✅ SIM' : '❌ NÃO — INCONSISTENTE!');
+  
+  // 3) Procura "AÇUCAR" no DOM
+  var encontrouAcucar = false;
+  document.querySelectorAll('*').forEach(function(el){
+    if(el.textContent && el.textContent.toUpperCase().indexOf('AÇUCAR') >= 0 || el.textContent.toUpperCase().indexOf('ACUCAR') >= 0){
+      if(el.children.length === 0){
+        encontrouAcucar = true;
+        console.warn('⚠️ Encontrei "AÇUCAR" no elemento:', el);
+      }
+    }
+  });
+  if(!encontrouAcucar) console.log('3️⃣ Busca por "AÇUCAR" no DOM: ❌ Não encontrado (palavra não está no código)');
+  
+  // 4) Verifica extensões suspeitas comuns
+  console.log('4️⃣ Diagnóstico de extensões:');
+  console.log('   • User Agent:', navigator.userAgent);
+  console.log('   • Idioma do navegador:', navigator.language);
+  console.log('   • Tradutor automático ativo?', document.documentElement.classList.contains('translated-ltr') || document.documentElement.classList.contains('translated-rtl') ? '⚠️ SIM (Google Translate ativo!)' : '❌ Não detectado');
+  
+  // 5) Caches de usuários (qualquer chave gami_ que contenha um ID de pessoa diferente do logado)
+  console.log('5️⃣ Caches no localStorage:');
+  var contadores = {};
+  for(var i=0; i<localStorage.length; i++){
+    var k = localStorage.key(i);
+    if(!k || k.indexOf('gami_') !== 0) continue;
+    var prefixo = k.split('_').slice(0, 3).join('_');
+    contadores[prefixo] = (contadores[prefixo] || 0) + 1;
+  }
+  console.log('   Chaves por prefixo:', contadores);
+  
+  // 6) Conclusão
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('💡 SOLUÇÕES SUGERIDAS:');
+  if(document.documentElement.classList.contains('translated-ltr')){
+    console.log('  ⚠️ Google Translate está ativo! Desativar tradução automática na barra do navegador.');
+  }
+  console.log('  1️⃣ Testar em janela anônima (Ctrl+Shift+N no Chrome)');
+  console.log('  2️⃣ Desativar TODAS as extensões e testar de novo');
+  console.log('  3️⃣ Limpar dados do site: F12 → Application → Storage → Clear site data');
+  console.log('  4️⃣ Tentar em outro navegador (Edge se está no Chrome, ou vice-versa)');
+  console.groupEnd();
+  
+  return {
+    usuario: u,
+    nomeSidebar: elNome ? elNome.textContent : null,
+    encontrouAcucar: encontrouAcucar,
+    translateAtivo: document.documentElement.classList.contains('translated-ltr') || document.documentElement.classList.contains('translated-rtl'),
+    chaves: contadores
+  };
+};
+
+// 🆕 v26.71: Limpa caches de outro usuário ao trocar de pessoa logada
+window.gamiLimparCachePessoal = function(){
+  var u = null;
+  try { u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null'); } catch(e){}
+  if(!u || !u.id){ console.warn('Sem usuário logado'); return; }
+  
+  var meuId = u.id;
+  var apagadas = 0;
+  
+  // Apaga chaves de outros usuários (foco, meta, etc)
+  var keys = [];
+  for(var i=0; i<localStorage.length; i++) keys.push(localStorage.key(i));
+  keys.forEach(function(k){
+    if(!k) return;
+    // Chaves _meuKey: gami_meu_<algo>_<userId>_<data>
+    if(k.indexOf('gami_meu_') === 0 && k.indexOf('_'+meuId+'_') < 0){
+      try { localStorage.removeItem(k); apagadas++; } catch(e){}
+    }
+  });
+  
+  console.log('✅ Apagadas '+apagadas+' chaves de outros usuários do localStorage. Dê F5 pra recarregar.');
+  return apagadas;
+};
+
 function atualizarSidebarUsuario(){
   var u = getUsuarioLogado();
   // Atualiza visibilidade do sino de notificacoes
@@ -44432,6 +44536,44 @@ var EST_LOCALIZACOES = [
   { codigo: 'campo-grande', nome: 'Campo Grande/MS' }
 ];
 
+// 🆕 v26.73: Mapa de permissões de Suporte de Ji-Paraná → cidades que cada uma cuida do estoque
+// Match por primeiro nome (case insensitive)
+var EST_SUPORTE_PERMISSOES = {
+  'luiza':      ['recife', 'vitoria'],
+  'jessica':    ['maceio'],
+  'camily':     ['sao-luis', 'aracaju'],
+  'estefânia':  ['joao-pessoa', 'fortaleza'],
+  'estefania':  ['joao-pessoa', 'fortaleza'],
+  'bruna':      ['natal', 'teresina', 'cuiaba']
+};
+
+// Retorna as cidades que o usuário logado pode acessar no estoque
+// Retorna null = pode ver TUDO (super_admin / diretoria / gerência)
+// Retorna [] = não tem acesso
+// Retorna [cidades] = só estas
+function _estCidadesPermitidas(u){
+  if(!u) return [];
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia') return null;
+  
+  // Verifica mapa de suporte por primeiro nome
+  var primeiroNome = (u.nome || '').toLowerCase().split(' ')[0].trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  // Também tenta sobrenome (no caso da Andréia LUIZA Damke)
+  var nomes = (u.nome || '').toLowerCase().split(/\s+/);
+  
+  for(var chave in EST_SUPORTE_PERMISSOES){
+    var chaveNorm = chave.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if(nomes.some(function(n){ 
+      var nn = n.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      return nn === chaveNorm; 
+    })){
+      return EST_SUPORTE_PERMISSOES[chave].slice();
+    }
+  }
+  return [];
+}
+
 // ====== Helpers ======
 function _estSupaHeaders(){
   return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
@@ -44472,16 +44614,24 @@ function _estSincronizarSessao(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   if(!u){ EST_SESSAO = null; return null; }
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
-  if(nivel !== 'super_admin' && nivel !== 'diretoria' && nivel !== 'gerencia'){
+  
+  // 🆕 v26.73: Suporte com permissão por cidade pode acessar (lista filtrada)
+  var cidadesPermitidas = _estCidadesPermitidas(u);
+  var podeAcessar = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia') 
+                    || (cidadesPermitidas && cidadesPermitidas.length > 0);
+  
+  if(!podeAcessar){
     EST_SESSAO = null;
     return null;
   }
   EST_SESSAO = {
     pessoa_id: u.id || u.pessoa_id,
     nome: u.nome || u.name || u.email,
-    cargo: u.cargo || (nivel === 'super_admin' ? 'Marketing/Owner' : (nivel === 'diretoria' ? 'Diretoria' : 'Gerência')),
+    cargo: u.cargo || (nivel === 'super_admin' ? 'Marketing/Owner' : (nivel === 'diretoria' ? 'Diretoria' : (nivel === 'gerencia' ? 'Gerência' : 'Suporte'))),
     nivel: nivel,
-    estoque_admin: (nivel === 'super_admin')
+    estoque_admin: (nivel === 'super_admin'),
+    // 🆕 v26.73: cidades que esta sessão pode ver/operar (null = todas)
+    cidades_permitidas: cidadesPermitidas
   };
   return EST_SESSAO;
 }
@@ -44493,18 +44643,19 @@ async function estVerificarAcessoSidebar(){
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   var navEstoque = document.getElementById('nav-estoque');
   if(!navEstoque) return;
-  if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
-    navEstoque.style.display = '';
-  } else {
-    navEstoque.style.display = 'none';
-  }
+  
+  // 🆕 v26.73: Aceita Suporte com cidades atribuídas
+  var cidades = _estCidadesPermitidas(u);
+  var podeAcessar = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia')
+                    || (cidades && cidades.length > 0);
+  navEstoque.style.display = podeAcessar ? '' : 'none';
 }
 
 // ====== Abrir aba principal ======
 async function abrirEstoque(navEl){
   _estSincronizarSessao();
   if(!EST_SESSAO){
-    alert('🚫 Acesso restrito à Diretoria, Gerência e Marketing.');
+    alert('🚫 Acesso restrito.\n\nEstoque é liberado pra:\n• Diretoria, Gerência, Marketing\n• Suporte com cidades atribuídas (Bruna, Luiza, Jessica, Camily, Estefânia)');
     return;
   }
   
@@ -44558,31 +44709,76 @@ function estAtualizarBannerSessao(){
   if(!EST_SESSAO) return;
   var el = document.getElementById('est-sessao-nome');
   if(el){
+    // 🆕 v26.73: Indica cidades atribuídas se for Suporte
+    var cidadesTxt = '';
+    if(EST_SESSAO.cidades_permitidas && EST_SESSAO.cidades_permitidas.length > 0){
+      var nomes = EST_SESSAO.cidades_permitidas.map(function(c){
+        var loc = EST_LOCALIZACOES.find(function(l){ return l.codigo === c; });
+        return loc ? loc.nome.replace(/\/.+/, '') : c;
+      });
+      cidadesTxt = ' <span style="background:#E6F6FE;color:#0E7AB8;padding:2px 7px;border-radius:4px;font-size:9.5px;font-weight:700;letter-spacing:0.4px;margin-left:4px">🏙️ '+nomes.join(', ')+'</span>';
+    }
     el.innerHTML = EST_SESSAO.nome +
       ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + (EST_SESSAO.cargo||'?') + '</span>' +
-      (EST_SESSAO.estoque_admin ? ' <span style="background:#FAEEDA;color:#854F0B;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.5px;margin-left:4px">ADMIN</span>' : '');
+      (EST_SESSAO.estoque_admin ? ' <span style="background:#FAEEDA;color:#854F0B;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.5px;margin-left:4px">ADMIN</span>' : '') +
+      cidadesTxt;
   }
 }
 
 function estPopularSeletores(){
+  // 🆕 v26.73: Filtra cidades permitidas baseado em EST_SESSAO
+  var cidadesPermitidas = EST_SESSAO && EST_SESSAO.cidades_permitidas;
+  var localizacoesVisiveis = cidadesPermitidas
+    ? EST_LOCALIZACOES.filter(function(l){ return cidadesPermitidas.indexOf(l.codigo) >= 0; })
+    : EST_LOCALIZACOES;
+  
   // Filtro global de cidade (no header)
   var selGlobal = document.getElementById('est-cidade-global');
-  if(selGlobal && selGlobal.options.length <= 1){
-    EST_LOCALIZACOES.forEach(function(loc){
+  if(selGlobal){
+    // Limpa e repopula (importante: pode mudar de usuário)
+    var optTodas = selGlobal.querySelector('option[value=""]');
+    selGlobal.innerHTML = '';
+    if(optTodas) selGlobal.appendChild(optTodas);
+    else {
+      var o0 = document.createElement('option');
+      o0.value = ''; o0.textContent = '🌎 Todas as cidades';
+      selGlobal.appendChild(o0);
+    }
+    localizacoesVisiveis.forEach(function(loc){
       var o = document.createElement('option');
       o.value = loc.codigo; o.textContent = loc.nome;
       selGlobal.appendChild(o);
     });
+    
+    // Se Suporte: pre-seleciona primeira cidade e força (escondendo "Todas" não faz sentido)
+    if(cidadesPermitidas && cidadesPermitidas.length === 1){
+      selGlobal.value = cidadesPermitidas[0];
+      EST_CIDADE_SEL = cidadesPermitidas[0];
+    }
   }
+  
   // Cidade na aba adicionar e venda
   ['est-add-cidade', 'est-vd-cidade'].forEach(function(id){
     var sel = document.getElementById(id);
-    if(sel && sel.options.length <= 1){
-      EST_LOCALIZACOES.forEach(function(loc){
+    if(sel){
+      // Preserva placeholder se houver
+      var primeiraOpcao = sel.querySelector('option[value=""]');
+      sel.innerHTML = '';
+      if(primeiraOpcao) sel.appendChild(primeiraOpcao);
+      else {
+        var o0 = document.createElement('option');
+        o0.value = ''; o0.textContent = 'Selecione...';
+        sel.appendChild(o0);
+      }
+      localizacoesVisiveis.forEach(function(loc){
         var o = document.createElement('option');
         o.value = loc.codigo; o.textContent = loc.nome;
         sel.appendChild(o);
       });
+      // Pre-seleciona se tem só uma cidade
+      if(cidadesPermitidas && cidadesPermitidas.length === 1){
+        sel.value = cidadesPermitidas[0];
+      }
     }
   });
 }
@@ -45308,6 +45504,12 @@ async function estConfirmarEntrada(){
   if(!qtd || qtd <= 0){ alert('Quantidade deve ser > 0.'); return; }
   if(isNaN(valor) || valor < 0){ alert('Valor unitário inválido.'); return; }
   
+  // 🆕 v26.73: Valida que a cidade está nas permissões
+  if(EST_SESSAO && EST_SESSAO.cidades_permitidas && EST_SESSAO.cidades_permitidas.indexOf(cidade) < 0){
+    alert('🚫 Você não tem permissão pra adicionar estoque em ' + cidade + '.\n\nSuas cidades: ' + EST_SESSAO.cidades_permitidas.join(', '));
+    return;
+  }
+  
   try {
     var r = await _estRPC('estoque_registrar_entrada', {
       p_item_id: parseInt(itemId),
@@ -45401,6 +45603,12 @@ async function estConfirmarVenda(){
   if(!dados.p_quantidade || dados.p_quantidade <= 0){ alert('Quantidade inválida.'); return; }
   if(isNaN(dados.p_valor_total) || dados.p_valor_total < 0){ alert('Valor inválido.'); return; }
   if(!dados.p_cliente_nome){ alert('Informe o nome do cliente.'); return; }
+  
+  // 🆕 v26.73: Valida que a cidade está nas permissões
+  if(EST_SESSAO && EST_SESSAO.cidades_permitidas && EST_SESSAO.cidades_permitidas.indexOf(dados.p_cidade) < 0){
+    alert('🚫 Você não tem permissão pra registrar venda em ' + dados.p_cidade + '.\n\nSuas cidades: ' + EST_SESSAO.cidades_permitidas.join(', '));
+    return;
+  }
   
   try {
     var r = await _estRPC('estoque_registrar_venda', dados);
@@ -45921,7 +46129,10 @@ function mpRenderCardsDia(dados){
       'America/Sao_Paulo': 'Horário de Brasília',
       'local': 'Hora do seu PC (pode estar errada)'
     };
-    fusoEl.innerHTML = 'Horário aplicado: <strong style="color:#0E7AB8">'+ag.str+'</strong> · '+(tzNomes[ag.tz] || ag.tz);
+    // 🆕 v26.72: indica se está usando horário Brasília por configuração individual
+    var usaBrasilia = MP_PESSOA && _pessoaUsaHorarioBrasilia(MP_PESSOA.id);
+    var sufixo = usaBrasilia ? ' <span style="color:#1D9E75;font-weight:600">🇧🇷 (configurada pra atender Brasília)</span>' : '';
+    fusoEl.innerHTML = 'Horário aplicado: <strong style="color:#0E7AB8">'+ag.str+'</strong> · '+(tzNomes[ag.tz] || ag.tz) + sufixo;
   }
   
   // 🆕 v26.70: Banner VERMELHO persistente se PC tem fuso errado
@@ -47172,6 +47383,66 @@ async function pgCarregarConfig(){
     document.getElementById('pg-cfg-raio').value = PG_CONFIG.raio_metros || 150;
     document.getElementById('pg-cfg-tolerancia').value = PG_CONFIG.tolerancia_atraso_min || 10;
   } catch(e){ console.error('[PG] config:', e); }
+  
+  // 🆕 v26.72: Renderiza lista de colaboradoras pra marcar/desmarcar horário Brasília
+  pgRenderListaHorarioBrasilia();
+}
+
+// 🆕 v26.72: Lista de colaboradoras com toggle de horário Brasília
+function pgRenderListaHorarioBrasilia(){
+  var host = document.getElementById('pg-cfg-hb-lista');
+  if(!host) return;
+  
+  // Pega pessoas que batem ponto (matriz)
+  var pessoas = [];
+  try { pessoas = (typeof getPessoas === 'function') ? getPessoas() : []; } catch(e){}
+  var batemPonto = pessoas.filter(function(p){
+    return p && (p.bate_ponto || p.bateponto);
+  });
+  
+  if(!batemPonto.length){
+    host.innerHTML = '<div style="color:var(--text3);font-size:11px;font-style:italic;padding:10px">Nenhuma colaboradora cadastrada como "bate ponto".</div>';
+    return;
+  }
+  
+  // Ordena alfabeticamente
+  batemPonto.sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||''); });
+  
+  var listaHB = _hbCarregar();
+  
+  host.innerHTML = batemPonto.map(function(p){
+    var marcada = listaHB.indexOf(p.id) >= 0;
+    var bg = marcada ? '#EAF7DD' : 'var(--surface)';
+    var bd = marcada ? '#1D9E75' : 'var(--border)';
+    var ac = (typeof avColor === 'function') ? avColor(p.nome) : {bg:'#E0E0E0',color:'#333'};
+    var iniciais = (p.nome||'?').split(' ').map(function(n){return n[0];}).slice(0,2).join('').toUpperCase();
+    var foto = p.foto ? '<img src="'+p.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' : iniciais;
+    
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:'+bg+';border:1px solid '+bd+';border-radius:8px;transition:all .15s">'
+      + '<div style="width:32px;height:32px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:2px solid white;overflow:hidden">'+foto+'</div>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:12.5px;font-weight:600;color:var(--text);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.nome+'</div>'
+        + '<div style="font-size:10px;color:var(--text3);margin-top:1px">'+(p.cargo||'—')+(marcada ? ' · <span style="color:#1D9E75;font-weight:700">🇧🇷 Horário Brasília</span>' : ' · 🕐 Fuso da cidade (Rondônia)')+'</div>'
+      + '</div>'
+      + '<button onclick="pgToggleHorarioBrasilia(\''+p.id+'\')" style="padding:7px 12px;border:none;border-radius:7px;background:'+(marcada?'#E24B4A':'#1D9E75')+';color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">'+(marcada ? '✕ Desmarcar' : '🇧🇷 Marcar Brasília')+'</button>'
+    + '</div>';
+  }).join('');
+}
+
+function pgToggleHorarioBrasilia(pessoaId){
+  _toggleHorarioBrasilia(pessoaId);
+  pgRenderListaHorarioBrasilia();
+  if(typeof toast === 'function'){
+    var lista = _hbCarregar();
+    var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+    var p = pessoas.find(function(x){ return x.id === pessoaId; });
+    var nm = p ? p.nome.split(' ')[0] : 'Pessoa';
+    if(lista.indexOf(pessoaId) >= 0){
+      toast('🇧🇷 '+nm+' agora usa horário de Brasília', 'success');
+    } else {
+      toast('🕐 '+nm+' voltou pro fuso da cidade', 'info');
+    }
+  }
 }
 
 function pgUsarGpsAtual(){
@@ -47863,6 +48134,19 @@ function _pessoaLiberadaValidacao(pessoa){
 // Retorna null se OK, ou objeto com detalhes se discrepância >= 30 min
 function _mpDetectarPCFusoErrado(){
   try {
+    // 🆕 v26.72: Se pessoa usa horário Brasília, considera PC certo se estiver em Brasília
+    // (não bloqueia mais quem trabalha em fuso Brasília)
+    if(MP_PESSOA && MP_PESSOA.id && _pessoaUsaHorarioBrasilia(MP_PESSOA.id)){
+      // _mpTimezone() vai retornar America/Sao_Paulo, então _mpAgoraNoFuso() vai 
+      // bater com o PC se estiver em Brasília. Sem discrepância = OK.
+      var pcD2 = new Date();
+      var fusoAg2 = _mpAgoraNoFuso();
+      var pcMin2 = pcD2.getHours()*60 + pcD2.getMinutes();
+      var fusoMin2 = fusoAg2.h*60 + fusoAg2.m;
+      var dif2 = Math.abs(pcMin2 - fusoMin2);
+      if(dif2 < 30) return null; // PC bate com Brasília = OK
+    }
+    
     var pcD = new Date();
     var pcHora = String(pcD.getHours()).padStart(2,'0') + ':' + String(pcD.getMinutes()).padStart(2,'0');
     var fusoAg = _mpAgoraNoFuso();
@@ -47965,8 +48249,91 @@ function _calcularProximaBatidaEAtraso(){
   };
 }
 
+// 🆕 v26.72: Sistema de TIMEZONE INDIVIDUAL por pessoa
+// Algumas colaboradoras de Rondônia trabalham com PC em horário de Brasília 
+// (porque atendem cidades em Brasília). Pra elas, o sistema deve usar
+// fuso de Brasília no cálculo de atraso, não o fuso da cidade física delas.
+
+var GAMI_HB_KEY = 'gami_horario_brasilia_v1';
+
+// IDs/Nomes das pessoas que sabidamente usam horário de Brasília
+// Será carregado do localStorage/Supabase em runtime
+var GAMI_HB_PESSOAS = null;
+
+function _hbCarregar(){
+  if(GAMI_HB_PESSOAS !== null) return GAMI_HB_PESSOAS;
+  try {
+    var raw = localStorage.getItem(GAMI_HB_KEY);
+    if(raw){
+      GAMI_HB_PESSOAS = JSON.parse(raw);
+      if(!Array.isArray(GAMI_HB_PESSOAS)) GAMI_HB_PESSOAS = [];
+    } else {
+      // Seed inicial: Bruna, Luiza, Jessica (de Ji-Paraná)
+      GAMI_HB_PESSOAS = _hbSeedInicial();
+      _hbSalvar();
+    }
+  } catch(e){
+    GAMI_HB_PESSOAS = [];
+  }
+  return GAMI_HB_PESSOAS;
+}
+
+function _hbSeedInicial(){
+  // Identifica Bruna Eduarda, Andréia Luiza Damke e Jessica Nayara pelo nome
+  // se ainda não tiver lista salva
+  var ids = [];
+  try {
+    var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+    var nomesAlvo = ['bruna', 'luiza', 'jessica'];
+    pessoas.forEach(function(p){
+      if(!p || !p.nome) return;
+      var nm = p.nome.toLowerCase();
+      // Bruna Eduarda OU contém "luiza" OU Jessica Nayara
+      if(nm.indexOf('bruna') === 0 || nm.indexOf('luiza') >= 0 || nm.indexOf('jessica') === 0){
+        if(p.id) ids.push(p.id);
+      }
+    });
+  } catch(e){}
+  return ids;
+}
+
+function _hbSalvar(){
+  try {
+    localStorage.setItem(GAMI_HB_KEY, JSON.stringify(GAMI_HB_PESSOAS || []));
+    // Tenta sincronizar com Supabase também
+    if(typeof syncConfig === 'function'){
+      syncConfig('horario_brasilia_pessoas', GAMI_HB_PESSOAS || []).catch(function(){});
+    }
+  } catch(e){}
+}
+
+// Verifica se uma pessoa específica usa horário de Brasília
+function _pessoaUsaHorarioBrasilia(pessoaId){
+  if(!pessoaId) return false;
+  var lista = _hbCarregar();
+  return lista.indexOf(pessoaId) >= 0;
+}
+
+// Toggle: adiciona ou remove pessoa da lista de horário Brasília
+function _toggleHorarioBrasilia(pessoaId){
+  if(!pessoaId) return;
+  var lista = _hbCarregar();
+  var idx = lista.indexOf(pessoaId);
+  if(idx >= 0){
+    lista.splice(idx, 1);
+  } else {
+    lista.push(pessoaId);
+  }
+  GAMI_HB_PESSOAS = lista;
+  _hbSalvar();
+}
+
 // 🆕 v26.69: Detecta timezone da cidade da pessoa (corrige bug do PC em fuso diferente)
 function _mpTimezone(){
+  // 🆕 v26.72: PRIORIDADE — pessoa marcada como "horário Brasília" usa fuso Brasília
+  if(MP_PESSOA && MP_PESSOA.id && _pessoaUsaHorarioBrasilia(MP_PESSOA.id)){
+    return 'America/Sao_Paulo';
+  }
   // 1ª preferência: config do backend (MP_CONFIG.timezone)
   if(MP_CONFIG && MP_CONFIG.timezone) return MP_CONFIG.timezone;
   // 2ª: deduz pela cidade da pessoa
