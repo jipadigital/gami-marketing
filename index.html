@@ -1,4 +1,4 @@
-<!-- v26.44 - Switcher vista fora do cal-view-mes - 17/06/2026 -->
+<!-- v26.45 - Hoje ao lado calendario + Proximos dias full width embaixo - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2670,7 +2670,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <!-- TAB CALENDÁRIO (única vista) -->
   <div id="cal-tab-calendario">
   
-  <!-- LAYOUT 2 COLUNAS: Calendário + Painel lateral SEMPRE visível -->
+  <!-- LAYOUT TOP: Calendário + Hoje (lado a lado) -->
   <div id="cal-layout-grid" style="display:grid;grid-template-columns:1fr 320px;gap:14px;margin-bottom:14px">
 
     <!-- ESQUERDA: CALENDÁRIO -->
@@ -2751,24 +2751,16 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
     </div>
 
-    <!-- DIREITA: PAINEL LATERAL SEMPRE VISÍVEL -->
+    <!-- DIREITA: PAINEL HOJE/DIA SELECIONADO -->
     <div id="cal-painel-lateral">
       <!-- HOJE / DIA SELECIONADO -->
-      <div class="card cal-painel-card" id="cal-painel-hoje" style="margin-bottom:12px;padding:16px;border-left:4px solid var(--gami-blue);background:var(--surface);position:relative;overflow:hidden">
+      <div class="card cal-painel-card" id="cal-painel-hoje" style="padding:16px;border-left:4px solid var(--gami-blue);background:var(--surface);position:relative;overflow:hidden">
         <div id="cal-painel-hoje-label" style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--gami-blue);text-transform:uppercase;margin-bottom:5px">🎯 Hoje</div>
         <div id="cal-painel-hoje-data" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text);margin-bottom:12px"></div>
         <div id="cal-painel-hoje-conteudo">
           <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:11px">Carregando...</div>
         </div>
         <button id="cal-painel-voltar-hoje" onclick="calVoltarParaHoje()" style="display:none;margin-top:10px;padding:6px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit;width:100%">← Voltar pra hoje</button>
-      </div>
-      
-      <!-- PRÓXIMOS DIAS -->
-      <div class="card cal-painel-card" id="cal-painel-proximos" style="padding:16px;background:var(--surface)">
-        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text2);text-transform:uppercase;margin-bottom:10px">📋 Próximos dias</div>
-        <div id="cal-painel-proximos-conteudo">
-          <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:11px">Carregando...</div>
-        </div>
       </div>
     </div>
 
@@ -2777,6 +2769,17 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div class="card" id="cal-day-panel">
         <div id="day-panel-content"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- 🆕 PRÓXIMOS DIAS - FULL WIDTH EMBAIXO -->
+  <div class="card cal-painel-card" id="cal-painel-proximos" style="padding:16px;background:var(--surface);margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text2);text-transform:uppercase">📋 Próximos dias</div>
+      <div style="font-size:10px;color:var(--text3)">Toque pra ver detalhes</div>
+    </div>
+    <div id="cal-painel-proximos-conteudo">
+      <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:11px">Carregando...</div>
     </div>
   </div>
   
@@ -7343,10 +7346,10 @@ function calRenderPainelLateral(){
   var conteudo = _calCarregarDadosDoDia(diaRef);
   contEl.innerHTML = conteudo.html;
   
-  // Próximos dias (sempre próximos 5 dias contando a partir de amanhã)
+  // Próximos dias (sempre próximos 7 dias contando a partir de amanhã)
   var proxContEl = document.getElementById('cal-painel-proximos-conteudo');
   if(proxContEl){
-    proxContEl.innerHTML = _calRenderProximosDias(5);
+    proxContEl.innerHTML = _calRenderProximosDias(7);
   }
 }
 
@@ -7419,30 +7422,25 @@ function _calCarregarDadosDoDia(dia){
   return { html: html, count: itens };
 }
 
-// Renderiza lista de próximos N dias
+// Renderiza lista de próximos N dias (em grid horizontal full-width)
 function _calRenderProximosDias(n){
-  var html = '';
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">';
   var hoje = new Date(); hoje.setHours(0,0,0,0);
   var diasSem = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  var meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   
   for(var i=1; i<=n; i++){
     var d = new Date(hoje); d.setDate(d.getDate()+i);
-    var dados = _calCarregarDadosDoDia(d);
     
     // Pega resumo curto
-    var resumo = '';
+    var resumo = [];
     var tarefas = [];
     try { tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]'); } catch(e){}
     var dStr = d.toISOString().split('T')[0];
     var qtdTar = tarefas.filter(function(t){ return t && t.data === dStr && !t.concluida; }).length;
-    if(qtdTar) resumo += '📋 ' + qtdTar + ' tarefa' + (qtdTar>1?'s':'');
+    if(qtdTar) resumo.push('📋 ' + qtdTar + ' tarefa' + (qtdTar>1?'s':''));
     
     var especiais = _calDatasEspeciais(d);
-    if(especiais.length){
-      if(resumo) resumo += ' · ';
-      resumo += especiais[0].emoji + ' ' + especiais[0].nome.slice(0,18);
-    }
+    especiais.forEach(function(e){ resumo.push(e.emoji + ' ' + e.nome); });
     
     // Aniversários
     if(typeof getPessoas === 'function'){
@@ -7454,24 +7452,28 @@ function _calRenderProximosDias(n){
           return b.getDate() === d.getDate() && b.getMonth() === d.getMonth();
         } catch(e){ return false; }
       });
-      if(bdays.length){
-        if(resumo) resumo += ' · ';
-        resumo += '🎂 ' + bdays[0].nome.split(' ')[0];
-      }
+      bdays.forEach(function(p){
+        resumo.push('🎂 ' + p.nome.split(' ')[0]);
+      });
     }
     
-    if(!resumo) resumo = '<span style="color:var(--text3);opacity:.6">—</span>';
+    var resumoHtml = resumo.length 
+      ? resumo.slice(0,3).map(function(r){ return '<div style="font-size:11.5px;color:var(--text2);line-height:1.4;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + r + '</div>'; }).join('')
+      : '<div style="font-size:11px;color:var(--text3);opacity:.7;font-style:italic">Sem agendas</div>';
     
     var diaIso = d.toISOString();
-    html += '<div class="cal-painel-item" onclick="_calPainelDia=\'' + diaIso + '\';calRenderPainelLateral();">'
-      + '<div style="min-width:42px;text-align:center;flex-shrink:0">'
-        + '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">' + diasSem[d.getDay()] + '</div>'
-        + '<div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1">' + d.getDate() + '</div>'
+    var isAmanha = i === 1;
+    
+    html += '<div class="cal-painel-item" style="display:block !important;padding:11px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);cursor:pointer;border-left:3px solid ' + (isAmanha ? 'var(--gami-blue)' : 'transparent') + '" onclick="_calPainelDia=\'' + diaIso + '\';calRenderPainelLateral();window.scrollTo({top:0,behavior:\'smooth\'})">'
+      + '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">'
+        + '<div style="font-family:\'Syne\',sans-serif;font-size:20px;font-weight:800;color:var(--text);line-height:1">' + d.getDate() + '</div>'
+        + '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">' + diasSem[d.getDay()] + (isAmanha ? ' · AMANHÃ' : '') + '</div>'
       + '</div>'
-      + '<div style="flex:1;font-size:11.5px;color:var(--text2);line-height:1.4;align-self:center">' + resumo + '</div>'
+      + resumoHtml
     + '</div>';
   }
   
+  html += '</div>';
   return html;
 }
 
