@@ -1,4 +1,4 @@
-<!-- v26.79 - Diagnóstico de ponto sumido (gamiDiagPonto) + log detalhado quando esconde - 18/06/2026 -->
+<!-- v26.81 - Modal com 3 escolhas no fuso (não bloqueia) + ferramentas console pra Jheniffer - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1188,10 +1188,10 @@ async function _carregarNotificacoesSupa(){
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     if(!u || !u.id) return [];
     
-    // 🆕 v26.76: tenta primeiro com 'created_at' (padrão Supabase); se 400, fallback para 'criado_em'
-    async function _tentaQuery(campoTs){
+    // 🆕 v26.80: testa vários schemas E loga o erro real pra diagnosticar
+    async function _tentaQuery(campoTs, campos){
       var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-        + '&select=id,tipo,titulo,mensagem,link,lida,'+campoTs+',de_nome'
+        + '&select=' + campos
         + '&order='+campoTs+'.desc.nullslast&limit=30';
       return await fetch(url, {
         headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
@@ -1199,12 +1199,36 @@ async function _carregarNotificacoesSupa(){
       });
     }
     
-    var r = await _tentaQuery('created_at');
+    // Tentativa 1: schema novo Supabase (created_at + colunas completas)
+    var r = await _tentaQuery('created_at', 'id,tipo,titulo,mensagem,link,lida,created_at,de_nome');
     if(!r.ok && r.status === 400){
-      // Fallback: schema antigo
-      r = await _tentaQuery('criado_em');
+      // Tentativa 2: schema antigo (criado_em)
+      r = await _tentaQuery('criado_em', 'id,tipo,titulo,mensagem,link,lida,criado_em,de_nome');
     }
-    if(!r.ok) return [];
+    if(!r.ok && r.status === 400){
+      // Tentativa 3: created_at sem 'link' e 'de_nome' (caso essas colunas não existam)
+      r = await _tentaQuery('created_at', 'id,tipo,titulo,mensagem,lida,created_at');
+    }
+    if(!r.ok && r.status === 400){
+      // Tentativa 4: usa "*" (todas as colunas)
+      var urlAll = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
+        + '&select=*&limit=30';
+      r = await fetch(urlAll, {
+        headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
+        cache: 'no-store'
+      });
+    }
+    if(!r.ok){
+      // 🆕 v26.80: Loga o erro real pra diagnosticar de uma vez
+      var errBody = '';
+      try { errBody = await r.text(); } catch(e){}
+      if(!window._notifErroLogado){
+        console.error('[Notif] ERRO ' + r.status + ' do Supabase. Detalhe:', errBody);
+        console.error('[Notif] Provável: tabela notificacoes não existe OU schema diferente. Schema esperado: id, tipo, titulo, mensagem, lida, created_at (ou criado_em), de_nome, link, para_pessoa_id');
+        window._notifErroLogado = true; // Loga só 1x pra não poluir o console
+      }
+      return [];
+    }
     var data = await r.json();
     if(!Array.isArray(data)) return [];
     
@@ -46095,9 +46119,53 @@ async function mpVerificarAcessoSidebar(){
   }
 }
 
+// 🆕 v26.81: Ferramentas de diagnóstico/manutenção pra horário Brasília
+// Use no console F12 do dashboard
+window.gamiVerHorarioBrasilia = function(){
+  var lista = _hbCarregar();
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  console.group('🇧🇷 Pessoas marcadas com horário de Brasília');
+  if(!lista.length){
+    console.log('Nenhuma pessoa marcada.');
+  } else {
+    lista.forEach(function(id){
+      var p = pessoas.find(function(x){ return x.id === id; });
+      console.log(' • ' + (p ? p.nome : '(ID desconhecido)') + ' [' + id + ']');
+    });
+  }
+  console.groupEnd();
+  return lista;
+};
+
+window.gamiTirarDaListaBrasilia = function(nomeBusca){
+  if(!nomeBusca){ console.warn('Use: gamiTirarDaListaBrasilia("Jheniffer")'); return; }
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var alvo = pessoas.find(function(p){ 
+    return p && p.nome && p.nome.toLowerCase().indexOf(nomeBusca.toLowerCase()) >= 0; 
+  });
+  if(!alvo){ console.warn('❌ Pessoa não encontrada: ' + nomeBusca); return; }
+  
+  var lista = _hbCarregar();
+  var idx = lista.indexOf(alvo.id);
+  if(idx < 0){ console.log('✅ ' + alvo.nome + ' JÁ NÃO está na lista (nada a fazer)'); return; }
+  
+  lista.splice(idx, 1);
+  GAMI_HB_PESSOAS = lista;
+  _hbSalvar();
+  console.log('✅ ' + alvo.nome + ' REMOVIDA da lista de horário Brasília.');
+  console.log('Lista atualizada:');
+  window.gamiVerHorarioBrasilia();
+  console.log('Peça pra ela dar F5 no PC dela.');
+};
+
+window.gamiResetarFusoHoje = function(){
+  var hojeKey = '_mpFusoEscolha_' + new Date().toISOString().slice(0,10);
+  try { localStorage.removeItem(hojeKey); } catch(e){}
+  console.log('✅ Escolha de fuso de hoje resetada. Próxima batida vai perguntar de novo.');
+};
+
 // 🆕 v26.79: DIAGNÓSTICO COMPLETO do sistema de Ponto (rodar no console F12)
 // Use: gamiDiagPonto()
-// Mostra: quem está cadastrado como bate_ponto, quem tem registros este mês, problemas detectados
 window.gamiDiagPonto = async function(){
   console.group('🕒 DIAGNÓSTICO COMPLETO — Sistema de Ponto');
   
@@ -46148,16 +46216,39 @@ window.gamiDiagPonto = async function(){
       console.log('✅ Todas as 9 esperadas estão com bate_ponto=true');
     }
     
-    // 3) Verifica se TEM REGISTROS do mês corrente
+    // 3) Verifica se TEM REGISTROS do mês corrente — 🆕 v26.80 tenta várias colunas
     var hojeMes = new Date().toISOString().slice(0,7);
-    var rReg = await fetch(SUPA_URL + '/rest/v1/ponto_registros?data=gte.' + hojeMes + '-01&select=pessoa_id,data&order=data.desc&limit=1000', {
-      headers: _mpSupaHeaders(), cache: 'no-store'
-    });
-    var regs = rReg.ok ? await rReg.json() : [];
+    var regs = [];
+    var colunaUsada = null;
+    var colunasPossiveis = ['data', 'data_batida', 'data_hora', 'data_registro', 'created_at', 'criado_em', 'datahora'];
+    
+    for(var ci = 0; ci < colunasPossiveis.length; ci++){
+      var col = colunasPossiveis[ci];
+      try {
+        var urlReg = SUPA_URL + '/rest/v1/ponto_registros?' + col + '=gte.' + hojeMes + '-01&select=pessoa_id,'+col+'&order='+col+'.desc&limit=1000';
+        var rReg = await fetch(urlReg, { headers: _mpSupaHeaders(), cache: 'no-store' });
+        if(rReg.ok){
+          regs = await rReg.json();
+          colunaUsada = col;
+          console.log('✓ Coluna de data correta da tabela ponto_registros: ' + col);
+          break;
+        } else if(ci === colunasPossiveis.length - 1){
+          // Última tentativa também falhou — loga o erro
+          var errTxt = '';
+          try { errTxt = await rReg.text(); } catch(e){}
+          console.error('❌ Nenhuma coluna de data funcionou em ponto_registros. Último erro:', errTxt);
+        }
+      } catch(e){
+        if(ci === colunasPossiveis.length - 1){
+          console.error('❌ Erro ao buscar registros:', e);
+        }
+      }
+    }
+    
     var pessoasComReg = {};
     regs.forEach(function(r){ pessoasComReg[r.pessoa_id] = (pessoasComReg[r.pessoa_id]||0) + 1; });
     
-    console.log('3️⃣ Registros do mês corrente (' + hojeMes + '): ' + regs.length + ' batidas no total');
+    console.log('3️⃣ Registros do mês corrente (' + hojeMes + '): ' + regs.length + ' batidas no total' + (colunaUsada ? ' [coluna: ' + colunaUsada + ']' : ' [⚠️ NENHUMA coluna funcionou]'));
     pessoasCom.forEach(function(p){
       var qtd = pessoasComReg[p.id] || 0;
       console.log('   • ' + p.nome + ': ' + qtd + ' batidas');
@@ -46461,8 +46552,11 @@ function mpRenderCardsDia(dados){
 // ============ BATER PONTO ============
 // Bater ponto sem GPS (fallback quando localização falha)
 async function mpBaterPontoSemGPS(){
-  // 🆕 v26.70: Bloqueia se PC tem fuso errado
+  // 🆕 v26.81: Modal interativo
   var fuso = _mpAlertarPCFuso();
+  if(fuso === null){
+    fuso = await new Promise(function(resolve){ _mpAbrirModalFuso(resolve); });
+  }
   if(!fuso.prosseguir) return;
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
@@ -46514,8 +46608,12 @@ async function mpBaterPontoSemGPS(){
 async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
-  // 🆕 v26.70: Bloqueia se PC tem fuso errado
+  // 🆕 v26.81: Modal interativo (não bloqueia, dá escolha)
   var fuso = _mpAlertarPCFuso();
+  if(fuso === null){
+    // Tem discrepância → abre modal e espera resposta
+    fuso = await new Promise(function(resolve){ _mpAbrirModalFuso(resolve); });
+  }
   if(!fuso.prosseguir) return;
   var justifFuso = fuso.justificativa;
   
@@ -48419,31 +48517,106 @@ function _mpDetectarPCFusoErrado(){
   } catch(e){ return null; }
 }
 
-// 🆕 v26.70: Alerta sobre PC com fuso errado ANTES de bater ponto
+// 🆕 v26.79: Alerta sobre PC com fuso errado ANTES de bater ponto
 // Retorna {prosseguir: bool, justificativa: string}
 function _mpAlertarPCFuso(){
   var info = _mpDetectarPCFusoErrado();
   if(!info) return { prosseguir: true, justificativa: '' };
   
-  var msg = '⚠️ ATENÇÃO: O RELÓGIO DO PC ESTÁ INCORRETO!\n\n' +
-    '🖥️ Hora do PC: ' + info.pcHora + '\n' +
-    '🕐 Hora correta (' + info.fusoNome + '): ' + info.fusoHora + '\n' +
-    '📊 Diferença: ' + info.difMin + ' minutos\n\n' +
-    'Se bater agora, o sistema pode marcar atraso ERRADO.\n\n' +
-    'SOLUÇÃO: Peça pro Cleyton ajustar o relógio do PC:\n' +
-    '• Configurações Windows → Data e hora\n' +
-    '• Fuso: (UTC-04:00) Manaus / Cuiabá\n' +
-    '• Ligar "Definir horário automaticamente"\n\n' +
-    'Quer bater MESMO ASSIM? (vai ser registrado com aviso sobre o fuso errado)';
+  // 🆕 v26.81: Verifica se já decidiu hoje (não pergunta de novo)
+  var hojeKey = '_mpFusoEscolha_' + new Date().toISOString().slice(0,10);
+  try {
+    var jaEscolheu = localStorage.getItem(hojeKey);
+    if(jaEscolheu){
+      return { prosseguir: true, justificativa: jaEscolheu === 'cidade' ? '' : '[FUSO PC] Pessoa optou por bater no fuso de Brasília hoje.' };
+    }
+  } catch(e){}
   
-  if(confirm(msg)){
-    return {
-      prosseguir: true,
-      justificativa: '[FUSO PC ERRADO] PC marcando ' + info.pcHora + ' mas hora correta de ' + info.fusoNome + ' é ' + info.fusoHora + ' (' + info.difMin + ' min de diferença). Ajustar relógio do PC.'
-    };
-  }
-  return { prosseguir: false, justificativa: '' };
+  return null; // ⚠️ retorno especial: caller precisa abrir modal e aguardar
 }
+
+// 🆕 v26.81: Modal interativo com 3 opções (não bloqueia)
+function _mpAbrirModalFuso(callback){
+  var info = _mpDetectarPCFusoErrado();
+  if(!info){ callback({ prosseguir: true, justificativa: '' }); return; }
+  
+  var hojeKey = '_mpFusoEscolha_' + new Date().toISOString().slice(0,10);
+  try {
+    var jaEscolheu = localStorage.getItem(hojeKey);
+    if(jaEscolheu){
+      callback({ 
+        prosseguir: true, 
+        justificativa: jaEscolheu === 'cidade' ? '' : '[FUSO PC] Pessoa optou por bater no fuso de Brasília hoje.' 
+      });
+      return;
+    }
+  } catch(e){}
+  
+  // Calcula hora Rondônia (UTC-4) e Brasília (UTC-3) atuais
+  var horaPC = info.pcHora;
+  var horaFuso = info.fusoHora;
+  
+  // Cria modal
+  var modal = document.createElement('div');
+  modal.id = 'mp-modal-fuso';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px;animation:cidFadeUp .2s ease both';
+  
+  modal.innerHTML = '<div style="background:var(--surface);border-radius:16px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4)">'
+    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
+      + '<span style="font-size:32px">🕐</span>'
+      + '<div>'
+        + '<div style="font-size:16px;font-weight:800;color:var(--text)">Qual horário usar?</div>'
+        + '<div style="font-size:11.5px;color:var(--text3);margin-top:2px">Detectei diferença de '+info.difMin+' min entre o seu PC e o fuso da sua cidade.</div>'
+      + '</div>'
+    + '</div>'
+    + '<div style="background:#F5F7FA;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.55">'
+      + '🖥️ <strong>Hora do PC:</strong> '+horaPC+'<br>'
+      + '🕐 <strong>Hora correta de '+info.fusoNome+':</strong> '+horaFuso
+    + '</div>'
+    + '<div style="display:flex;flex-direction:column;gap:8px">'
+      + '<button onclick="_mpEscolherFuso(\'cidade\')" style="padding:13px 16px;border:none;border-radius:10px;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-align:left">'
+        + '<div style="font-size:14px;margin-bottom:2px">🕐 Usar horário da minha cidade ('+horaFuso+')</div>'
+        + '<div style="font-size:10.5px;font-weight:500;opacity:.9">Recomendado pra quem está em '+info.fusoNome+'</div>'
+      + '</button>'
+      + '<button onclick="_mpEscolherFuso(\'pc\')" style="padding:13px 16px;border:1.5px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;text-align:left">'
+        + '<div style="font-size:14px;margin-bottom:2px">🇧🇷 Usar horário do PC ('+horaPC+')</div>'
+        + '<div style="font-size:10.5px;font-weight:500;color:var(--text3)">Pra quem trabalha atendendo Brasília</div>'
+      + '</button>'
+      + '<button onclick="_mpFecharModalFuso()" style="padding:10px;border:none;border-radius:8px;background:transparent;color:var(--text3);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:4px">'
+        + 'Cancelar (não bater agora)'
+      + '</button>'
+    + '</div>'
+    + '<div style="margin-top:12px;font-size:10.5px;color:var(--text3);text-align:center;line-height:1.4">'
+      + '💡 Sua escolha vale pra todas as batidas de hoje.<br>Amanhã pergunto de novo.'
+    + '</div>'
+  + '</div>';
+  
+  document.body.appendChild(modal);
+  window._mpFusoCallback = callback;
+}
+
+window._mpEscolherFuso = function(opcao){
+  var hojeKey = '_mpFusoEscolha_' + new Date().toISOString().slice(0,10);
+  try { localStorage.setItem(hojeKey, opcao); } catch(e){}
+  _mpFecharModalFuso();
+  if(window._mpFusoCallback){
+    var justif = '';
+    if(opcao === 'pc'){
+      justif = '[FUSO PC] Pessoa optou por bater no fuso do PC (horário de Brasília) hoje.';
+    }
+    window._mpFusoCallback({ prosseguir: true, justificativa: justif });
+    window._mpFusoCallback = null;
+  }
+};
+
+window._mpFecharModalFuso = function(){
+  var m = document.getElementById('mp-modal-fuso');
+  if(m) m.remove();
+  if(window._mpFusoCallback){
+    window._mpFusoCallback({ prosseguir: false, justificativa: '' });
+    window._mpFusoCallback = null;
+  }
+};
 
 function _calcularProximaBatidaEAtraso(){
   if(!MP_DIA_DADOS) return null;
@@ -48608,8 +48781,11 @@ function _mpAgoraNoFuso(){
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
-  // 🆕 v26.70: Bloqueia se PC tem fuso errado
+  // 🆕 v26.81: Modal interativo
   var fuso = _mpAlertarPCFuso();
+  if(fuso === null){
+    fuso = await new Promise(function(resolve){ _mpAbrirModalFuso(resolve); });
+  }
   if(!fuso.prosseguir) return;
   
   var btn = document.getElementById('dash-btn-bater-ponto');
@@ -49494,6 +49670,9 @@ async function _notifChecar(){
   if(!u || !u.id) return;
   if(u._impersonacao) return; // não checa em modo teste
   
+  // 🆕 v26.80: Se a tabela já deu 400 antes, não tenta de novo (evita poluir o console)
+  if(window._notifErroLogado) return;
+  
   try {
     // Busca notificações recentes (últimas 5 min)
     var horaCheck = NOTIF_RT.ultimaCheck || (Date.now() - 5*60*1000);
@@ -49506,7 +49685,11 @@ async function _notifChecar(){
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
       cache: 'no-store'
     });
-    if(!r.ok) return;
+    if(!r.ok){
+      // 🆕 v26.80: marca pra parar de tentar (já registramos o erro no _carregarNotificacoesSupa)
+      if(r.status === 400) window._notifErroLogado = true;
+      return;
+    }
     
     var notifs = await r.json();
     if(!Array.isArray(notifs)) return;
