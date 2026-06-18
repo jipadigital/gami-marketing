@@ -1,4 +1,4 @@
-<!-- v26.49 - Cidades reorganizada 3 abas + IA + sparkline + animacoes - 17/06/2026 -->
+<!-- v26.50 - IA Rede REAL com Claude + dados Machine - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -22754,21 +22754,27 @@ function cidIaAtualizar(forcar){
   // Mostra loader
   conteudo.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--text3);font-size:12px;font-style:italic">'
     + '<div class="cid-ia-spinner" style="width:14px;height:14px;border:2px solid #D6C7F0;border-top-color:#8B5CF6;border-radius:50%;animation:cidIaSpin .8s linear infinite"></div>'
-    + 'Analisando dados das 11 cidades...'
+    + 'Coletando dados das 11 cidades e analisando com IA...'
     + '</div>';
   if(meta) meta.innerHTML = '';
   if(btn){ btn.disabled = true; btn.style.opacity = '.55'; }
   
-  // 🆕 Chama Netlify Function (será implementada em ETAPA 2)
-  // Por enquanto usa placeholder amigável baseado nos dados que temos
-  setTimeout(function(){
-    _cidIaGerarPlaceholder().then(function(texto){
-      var ts = Date.now();
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({texto: texto, ts: ts})); } catch(e){}
-      _cidIaRenderizar(texto, ts);
-      if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
-    });
-  }, 600);
+  // 🤖 Chama IA real (coleta Machine + Claude Haiku via blog-ai)
+  _cidIaGerarPlaceholder().then(function(texto){
+    var ts = Date.now();
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({texto: texto, ts: ts})); } catch(e){}
+    _cidIaRenderizar(texto, ts);
+    if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
+    // Easter egg: motoboy ao atualizar (se foi forçado)
+    if(forcar && typeof _cidMotoboyZoom === 'function'){
+      setTimeout(_cidMotoboyZoom, 300);
+    }
+  }).catch(function(e){
+    console.warn('Erro IA Rede:', e);
+    var texto = _cidIaTextoFallback(null);
+    _cidIaRenderizar(texto, Date.now());
+    if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
+  });
 }
 
 // Renderiza texto da IA com efeito typewriter
@@ -22810,32 +22816,182 @@ function _cidIaTempoRelativo(ts){
   return 'há ' + Math.floor(h/24) + 'd';
 }
 
-// Placeholder enquanto ETAPA 2 não implementa Netlify Function
+// 🤖 IA REAL — coleta dados Machine + chama Claude Haiku via blog-ai
 async function _cidIaGerarPlaceholder(){
-  // Pega cidades + tenta achar números reais no cache local Machine
-  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
-  var n = cidades.length || 11;
-  
-  // Tenta pegar totais agregados que já temos em cache
-  var totalHoje = 0, totalSemana = 0;
+  // 1️⃣ Coleta dados agregados das 11 cidades
+  var dados;
   try {
-    var raw = localStorage.getItem('gami_machine_agregado_v1');
-    if(raw){
-      var ag = JSON.parse(raw);
-      if(ag && ag.totalHoje) totalHoje = ag.totalHoje;
-      if(ag && ag.totalSemana) totalSemana = ag.totalSemana;
+    dados = await _cidIaColetarDadosMachine();
+  } catch(e){
+    console.warn('Erro coletando Machine:', e);
+    return _cidIaTextoFallback(null);
+  }
+  
+  // 2️⃣ Se não conseguiu dados, usa fallback
+  if(!dados || !dados.cidades || dados.cidades.length === 0){
+    return _cidIaTextoFallback(dados);
+  }
+  
+  // 3️⃣ Monta prompt e chama Claude
+  try {
+    var texto = await _cidIaChamarClaude(dados);
+    if(texto && texto.length > 50){
+      return texto;
     }
+  } catch(e){
+    console.warn('Erro chamando Claude:', e);
+  }
+  
+  // 4️⃣ Fallback se Claude falhar
+  return _cidIaTextoFallback(dados);
+}
+
+// Coleta totais Hoje + Semana de cada cidade direto do Supabase
+async function _cidIaColetarDadosMachine(){
+  var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+  if(!cidades.length) return null;
+  
+  // Datas pra filtrar
+  var hoje = new Date();
+  var hojeStart = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0') + '-' + String(hoje.getDate()).padStart(2,'0') + 'T00:00:00';
+  var ontemD = new Date(hoje); ontemD.setDate(ontemD.getDate() - 1);
+  var ontemStart = ontemD.getFullYear() + '-' + String(ontemD.getMonth()+1).padStart(2,'0') + '-' + String(ontemD.getDate()).padStart(2,'0') + 'T00:00:00';
+  var sem7D = new Date(hoje); sem7D.setDate(sem7D.getDate() - 7);
+  var sem7Iso = sem7D.getFullYear() + '-' + String(sem7D.getMonth()+1).padStart(2,'0') + '-' + String(sem7D.getDate()).padStart(2,'0') + 'T00:00:00';
+  
+  // Pra cada cidade, conta corridas Hoje + 7d + Ontem (em paralelo)
+  var dadosCidades = await Promise.all(cidades.map(async function(c){
+    var slug = c.id || c.slug;
+    var nome = c.nome;
+    var uf = c.uf;
+    
+    async function _contar(filtroExtra){
+      try {
+        var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(slug)+'&'+filtroExtra+'&select=cidade_slug&limit=1', {
+          headers: Object.assign({}, supaHeaders(), {'Prefer': 'count=exact'})
+        });
+        var range = r.headers.get('content-range') || '';
+        var total = parseInt((range.split('/')[1] || '0'), 10);
+        return isNaN(total) ? 0 : total;
+      } catch(e){ return 0; }
+    }
+    
+    var [hojeCount, semCount, ontemCount] = await Promise.all([
+      _contar('data_hora_solicitacao=gte.'+encodeURIComponent(hojeStart)),
+      _contar('data_hora_solicitacao=gte.'+encodeURIComponent(sem7Iso)),
+      _contar('data_hora_solicitacao=gte.'+encodeURIComponent(ontemStart)+'&data_hora_solicitacao=lt.'+encodeURIComponent(hojeStart))
+    ]);
+    
+    return { 
+      nome: nome, 
+      uf: uf, 
+      slug: slug, 
+      hoje: hojeCount, 
+      semana: semCount,
+      ontem: ontemCount
+    };
+  }));
+  
+  // Agregados
+  var totalHoje = dadosCidades.reduce(function(s,x){ return s + x.hoje; }, 0);
+  var totalSemana = dadosCidades.reduce(function(s,x){ return s + x.semana; }, 0);
+  var totalOntem = dadosCidades.reduce(function(s,x){ return s + x.ontem; }, 0);
+  var pctVsOntem = totalOntem > 0 ? Math.round(((totalHoje-totalOntem)/totalOntem)*100) : 0;
+  
+  // Top 3 cidades por volume hoje
+  var top3 = dadosCidades.slice().sort(function(a,b){ return b.hoje - a.hoje; }).slice(0,3);
+  
+  // Salva no cache pra outras telas usarem
+  try {
+    localStorage.setItem('gami_machine_agregado_v1', JSON.stringify({
+      timestamp: Date.now(),
+      totalHoje: totalHoje,
+      totalSemana: totalSemana,
+      cidades: dadosCidades
+    }));
   } catch(e){}
   
+  return {
+    timestamp: new Date().toISOString(),
+    totalHoje: totalHoje,
+    totalSemana: totalSemana,
+    totalOntem: totalOntem,
+    pctVsOntem: pctVsOntem,
+    cidades: dadosCidades,
+    top3: top3,
+    nCidades: dadosCidades.length
+  };
+}
+
+// Chama Claude Haiku via /.netlify/functions/blog-ai
+async function _cidIaChamarClaude(dados){
+  var diaSem = ['domingo','segunda','terça','quarta','quinta','sexta','sábado'][new Date().getDay()];
+  var horaAtual = new Date().getHours();
+  var periodo = horaAtual < 12 ? 'manhã' : horaAtual < 18 ? 'tarde' : 'noite';
+  
+  // Monta lista detalhada por cidade
+  var listaCidades = dados.cidades.map(function(c){
+    return '- ' + c.nome + '/' + c.uf + ': ' + c.hoje + ' hoje · ' + c.semana + ' nos últimos 7 dias';
+  }).join('\n');
+  
+  var top3Txt = dados.top3.map(function(c){ return c.nome+'/'+c.uf+' ('+c.hoje+')'; }).join(', ');
+  
+  var prompt = ''
+    + 'Você é um analista de operações da Gâmi Delivery, empresa B2B de logística com motoboys em 11 cidades brasileiras. '
+    + 'Escreva UM parágrafo NEUTRO E ANALÍTICO (3 a 4 frases, máximo 80 palavras) sobre a operação da rede nesta '+diaSem+' à '+periodo+'.\n\n'
+    
+    + 'DADOS DA REDE (atualizados agora):\n'
+    + '- Total hoje: ' + dados.totalHoje + ' entregas\n'
+    + '- Total últimos 7 dias: ' + dados.totalSemana + ' entregas\n'
+    + '- Comparativo com ontem: ' + (dados.pctVsOntem >= 0 ? '+' : '') + dados.pctVsOntem + '%\n'
+    + '- Top 3 cidades hoje: ' + top3Txt + '\n\n'
+    
+    + 'DADOS POR CIDADE:\n' + listaCidades + '\n\n'
+    
+    + 'REGRAS IMPORTANTES:\n'
+    + '1. Tom NEUTRO e analítico. Sem alarmismo. Sem crítica.\n'
+    + '2. NÃO use palavras: "crítico", "atenção", "preocupante", "abaixo do esperado", "ruim", "problemas", "fraco"\n'
+    + '3. NÃO destaque cidades com volume baixo como negativo\n'
+    + '4. Pode citar cidades que se destacam POSITIVAMENTE pelo volume\n'
+    + '5. Foque em padrões e tendências da REDE como um todo\n'
+    + '6. Escreva em parágrafo corrido, sem bullets, sem títulos\n'
+    + '7. Linguagem profissional brasileira\n\n'
+    
+    + 'Retorne APENAS o parágrafo de análise, sem introdução ou comentários.';
+  
+  var resp = await fetch('/.netlify/functions/blog-ai', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ prompt: prompt, max_tokens: 350 })
+  });
+  
+  if(!resp.ok){
+    throw new Error('HTTP ' + resp.status);
+  }
+  
+  var data = await resp.json();
+  if(data && data.content && Array.isArray(data.content)){
+    return data.content.map(function(b){ return b.text || ''; }).join('').trim();
+  }
+  
+  // Fallback pra outros formatos
+  return data.text || data.completion || data.message || '';
+}
+
+// Fallback se Claude/Machine falhar
+function _cidIaTextoFallback(dados){
+  var n = (dados && dados.nCidades) || 11;
+  var total = (dados && dados.totalHoje) || 0;
   var partes = [];
-  if(totalHoje > 0){
-    partes.push('Hoje a rede registrou ' + totalHoje.toLocaleString('pt-BR') + ' entregas distribuídas pelas ' + n + ' cidades.');
+  if(total > 0){
+    partes.push('Hoje a rede registrou ' + total.toLocaleString('pt-BR') + ' entregas distribuídas pelas ' + n + ' cidades.');
   } else {
     partes.push('A rede Gâmi opera em ' + n + ' praças do nordeste, centro-oeste e norte do país.');
   }
-  partes.push('O ritmo de demanda segue padrão típico, com concentração de pedidos no horário noturno entre 19h e 22h.');
-  partes.push('Análise completa com dados da Machine API será disponibilizada em breve.');
-  
+  partes.push('O ritmo de demanda segue padrão típico, com maior concentração de pedidos no horário noturno entre 19h e 22h.');
+  if(dados && dados.top3 && dados.top3.length){
+    partes.push('No volume de hoje, destacam-se ' + dados.top3.map(function(c){ return c.nome; }).join(', ') + '.');
+  }
   return partes.join(' ');
 }
 
