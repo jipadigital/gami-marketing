@@ -1,4 +1,4 @@
-<!-- v26.83 - Validação por IP da rede do escritório (antes do GPS) + admin pra cadastrar IPs - 18/06/2026 -->
+<!-- v26.84 - Meu Ponto: fallback triplo email->id->nome + comando força bruta - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -46098,21 +46098,56 @@ async function mpVerificarAcessoSidebar(){
     try {
       var email = u.email || '';
       var id = u.id || u.pessoa_id;
-      var q = email ? '?email=eq.' + encodeURIComponent(email) : '?id=eq.' + encodeURIComponent(id);
-      var r = await fetch(SUPA_URL + '/rest/v1/pessoas' + q + '&select=id,nome,foto,cargo,bate_ponto,ponto_sem_validacao_ate&limit=1', {
-        headers: _mpSupaHeaders(), cache: 'no-store'
-      });
-      var arr = r.ok ? await r.json() : [];
-      var p = arr[0];
+      var nome = u.nome || u.name;
+      var p = null;
+      var caminho = '';
+      
+      // 🆕 v26.84: Fallback triplo (email → id → nome)
+      // 1) Tenta por email
+      if(email){
+        var r1 = await fetch(SUPA_URL + '/rest/v1/pessoas?email=eq.' + encodeURIComponent(email) + '&select=id,nome,email,foto,cargo,bate_ponto,ponto_sem_validacao_ate&limit=1', {
+          headers: _mpSupaHeaders(), cache: 'no-store'
+        });
+        var arr1 = r1.ok ? await r1.json() : [];
+        if(arr1[0]){ p = arr1[0]; caminho = 'email'; }
+      }
+      
+      // 2) Se não achou por email, tenta por ID
+      if(!p && id){
+        var r2 = await fetch(SUPA_URL + '/rest/v1/pessoas?id=eq.' + encodeURIComponent(id) + '&select=id,nome,email,foto,cargo,bate_ponto,ponto_sem_validacao_ate&limit=1', {
+          headers: _mpSupaHeaders(), cache: 'no-store'
+        });
+        var arr2 = r2.ok ? await r2.json() : [];
+        if(arr2[0]){ p = arr2[0]; caminho = 'id'; }
+      }
+      
+      // 3) Se não achou nem por email nem por id, tenta por nome exato
+      if(!p && nome){
+        var r3 = await fetch(SUPA_URL + '/rest/v1/pessoas?nome=eq.' + encodeURIComponent(nome) + '&select=id,nome,email,foto,cargo,bate_ponto,ponto_sem_validacao_ate&limit=1', {
+          headers: _mpSupaHeaders(), cache: 'no-store'
+        });
+        var arr3 = r3.ok ? await r3.json() : [];
+        if(arr3[0]){
+          p = arr3[0]; caminho = 'nome';
+          console.warn('[MP] ⚠️ Pessoa encontrada por NOME (não por email/id). Email no login (' + email + ') é diferente do email no Supabase (' + p.email + '). Considere corrigir o cadastro.');
+        }
+      }
+      
       if(p && p.bate_ponto){
         MP_PESSOA = p;
         if(navMp) navMp.style.display = '';
+        console.log('[MP] ✓ Acesso liberado pra ' + p.nome + ' (encontrada por ' + caminho + ')');
       } else {
-        // 🆕 v26.79: Log detalhado pra diagnosticar quando esconde
+        // Log detalhado pra diagnosticar quando esconde
         if(!p){
-          console.warn('[MP] 🕒 Meu Ponto escondido: pessoa NÃO ENCONTRADA no Supabase. Email/ID:', email || id, '· HTTP:', r.status);
+          console.warn('[MP] 🕒 Meu Ponto escondido: pessoa NÃO ENCONTRADA no Supabase.');
+          console.warn('   • Email tentado:', email || '(vazio)');
+          console.warn('   • ID tentado:', id || '(vazio)');
+          console.warn('   • Nome tentado:', nome || '(vazio)');
+          console.warn('   • SOLUÇÃO: confira que o email/nome no Supabase bate com o do login.');
         } else if(!p.bate_ponto){
-          console.warn('[MP] 🕒 Meu Ponto escondido: pessoa encontrada mas bate_ponto=' + p.bate_ponto + ' (Nome: ' + p.nome + ' · ID: ' + p.id + ')');
+          console.warn('[MP] 🕒 Meu Ponto escondido: ' + p.nome + ' tem bate_ponto=' + p.bate_ponto + ' (ID: ' + p.id + ')');
+          console.warn('   • SOLUÇÃO no Supabase: UPDATE pessoas SET bate_ponto=true WHERE id=\'' + p.id + '\';');
         }
         MP_PESSOA = null;
         if(navMp) navMp.style.display = 'none';
@@ -46174,6 +46209,44 @@ window.gamiResetarFusoHoje = function(){
   var hojeKey = '_mpFusoEscolha_' + new Date().toISOString().slice(0,10);
   try { localStorage.removeItem(hojeKey); } catch(e){}
   console.log('✅ Escolha de fuso de hoje resetada. Próxima batida vai perguntar de novo.');
+};
+
+// 🆕 v26.84: Força carregar MP_PESSOA por nome (útil quando login não bate com cadastro)
+// Use no PC da pessoa que não consegue ver Meu Ponto: gamiForcarMeuPonto("Karen")
+window.gamiForcarMeuPonto = async function(nomeBusca){
+  if(!nomeBusca){ console.warn('Use: gamiForcarMeuPonto("Karen")'); return; }
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/pessoas?nome=ilike.*' + encodeURIComponent(nomeBusca) + '*&select=*&limit=5', {
+      headers: _mpSupaHeaders(), cache: 'no-store'
+    });
+    var pessoas = r.ok ? await r.json() : [];
+    if(!pessoas.length){ console.warn('❌ Nenhuma pessoa com nome contendo: ' + nomeBusca); return; }
+    
+    console.table(pessoas.map(function(p){
+      return {nome: p.nome, email: p.email||'—', id: p.id, bate_ponto: p.bate_ponto, ativo: p.ativo};
+    }));
+    
+    if(pessoas.length > 1){
+      console.warn('⚠️ Várias pessoas encontradas. Refine a busca (ex: "Karen de Andrade")');
+      return;
+    }
+    
+    var p = pessoas[0];
+    if(!p.bate_ponto){
+      console.error('❌ ' + p.nome + ' tem bate_ponto=' + p.bate_ponto + '. Roda no Supabase:');
+      console.error('   UPDATE pessoas SET bate_ponto=true WHERE id=\'' + p.id + '\';');
+      return;
+    }
+    
+    // Força MP_PESSOA
+    MP_PESSOA = p;
+    var navMp = document.getElementById('nav-meu-ponto');
+    if(navMp) navMp.style.display = '';
+    console.log('✅ MP_PESSOA forçada pra ' + p.nome + '. O menu 🕒 Meu Ponto agora deve aparecer.');
+    console.log('💡 Se o erro persistir após F5, corrija no Supabase pra alinhar email do cadastro com o do login:');
+    var emailLogin = (getUsuarioLogado() || {}).email || '(sem email no login)';
+    console.log('   UPDATE pessoas SET email=\'' + emailLogin + '\' WHERE id=\'' + p.id + '\';');
+  } catch(e){ console.error('Erro:', e); }
 };
 
 // 🆕 v26.79: DIAGNÓSTICO COMPLETO do sistema de Ponto (rodar no console F12)
