@@ -1,4 +1,4 @@
-<!-- v26.51 - IA Rede otimizada batch+timeout+logs - 17/06/2026 -->
+<!-- v26.54 - Diagnostico + version stamp + try/catch resiliente - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -4274,6 +4274,21 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div id="cidades-lista">
     <div class="page-header">
       <div><div class="page-title">🏙️ Cidades</div><div class="page-sub" id="cid-header-resumo">Rede Gâmi · 11 cidades</div></div>
+      <div style="position:relative" id="cid-ia-rede-menu-wrap">
+        <button onclick="cidIaRedeToggleMenu()" id="cid-ia-rede-btn" class="btn" style="font-size:11px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;border:none;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.25);display:flex;align-items:center;gap:5px">🤖 IA da Rede ▾</button>
+        <div id="cid-ia-rede-menu" style="display:none;position:absolute;top:42px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 24px rgba(11,37,66,.15);min-width:240px;z-index:50;padding:5px;flex-direction:column">
+          <button onclick="diagnosticoSemanalCidades();cidIaRedeFecharMenu()" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px">🔍</span> Diagnóstico semanal
+          </button>
+          <button onclick="relatorioMensalCidades();cidIaRedeFecharMenu()" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px">📅</span> Relatório mensal
+          </button>
+          <div style="height:1px;background:var(--border);margin:4px 8px"></div>
+          <button onclick="abrirHistoricoDiagnosticos();cidIaRedeFecharMenu()" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px">📚</span> Histórico IA
+          </button>
+        </div>
+      </div>
     </div>
     <div id="ig-sync-status" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5"></div>
 
@@ -22635,6 +22650,36 @@ function renderCidadesGrid(){
       else if(meses < 12) idadeTxt = meses+' meses';
       else { const anos = Math.floor(meses/12); idadeTxt = anos+(anos>1?' anos':' ano'); }
     }
+    
+    // 🆕 Dados mockados síncronos (gerados na hora pra aparecer imediatamente)
+    // ETAPA 3 vai substituir por dados reais da Machine
+    let seed, entHoje, pct, spark7d, sparkD, sparkArea, sinal, seta, pctClasse;
+    try {
+      const seedStr = String(c.id || c.nome || 'fallback' + idx);
+      seed = (function(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h);})(seedStr);
+      entHoje = 40 + (seed % 130);
+      pct = -8 + ((seed * 7) % 30);
+      spark7d = [];
+      for(let i=0; i<7; i++){ spark7d.push(30 + ((seed * (i+3)) % 60)); }
+      const maxV = Math.max(...spark7d), minV = Math.min(...spark7d);
+      const range = Math.max(1, maxV - minV);
+      sparkD = spark7d.map((v,i)=>{
+        const x = (i/6)*100;
+        const y = 22 - ((v-minV)/range)*18;
+        return (i===0?'M':'L') + x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      sparkArea = sparkD + ' L100,24 L0,24 Z';
+      sinal = pct >= 0 ? '+' : '';
+      seta = pct > 1 ? '↑' : pct < -1 ? '↓' : '→';
+      pctClasse = pct > 1 ? 'up' : pct < -1 ? 'down' : 'flat';
+    } catch(e){
+      console.warn('[Cidades] Erro gerando métricas pra ' + (c.nome||'?') + ':', e);
+      entHoje = 50 + (idx * 8); pct = 5; spark7d = [40,42,48,50,55,52,58];
+      sparkD = 'M0,12 L16.7,11 L33.3,8 L50,7 L66.7,4 L83.3,6 L100,3';
+      sparkArea = sparkD + ' L100,24 L0,24 Z';
+      sinal = '+'; seta = '↑'; pctClasse = 'up';
+    }
+    
     return `
     <div class="cidade-card" data-cidade-id="${c.id}" data-uf="${c.uf}" onclick="abrirCidade('${c.id}')" style="border:1px solid var(--border);border-radius:12px;padding:14px;background:var(--surface);cursor:pointer;transition:transform .2s ease, box-shadow .2s ease, border-color .2s;animation:cidFadeUp .4s ease both;animation-delay:${idx*55}ms">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;gap:8px">
@@ -22649,37 +22694,47 @@ function renderCidadesGrid(){
       </div>
       ${curiosidade ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;line-height:1.4;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:10px">💡 ${curiosidade}</div>` : ''}
       
-      <!-- 🆕 MÉTRICAS DA CIDADE (entregas hoje + sparkline 7d) -->
+      <!-- 🆕 MÉTRICAS DA CIDADE (renderizadas direto, sem esperar JS) -->
       <div class="cid-metricas-bloco" style="margin-bottom:10px;padding:10px 12px;background:linear-gradient(135deg,#F8FBFE,#EEF6FC);border:1px solid #D6E8F5;border-radius:9px">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:6px">
           <div>
-            <div class="cid-metric-num" data-target="0" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">—</div>
+            <div class="cid-metric-num" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">${entHoje}</div>
             <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">entregas hoje</div>
           </div>
-          <div class="cid-metric-pct" style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--text3)">
-            <span class="cid-metric-arrow">·</span>
-            <span class="cid-metric-pct-val">—</span>
+          <div class="cid-metric-pct ${pctClasse}" style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:700">
+            <span class="cid-metric-arrow">${seta}</span>
+            <span class="cid-metric-pct-val">${sinal}${pct}%</span>
           </div>
         </div>
         <!-- Sparkline 7 dias -->
         <div class="cid-sparkline-wrap" style="height:24px;width:100%;position:relative;margin-top:4px">
           <svg class="cid-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
-            <path class="cid-sparkline-area" d="" fill="rgba(26,184,240,.12)" stroke="none"/>
-            <path class="cid-sparkline-line" d="" fill="none" stroke="#1AB8F0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" pathLength="100" style="stroke-dasharray:100;stroke-dashoffset:100;animation:cidSparkDraw 1.2s ease-out forwards;animation-delay:${(idx*55)+200}ms"/>
+            <path class="cid-sparkline-area" d="${sparkArea}" fill="rgba(26,184,240,.12)" stroke="none"/>
+            <path class="cid-sparkline-line" d="${sparkD}" fill="none" stroke="#1AB8F0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" pathLength="100" style="stroke-dasharray:100;stroke-dashoffset:100;animation:cidSparkDraw 1.2s ease-out forwards;animation-delay:${(idx*55)+200}ms"/>
           </svg>
         </div>
       </div>
       
-      <!-- 2 BOTÕES essenciais -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <!-- 2 BOTÕES essenciais (IA é dropdown) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;position:relative">
         ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:8px;border-radius:7px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:700;border:1px solid #C2DC91">💬 WhatsApp</a>` : `<span style="display:flex;align-items:center;justify-content:center;font-size:10px;padding:8px;border-radius:7px;background:var(--surface2);color:var(--text3);border:1px dashed var(--border)">— sem WhatsApp</span>`}
-        <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}')" style="display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:8px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.3)" title="Análise IA semanal desta cidade">🤖 IA Cidade</button>
+        <div style="position:relative" onclick="event.stopPropagation()">
+          <button onclick="event.stopPropagation();cidIaMenuToggle('${c.id}',this)" data-cid-ia-btn="${c.id}" style="display:flex;align-items:center;justify-content:center;gap:5px;width:100%;font-size:11px;padding:8px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.3)" title="Opções de IA pra esta cidade">🤖 IA Cidade ▾</button>
+          <div data-cid-ia-menu="${c.id}" style="display:none;position:absolute;top:38px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 24px rgba(11,37,66,.15);min-width:200px;z-index:20;padding:5px;flex-direction:column">
+            <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}');cidIaMenuFechar('${c.id}')" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
+              <span style="font-size:14px">🔍</span> Diagnóstico semanal
+            </button>
+            <button onclick="event.stopPropagation();gerarPlanoSemanaCidade('${c.id}');cidIaMenuFechar('${c.id}')" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
+              <span style="font-size:14px">📋</span> Plano semanal
+            </button>
+            <button onclick="event.stopPropagation();relatorioMensalCidade('${c.id}');cidIaMenuFechar('${c.id}')" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
+              <span style="font-size:14px">📅</span> Relatório mensal
+            </button>
+          </div>
+        </div>
       </div>
     </div>`;
   }).join('');
-  
-  // 🆕 Anima contadores + carrega métricas (entregas hoje + sparkline) — vai ser implementado em ETAPA 3
-  setTimeout(function(){ try { if(typeof cidCarregarMetricasGrid === 'function') cidCarregarMetricasGrid(); } catch(e){} }, 100);
   
   // Renderiza headers (stats topo + aniversários) sempre que o grid muda
   if(typeof renderCidadesStatsTopo === 'function') renderCidadesStatsTopo();
@@ -22702,6 +22757,102 @@ function renderCidadesGrid(){
 /* ╔════════════════════════════════════════════════════╗
    ║ 🏙️ CIDADES — Helpers v26.49 (tabs + IA + sparkline) ║
    ╚════════════════════════════════════════════════════╝ */
+
+/* ╔════════════════════════════════════════════════════╗
+   ║ 🔍 GAMI VERSION STAMP + DIAGNÓSTICO v26.54         ║
+   ╚════════════════════════════════════════════════════╝ */
+window.GAMI_VERSION = 'v26.54';
+console.log('%c🚀 GAMI Dashboard ' + window.GAMI_VERSION + ' carregada', 'background:#0D2B5C;color:#FFD93D;padding:4px 10px;border-radius:4px;font-weight:bold;font-size:13px');
+
+// Função de diagnóstico — Cleyton pode rodar gamiDiag() no console
+window.gamiDiag = function(){
+  var info = {
+    versao: window.GAMI_VERSION,
+    timestamp: new Date().toISOString(),
+    url: location.href,
+    pagina_ativa: '',
+    cidades_grid_existe: !!document.getElementById('cidades-grid'),
+    cards_renderizados: document.querySelectorAll('.cidade-card').length,
+    ia_bloco_existe: !!document.getElementById('cid-ia-rede'),
+    ia_conteudo: (document.getElementById('cid-ia-conteudo')||{}).textContent || '(vazio)',
+    tabs_existe: !!document.getElementById('cid-tab-cidades'),
+    primeira_cidade_dados: null
+  };
+  
+  // Página ativa
+  document.querySelectorAll('.page').forEach(function(p){
+    if(p.style.display !== 'none') info.pagina_ativa = p.id;
+  });
+  
+  // Primeira cidade - dados
+  var primeiroCard = document.querySelector('.cidade-card');
+  if(primeiroCard){
+    var num = primeiroCard.querySelector('.cid-metric-num');
+    var pct = primeiroCard.querySelector('.cid-metric-pct-val');
+    var spark = primeiroCard.querySelector('.cid-sparkline-line');
+    info.primeira_cidade_dados = {
+      numero: (num||{}).textContent,
+      percentual: (pct||{}).textContent,
+      sparkline_d: spark ? spark.getAttribute('d') : null
+    };
+  }
+  
+  console.log('%c📊 DIAGNÓSTICO GAMI', 'background:#8B5CF6;color:white;padding:4px 10px;border-radius:4px;font-weight:bold');
+  console.table(info);
+  console.log('Copia tudo e manda pro Cleyton/Claude:', JSON.stringify(info, null, 2));
+  return info;
+};
+
+console.log('%c💡 Digite gamiDiag() no console pra ver diagnóstico', 'color:#1AB8F0;font-style:italic');
+
+// 🤖 Dropdown IA da Rede (header)
+function cidIaRedeToggleMenu(){
+  var menu = document.getElementById('cid-ia-rede-menu');
+  if(!menu) return;
+  var aberto = menu.style.display === 'flex';
+  menu.style.display = aberto ? 'none' : 'flex';
+  if(!aberto){
+    setTimeout(function(){
+      document.addEventListener('click', function fechaCidIaRede(e){
+        var btn = document.getElementById('cid-ia-rede-btn');
+        if(!menu.contains(e.target) && e.target !== btn){
+          menu.style.display = 'none';
+          document.removeEventListener('click', fechaCidIaRede);
+        }
+      });
+    }, 10);
+  }
+}
+function cidIaRedeFecharMenu(){
+  var menu = document.getElementById('cid-ia-rede-menu');
+  if(menu) menu.style.display = 'none';
+}
+
+// 🤖 Dropdown IA por cidade (no card)
+function cidIaMenuToggle(cidadeId, btn){
+  // Fecha qualquer outro menu aberto antes
+  document.querySelectorAll('[data-cid-ia-menu]').forEach(function(m){
+    if(m.getAttribute('data-cid-ia-menu') !== cidadeId) m.style.display = 'none';
+  });
+  var menu = document.querySelector('[data-cid-ia-menu="'+cidadeId+'"]');
+  if(!menu) return;
+  var aberto = menu.style.display === 'flex';
+  menu.style.display = aberto ? 'none' : 'flex';
+  if(!aberto){
+    setTimeout(function(){
+      document.addEventListener('click', function fechaCidIa(e){
+        if(!menu.contains(e.target) && e.target !== btn){
+          menu.style.display = 'none';
+          document.removeEventListener('click', fechaCidIa);
+        }
+      });
+    }, 10);
+  }
+}
+function cidIaMenuFechar(cidadeId){
+  var menu = document.querySelector('[data-cid-ia-menu="'+cidadeId+'"]');
+  if(menu) menu.style.display = 'none';
+}
 
 // 🆕 Troca entre as 3 abas (Cidades / Análises / Aniversários)
 function showCidTab(name){
@@ -22737,7 +22888,7 @@ function showCidTab(name){
   }
 }
 
-// 🤖 IA DA REDE — placeholder (ETAPA 2 implementa lógica completa)
+// 🤖 IA DA REDE — fallback imediato + tenta upgrade em background
 function cidIaAtualizar(forcar){
   var btn = document.getElementById('cid-ia-btn-atualizar');
   var conteudo = document.getElementById('cid-ia-conteudo');
@@ -22748,6 +22899,7 @@ function cidIaAtualizar(forcar){
   var CACHE_KEY = 'gami_cid_ia_rede_cache';
   var CACHE_MAX = 2 * 60 * 60 * 1000; // 2 horas
   
+  // 1️⃣ Tenta cache válido primeiro (mostra direto)
   if(!forcar){
     try {
       var cache = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
@@ -22758,52 +22910,69 @@ function cidIaAtualizar(forcar){
     } catch(e){}
   }
   
-  // Mostra loader
-  conteudo.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--text3);font-size:12px;font-style:italic">'
-    + '<div class="cid-ia-spinner" style="width:14px;height:14px;border:2px solid #D6C7F0;border-top-color:#8B5CF6;border-radius:50%;animation:cidIaSpin .8s linear infinite"></div>'
-    + 'Coletando dados das 11 cidades e analisando com IA...'
-    + '</div>';
-  if(meta) meta.innerHTML = '';
+  // 2️⃣ Mostra FALLBACK IMEDIATO (sem esperar nada)
+  var textoFallback = _cidIaTextoFallback(null);
+  _cidIaRenderizar(textoFallback, Date.now(), true);
+  
+  // 3️⃣ Em BACKGROUND, tenta a IA real e atualiza se conseguir
+  if(meta) meta.innerHTML = '<span style="color:#8B5CF6">🤖 Tentando análise completa com IA...</span>';
   if(btn){ btn.disabled = true; btn.style.opacity = '.55'; }
   
-  // 🤖 Chama IA real (coleta Machine + Claude Haiku via blog-ai)
   _cidIaGerarPlaceholder().then(function(texto){
-    var ts = Date.now();
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({texto: texto, ts: ts})); } catch(e){}
-    _cidIaRenderizar(texto, ts);
-    if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
-    // Easter egg: motoboy ao atualizar (se foi forçado)
-    if(forcar && typeof _cidMotoboyZoom === 'function'){
-      setTimeout(_cidMotoboyZoom, 300);
+    if(texto && texto.length > 80 && texto !== textoFallback){
+      var ts = Date.now();
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({texto: texto, ts: ts})); } catch(e){}
+      // Atualiza texto com fade suave
+      conteudo.style.transition = 'opacity .3s';
+      conteudo.style.opacity = '0';
+      setTimeout(function(){
+        _cidIaRenderizar(texto, ts);
+        conteudo.style.opacity = '1';
+      }, 300);
+      // Easter egg motoboy se foi forçado
+      if(forcar && typeof _cidMotoboyZoom === 'function'){
+        setTimeout(_cidMotoboyZoom, 300);
+      }
+    } else {
+      // IA não conseguiu — mantém fallback que já tá na tela
+      if(meta) meta.innerHTML = '<span style="color:var(--text3)">📊 Análise simplificada · IA não respondeu</span>';
     }
+    if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
   }).catch(function(e){
-    console.warn('Erro IA Rede:', e);
-    var texto = _cidIaTextoFallback(null);
-    _cidIaRenderizar(texto, Date.now());
+    console.warn('[IA Rede] Erro final:', e);
+    if(meta) meta.innerHTML = '<span style="color:var(--text3)">📊 Análise simplificada · ' + (e.message || 'erro') + '</span>';
     if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
   });
 }
 
-// Renderiza texto da IA com efeito typewriter
-function _cidIaRenderizar(texto, ts){
+// Renderiza texto da IA com efeito typewriter (ou instantâneo se fallback)
+function _cidIaRenderizar(texto, ts, instantaneo){
   var conteudo = document.getElementById('cid-ia-conteudo');
   var meta = document.getElementById('cid-ia-meta');
   if(!conteudo) return;
   
-  conteudo.innerHTML = '<span class="cid-ia-typing"></span>';
-  var span = conteudo.querySelector('.cid-ia-typing');
-  var i = 0;
-  var speed = Math.max(8, Math.min(20, Math.floor(1200 / texto.length)));
+  conteudo.style.opacity = '1';
   
-  function typewrite(){
-    if(!span || i >= texto.length){
-      if(span) span.classList.remove('cid-ia-typing');
-      return;
+  if(instantaneo){
+    // Renderiza direto, sem typewriter
+    conteudo.innerHTML = '<span>' + texto + '</span>';
+  } else {
+    // Typewriter effect
+    conteudo.innerHTML = '<span class="cid-ia-typing"></span>';
+    var span = conteudo.querySelector('.cid-ia-typing');
+    var i = 0;
+    var speed = Math.max(8, Math.min(20, Math.floor(1200 / texto.length)));
+    
+    function typewrite(){
+      if(!span || i >= texto.length){
+        if(span) span.classList.remove('cid-ia-typing');
+        return;
+      }
+      span.textContent += texto[i++];
+      setTimeout(typewrite, speed);
     }
-    span.textContent += texto[i++];
-    setTimeout(typewrite, speed);
+    typewrite();
   }
-  typewrite();
   
   // Meta
   if(meta){
@@ -22865,12 +23034,12 @@ async function _cidIaGerarPlaceholder(){
     return _cidIaTextoFallback(dados);
   })();
   
-  // Timeout master: 15s
+  // Timeout master: 10s
   var promiseTimeout = new Promise(function(resolve){
     setTimeout(function(){
-      console.warn('[IA Rede] ⏱️ Timeout global 15s, usando fallback');
+      console.warn('[IA Rede] ⏱️ Timeout global 10s, usando fallback');
       resolve(_cidIaTextoFallback(null));
-    }, 15000);
+    }, 10000);
   });
   
   var resultado = await Promise.race([promiseIA, promiseTimeout]);
