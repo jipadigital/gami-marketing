@@ -1,4 +1,4 @@
-<!-- v26.42 - Remove cascata + fix versiculo nao piscar - 17/06/2026 -->
+<!-- v26.43 - Calendario reorganizado + 10 animacoes - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2457,26 +2457,201 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <style>
     @keyframes cal-fadeup { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
     .cal-section { animation: cal-fadeup .45s ease both; }
-    .cal-day { transition: transform .15s ease, box-shadow .15s ease, background .15s; }
-    .cal-day:hover { transform: scale(1.06); z-index:2; box-shadow:0 4px 10px rgba(13,43,92,.15); }
-    .cal-day.selected { box-shadow:0 0 0 2px var(--orange); transform: scale(1.04); }
-
-    /* Responsividade do calendário */
+    
+    /* ═══ ANIMAÇÕES CALENDÁRIO ═══ */
+    
+    /* 1️⃣ Dia atual pulsando glow azul Gâmi */
+    @keyframes calTodayPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(26,184,240,.6), 0 0 0 0 rgba(26,184,240,.4); }
+      50%      { box-shadow: 0 0 0 4px rgba(26,184,240,.3), 0 0 12px 2px rgba(26,184,240,.45); }
+    }
+    .cal-day.today {
+      animation: calTodayPulse 2s ease-in-out infinite;
+      position: relative;
+    }
+    .cal-day.today::after {
+      content: ''; position: absolute; inset: 0;
+      border: 2px solid #1AB8F0; border-radius: 8px;
+      pointer-events: none;
+    }
+    
+    /* 2️⃣ Pontinhos de evento pop-in */
+    @keyframes calDotPop {
+      0%   { transform: scale(0); opacity: 0; }
+      60%  { transform: scale(1.25); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .cal-day-dot {
+      display: inline-block;
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      margin: 0 1px;
+      animation: calDotPop .45s cubic-bezier(.3,.6,.4,1.4) both;
+    }
+    .cal-day-dot:nth-child(1) { animation-delay: 0ms; }
+    .cal-day-dot:nth-child(2) { animation-delay: 50ms; }
+    .cal-day-dot:nth-child(3) { animation-delay: 100ms; }
+    
+    /* 3️⃣ Hover refinado */
+    .cal-day { 
+      transition: transform .15s ease, box-shadow .15s ease, background .15s; 
+      cursor: pointer;
+    }
+    .cal-day:hover:not(.cal-day-empty) { 
+      transform: scale(1.08); 
+      z-index: 2; 
+      box-shadow: 0 6px 16px rgba(13,43,92,.18); 
+    }
+    
+    /* 4️⃣ Click bounce no dia */
+    @keyframes calDayBounce {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.18); }
+      100% { transform: scale(1.04); }
+    }
+    .cal-day.selected {
+      animation: calDayBounce .35s cubic-bezier(.3,.6,.4,1.4) both;
+      box-shadow: 0 0 0 2px var(--orange);
+    }
+    
+    /* 5️⃣ Transição mês slide */
+    @keyframes calSlideOutLeft  { 0%{transform:translateX(0);opacity:1} 100%{transform:translateX(-30px);opacity:0} }
+    @keyframes calSlideInRight  { 0%{transform:translateX(30px);opacity:0} 100%{transform:translateX(0);opacity:1} }
+    @keyframes calSlideOutRight { 0%{transform:translateX(0);opacity:1} 100%{transform:translateX(30px);opacity:0} }
+    @keyframes calSlideInLeft   { 0%{transform:translateX(-30px);opacity:0} 100%{transform:translateX(0);opacity:1} }
+    .cal-slide-out-left  { animation: calSlideOutLeft  .25s ease forwards; }
+    .cal-slide-in-right  { animation: calSlideInRight  .35s ease forwards; }
+    .cal-slide-out-right { animation: calSlideOutRight .25s ease forwards; }
+    .cal-slide-in-left   { animation: calSlideInLeft   .35s ease forwards; }
+    
+    /* 6️⃣ Tooltip preview */
+    .cal-day-tooltip {
+      position: absolute;
+      background: rgba(11,37,66,.95);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      line-height: 1.45;
+      box-shadow: 0 6px 20px rgba(0,0,0,.25);
+      pointer-events: none;
+      z-index: 1000;
+      max-width: 220px;
+      animation: cal-fadeup .2s ease both;
+      white-space: pre-line;
+    }
+    [data-theme="dark"] .cal-day-tooltip {
+      background: rgba(232,238,245,.97);
+      color: #0B2542;
+    }
+    
+    /* 7️⃣ Chips de filtro toggle fade */
+    .cal-filtro-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: all .2s ease;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .cal-filtro-chip:hover { transform: translateY(-1px); }
+    .cal-filtro-chip input[type="checkbox"] { 
+      cursor: pointer; 
+      accent-color: var(--gami-blue);
+    }
+    .cal-filtro-chip.off { opacity: .45; }
+    .cal-day.filtro-fade .cal-day-dot { transition: opacity .3s ease; }
+    
+    /* 8️⃣ Streak dias produtivos (glow verde) */
+    .cal-day.streak-produtivo {
+      background: linear-gradient(135deg, #E8F5E9, #C8E6C9) !important;
+      box-shadow: inset 0 0 0 1px rgba(143,190,87,.4);
+    }
+    [data-theme="dark"] .cal-day.streak-produtivo {
+      background: linear-gradient(135deg, #1F3320, #2A4A2C) !important;
+    }
+    
+    /* 9️⃣ Datas comemorativas */
+    .cal-day.natal::before {
+      content: '❄️'; position: absolute; top: 2px; right: 2px;
+      font-size: 11px; opacity: .85;
+      animation: calFloat 3s ease-in-out infinite;
+    }
+    .cal-day.reveillon::before {
+      content: '🎆'; position: absolute; top: 2px; right: 2px;
+      font-size: 12px;
+      animation: calSparkle 1.4s ease-in-out infinite;
+    }
+    .cal-day.ano-novo::before {
+      content: '✨'; position: absolute; top: 2px; right: 2px;
+      font-size: 12px;
+      animation: calSparkle 1.6s ease-in-out infinite;
+    }
+    .cal-day.brasil::before {
+      content: '🇧🇷'; position: absolute; top: 2px; right: 2px;
+      font-size: 10px;
+    }
+    .cal-day.brasil { 
+      background: linear-gradient(180deg, rgba(0,156,59,.08) 0%, rgba(255,223,0,.08) 50%, rgba(0,156,59,.08) 100%) !important;
+    }
+    @keyframes calFloat {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-3px); }
+    }
+    @keyframes calSparkle {
+      0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+      50%      { transform: scale(1.2) rotate(15deg); opacity: .7; }
+    }
+    
+    /* 🔟 Motoboy ao mudar mês */
+    @keyframes calMotoboyZoom {
+      0%   { left: -60px; }
+      100% { left: 110%; }
+    }
+    .cal-motoboy {
+      position: absolute; bottom: 8px; left: -60px;
+      font-size: 32px; z-index: 10;
+      animation: calMotoboyZoom 1.5s linear forwards;
+      pointer-events: none;
+      filter: drop-shadow(0 3px 6px rgba(0,0,0,.25));
+    }
+    
+    /* Painel lateral cards */
+    .cal-painel-card { 
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .cal-painel-item {
+      display: flex; gap: 10px; padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: padding-left .15s ease;
+    }
+    .cal-painel-item:last-child { border-bottom: none; }
+    .cal-painel-item:hover { padding-left: 6px; }
+    
+    /* Responsividade */
     @media(max-width:900px){
-      #cal-layout-grid { grid-template-columns:1fr!important; }
-      #tf-diario-layout { grid-template-columns:1fr!important; }
+      #cal-layout-grid { grid-template-columns: 1fr !important; }
+      #tf-diario-layout { grid-template-columns: 1fr !important; }
     }
     @media(max-width:560px){
-      .cal-day { font-size:13px!important; min-height:42px!important; }
-      .cal-head { font-size:10px!important; padding:6px 2px!important; }
-      #cal-month-label { font-size:15px!important; }
+      .cal-day { font-size: 13px !important; min-height: 42px !important; }
+      .cal-head { font-size: 10px !important; padding: 6px 2px !important; }
+      #cal-month-label { font-size: 15px !important; }
     }
   </style>
 
+  <!-- HEADER LIMPO -->
   <div class="page-header">
     <div>
       <div class="page-title">📅 Calendário</div>
-      <div class="page-sub">Suas tarefas, anotações, aniversários e datas sazonais</div>
+      <div class="page-sub" id="cal-hero-data">Carregando data...</div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="calHoje()" style="font-size:12px">📍 Hoje</button>
@@ -2484,98 +2659,68 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
   </div>
 
-  <!-- HERO + Frase do dia (PRIMEIRO PLANO) -->
-  <div class="cal-section" style="margin-bottom:14px;padding:18px 22px;background:linear-gradient(135deg,#0D2B5C 0%,#1565C0 50%,#1AB8F0 100%);border-radius:14px;color:white;position:relative;overflow:hidden">
-    <div style="position:absolute;top:-30px;right:-20px;font-size:90px;opacity:.07">📅</div>
-    <div style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
-      <div style="flex:1;min-width:240px">
-        <div style="font-size:10px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;opacity:.85;margin-bottom:6px">Hoje · <span id="cal-hero-data"></span></div>
-        <div id="cal-hero-frase" style="font-family:'Syne',sans-serif;font-size:18px;font-weight:600;letter-spacing:-.3px;line-height:1.35;max-width:640px"></div>
-      </div>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:11px">
-        <div style="text-align:center;background:rgba(255,255,255,.13);padding:8px 14px;border-radius:10px;min-width:80px">
-          <div id="cal-hero-tarefas" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#FFD93D">—</div>
-          <div style="opacity:.85;letter-spacing:.5px;text-transform:uppercase;font-size:9px">Tarefas hoje</div>
-        </div>
-        <div style="text-align:center;background:rgba(255,255,255,.13);padding:8px 14px;border-radius:10px;min-width:80px">
-          <div id="cal-hero-eventos" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#FFD93D">—</div>
-          <div style="opacity:.85;letter-spacing:.5px;text-transform:uppercase;font-size:9px">Eventos do mês</div>
-        </div>
-      </div>
-    </div>
+  <!-- ELEMENTOS OCULTOS (preservados pra compatibilidade com JS existente) -->
+  <div style="display:none">
+    <div id="cal-hero-frase"></div>
+    <div id="cal-hero-tarefas"></div>
+    <div id="cal-hero-eventos"></div>
+    <div id="cal-proximos-7d"></div>
   </div>
-
-  <!-- BARRA DE CONTROLE: vistas + busca + filtros -->
-  <div class="cal-section" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
-    <!-- Alternador de vista -->
-    <div id="cal-view-switcher" style="display:flex;gap:2px;background:var(--surface2);padding:3px;border-radius:8px">
-      <button data-view="mes" onclick="calMudarVista('mes')" style="padding:6px 12px;border:none;border-radius:6px;background:var(--gami-blue);color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📅 Mês</button>
-      <button data-view="semana" onclick="calMudarVista('semana')" style="padding:6px 12px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📆 Semana</button>
-      <button data-view="lista" onclick="calMudarVista('lista')" style="padding:6px 12px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋 Lista</button>
-      <button data-view="ano" onclick="calMudarVista('ano')" style="padding:6px 12px;border:none;border-radius:6px;background:transparent;color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🗓️ Ano</button>
-    </div>
-    <!-- Busca global -->
-    <div style="flex:1;min-width:220px;position:relative">
-      <input id="cal-busca" type="text" placeholder="🔍 Buscar em tarefas e anotações..." 
-        oninput="calBuscar(this.value)" onfocus="calBuscar(this.value)"
-        style="width:100%;padding:7px 30px 7px 11px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface2);box-sizing:border-box">
-      <div id="cal-busca-resultados" style="display:none;position:absolute;top:38px;left:0;right:0;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(11,37,66,.15);max-height:300px;overflow-y:auto;z-index:100"></div>
-    </div>
-    <!-- Filtros visuais -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:11px">
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#E6F1FB;border-radius:6px;color:#185FA5;font-weight:500"><input type="checkbox" id="cal-flt-tarefas" checked onchange="calAplicarFiltros()" style="cursor:pointer">📋 Tarefas</label>
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#FAEEDA;border-radius:6px;color:#854F0B;font-weight:500"><input type="checkbox" id="cal-flt-notas" checked onchange="calAplicarFiltros()" style="cursor:pointer">📝 Anotações</label>
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#F3E5F5;border-radius:6px;color:#6A1B9A;font-weight:500"><input type="checkbox" id="cal-flt-bdays" checked onchange="calAplicarFiltros()" style="cursor:pointer">🎂 Aniversários</label>
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 8px;background:#FCEBEB;border-radius:6px;color:#A32D2D;font-weight:500"><input type="checkbox" id="cal-flt-eventos" checked onchange="calAplicarFiltros()" style="cursor:pointer">🎉 Eventos</label>
-    </div>
-  </div>
-
-  <!-- BANNER PRÓXIMOS 7 DIAS -->
-  <div id="cal-proximos-7d" class="cal-section" style="margin-bottom:14px"></div>
 
   <!-- TAB CALENDÁRIO (única vista) -->
   <div id="cal-tab-calendario">
-  <!-- LEGENDA -->
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-    <span style="font-size:11px;font-weight:600;color:var(--text2)">Legenda:</span>
-    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#FCEBEB;color:#A32D2D">🔴 Feriado</span>
-    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#E3F2FD;color:#1565C0">🔵 Municipal</span>
-    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#FAEEDA;color:#854F0B">🟡 Comemorativo</span>
-    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#EAF3DE;color:#3B6D11">🟢 Nacional</span>
-    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#F3E5F5;color:#6A1B9A">🎂 Aniversário</span>
-    <span style="font-size:10px;padding:2px 8px;border-radius:6px;background:#E6F6FE;color:var(--orange)">⭐ Destaque</span>
-  </div>
+  
+  <!-- LAYOUT 2 COLUNAS: Calendário + Painel lateral SEMPRE visível -->
+  <div id="cal-layout-grid" style="display:grid;grid-template-columns:1fr 320px;gap:14px;margin-bottom:14px">
 
-  <!-- LAYOUT: Calendário + Painel lateral (quando dia selecionado) -->
-  <div id="cal-layout-grid" style="display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px">
-
-    <!-- CALENDÁRIO PRINCIPAL (vistas alternativas) -->
+    <!-- ESQUERDA: CALENDÁRIO -->
     <div id="cal-views-host">
       <!-- VISTA MÊS -->
-      <div id="cal-view-mes" class="card" style="padding:0;overflow:hidden">
-        <!-- Header mês -->
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
-          <button onclick="calNavMes(-1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">‹</button>
-          <div style="text-align:center">
-            <div id="cal-month-label" style="font-size:17px;font-weight:800;font-family:'Syne',sans-serif;color:var(--text)"></div>
+      <div id="cal-view-mes" class="card" style="padding:0;overflow:hidden;position:relative">
+        <!-- Header mês com nav + switcher de vista compacto -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2);gap:10px;flex-wrap:wrap">
+          <button onclick="calNavMes(-1)" id="cal-nav-prev" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">‹</button>
+          <div id="cal-month-label" style="flex:1;text-align:center;font-size:17px;font-weight:800;font-family:'Syne',sans-serif;color:var(--text)"></div>
+          <button onclick="calNavMes(1)" id="cal-nav-next" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">›</button>
+          <!-- Switcher compacto -->
+          <div id="cal-view-switcher" style="display:flex;gap:1px;background:var(--surface);padding:2px;border-radius:7px;border:1px solid var(--border)">
+            <button data-view="mes" onclick="calMudarVista('mes')" title="Mês" style="padding:5px 9px;border:none;border-radius:5px;background:var(--gami-blue);color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">M</button>
+            <button data-view="semana" onclick="calMudarVista('semana')" title="Semana" style="padding:5px 9px;border:none;border-radius:5px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">S</button>
+            <button data-view="lista" onclick="calMudarVista('lista')" title="Lista" style="padding:5px 9px;border:none;border-radius:5px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">L</button>
+            <button data-view="ano" onclick="calMudarVista('ano')" title="Ano" style="padding:5px 9px;border:none;border-radius:5px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">A</button>
           </div>
-          <button onclick="calNavMes(1)" style="width:32px;height:32px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:18px;line-height:1">›</button>
         </div>
         <!-- Dias semana -->
         <div style="display:grid;grid-template-columns:repeat(7,1fr);background:var(--surface2);border-bottom:1px solid var(--border)">
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:700;color:#E24B4A">Dom</div>
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Seg</div>
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Ter</div>
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Qua</div>
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Qui</div>
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Sex</div>
-          <div style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:#1E88E5">Sáb</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:700;color:#E24B4A">Dom</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Seg</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Ter</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Qua</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Qui</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:var(--text2)">Sex</div>
+          <div class="cal-head" style="padding:8px 4px;text-align:center;font-size:11px;font-weight:600;color:#1E88E5">Sáb</div>
         </div>
         <!-- Grid dias -->
-        <div id="cal-grid-render" style="padding:8px"></div>
-        <!-- Heatmap de produtividade -->
-        <div id="cal-heatmap" style="padding:14px 16px;border-top:1px solid var(--border);background:var(--surface2)"></div>
+        <div id="cal-grid-render" style="padding:8px;position:relative"></div>
+        
+        <!-- FILTROS embaixo do grid (chips compactos) -->
+        <div style="padding:10px 14px;background:var(--surface2);border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:10px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase">Filtrar</span>
+          <label class="cal-filtro-chip" id="cal-flt-chip-tarefas"><input type="checkbox" id="cal-flt-tarefas" checked onchange="calAplicarFiltros();this.parentElement.classList.toggle('off',!this.checked)" style="margin:0">📋 Tarefas</label>
+          <label class="cal-filtro-chip" id="cal-flt-chip-bdays"><input type="checkbox" id="cal-flt-bdays" checked onchange="calAplicarFiltros();this.parentElement.classList.toggle('off',!this.checked)" style="margin:0">🎂 Aniversários</label>
+          <label class="cal-filtro-chip" id="cal-flt-chip-eventos"><input type="checkbox" id="cal-flt-eventos" checked onchange="calAplicarFiltros();this.parentElement.classList.toggle('off',!this.checked)" style="margin:0">🎉 Eventos</label>
+          <label class="cal-filtro-chip" id="cal-flt-chip-notas"><input type="checkbox" id="cal-flt-notas" checked onchange="calAplicarFiltros();this.parentElement.classList.toggle('off',!this.checked)" style="margin:0">📝 Notas</label>
+        </div>
+        
+        <!-- Busca integrada -->
+        <div style="padding:10px 14px;border-top:1px solid var(--border);position:relative">
+          <input id="cal-busca" type="text" placeholder="🔍 Buscar tarefas, eventos, pessoas..." 
+            oninput="calBuscar(this.value)" onfocus="calBuscar(this.value)"
+            style="width:100%;padding:7px 11px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:var(--surface2);box-sizing:border-box">
+          <div id="cal-busca-resultados" style="display:none;position:absolute;top:42px;left:10px;right:10px;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(11,37,66,.15);max-height:300px;overflow-y:auto;z-index:100"></div>
+        </div>
       </div>
+      
       <!-- VISTA SEMANA -->
       <div id="cal-view-semana" class="card" style="padding:0;overflow:hidden;display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
@@ -2585,11 +2730,13 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         </div>
         <div id="cal-semana-grid" style="padding:10px"></div>
       </div>
+      
       <!-- VISTA LISTA -->
       <div id="cal-view-lista" class="card" style="padding:0;overflow:hidden;display:none">
         <div style="padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface2);font-size:13px;font-weight:700;color:var(--text);font-family:'Syne',sans-serif">📋 Próximos 30 dias</div>
         <div id="cal-lista-render" style="max-height:680px;overflow-y:auto"></div>
       </div>
+      
       <!-- VISTA ANO -->
       <div id="cal-view-ano" class="card" style="padding:0;overflow:hidden;display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)">
@@ -2601,34 +2748,41 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
     </div>
 
-    <!-- PAINEL LATERAL DETALHES DO DIA (só aparece quando seleciona dia) -->
-    <div id="cal-day-panel-wrap" style="display:none">
-      <div class="card" id="cal-day-panel" style="border:2px solid var(--orange);box-shadow:0 4px 14px rgba(232,75,74,.15);animation:cal-fadeup .35s ease both;position:sticky;top:14px;max-height:calc(100vh - 30px);overflow-y:auto">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--orange)">📌 Detalhes do dia</div>
-          <button onclick="fecharDiaPainel()" title="Fechar" style="background:transparent;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0 4px;line-height:1">×</button>
+    <!-- DIREITA: PAINEL LATERAL SEMPRE VISÍVEL -->
+    <div id="cal-painel-lateral">
+      <!-- HOJE / DIA SELECIONADO -->
+      <div class="card cal-painel-card" id="cal-painel-hoje" style="margin-bottom:12px;padding:16px;border-left:4px solid var(--gami-blue);background:var(--surface);position:relative;overflow:hidden">
+        <div id="cal-painel-hoje-label" style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--gami-blue);text-transform:uppercase;margin-bottom:5px">🎯 Hoje</div>
+        <div id="cal-painel-hoje-data" style="font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:var(--text);margin-bottom:12px"></div>
+        <div id="cal-painel-hoje-conteudo">
+          <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:11px">Carregando...</div>
         </div>
-        <!-- Conteúdo dinâmico injetado por selectDay() -->
+        <button id="cal-painel-voltar-hoje" onclick="calVoltarParaHoje()" style="display:none;margin-top:10px;padding:6px 12px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit;width:100%">← Voltar pra hoje</button>
+      </div>
+      
+      <!-- PRÓXIMOS DIAS -->
+      <div class="card cal-painel-card" id="cal-painel-proximos" style="padding:16px;background:var(--surface)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text2);text-transform:uppercase;margin-bottom:10px">📋 Próximos dias</div>
+        <div id="cal-painel-proximos-conteudo">
+          <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:11px">Carregando...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAINEL DETALHES DIA (ESCONDIDO/preservado) -->
+    <div id="cal-day-panel-wrap" style="display:none">
+      <div class="card" id="cal-day-panel">
         <div id="day-panel-content"></div>
       </div>
     </div>
   </div>
-
-  <!-- PRÓXIMOS ANIVERSÁRIOS (full width) -->
-  <div class="card" style="margin-bottom:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="card-title" style="margin:0">🎂 Próximos aniversários</div>
-    </div>
-    <div id="cal-proximos-bdays" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px"></div>
-  </div>
-
-  <!-- EVENTOS DO MÊS (full width) -->
-  <div class="card" style="margin-bottom:14px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div class="card-title" style="margin:0">📋 Eventos do mês</div>
-      <div id="cal-eventos-count" style="font-size:10px;color:var(--text3)"></div>
-    </div>
-    <div id="cal-sidebar-events" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px"></div>
+  
+  <!-- ELEMENTOS preservados pra compatibilidade (escondidos) -->
+  <div style="display:none">
+    <div id="cal-heatmap"></div>
+    <div id="cal-proximos-bdays"></div>
+    <div id="cal-sidebar-events"></div>
+    <div id="cal-eventos-count"></div>
   </div>
 </div>
 </div>
@@ -7114,11 +7268,376 @@ function renderCalendar(){
 /* CALENDÁRIO: NAVEGAÇÃO DE MÊS                                    */
 /* ============================================================== */
 function calNavMes(delta){
-  calMonth += delta;
-  if(calMonth > 11){ calMonth = 0; calYear++; }
-  else if(calMonth < 0){ calMonth = 11; calYear--; }
-  renderCalendar();
+  // 5️⃣ Animação slide horizontal + 🔟 Motoboy
+  var grid = document.getElementById('cal-grid-render');
+  var viewMes = document.getElementById('cal-view-mes');
+  if(grid){
+    grid.classList.remove('cal-slide-in-right','cal-slide-in-left','cal-slide-out-left','cal-slide-out-right');
+    void grid.offsetWidth;
+    grid.classList.add(delta > 0 ? 'cal-slide-out-left' : 'cal-slide-out-right');
+  }
+  // Motoboy passa quando muda de mês
+  if(viewMes){
+    try {
+      var moto = document.createElement('div');
+      moto.className = 'cal-motoboy';
+      moto.textContent = '🏍️';
+      viewMes.appendChild(moto);
+      setTimeout(function(){ try { viewMes.removeChild(moto); } catch(e){} }, 1700);
+    } catch(e){}
+  }
+  
+  setTimeout(function(){
+    calMonth += delta;
+    if(calMonth > 11){ calMonth = 0; calYear++; }
+    else if(calMonth < 0){ calMonth = 11; calYear--; }
+    renderCalendar();
+    // Anima entrada
+    var g = document.getElementById('cal-grid-render');
+    if(g){
+      g.classList.remove('cal-slide-out-left','cal-slide-out-right');
+      g.classList.add(delta > 0 ? 'cal-slide-in-right' : 'cal-slide-in-left');
+    }
+    // Atualiza painel lateral
+    try { calRenderPainelLateral(); } catch(e){}
+  }, 250);
 }
+
+/* ╔════════════════════════════════════════════════════╗
+   ║ 📅 CALENDÁRIO — Painel lateral + Animações novas   ║
+   ╚════════════════════════════════════════════════════╝ */
+
+// Estado: dia selecionado no painel lateral (null = hoje)
+var _calPainelDia = null;
+
+// Função pública: volta painel pro modo "hoje"
+function calVoltarParaHoje(){
+  _calPainelDia = null;
+  calRenderPainelLateral();
+}
+
+// Renderiza painel lateral com Hoje + Próximos dias
+function calRenderPainelLateral(){
+  var labelEl = document.getElementById('cal-painel-hoje-label');
+  var dataEl  = document.getElementById('cal-painel-hoje-data');
+  var contEl  = document.getElementById('cal-painel-hoje-conteudo');
+  var voltarBtn = document.getElementById('cal-painel-voltar-hoje');
+  if(!labelEl || !dataEl || !contEl) return;
+  
+  var diaRef = _calPainelDia ? new Date(_calPainelDia) : new Date();
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var diaRefMs = new Date(diaRef); diaRefMs.setHours(0,0,0,0);
+  var ehHoje = diaRefMs.getTime() === hoje.getTime();
+  
+  // Label e data
+  var diasSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  labelEl.textContent = ehHoje ? '🎯 Hoje' : '📅 ' + diasSem[diaRef.getDay()];
+  dataEl.textContent = diaRef.getDate() + ' ' + meses[diaRef.getMonth()];
+  voltarBtn.style.display = ehHoje ? 'none' : 'block';
+  
+  // Conteúdo
+  var conteudo = _calCarregarDadosDoDia(diaRef);
+  contEl.innerHTML = conteudo.html;
+  
+  // Próximos dias (sempre próximos 5 dias contando a partir de amanhã)
+  var proxContEl = document.getElementById('cal-painel-proximos-conteudo');
+  if(proxContEl){
+    proxContEl.innerHTML = _calRenderProximosDias(5);
+  }
+}
+
+// Pega dados do dia (tarefas, aniversários, eventos)
+function _calCarregarDadosDoDia(dia){
+  var html = '';
+  var itens = 0;
+  
+  try {
+    var dStr = dia.toISOString().split('T')[0];
+    
+    // Tarefas
+    var tarefas = [];
+    try { tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]'); } catch(e){}
+    var tarefasDia = tarefas.filter(function(t){
+      return t && t.data === dStr && !t.concluida;
+    });
+    
+    if(tarefasDia.length){
+      html += '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Tarefas (' + tarefasDia.length + ')</div>';
+      tarefasDia.slice(0,5).forEach(function(t){
+        html += '<div class="cal-painel-item" onclick="nav(document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px">▢</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word">' + (t.texto || '(sem título)') + '</div></div>';
+        itens++;
+      });
+      if(tarefasDia.length > 5) html += '<div style="font-size:10.5px;color:var(--text3);padding:5px 0">+' + (tarefasDia.length-5) + ' tarefas</div>';
+      html += '</div>';
+    }
+    
+    // Aniversariantes do dia
+    if(typeof getPessoas === 'function'){
+      var pessoas = getPessoas() || [];
+      var bdays = pessoas.filter(function(p){
+        if(!p || !p.aniversario) return false;
+        try {
+          var b = new Date(p.aniversario);
+          return b.getDate() === dia.getDate() && b.getMonth() === dia.getMonth();
+        } catch(e){ return false; }
+      });
+      if(bdays.length){
+        html += '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎂 Aniversário</div>';
+        bdays.forEach(function(p){
+          var idade = '';
+          try {
+            var b = new Date(p.aniversario);
+            idade = ' (' + (dia.getFullYear() - b.getFullYear()) + ' anos)';
+          } catch(e){}
+          html += '<div class="cal-painel-item"><div style="font-size:14px">🎂</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;font-weight:600">' + (p.nome || 'Alguém') + idade + '</div></div>';
+          itens++;
+        });
+        html += '</div>';
+      }
+    }
+    
+    // Eventos especiais (feriados, etc) — verifica datas comemorativas
+    var especiais = _calDatasEspeciais(dia);
+    if(especiais.length){
+      html += '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎉 Eventos</div>';
+      especiais.forEach(function(e){
+        html += '<div class="cal-painel-item"><div style="font-size:14px">' + e.emoji + '</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35">' + e.nome + '</div></div>';
+        itens++;
+      });
+      html += '</div>';
+    }
+  } catch(e){ console.warn(e); }
+  
+  if(itens === 0){
+    html = '<div style="text-align:center;padding:24px 0;color:var(--text3)"><div style="font-size:36px;opacity:.3;margin-bottom:6px">🌱</div><div style="font-size:12px">Nada agendado pra esse dia</div></div>';
+  }
+  
+  return { html: html, count: itens };
+}
+
+// Renderiza lista de próximos N dias
+function _calRenderProximosDias(n){
+  var html = '';
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var diasSem = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  var meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  
+  for(var i=1; i<=n; i++){
+    var d = new Date(hoje); d.setDate(d.getDate()+i);
+    var dados = _calCarregarDadosDoDia(d);
+    
+    // Pega resumo curto
+    var resumo = '';
+    var tarefas = [];
+    try { tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]'); } catch(e){}
+    var dStr = d.toISOString().split('T')[0];
+    var qtdTar = tarefas.filter(function(t){ return t && t.data === dStr && !t.concluida; }).length;
+    if(qtdTar) resumo += '📋 ' + qtdTar + ' tarefa' + (qtdTar>1?'s':'');
+    
+    var especiais = _calDatasEspeciais(d);
+    if(especiais.length){
+      if(resumo) resumo += ' · ';
+      resumo += especiais[0].emoji + ' ' + especiais[0].nome.slice(0,18);
+    }
+    
+    // Aniversários
+    if(typeof getPessoas === 'function'){
+      var pessoas = getPessoas() || [];
+      var bdays = pessoas.filter(function(p){
+        if(!p || !p.aniversario) return false;
+        try {
+          var b = new Date(p.aniversario);
+          return b.getDate() === d.getDate() && b.getMonth() === d.getMonth();
+        } catch(e){ return false; }
+      });
+      if(bdays.length){
+        if(resumo) resumo += ' · ';
+        resumo += '🎂 ' + bdays[0].nome.split(' ')[0];
+      }
+    }
+    
+    if(!resumo) resumo = '<span style="color:var(--text3);opacity:.6">—</span>';
+    
+    var diaIso = d.toISOString();
+    html += '<div class="cal-painel-item" onclick="_calPainelDia=\'' + diaIso + '\';calRenderPainelLateral();">'
+      + '<div style="min-width:42px;text-align:center;flex-shrink:0">'
+        + '<div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">' + diasSem[d.getDay()] + '</div>'
+        + '<div style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:800;color:var(--text);line-height:1">' + d.getDate() + '</div>'
+      + '</div>'
+      + '<div style="flex:1;font-size:11.5px;color:var(--text2);line-height:1.4;align-self:center">' + resumo + '</div>'
+    + '</div>';
+  }
+  
+  return html;
+}
+
+// Datas especiais brasileiras + Gâmi
+function _calDatasEspeciais(dia){
+  var m = dia.getMonth(), d = dia.getDate();
+  var arr = [];
+  // 1 jan - Ano Novo
+  if(m===0 && d===1)   arr.push({ nome:'Ano Novo', emoji:'✨', classe:'ano-novo' });
+  // Datas brasileiras
+  if(m===3 && d===21)  arr.push({ nome:'Tiradentes', emoji:'🇧🇷', classe:'brasil' });
+  if(m===4 && d===1)   arr.push({ nome:'Dia do Trabalho', emoji:'🇧🇷', classe:'brasil' });
+  if(m===8 && d===7)   arr.push({ nome:'Independência do Brasil', emoji:'🇧🇷', classe:'brasil' });
+  if(m===9 && d===12)  arr.push({ nome:'Nossa Sra. Aparecida', emoji:'🇧🇷', classe:'brasil' });
+  if(m===10 && d===2)  arr.push({ nome:'Finados', emoji:'🇧🇷', classe:'brasil' });
+  if(m===10 && d===15) arr.push({ nome:'Proclamação da República', emoji:'🇧🇷', classe:'brasil' });
+  // Natal e Réveillon
+  if(m===11 && d===25) arr.push({ nome:'Natal', emoji:'🎄', classe:'natal' });
+  if(m===11 && d===31) arr.push({ nome:'Réveillon', emoji:'🎆', classe:'reveillon' });
+  // Dia das Mães (2º domingo de maio), Dia dos Pais (2º domingo de agosto) — simplificado
+  if(m===4 && dia.getDay()===0 && d>=8 && d<=14)  arr.push({ nome:'Dia das Mães', emoji:'💐', classe:'' });
+  if(m===7 && dia.getDay()===0 && d>=8 && d<=14)  arr.push({ nome:'Dia dos Pais', emoji:'👨', classe:'' });
+  return arr;
+}
+
+// Tooltip preview no hover de um dia
+var _calTooltipEl = null;
+function _calMostrarTooltip(diaEl, dia){
+  _calEsconderTooltip();
+  var dados = _calCarregarDadosDoDia(dia);
+  if(dados.count === 0) return;
+  
+  // Resumo conciso
+  var dStr = dia.toISOString().split('T')[0];
+  var tarefas = [];
+  try { tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]'); } catch(e){}
+  var qtdTar = tarefas.filter(function(t){ return t && t.data === dStr && !t.concluida; }).length;
+  
+  var linhas = [];
+  var meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  linhas.push('**' + dia.getDate() + ' ' + meses[dia.getMonth()] + '**');
+  if(qtdTar) linhas.push('📋 ' + qtdTar + ' tarefa' + (qtdTar>1?'s':''));
+  
+  if(typeof getPessoas === 'function'){
+    var bdays = (getPessoas()||[]).filter(function(p){
+      if(!p || !p.aniversario) return false;
+      try { var b = new Date(p.aniversario); return b.getDate()===dia.getDate() && b.getMonth()===dia.getMonth(); } catch(e){ return false; }
+    });
+    bdays.forEach(function(p){ linhas.push('🎂 ' + p.nome.split(' ')[0]); });
+  }
+  
+  var especiais = _calDatasEspeciais(dia);
+  especiais.forEach(function(e){ linhas.push(e.emoji + ' ' + e.nome); });
+  
+  if(linhas.length <= 1) return;
+  
+  var tt = document.createElement('div');
+  tt.className = 'cal-day-tooltip';
+  tt.innerHTML = linhas.join('\n').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  document.body.appendChild(tt);
+  
+  var rect = diaEl.getBoundingClientRect();
+  var ttRect = tt.getBoundingClientRect();
+  var top = rect.top - ttRect.height - 8 + window.scrollY;
+  var left = rect.left + (rect.width - ttRect.width)/2 + window.scrollX;
+  if(top < window.scrollY + 8){ top = rect.bottom + 8 + window.scrollY; }
+  if(left < 8) left = 8;
+  if(left + ttRect.width > window.innerWidth - 8) left = window.innerWidth - ttRect.width - 8;
+  tt.style.top = top + 'px';
+  tt.style.left = left + 'px';
+  _calTooltipEl = tt;
+}
+function _calEsconderTooltip(){
+  if(_calTooltipEl){ try { document.body.removeChild(_calTooltipEl); } catch(e){} _calTooltipEl = null; }
+}
+
+// Confetti suave para aniversariantes do dia (chama 1x ao abrir calendário se hoje é aniversário)
+function _calConfettiAniversario(){
+  if(typeof _gamiConfetti === 'function') _gamiConfetti();
+}
+
+// Verifica se hoje é aniversário e dispara confetti
+function _calCheckAniversarioHoje(){
+  try {
+    if(typeof getPessoas !== 'function') return;
+    var hoje = new Date();
+    var bdays = (getPessoas()||[]).filter(function(p){
+      if(!p || !p.aniversario) return false;
+      try { var b = new Date(p.aniversario); return b.getDate()===hoje.getDate() && b.getMonth()===hoje.getMonth(); } catch(e){ return false; }
+    });
+    if(bdays.length){
+      setTimeout(_calConfettiAniversario, 600);
+    }
+  } catch(e){}
+}
+
+// Hook após renderCalendar — aplica classes especiais nos dias
+function _calDecorarDias(){
+  try {
+    var dias = document.querySelectorAll('.cal-day');
+    dias.forEach(function(el){
+      var dataAttr = el.getAttribute('data-date') || el.getAttribute('data-d');
+      if(!dataAttr) return;
+      var d = new Date(dataAttr);
+      if(isNaN(d.getTime())) return;
+      
+      // Datas especiais
+      var especiais = _calDatasEspeciais(d);
+      especiais.forEach(function(e){ if(e.classe) el.classList.add(e.classe); });
+      
+      // Tooltip hover
+      if(!el._gamiHooked){
+        el._gamiHooked = true;
+        el.addEventListener('mouseenter', function(){ _calMostrarTooltip(el, d); });
+        el.addEventListener('mouseleave', _calEsconderTooltip);
+        // Click bounce + atualiza painel
+        el.addEventListener('click', function(){
+          _calPainelDia = d.toISOString();
+          try { calRenderPainelLateral(); } catch(e){}
+        });
+      }
+      
+      // Streak produtivo (3+ tarefas concluídas no dia)
+      try {
+        var tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]');
+        var dStr = d.toISOString().split('T')[0];
+        var concluidas = tarefas.filter(function(t){ return t && t.data === dStr && t.concluida; }).length;
+        if(concluidas >= 3) el.classList.add('streak-produtivo');
+      } catch(e){}
+    });
+  } catch(e){ console.warn(e); }
+}
+
+// Atualiza a data no header limpo
+function _calAtualizarDataHeader(){
+  var el = document.getElementById('cal-hero-data');
+  if(!el) return;
+  var hoje = new Date();
+  var diasSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  el.textContent = diasSem[hoje.getDay()] + ', ' + hoje.getDate() + ' de ' + meses[hoje.getMonth()] + ' de ' + hoje.getFullYear();
+}
+
+// Hook no init do calendário
+(function(){
+  var origInit = window.initCalendar || window.renderCalendar;
+  function setup(){
+    try { _calAtualizarDataHeader(); } catch(e){}
+    try { calRenderPainelLateral(); } catch(e){}
+    try { _calDecorarDias(); } catch(e){}
+    try { _calCheckAniversarioHoje(); } catch(e){}
+  }
+  // Hook renderCalendar pra decorar dias após cada render
+  if(typeof renderCalendar === 'function'){
+    var origRender = renderCalendar;
+    window.renderCalendar = function(){
+      var r = origRender.apply(this, arguments);
+      setTimeout(_calDecorarDias, 30);
+      setTimeout(function(){ try { _calAtualizarDataHeader(); } catch(e){} }, 30);
+      return r;
+    };
+  }
+  // Roda 1x quando o DOM carrega
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(setup, 800); });
+  } else {
+    setTimeout(setup, 800);
+  }
+})();
 
 /* ============================================================== */
 /* CALENDÁRIO: ALTERNADOR DE VISTAS (Mês / Semana / Lista / Ano)   */
