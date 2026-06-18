@@ -1,4 +1,4 @@
-<!-- v26.65 - Plano de Carreira: Hero pessoal + Trilha vertical + Promoções timeline + 5 fases ícones - 17/06/2026 -->
+<!-- v26.66 - Aba Cidades: cache diário 7h IA, balões aniversariantes, fallback Machine local nos relatórios - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -3390,6 +3390,23 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         animation: pessoasBalaoSobe 5s linear infinite;
         pointer-events: none;
         opacity: 0;
+      }
+      
+      /* 🆕 v26.66: Balões cidade aniversariante (mesmo padrão de pessoa) */
+      .cid-balao {
+        position: absolute;
+        bottom: -20px;
+        font-size: 22px;
+        animation: pessoasBalaoSobe 6s linear infinite;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 1;
+      }
+      
+      /* 🆕 Pulse no card de cidade aniversariante HOJE */
+      @keyframes cidBdayPulse {
+        0%,100% { box-shadow:0 0 0 3px rgba(255,217,61,.4); }
+        50%     { box-shadow:0 0 0 8px rgba(255,217,61,.2); }
       }
       
       /* 7️⃣ Avatar bounce ao clicar */
@@ -21236,32 +21253,44 @@ function _slugCidadeParaRPC(c){
     .replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
 }
 
-// 🆕 Coleta métricas via Supabase (formato igual _coletarMetricasMachine pra reaproveitar prompt)
+// 🆕 v26.66: Coleta métricas com FALLBACK Machine local se Supabase falhar
 async function _coletarMetricasSemanaisSupabase(cidade){
   var slug = _slugCidadeParaRPC(cidade);
   var d = await _buscarMetricasSemanaisCidade(slug);
-  if(!d || !d.corridas_semana) return null;
-  return {
-    corridasSemana: d.corridas_semana || 0,
-    corridasSemanaAnt: d.corridas_semana_ant || 0,
-    finalizadas: d.finalizadas || 0,
-    canceladas: d.canceladas || 0,
-    taxaConclusao: d.taxa_conclusao,
-    receitaEstimada: parseFloat(d.receita_estimada || 0),
-    receitaSemanaAnt: parseFloat(d.receita_semana_ant || 0),
-    ticketMedio: parseFloat(d.ticket_medio || 0),
-    crescimentoPct: d.crescimento_pct,
-    crescReceitaPct: d.cresc_receita_pct,
-    motoboysAtivos: d.motoboys_ativos || 0,
-    motoboysCadastrados: d.motoboys_cadastrados || 0,
-    empresasComPedido: d.empresas_com_pedido || 0,
-    empresasCadastradas: d.empresas_cadastradas || 0,
-    top3Empresas: (d.top3_empresas || []).map(function(e){
-      return { nome: e.nome, corridas: parseInt(e.corridas)||0, valor: parseFloat(e.valor)||0 };
-    }),
-    pctConcentracaoTop3: d.pct_concentracao_top3 || 0,
-    fonte: 'supabase'
-  };
+  if(d && d.corridas_semana > 0){
+    return {
+      corridasSemana: d.corridas_semana || 0,
+      corridasSemanaAnt: d.corridas_semana_ant || 0,
+      finalizadas: d.finalizadas || 0,
+      canceladas: d.canceladas || 0,
+      taxaConclusao: d.taxa_conclusao,
+      receitaEstimada: parseFloat(d.receita_estimada || 0),
+      receitaSemanaAnt: parseFloat(d.receita_semana_ant || 0),
+      ticketMedio: parseFloat(d.ticket_medio || 0),
+      crescimentoPct: d.crescimento_pct,
+      crescReceitaPct: d.cresc_receita_pct,
+      motoboysAtivos: d.motoboys_ativos || 0,
+      motoboysCadastrados: d.motoboys_cadastrados || 0,
+      empresasComPedido: d.empresas_com_pedido || 0,
+      empresasCadastradas: d.empresas_cadastradas || 0,
+      top3Empresas: (d.top3_empresas || []).map(function(e){
+        return { nome: e.nome, corridas: parseInt(e.corridas)||0, valor: parseFloat(e.valor)||0 };
+      }),
+      pctConcentracaoTop3: d.pct_concentracao_top3 || 0,
+      fonte: 'supabase'
+    };
+  }
+  // 🆕 FALLBACK: tenta dados Machine locais (cache do _vgCache)
+  if(typeof _coletarMetricasMachine === 'function'){
+    try {
+      var dl = _coletarMetricasMachine(cidade.id);
+      if(dl && dl.corridasSemana > 0){
+        console.log('[Métricas] Usando fallback Machine local pra '+cidade.nome);
+        return Object.assign({}, dl, { fonte: 'machine_local' });
+      }
+    } catch(e){ console.warn('[Métricas] Fallback falhou:', e); }
+  }
+  return null;
 }
 
 function _coletarMetricasMachine(cidadeId){
@@ -21420,8 +21449,19 @@ async function diagnosticoSemanalCidades(forceNew){
   }
   
   if(!comDados.length){
-    painel.style.cssText = 'display:block;margin-bottom:14px;padding:16px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-radius:10px';
-    painel.innerHTML = '<div style="font-size:12px;color:#A32D2D"><strong>⚠️ Sem dados em nenhuma cidade.</strong> Verifique o sync.</div>';
+    painel.style.cssText = 'display:block;margin-bottom:14px;padding:18px;background:#FFF5F5;border:1.5px solid #E24B4A55;border-left:4px solid #E24B4A;border-radius:10px';
+    painel.innerHTML = '<div style="display:flex;align-items:flex-start;gap:12px">'
+      + '<span style="font-size:28px">⚠️</span>'
+      + '<div style="flex:1">'
+        + '<div style="font-size:13px;font-weight:800;color:#A32D2D;margin-bottom:4px">Sem dados nas '+cidadesPermitidas.length+' cidades</div>'
+        + '<div style="font-size:11.5px;color:#7B1F1F;line-height:1.5;margin-bottom:8px">A análise depende de uma das fontes abaixo:</div>'
+        + '<ul style="font-size:11.5px;color:#7B1F1F;line-height:1.6;padding-left:18px;margin:0 0 10px 0">'
+          + '<li><strong>RPC Supabase</strong> (<code>metricas_semanais_cidade</code>) — precisa estar criada e com dados</li>'
+          + '<li><strong>Cache Machine local</strong> — abra cada cidade pra carregar dados Machine</li>'
+        + '</ul>'
+        + '<div style="font-size:11px;color:#7B1F1F;background:#FFFFFF99;border-radius:6px;padding:8px 10px"><strong>💡 Solução rápida:</strong> abra 2–3 cidades (Maceió, Fortaleza, Recife) pra carregar os dados, depois clique aqui novamente.</div>'
+      + '</div>'
+    + '</div>';
     return;
   }
   
@@ -24070,25 +24110,62 @@ function renderCidadesAniversarios(){
   
   var mesesNomes = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
   
-  host.innerHTML = '<div style="padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:12px;position:relative">'
-    +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px">🎂 ANIVERSÁRIOS DE '+mesesNomes[mesAtual].toUpperCase()+'</div>'
-    +'<div style="font-size:11px;color:#854F0B;margin-top:4px;margin-bottom:10px;font-weight:600">'+aniversariantes.length+' cidade'+(aniversariantes.length!==1?'s':'')+' faz'+(aniversariantes.length!==1?'em':'')+' aniversário esse mês — bora celebrar! 🎉</div>'
-    +'<div style="display:flex;flex-wrap:wrap;gap:8px">'
+  host.innerHTML = '<div class="cid-baloes-host" style="position:relative;padding:14px 16px;background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:2px solid #EF9F27;border-radius:12px;overflow:hidden">'
+    +'<div style="position:absolute;top:-10px;left:14px;background:#EF9F27;color:white;padding:3px 10px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:1px;z-index:2">🎂 ANIVERSÁRIOS DE '+mesesNomes[mesAtual].toUpperCase()+'</div>'
+    +'<div style="font-size:11px;color:#854F0B;margin-top:4px;margin-bottom:10px;font-weight:600;position:relative;z-index:2">'+aniversariantes.length+' cidade'+(aniversariantes.length!==1?'s':'')+' faz'+(aniversariantes.length!==1?'em':'')+' aniversário esse mês — bora celebrar! 🎉</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px;position:relative;z-index:2">'
       + aniversariantes.map(function(a){
-        var corBg = a.jaPassou ? '#FCEBEB55' : '#FFFFFF';
-        var corBorda = a.jaPassou ? '#E24B4A55' : '#EF9F27';
+        var ehHoje = a.dia === hoje.getDate();
+        var corBg = a.jaPassou ? '#FCEBEB55' : (ehHoje ? '#FFFBEB' : '#FFFFFF');
+        var corBorda = a.jaPassou ? '#E24B4A55' : (ehHoje ? '#FFD93D' : '#EF9F27');
         var label = a.jaPassou ? '✓ '+a.dia+'/'+(mesAtual+1) : '📅 '+a.dia+'/'+(mesAtual+1);
+        if(ehHoje) label = '🎂 HOJE!';
         var icone = a.anos >= 400 ? '🏛️' : a.anos >= 200 ? '🌟' : a.anos >= 100 ? '🎖️' : '🎉';
-        return '<div onclick="abrirCidade(\''+a.cidade.id+'\')" style="padding:8px 12px;background:'+corBg+';border:1px solid '+corBorda+';border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.04)\'" onmouseout="this.style.transform=\'scale(1)\'">'
+        var glow = ehHoje ? 'box-shadow:0 0 0 3px rgba(255,217,61,.4);animation:cidBdayPulse 2s ease-in-out infinite;' : '';
+        return '<div onclick="abrirCidade(\''+a.cidade.id+'\')" style="padding:8px 12px;background:'+corBg+';border:1px solid '+corBorda+';border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:transform .15s;'+glow+'" onmouseover="this.style.transform=\'scale(1.04)\'" onmouseout="this.style.transform=\'scale(1)\'">'
           +'<span style="font-size:18px">'+icone+'</span>'
           +'<div>'
             +'<div style="font-size:12px;font-weight:700;color:var(--text);line-height:1.2">'+a.cidade.nome+'/'+a.cidade.uf+'</div>'
-            +'<div style="font-size:10px;color:var(--text3);margin-top:1px"><strong>'+a.anos+' anos</strong> · '+label+'</div>'
+            +'<div style="font-size:10px;color:'+(ehHoje?'#B45309':'var(--text3)')+';margin-top:1px;font-weight:'+(ehHoje?'700':'400')+'"><strong>'+a.anos+' anos</strong> · '+label+'</div>'
           +'</div>'
         +'</div>';
       }).join('')
     +'</div>'
   +'</div>';
+  
+  // 🆕 v26.66: Lança balões se há cidade aniversariante HOJE + confetti 1x/dia
+  var temBdayHoje = aniversariantes.some(function(a){ return a.dia === hoje.getDate(); });
+  if(temBdayHoje){
+    setTimeout(function(){ _cidLancarBaloes(host); }, 100);
+  }
+}
+
+// 🆕 v26.66: Lança balões no card de aniversariantes de cidade (DIA do aniversário)
+function _cidLancarBaloes(host){
+  if(!host) return;
+  var container = host.querySelector('.cid-baloes-host');
+  if(!container) return;
+  // Limpa balões antigos
+  container.querySelectorAll('.cid-balao').forEach(function(b){ b.remove(); });
+  var emojis = ['🎈','🎂','🎉','✨','🎁','🥳'];
+  for(var i=0; i<8; i++){
+    var b = document.createElement('div');
+    b.className = 'cid-balao';
+    b.textContent = emojis[i % emojis.length];
+    b.style.left = (5 + Math.random() * 90) + '%';
+    b.style.animationDelay = (i * 0.7) + 's';
+    b.style.animationDuration = (5 + Math.random() * 2.5) + 's';
+    container.appendChild(b);
+  }
+  // 🎉 Confetti 1x por dia
+  try {
+    var hojeChave = new Date().toISOString().split('T')[0];
+    var k = 'gami_cid_bday_confetti_' + hojeChave;
+    if(!localStorage.getItem(k) && typeof _gamiConfetti === 'function'){
+      _gamiConfetti();
+      localStorage.setItem(k, '1');
+    }
+  } catch(e){}
 }
 
 /* Filtro por região */
@@ -24457,15 +24534,29 @@ function cidIaAtualizar(forcar){
   var meta = document.getElementById('cid-ia-meta');
   if(!conteudo) return;
   
-  // Cache de 2h
+  // 🆕 v26.66: Cache DIÁRIO (rola 1x por dia, expira no próximo dia às 7h)
   var CACHE_KEY = 'gami_cid_ia_rede_cache';
-  var CACHE_MAX = 2 * 60 * 60 * 1000; // 2 horas
+  
+  // Cache válido se foi gerado HOJE depois das 7h, OU ontem mas ainda não passou das 7h de hoje
+  function _cacheAindaValido(ts){
+    if(!ts) return false;
+    var agora = new Date();
+    var cache = new Date(ts);
+    // Próxima 7h da manhã APÓS o cache
+    var proxRoll = new Date(cache.getFullYear(), cache.getMonth(), cache.getDate(), 7, 0, 0);
+    if(cache.getHours() >= 7) {
+      // Cache gerado APÓS 7h: vale até 7h do próximo dia
+      proxRoll.setDate(proxRoll.getDate() + 1);
+    }
+    // Senão, cache gerado ANTES de 7h: vale até 7h do MESMO dia (que já passou)
+    return agora < proxRoll;
+  }
   
   // 1️⃣ Tenta cache válido primeiro (mostra direto)
   if(!forcar){
     try {
       var cache = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-      if(cache && cache.texto && cache.ts && (Date.now() - cache.ts < CACHE_MAX)){
+      if(cache && cache.texto && cache.ts && _cacheAindaValido(cache.ts)){
         _cidIaRenderizar(cache.texto, cache.ts);
         return;
       }
@@ -24539,9 +24630,14 @@ function _cidIaRenderizar(texto, ts, instantaneo){
   // Meta
   if(meta){
     var quando = _cidIaTempoRelativo(ts);
+    // 🆕 v26.66: mostra próxima atualização (7h amanhã)
+    var prox7h = new Date();
+    if(prox7h.getHours() >= 7) prox7h.setDate(prox7h.getDate() + 1);
+    prox7h.setHours(7, 0, 0, 0);
+    var horasAtePox = Math.round((prox7h - Date.now()) / 3600000);
     meta.innerHTML = '<span>📊 Última análise: ' + quando + '</span>'
       + '<span style="opacity:.5">·</span>'
-      + '<span>Cache 2h</span>';
+      + '<span title="Atualiza automaticamente toda manhã às 7h">🔄 Próxima atualização: ' + (horasAtePox <= 0 ? 'a qualquer momento' : 'em ' + horasAtePox + 'h (7h)') + '</span>';
   }
 }
 
