@@ -1,4 +1,4 @@
-<!-- v26.46 - Painel Hoje carrega real + botoes Tarefa/Anotacao - 17/06/2026 -->
+<!-- v26.47 - Remove duplicacao painel calendario - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8554,24 +8554,22 @@ function selectDay(d, m, y){
   const panel = document.getElementById('day-panel-content');
   if(panel) panel.innerHTML = html;
 
-  // 🚨 GARANTE que o painel fica VISÍVEL ao selecionar um dia
+  // 🆕 NÃO mostra mais painel embaixo — só atualiza painel lateral (Hoje)
   const card = document.getElementById('cal-day-panel');
   const wrap = document.getElementById('cal-day-panel-wrap');
-  const layoutGrid = document.getElementById('cal-layout-grid');
-  if(wrap) wrap.style.display = 'block';
-  if(card) card.style.display = 'block';
-  // Ajusta grid pra 2 colunas (calendário + painel lateral)
-  if(layoutGrid) layoutGrid.style.gridTemplateColumns = '1fr 340px';
-
-  // Rola pra ver o painel só em mobile (em desktop fica visível na lateral)
+  if(wrap) wrap.style.display = 'none'; // mantém escondido
+  if(card) card.style.display = 'none';
+  
+  // Atualiza painel lateral com o dia clicado
   try {
-    if(window.innerWidth <= 900){
-      setTimeout(function(){
-        var el = document.getElementById('cal-day-panel');
-        if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth', block:'start'});
-      }, 80);
+    var diaClicado = new Date(y, m, d);
+    if(typeof _calPainelDia !== 'undefined') {
+      window._calPainelDia = diaClicado.toISOString();
     }
-  } catch(e){}
+    if(typeof calRenderPainelLateral === 'function') {
+      calRenderPainelLateral();
+    }
+  } catch(e){ console.warn(e); }
 }
 
 function fecharDiaPainel(){
