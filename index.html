@@ -1,4 +1,4 @@
-<!-- v26.60 - Quick Contact agora via botão 📇 (não mais hover) - 17/06/2026 -->
+<!-- v26.64 - Modal compromisso centralizado, meta mes com botao, estoque sem valor pra nao-admins - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -542,6 +542,24 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(11,37,66,.55);display:flex;align-items:center;justify-content:center;z-index:200;display:none;padding:14px}
 .modal-overlay.open{display:flex}
+
+/* 🆕 v26.64: Esconde valores monetários do estoque pra quem não tem permissão */
+body.gami-no-valor .gami-valor { 
+  filter: blur(7px);
+  user-select: none;
+  cursor: not-allowed;
+  position: relative;
+}
+body.gami-no-valor .gami-valor::after {
+  content: '🔒';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  filter: none;
+  z-index: 2;
+}
 .modal{background:#fff;border:1px solid var(--border);border-radius:14px;padding:22px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(11,37,66,.25)}
 .modal-box{background:#fff;border:1px solid var(--border);border-radius:14px;padding:22px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(11,37,66,.25);color:#0B2542}
 .modal-box .field-label{font-size:11px;font-weight:600;color:#56627a;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
@@ -3033,8 +3051,15 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <div class="g2" style="margin-bottom:14px">
       <div class="card" style="background:linear-gradient(135deg,#EAF3DE,#D4EDDA);border-color:#1D9E7533">
-        <div style="font-size:11px;font-weight:600;color:#3B6D11;text-transform:uppercase;margin-bottom:4px">Meta do mês</div>
-        <input id="tf-meta-mes-input" class="inp" placeholder="Ex: Lançar campanha nas 10 cidades" style="font-size:13px;font-weight:600;border-color:#1D9E7544;background:white" onchange="tfSalvarMetaMes()"/>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <div style="font-size:11px;font-weight:600;color:#3B6D11;text-transform:uppercase">🎯 Meta do mês</div>
+          <span id="tf-meta-mes-status" style="font-size:10px;color:#1D9E75;font-weight:600;opacity:0;transition:opacity .3s">✓ Salvo</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input id="tf-meta-mes-input" class="inp" placeholder="Ex: Lançar campanha nas 10 cidades" style="flex:1;font-size:13px;font-weight:600;border-color:#1D9E7544;background:white" onchange="tfSalvarMetaMes(true)" onkeypress="if(event.key==='Enter'){tfSalvarMetaMes(true);this.blur();}"/>
+          <button onclick="tfSalvarMetaMes(true)" title="Salvar meta" style="padding:8px 14px;border:none;border-radius:8px;background:#1D9E75;color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;display:flex;align-items:center;gap:5px">💾 Salvar</button>
+        </div>
+        <div style="font-size:10px;color:#3B6D11;opacity:.7;margin-top:4px;font-style:italic">Pressione Enter ou clique em Salvar pra confirmar</div>
       </div>
       <div class="card">
         <div style="display:flex;gap:16px;justify-content:space-around;text-align:center">
@@ -6094,10 +6119,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         </div>
       </div>
       <div class="card">
-        <div class="card-title">🌟 Pessoa Gâmi de hoje</div>
+        <div class="card-title">🌟 Pessoa Gâmi da semana</div>
         <div id="rank-spotlight">
-          <div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">
-            Toda terça-feira, uma pessoa é sorteada!
+          <div style="text-align:center;padding:18px;color:var(--text3);font-size:11px;line-height:1.6">
+            Toda <strong style="color:#9333EA">terça-feira</strong>, uma pessoa é sorteada<br>
+            e recebe <strong style="color:#10B981">+20 pontos</strong> 🎉
           </div>
         </div>
       </div>
@@ -6748,16 +6774,155 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     .culture-pessoa-foto { transition: transform .25s ease; }
     .culture-pessoa-foto:hover { transform: scale(1.18); z-index:5; }
     @media(max-width:680px){ .culture-grid-2{ grid-template-columns:1fr !important; } }
+    
+    /* 🆕 v26.62 — Culture Code animações */
+    
+    /* Hero título com cursor piscando (efeito digitando) */
+    @keyframes cultureCursorBlink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    
+    /* Mission/Vision cards hover lift */
+    .culture-mv-card { transition: transform .25s ease, box-shadow .25s ease; }
+    .culture-mv-card:hover { transform: translateY(-3px); box-shadow: 0 10px 25px rgba(13,43,92,.12); }
+    
+    /* VALORES com FLIP HOVER */
+    .culture-valor-flip {
+      perspective: 1000px;
+      height: 160px;
+      cursor: pointer;
+    }
+    .culture-valor-flip-inner {
+      position: relative;
+      width: 100%; height: 100%;
+      transition: transform .6s cubic-bezier(.4,.2,.2,1);
+      transform-style: preserve-3d;
+    }
+    .culture-valor-flip:hover .culture-valor-flip-inner {
+      transform: rotateY(180deg);
+    }
+    .culture-valor-flip-face {
+      position: absolute;
+      inset: 0;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(13,43,92,.08);
+    }
+    .culture-valor-flip-back {
+      transform: rotateY(180deg);
+      color: white;
+    }
+    
+    /* Mural Gratidão reações */
+    .culture-grat-reacao {
+      cursor: pointer;
+      transition: transform .15s ease;
+      user-select: none;
+    }
+    .culture-grat-reacao:hover { transform: scale(1.2); }
+    .culture-grat-reacao:active { transform: scale(1.4); }
+    @keyframes cultureReacaoPop {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.6); }
+      100% { transform: scale(1); }
+    }
+    .culture-grat-reacao.popped { animation: cultureReacaoPop .35s ease; }
+    
+    /* Time Gâmi badge NOVO */
+    @keyframes cultureNovoPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    .culture-time-badge-novo {
+      position: absolute;
+      top: -4px; right: -4px;
+      background: linear-gradient(135deg, #EC4899, #DB2777);
+      color: white;
+      font-size: 8px;
+      font-weight: 800;
+      padding: 2px 5px;
+      border-radius: 8px;
+      letter-spacing: .5px;
+      box-shadow: 0 2px 5px rgba(219,39,119,.4);
+      animation: cultureNovoPulse 2s ease-in-out infinite;
+      border: 1.5px solid white;
+    }
+    .culture-time-pessoa-wrap {
+      position: relative;
+      display: inline-block;
+    }
+    
+    /* Stats contadores entram */
+    @keyframes cultureStatEntra {
+      0% { opacity: 0; transform: translateY(8px) scale(.9); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    
+    /* Frase final pulse */
+    @keyframes culturePulseFinal {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+    .culture-frase-final { animation: gami-fade-up .8s ease both, culturePulseFinal 4s ease-in-out infinite 1s; }
+    
+    /* Valor da semana destaque */
+    @keyframes culturaValorSemanaShine {
+      0%, 100% { box-shadow: 0 4px 18px rgba(245,158,11,.18), 0 0 0 0 rgba(245,158,11,.3); }
+      50% { box-shadow: 0 6px 22px rgba(245,158,11,.25), 0 0 0 4px rgba(245,158,11,.08); }
+    }
+    .culture-valor-semana-wrap { animation: culturaValorSemanaShine 3s ease-in-out infinite; }
+    
+    /* Avatar mini quem assinou */
+    .culture-assin-mini {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 2px 4px rgba(0,0,0,.15);
+      transition: transform .2s ease;
+      cursor: default;
+    }
+    .culture-assin-mini:hover { transform: scale(1.2); z-index: 3; }
+    
+    /* Gratidão card cascade */
+    .culture-grat-card { animation: gami-fade-up .4s ease both; }
+    .culture-grat-card:nth-child(1) { animation-delay: 0ms; }
+    .culture-grat-card:nth-child(2) { animation-delay: 80ms; }
+    .culture-grat-card:nth-child(3) { animation-delay: 160ms; }
+    .culture-grat-card:nth-child(4) { animation-delay: 240ms; }
+    .culture-grat-card:nth-child(5) { animation-delay: 320ms; }
+    .culture-grat-card:nth-child(6) { animation-delay: 400ms; }
+    
+    /* 🆕 v26.63: Typewriter + word fade-in */
+    @keyframes cultureWordIn {
+      0%   { opacity: 0; transform: translateY(10px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .culture-typewriter-cursor::after {
+      content: '|';
+      display: inline-block;
+      color: #F59E0B;
+      margin-left: 2px;
+      animation: cultureCursorBlink 1s ease-in-out infinite;
+      font-weight: 400;
+    }
+    .culture-typewriter-done.culture-typewriter-cursor::after {
+      display: none;
+    }
   </style>
 
   <div class="page-header">
     <div>
       <div class="page-title">🎯 Culture Code</div>
-      <div class="page-sub">O jeito Gâmi de ser — atitudes, comportamentos e ações</div>
+      <div class="page-sub" id="culture-header-sub">O jeito Gâmi de ser · Carregando...</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-ghost" onclick="culturePresentation()" title="Modo apresentação fullscreen">📺 Apresentar</button>
-      <button class="btn btn-primary" onclick="openAI('Crie um post para Instagram da Gâmi Delivery destacando um dos valores da nossa cultura: caráter, pessoas em primeiro lugar, propósito além do lucro, integridade, excelência com simplicidade, crescimento sustentável, comunidade e família, ou fé com respeito. Tom inspirador e humano.')">Gerar post de cultura ↗</button>
     </div>
   </div>
 
@@ -6769,7 +6934,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
     <div style="position:relative;padding:36px 28px;text-align:center">
       <div style="display:inline-block;font-size:10px;letter-spacing:2px;text-transform:uppercase;background:rgba(255,255,255,.18);padding:5px 14px;border-radius:14px;margin-bottom:14px;font-weight:600">CULTURA GÂMI · 2026</div>
-      <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-.8px;margin-bottom:10px;line-height:1.1">Bem-vindo ao <span style="background:linear-gradient(90deg,#FFD93D,#FFB300);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">jeito Gâmi</span> de ser</div>
+      <div id="culture-hero-titulo" style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;letter-spacing:-.8px;margin-bottom:10px;line-height:1.1">Bem-vindo ao <span style="background:linear-gradient(90deg,#FFD93D,#FFB300);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">jeito Gâmi</span> de ser</div>
       <div style="font-size:13px;opacity:.92;max-width:580px;margin:0 auto 22px;line-height:1.7">Este é um guia prático para descrever de forma clara nossas atitudes, comportamentos e ações. Representa aquilo que <strong>não abrimos mão</strong>, traduzindo como é <strong>ser Gâmi Delivery</strong>.</div>
 
       <!-- STATS LIVE -->
@@ -6777,22 +6942,31 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     </div>
   </div>
 
+  <!-- 🆕 VALOR DA SEMANA -->
+  <div id="culture-valor-semana" class="card culture-section" style="margin-bottom:14px;padding:0;overflow:hidden;border:none;position:relative"></div>
+
   <!-- 1. QUEM SOMOS -->
   <div class="card culture-section" style="margin-bottom:14px">
     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">📖</span> Quem somos</div>
     <div style="font-size:13px;line-height:1.7;color:var(--text2)">A <strong style="color:var(--text)">Gâmi Delivery</strong> foi criada com o intuito de solucionar a logística entre empresa e entregador, com um suporte humanizado tirando dúvidas e intermediando a operação para que ela seja feita com rapidez e segurança. Nossa plataforma oferece ao empresário uma frota de entregadores prontos para que o produto seja destinado com comodidade ao lar dos clientes. <strong style="color:var(--text)">Trazendo resultado, confiança e agilidade em apenas um clique.</strong></div>
   </div>
 
-  <!-- 2. NOSSA MISSÃO -->
-  <div class="card culture-section" style="margin-bottom:14px;border-top:3px solid #1E88E5">
-    <div style="font-size:10px;font-weight:700;color:#1E88E5;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">🎯 Nossa Missão</div>
-    <div style="font-size:13px;line-height:1.65;color:var(--text)">Conectar pessoas, empresas e entregadores através de um serviço de entregas <strong>eficiente, humano e responsável</strong>, gerando oportunidades, dignidade e impacto positivo em cada cidade onde atuamos.</div>
-  </div>
-
-  <!-- 3. NOSSA VISÃO -->
-  <div class="card culture-section" style="margin-bottom:14px;border-top:3px solid #1565C0">
-    <div style="font-size:10px;font-weight:700;color:#1565C0;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">🚀 Nossa Visão</div>
-    <div style="font-size:13px;line-height:1.65;color:var(--text)">Ser a empresa de entregas <strong>mais reconhecida do mundo pelo impacto humano e social</strong> que gera, construindo um ecossistema sustentável que valoriza pessoas, fortalece comunidades e inspira um novo jeito de empreender.</div>
+  <!-- 2+3. MISSÃO + VISÃO LADO A LADO -->
+  <div class="culture-grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+    <div class="card culture-section culture-mv-card" style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border:1px solid #BFDBFE;border-left:4px solid #1E88E5;padding:18px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-20px;right:-20px;font-size:80px;opacity:.06">🎯</div>
+      <div style="position:relative">
+        <div style="font-size:10px;font-weight:800;color:#1E40AF;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px">🎯 Nossa Missão</div>
+        <div style="font-size:13.5px;line-height:1.65;color:#1E3A8A">Conectar pessoas, empresas e entregadores através de um serviço de entregas <strong>eficiente, humano e responsável</strong>, gerando oportunidades, dignidade e impacto positivo em cada cidade onde atuamos.</div>
+      </div>
+    </div>
+    <div class="card culture-section culture-mv-card" style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE);border:1px solid #C4B5FD;border-left:4px solid #7C3AED;padding:18px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-20px;right:-20px;font-size:80px;opacity:.06">🚀</div>
+      <div style="position:relative">
+        <div style="font-size:10px;font-weight:800;color:#5B21B6;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px">🚀 Nossa Visão</div>
+        <div style="font-size:13.5px;line-height:1.65;color:#4C1D95">Ser a empresa de entregas <strong>mais reconhecida do mundo pelo impacto humano e social</strong> que gera, construindo um ecossistema sustentável que valoriza pessoas, fortalece comunidades e inspira um novo jeito de empreender.</div>
+      </div>
+    </div>
   </div>
 
   <!-- 4. NOSSOS VALORES -->
@@ -6863,18 +7037,33 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
 
   <!-- 10. EU SOU GÂMI -->
-  <div class="card culture-section" style="margin-bottom:14px;background:linear-gradient(135deg,#0E7AB8 0%,#1AB8F0 100%);border:none;color:white">
-    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-.3px">📜 Eu sou Gâmi</div>
-    <div style="font-size:12px;opacity:.9;margin-bottom:14px;line-height:1.6">Quando você marca abaixo, está se comprometendo publicamente com a cultura Gâmi.</div>
-    <div id="culture-compromisso" style="display:grid;gap:8px"></div>
-    <div id="culture-assinatura-wrap" style="margin-top:14px"></div>
+  <div class="card culture-section" style="margin-bottom:14px;background:linear-gradient(135deg,#0E7AB8 0%,#1AB8F0 100%);border:none;color:white;position:relative;overflow:hidden">
+    <div style="position:absolute;top:-30px;right:-30px;font-size:120px;opacity:.07">📜</div>
+    <div style="position:relative">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:6px">
+        <div>
+          <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;margin-bottom:6px;letter-spacing:-.3px">📜 Eu sou Gâmi</div>
+          <div style="font-size:12px;opacity:.9;margin-bottom:14px;line-height:1.6">Quando você marca abaixo, está se comprometendo publicamente com a cultura Gâmi.</div>
+        </div>
+        <div style="text-align:right;background:rgba(255,255,255,.18);padding:8px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.3)">
+          <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#FFD93D;line-height:1" id="culture-assinaturas-count">0</div>
+          <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:.9">assinaram</div>
+        </div>
+      </div>
+      <div id="culture-compromisso" style="display:grid;gap:8px"></div>
+      <div id="culture-assinatura-wrap" style="margin-top:14px"></div>
+      <!-- 🆕 GRID DE QUEM ASSINOU -->
+      <div id="culture-assinaturas-grid" style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.2)"></div>
+    </div>
   </div>
 
-  <!-- 11. FRASE FINAL -->
-  <div class="card culture-section" style="text-align:center;background:var(--surface2);border:1px dashed var(--border)">
-    <div style="font-size:11px;font-weight:600;color:#1E88E5;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Bem-vindo à Gâmi Delivery</div>
-    <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--text);letter-spacing:-.3px;margin-bottom:4px">Aqui, você não é um número.</div>
-    <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:700;color:var(--orange);letter-spacing:-.3px">Você é parte da história.</div>
+  <!-- 11. FRASE FINAL ÉPICA -->
+  <div class="card culture-section culture-frase-final" style="text-align:center;background:linear-gradient(135deg,#FFFBEB,#FEF3C7);border:2px dashed #F59E0B;padding:24px 18px;position:relative;overflow:hidden">
+    <div style="position:absolute;top:8px;left:14px;font-size:14px;opacity:.4">"</div>
+    <div style="position:absolute;bottom:8px;right:14px;font-size:14px;opacity:.4">"</div>
+    <div style="font-size:11px;font-weight:700;color:#92400E;text-transform:uppercase;letter-spacing:1.4px;margin-bottom:10px">Bem-vindo à Gâmi Delivery</div>
+    <div id="culture-frase-1" style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#78350F;letter-spacing:-.3px;margin-bottom:6px;line-height:1.2">Aqui, você não é um número.</div>
+    <div id="culture-frase-2" style="font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#EA580C;letter-spacing:-.3px;line-height:1.2">Você é parte da história.</div>
   </div>
 </div>
 
@@ -9782,7 +9971,7 @@ var PONTOS_CATALOGO = {
   
   // ESPECIAIS
   'loteria_semanal':      { pontos: 20,  categoria: 'engajamento', label: '🎁 Loteria semanal (sorteado)' },
-  'spotlight':            { pontos: 0,   categoria: 'cultura',     label: '🌟 Pessoa Gâmi de hoje' },
+  'spotlight':            { pontos: 20,  categoria: 'cultura',     label: '🌟 Pessoa Gâmi da semana' },
   'manual_extra':         { pontos: 0,   categoria: 'trabalho',    label: 'Pontos manuais (admin)' }
 };
 
@@ -31443,45 +31632,51 @@ function adicionarItemAgenda(){
   var modal = document.createElement('div');
   modal.id = 'modal-quicktask';
   modal.className = 'modal-overlay open';
+  // 🆕 v26.64: Styles inline forçados pra garantir centralização
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,37,66,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px';
   modal.innerHTML =
-    '<div class="modal" style="width:460px;max-width:92vw">'+
-      '<div class="modal-head">'+
-        '<div class="modal-title">+ Novo compromisso</div>'+
-        '<button class="modal-close" onclick="document.getElementById(\'modal-quicktask\').remove()">×</button>'+
+    '<div class="modal" style="background:#fff;border:1px solid #DDE3EB;border-radius:14px;padding:22px;width:460px;max-width:92vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(11,37,66,.25);position:relative;color:#0B2542">'+
+      '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
+        '<div class="modal-title" style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:700;color:#0B2542">+ Novo compromisso</div>'+
+        '<button class="modal-close" onclick="document.getElementById(\'modal-quicktask\').remove()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#56627a;line-height:1;padding:4px 8px">×</button>'+
       '</div>'+
       '<div style="display:flex;flex-direction:column;gap:12px;padding:6px 0">'+
         '<div>'+
-          '<div class="field-label" style="margin-bottom:6px">O que precisa ser feito?</div>'+
-          '<input id="qt-titulo" class="inp" placeholder="Ex: Reunião com Talis, ligar pra Maceió..." autofocus/>'+
+          '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">O que precisa ser feito?</div>'+
+          '<input id="qt-titulo" class="inp" placeholder="Ex: Reunião com Talis, ligar pra Maceió..." autofocus style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"/>'+
         '</div>'+
         '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'+
           '<div>'+
-            '<div class="field-label" style="margin-bottom:6px">📅 Data</div>'+
-            '<input id="qt-data" class="inp" type="date" value="'+hojeStr+'"/>'+
+            '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📅 Data</div>'+
+            '<input id="qt-data" class="inp" type="date" value="'+hojeStr+'" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"/>'+
           '</div>'+
           '<div>'+
-            '<div class="field-label" style="margin-bottom:6px">🕐 Horário</div>'+
-            '<input id="qt-hora" class="inp" type="time"/>'+
+            '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">🕐 Horário</div>'+
+            '<input id="qt-hora" class="inp" type="time" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"/>'+
           '</div>'+
           '<div>'+
-            '<div class="field-label" style="margin-bottom:6px">Prioridade</div>'+
-            '<select id="qt-prio" class="sel"><option value="alta">🔴 Alta</option><option value="media" selected>🟡 Média</option><option value="baixa">🟢 Baixa</option></select>'+
+            '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">Prioridade</div>'+
+            '<select id="qt-prio" class="sel" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"><option value="alta">🔴 Alta</option><option value="media" selected>🟡 Média</option><option value="baixa">🟢 Baixa</option></select>'+
           '</div>'+
         '</div>'+
         '<div>'+
-          '<div class="field-label" style="margin-bottom:6px">Tipo</div>'+
+          '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">Tipo</div>'+
           '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="tarefa" checked/> 📋 Tarefa</label>'+
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"><input type="radio" name="qt-tipo" value="agenda"/> 📌 Compromisso</label>'+
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid #DDE3EB;border-radius:8px;background:#F5F7FA"><input type="radio" name="qt-tipo" value="tarefa" checked/> 📋 Tarefa</label>'+
+            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid #DDE3EB;border-radius:8px;background:#F5F7FA"><input type="radio" name="qt-tipo" value="agenda"/> 📌 Compromisso</label>'+
           '</div>'+
-          '<div style="font-size:10px;color:var(--text3);margin-top:6px">📌 Compromissos aparecem no calendário e ficam guardados pra sempre.</div>'+
+          '<div style="font-size:10px;color:#56627a;margin-top:6px">📌 Compromissos aparecem no calendário e ficam guardados pra sempre.</div>'+
         '</div>'+
         '<div style="display:flex;gap:8px;margin-top:6px">'+
-          '<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'modal-quicktask\').remove()">Cancelar</button>'+
-          '<button class="btn btn-primary" style="flex:2" onclick="salvarQuickTask()">Adicionar</button>'+
+          '<button class="btn btn-ghost" style="flex:1;padding:9px 14px;border:1px solid #DDE3EB;background:transparent;color:#0B2542;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" onclick="document.getElementById(\'modal-quicktask\').remove()">Cancelar</button>'+
+          '<button class="btn btn-primary" style="flex:2;padding:9px 14px;border:none;background:#1AB8F0;color:white;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarQuickTask()">Adicionar</button>'+
         '</div>'+
       '</div>'+
     '</div>';
+  // 🆕 Click no fundo escuro fecha
+  modal.addEventListener('click', function(e){
+    if(e.target === modal) modal.remove();
+  });
   document.body.appendChild(modal);
   setTimeout(function(){ var i=document.getElementById('qt-titulo'); if(i) i.focus(); }, 50);
   modal.addEventListener('keydown', function(e){
@@ -31733,15 +31928,22 @@ function abrirModalReconhecimento(){
   var rec = getReconhecimento() || {};
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
   
-  // Cria modal dinâmico
-  var modal = document.getElementById('modal-reconhecimento');
-  if(!modal){
-    modal = document.createElement('div');
-    modal.id = 'modal-reconhecimento';
-    modal.className = 'modal-overlay';
-    modal.innerHTML = '<div class="modal" style="max-width:500px"></div>';
-    document.body.appendChild(modal);
-  }
+  // 🆕 v26.61: Remove modal antigo se existir (pode estar com styles bugados)
+  var modalExistente = document.getElementById('modal-reconhecimento');
+  if(modalExistente){ try { modalExistente.parentNode.removeChild(modalExistente); } catch(e){} }
+  
+  // 🆕 Cria modal sempre do zero com styles INLINE forçados
+  var modal = document.createElement('div');
+  modal.id = 'modal-reconhecimento';
+  modal.className = 'modal-overlay';
+  // Forçar centralização independente de CSS conflitante
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(11,37,66,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:14px';
+  modal.innerHTML = '<div class="modal" style="background:#fff;border:1px solid #DDE3EB;border-radius:14px;padding:22px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 12px 40px rgba(11,37,66,.25);position:relative;color:#0B2542"></div>';
+  // Click fora fecha
+  modal.addEventListener('click', function(e){
+    if(e.target === modal) fecharModalReconhecimento();
+  });
+  document.body.appendChild(modal);
   
   var inner = modal.querySelector('.modal');
   var pessoasOpts = pessoas.map(function(p){
@@ -31749,22 +31951,32 @@ function abrirModalReconhecimento(){
     return '<option value="'+p.id+'"'+sel+'>'+p.nome+'</option>';
   }).join('');
   
-  inner.innerHTML = '<div class="modal-head">'
-    + '<div class="modal-title">🏆 Reconhecimento da semana</div>'
-    + '<button class="modal-close" onclick="document.getElementById(\'modal-reconhecimento\').classList.remove(\'open\')">×</button></div>'
+  inner.innerHTML = '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+    + '<div class="modal-title" style="font-family:\'Syne\',sans-serif;font-size:16px;font-weight:700;color:#0B2542">🏆 Reconhecimento da semana</div>'
+    + '<button class="modal-close" onclick="fecharModalReconhecimento()" style="background:none;border:none;cursor:pointer;font-size:22px;color:#56627a;line-height:1;padding:4px 8px">×</button></div>'
     + '<div style="padding:4px 0">'
-    + '<div class="field-label" style="margin-bottom:5px">Quem se destacou?</div>'
-    + '<select id="rec-pessoa" class="sel" style="width:100%;margin-bottom:12px"><option value="">— Selecione —</option>'+pessoasOpts+'</select>'
-    + '<div class="field-label" style="margin-bottom:5px">O que ela/ele fez? (texto curto)</div>'
-    + '<textarea id="rec-texto" class="inp" style="width:100%;min-height:70px;resize:vertical" placeholder="Ex: Bateu meta da cidade duas semanas seguidas e ainda treinou 2 colegas. Liderança que inspira!">'+(rec.texto||'')+'</textarea>'
-    + '<div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic">A foto da pessoa será puxada automaticamente do cadastro</div>'
+    + '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">Quem se destacou?</div>'
+    + '<select id="rec-pessoa" class="sel" style="width:100%;margin-bottom:12px;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"><option value="">— Selecione —</option>'+pessoasOpts+'</select>'
+    + '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">O que ela/ele fez? (texto curto)</div>'
+    + '<textarea id="rec-texto" class="inp" style="width:100%;min-height:80px;resize:vertical;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542" placeholder="Ex: Bateu meta da cidade duas semanas seguidas e ainda treinou 2 colegas. Liderança que inspira!">'+(rec.texto||'')+'</textarea>'
+    + '<div style="font-size:10px;color:#56627a;margin-top:4px;font-style:italic">A foto da pessoa será puxada automaticamente do cadastro</div>'
     + '<div style="display:flex;gap:8px;margin-top:14px">'
-    + '<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'modal-reconhecimento\').classList.remove(\'open\')">Cancelar</button>'
-    + (rec.nome ? '<button class="btn btn-ghost" style="flex:1;color:#A32D2D;border-color:#f5b5b5" onclick="limparReconhecimento()">Apagar</button>' : '')
-    + '<button class="btn btn-primary" style="flex:1" onclick="salvarReconhecimento()">💾 Salvar</button>'
+    + '<button class="btn btn-ghost" style="flex:1;padding:9px 14px;border:1px solid #DDE3EB;background:transparent;color:#0B2542;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" onclick="fecharModalReconhecimento()">Cancelar</button>'
+    + (rec.nome ? '<button class="btn btn-ghost" style="flex:1;padding:9px 14px;border:1px solid #f5b5b5;background:transparent;color:#A32D2D;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" onclick="limparReconhecimento()">Apagar</button>' : '')
+    + '<button class="btn btn-primary" style="flex:1;padding:9px 14px;border:none;background:#1AB8F0;color:white;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarReconhecimento()">💾 Salvar</button>'
     + '</div></div>';
   
   modal.classList.add('open');
+}
+
+// 🆕 v26.61: Fechar limpa o DOM completamente
+function fecharModalReconhecimento(){
+  var modal = document.getElementById('modal-reconhecimento');
+  if(modal){
+    try { modal.parentNode.removeChild(modal); } catch(e){
+      modal.classList.remove('open');
+    }
+  }
 }
 
 function salvarReconhecimento(){
@@ -31789,8 +32001,9 @@ function salvarReconhecimento(){
     dataInicio: new Date().toISOString().split('T')[0]
   });
   
-  document.getElementById('modal-reconhecimento').classList.remove('open');
+  document.getElementById('modal-reconhecimento') && fecharModalReconhecimento();
   renderReconhecimento();
+  if(typeof renderPessoas === 'function') renderPessoas();
 }
 
 function limparReconhecimento(){
@@ -31804,8 +32017,9 @@ function limparReconhecimento(){
   if(typeof syncConfig === 'function'){
     syncConfig('reconhecimento_semana', {}).catch(function(e){ console.warn(e); });
   }
-  document.getElementById('modal-reconhecimento').classList.remove('open');
+  fecharModalReconhecimento();
   renderReconhecimento();
+  if(typeof renderPessoas === 'function') renderPessoas();
 }
 
 /* ============================
@@ -37172,10 +37386,21 @@ function tfRenderMes(){
   el.innerHTML=html;
 }
 
-function tfSalvarMetaMes(){
+function tfSalvarMetaMes(mostrarFeedback){
   var key=tfMesKey(_tfMesOffset);
   var val=(document.getElementById('tf-meta-mes-input')||{}).value||'';
   localStorage.setItem('gami_tf_meta_'+key, val);
+  // 🆕 v26.64: Feedback visual "✓ Salvo" por 1.5s
+  if(mostrarFeedback){
+    var status = document.getElementById('tf-meta-mes-status');
+    if(status){
+      status.style.opacity = '1';
+      clearTimeout(window._tfMetaMesTimer);
+      window._tfMetaMesTimer = setTimeout(function(){
+        status.style.opacity = '0';
+      }, 1500);
+    }
+  }
 }
 
 // ---- PROJETOS ----
@@ -40560,14 +40785,30 @@ function renderCultureMural(){
   pessoas = pessoas.slice().sort(function(a,b){
     return (ordCat[a.categoria]||9) - (ordCat[b.categoria]||9);
   });
+  
+  // 🆕 v26.62: Detecta "novos do mês" (entrada nos últimos 30 dias)
+  var hoje = new Date();
+  function ehNovo(p){
+    if(!p.entrada) return false;
+    try {
+      var entrou = new Date(p.entrada);
+      var dias = (hoje - entrou) / 86400000;
+      return dias >= 0 && dias <= 30;
+    } catch(e){ return false; }
+  }
+  
   host.innerHTML = pessoas.map(function(p, i){
     var foto = p.foto && p.foto.length > 4
       ? 'background-image:url(\''+p.foto+'\');background-size:cover;background-position:center'
       : 'background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:white;display:flex;align-items:center;justify-content:center;font-weight:700';
     var inicial = (p.nome||'?').trim().charAt(0).toUpperCase();
     var cidade = (typeof pessoaCidades === 'function') ? (pessoaCidades(p)[0]||'') : (p.cidade||'');
-    var titulo = (p.nome||'')+' · '+(p.cargo||'')+(cidade?' · 📍'+cidade:'');
-    return '<div class="culture-pessoa-foto" title="'+titulo.replace(/"/g,'&quot;')+'" style="width:42px;height:42px;border-radius:50%;'+foto+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.18);animation:gami-fade-up .4s ease both;animation-delay:'+Math.min(i*15,800)+'ms">'+(p.foto?'':inicial)+'</div>';
+    var novo = ehNovo(p);
+    var titulo = (p.nome||'')+' · '+(p.cargo||'')+(cidade?' · 📍'+cidade:'')+(novo?' · 🆕 NOVO no time!':'');
+    return '<div class="culture-time-pessoa-wrap" title="'+titulo.replace(/"/g,'&quot;')+'">'
+      + '<div class="culture-pessoa-foto" style="width:42px;height:42px;border-radius:50%;'+foto+';border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.18);animation:gami-fade-up .4s ease both;animation-delay:'+Math.min(i*15,800)+'ms">'+(p.foto?'':inicial)+'</div>'
+      + (novo ? '<div class="culture-time-badge-novo">NOVO</div>' : '')
+    + '</div>';
   }).join('');
 }
 
@@ -40598,13 +40839,72 @@ function renderCultureGratidao(){
     return;
   }
   function fmtData(iso){ try{ var d=new Date(iso); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}); }catch(e){return '';} }
-  host.innerHTML = arr.map(function(g){
-    return '<div style="background:white;border:1px solid #FFB30033;border-radius:10px;padding:11px 13px;position:relative;animation:gami-fade-up .35s ease both">'+
-      '<div style="font-size:11px;color:#854F0B;font-weight:700;margin-bottom:4px">Para <strong>'+g.para+'</strong></div>'+
-      '<div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:6px">"'+g.motivo+'"</div>'+
-      '<div style="font-size:10px;color:#854F0Bcc;display:flex;justify-content:space-between"><span>— '+g.de+'</span><span>'+fmtData(g.data)+'</span></div>'+
+  
+  // 🆕 v26.62: pega foto da pessoa cadastrada
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  function getFotoPara(nome){
+    var p = pessoas.find(function(x){ return (x.nome||'').toLowerCase() === (nome||'').toLowerCase(); });
+    return p ? (p.foto || p.foto_url || '') : '';
+  }
+  function getInicial(nome){
+    return (nome||'').split(' ').slice(0,2).map(function(w){ return (w[0]||'').toUpperCase(); }).join('') || '?';
+  }
+  function getCorAvatar(nome){
+    if(typeof avColor === 'function') return avColor(nome);
+    return {bg:'#FFE4B5', color:'#854F0B'};
+  }
+  
+  host.innerHTML = arr.map(function(g, idx){
+    var foto = getFotoPara(g.para);
+    var ac = getCorAvatar(g.para);
+    var reacoes = g.reacoes || {};
+    var nHearts = reacoes.heart || 0;
+    var nPrays = reacoes.pray || 0;
+    var nClaps = reacoes.clap || 0;
+    var gratId = 'grat-' + idx;
+    
+    return '<div class="culture-grat-card" id="'+gratId+'" style="background:white;border:1px solid #FFB30033;border-radius:10px;padding:12px;position:relative">'+
+      '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">'+
+        '<div style="width:38px;height:38px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;overflow:hidden;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,.06)">'+
+          (foto ? '<img src="'+foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' : getInicial(g.para))+
+        '</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:11px;color:#854F0B;font-weight:700;margin-bottom:1px">Para</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#451A03;line-height:1.2">'+(g.para||'?')+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="font-size:12px;color:#3F2417;line-height:1.5;margin-bottom:10px;font-style:italic">"'+(g.motivo||'')+'"</div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid #FFE4B5">'+
+        '<div style="font-size:10px;color:#92400E;opacity:.85">— '+(g.de||'Anônimo')+' · '+fmtData(g.data)+'</div>'+
+        '<div style="display:flex;gap:8px;font-size:14px" data-grat-id="'+gratId+'">'+
+          '<span class="culture-grat-reacao" data-reacao="heart" onclick="cultureGratidaoReagir('+idx+',\'heart\',this)" title="Curtir">❤️ <span style="font-size:10px;color:#92400E;font-weight:600">'+(nHearts||'')+'</span></span>'+
+          '<span class="culture-grat-reacao" data-reacao="pray" onclick="cultureGratidaoReagir('+idx+',\'pray\',this)" title="Agradecer">🙏 <span style="font-size:10px;color:#92400E;font-weight:600">'+(nPrays||'')+'</span></span>'+
+          '<span class="culture-grat-reacao" data-reacao="clap" onclick="cultureGratidaoReagir('+idx+',\'clap\',this)" title="Aplaudir">👏 <span style="font-size:10px;color:#92400E;font-weight:600">'+(nClaps||'')+'</span></span>'+
+        '</div>'+
+      '</div>'+
     '</div>';
   }).join('');
+}
+
+// 🆕 Reação no mural de gratidão (+1 e pop animation)
+function cultureGratidaoReagir(idx, tipo, el){
+  try {
+    var arr = getCultureGratidao();
+    if(!arr[idx]) return;
+    if(!arr[idx].reacoes) arr[idx].reacoes = {};
+    arr[idx].reacoes[tipo] = (arr[idx].reacoes[tipo] || 0) + 1;
+    localStorage.setItem('gami_culture_gratidao', JSON.stringify(arr));
+    // Pop animation
+    if(el){
+      el.classList.add('popped');
+      setTimeout(function(){ el.classList.remove('popped'); }, 400);
+    }
+    // Sincroniza com supabase se houver
+    if(typeof syncConfig === 'function'){
+      syncConfig('culture_gratidao', arr).catch(function(){});
+    }
+    renderCultureGratidao();
+  } catch(e){ console.warn('Reagir:', e); }
 }
 
 /* ===== COMPROMISSO "EU SOU GÂMI" ===== */
@@ -40650,27 +40950,129 @@ function renderCultureAssinatura(){
     host.innerHTML = '<div style="font-size:11px;opacity:.85;margin-top:4px">📌 '+n+' de '+total+' compromissos marcados. Marque todos pra assinar oficialmente.</div>';
     return;
   }
-  // Lê assinatura
-  var assin = (typeof getCultureAssinatura === 'function') ? getCultureAssinatura() : null;
-  try { assin = JSON.parse(localStorage.getItem('gami_assinatura_culture')||'null'); } catch(e){ assin = null; }
-  if(assin && assin.nome){
-    var d = new Date(assin.data);
+  // 🆕 v26.62: Verifica se a pessoa logada já assinou (multi-assinaturas)
+  var assinaturas = _cultureGetAssinaturas();
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var meuNome = u ? u.nome : null;
+  var jaAssinei = meuNome && assinaturas.some(function(a){ return (a.nome||'').toLowerCase() === meuNome.toLowerCase(); });
+  
+  if(jaAssinei){
+    var minha = assinaturas.find(function(a){ return (a.nome||'').toLowerCase() === meuNome.toLowerCase(); });
+    var d = new Date(minha.data);
     host.innerHTML = '<div style="background:rgba(255,255,255,.2);border:1px dashed rgba(255,255,255,.5);border-radius:10px;padding:14px;text-align:center">'+
-      '<div style="font-size:11px;opacity:.9;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">✓ Compromisso firmado</div>'+
-      '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:700;color:#FFD93D;margin-bottom:4px">'+assin.nome+'</div>'+
+      '<div style="font-size:11px;opacity:.9;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">✓ Você assinou!</div>'+
+      '<div style="font-family:Syne,sans-serif;font-size:22px;font-weight:700;color:#FFD93D;margin-bottom:4px">'+minha.nome+'</div>'+
       '<div style="font-size:11px;opacity:.85">Em '+d.toLocaleDateString('pt-BR')+' às '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+'</div>'+
-      '<button onclick="assinarCompromisso(true)" style="margin-top:10px;font-size:11px;padding:5px 12px;border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:6px;cursor:pointer;font-family:inherit">Assinar com outro nome</button>'+
     '</div>';
   } else {
-    host.innerHTML = '<div style="text-align:center;margin-top:8px"><button onclick="assinarCompromisso()" style="background:#FFD93D;color:#0D2B5C;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">✍️ Assinar meu compromisso Gâmi</button></div>';
+    host.innerHTML = '<div style="text-align:center;margin-top:8px"><button onclick="assinarCompromisso()" style="background:#FFD93D;color:#0D2B5C;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;box-shadow:0 4px 12px rgba(255,217,61,.3)">✍️ Assinar meu compromisso Gâmi</button></div>';
   }
 }
+
+// 🆕 Lista de todas as assinaturas (multi)
+function _cultureGetAssinaturas(){
+  try {
+    var arr = JSON.parse(localStorage.getItem('gami_assinaturas_culture')||'null');
+    if(Array.isArray(arr)) return arr;
+    // Migra da versão antiga (1 só)
+    var antiga = JSON.parse(localStorage.getItem('gami_assinatura_culture')||'null');
+    if(antiga && antiga.nome){
+      return [antiga];
+    }
+  } catch(e){}
+  return [];
+}
+function _cultureSalvarAssinaturas(arr){
+  try { localStorage.setItem('gami_assinaturas_culture', JSON.stringify(arr)); } catch(e){}
+  if(typeof syncConfig === 'function'){
+    syncConfig('culture_assinaturas', arr).catch(function(){});
+  }
+}
+
+// 🆕 Renderiza grid de quem assinou + atualiza contador
+function renderCultureAssinaturasGrid(){
+  var host = document.getElementById('culture-assinaturas-grid');
+  var cont = document.getElementById('culture-assinaturas-count');
+  if(!host) return;
+  
+  var arr = _cultureGetAssinaturas();
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  
+  if(cont){
+    // 🎯 Anima o contador
+    var atual = parseInt(cont.textContent || '0', 10);
+    var alvo = arr.length;
+    if(atual !== alvo){
+      var passos = 20;
+      var inc = (alvo - atual) / passos;
+      var n = atual;
+      var i = 0;
+      var iv = setInterval(function(){
+        n += inc; i++;
+        if(i >= passos){ n = alvo; clearInterval(iv); }
+        cont.textContent = Math.round(n);
+      }, 30);
+    }
+  }
+  
+  if(!arr.length){
+    host.innerHTML = '<div style="font-size:11px;opacity:.7;text-align:center;font-style:italic">Ninguém assinou ainda. Seja o primeiro! 📜</div>';
+    return;
+  }
+  
+  function getFoto(nome){
+    var p = pessoas.find(function(x){ return (x.nome||'').toLowerCase() === (nome||'').toLowerCase(); });
+    return p ? (p.foto || p.foto_url || '') : '';
+  }
+  function getIni(nome){
+    return (nome||'').split(' ').slice(0,2).map(function(w){ return (w[0]||'').toUpperCase(); }).join('') || '?';
+  }
+  function getCor(nome){
+    if(typeof avColor === 'function') return avColor(nome);
+    return {bg:'#FFD93D', color:'#0D2B5C'};
+  }
+  
+  host.innerHTML = '<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:.85;margin-bottom:8px">✨ Quem já assinou</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">'
+    + arr.slice(0, 24).map(function(a){
+        var foto = getFoto(a.nome);
+        var ini = getIni(a.nome);
+        var ac = getCor(a.nome);
+        return '<div class="culture-assin-mini" title="'+(a.nome||'?').replace(/"/g,'')+'" style="background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;overflow:hidden">'
+          + (foto ? '<img src="'+foto+'" style="width:100%;height:100%;object-fit:cover"/>' : ini)
+        + '</div>';
+      }).join('')
+    + (arr.length > 24 ? '<div class="culture-assin-mini" style="background:rgba(255,255,255,.25);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">+'+(arr.length-24)+'</div>' : '')
+    + '</div>';
+}
+
 function assinarCompromisso(force){
-  var nome = prompt('Seu nome completo pra firmar o compromisso:', '');
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var sugerido = u ? u.nome : '';
+  var nome = prompt('Seu nome completo pra firmar o compromisso:', sugerido || '');
   if(!nome || !nome.trim()) return;
-  try { localStorage.setItem('gami_assinatura_culture', JSON.stringify({nome:nome.trim(), data:new Date().toISOString()})); } catch(e){}
+  nome = nome.trim();
+  
+  // 🆕 v26.62: multi-assinaturas
+  var arr = _cultureGetAssinaturas();
+  // Se nome já existe, atualiza data
+  var existente = arr.findIndex(function(a){ return (a.nome||'').toLowerCase() === nome.toLowerCase(); });
+  var entry = {nome: nome, data: new Date().toISOString()};
+  if(existente >= 0) arr[existente] = entry;
+  else arr.push(entry);
+  _cultureSalvarAssinaturas(arr);
+  
+  // Mantém compatibilidade com chave antiga
+  try { localStorage.setItem('gami_assinatura_culture', JSON.stringify(entry)); } catch(e){}
+  
+  // 🎉 Confetti!
+  if(typeof _gamiConfetti === 'function') _gamiConfetti();
+  
   renderCultureAssinatura();
-  alert('🙌 Obrigado, '+nome.trim()+'! Bem-vindo ao jeito Gâmi de ser.');
+  renderCultureAssinaturasGrid();
+  setTimeout(function(){
+    alert('🙌 Obrigado, '+nome+'! Bem-vindo ao jeito Gâmi de ser.');
+  }, 600);
 }
 
 /* ===== MODO APRESENTAÇÃO ===== */
@@ -40681,32 +41083,116 @@ function culturePresentation(){
   else { (pg.requestFullscreen || pg.webkitRequestFullscreen || function(){}).call(pg); }
 }
 
+/* ===== 🆕 v26.62 — VALOR DA SEMANA (rotativo) ===== */
+var CULTURE_VALORES_DETALHE = [
+  { nome:'Caráter', icone:'🛡️', cor:'#1E88E5', corBg:'#EFF6FF', corBg2:'#DBEAFE', frase:'Fazer o certo, mesmo quando ninguém vê', exemplo:'Aquele dia que o gestor identificou o erro de cobrança sozinho e ajustou antes do cliente notar — sem esperar reconhecimento. Isso é caráter Gâmi.' },
+  { nome:'Pessoas em Primeiro Lugar', icone:'👥', cor:'#10B981', corBg:'#ECFDF5', corBg2:'#D1FAE5', frase:'Quem faz a Gâmi acontecer vem antes de qualquer planilha', exemplo:'Quando o motoboy avisou que tava com problema na moto, paramos a operação 30 min pra ajudar a resolver. Pessoas antes de números.' },
+  { nome:'Propósito Além do Lucro', icone:'🎯', cor:'#06B6D4', corBg:'#ECFEFF', corBg2:'#CFFAFE', frase:'O lucro é consequência. O impacto é a meta', exemplo:'Em cada cidade onde entramos, geramos renda pra dezenas de famílias. Esse é o resultado que importa.' },
+  { nome:'Integridade', icone:'💎', cor:'#7C3AED', corBg:'#F5F3FF', corBg2:'#EDE9FE', frase:'Transparência sempre, mesmo quando dói', exemplo:'O cliente perguntou se a entrega atrasaria. A gente falou a verdade na hora, sem rodeio. Resultado: ele continuou conosco.' },
+  { nome:'Excelência com Simplicidade', icone:'✨', cor:'#F59E0B', corBg:'#FFFBEB', corBg2:'#FEF3C7', frase:'Bem feito, sem complicar', exemplo:'Suporte respondendo em até 5 minutos. Processo claro. Pagamento no prazo. Não precisa ser complexo pra ser excelente.' },
+  { nome:'Crescimento Sustentável', icone:'🌱', cor:'#0E7AB8', corBg:'#E0F2FE', corBg2:'#BAE6FD', frase:'Expandir com estratégia e cuidado de longo prazo', exemplo:'Antes de abrir cidade nova, validamos demanda, mapeamos motoboys e treinamos o gestor. Crescer rápido é fácil; crescer certo é Gâmi.' },
+  { nome:'Comunidade e Família', icone:'🏠', cor:'#EC4899', corBg:'#FDF2F8', corBg2:'#FCE7F3', frase:'A gente cuida uns dos outros', exemplo:'Aniversário do motoboy? Mensagem direta da gestora. Filho doente? Conversa, ajuda. Não é só trabalho, é família.' },
+  { nome:'Fé com Respeito', icone:'🙏', cor:'#D97706', corBg:'#FEF3C7', corBg2:'#FDE68A', frase:'Princípios cristãos vividos através de atitudes', exemplo:'Não impomos crença a ninguém. Vivemos respeito, gratidão e ética. Quem é diferente é bem-vindo. Esse é o jeito Gâmi.' }
+];
+
+function renderCultureValorSemana(){
+  var host = document.getElementById('culture-valor-semana');
+  if(!host) return;
+  // Calcula valor da semana baseado no número da semana do ano
+  var hoje = new Date();
+  var inicio = new Date(hoje.getFullYear(), 0, 1);
+  var diff = (hoje - inicio) / 86400000;
+  var semana = Math.floor(diff / 7);
+  var idx = semana % CULTURE_VALORES_DETALHE.length;
+  var v = CULTURE_VALORES_DETALHE[idx];
+  var proxIdx = (idx + 1) % CULTURE_VALORES_DETALHE.length;
+  var prox = CULTURE_VALORES_DETALHE[proxIdx];
+  
+  host.innerHTML = '<div class="culture-valor-semana-wrap" style="background:linear-gradient(135deg,'+v.corBg+','+v.corBg2+');border:1px solid '+v.cor+'40;border-left:4px solid '+v.cor+';border-radius:12px;padding:18px 20px;position:relative;overflow:hidden">'
+    + '<div style="position:absolute;top:-25px;right:-15px;font-size:120px;opacity:.07">'+v.icone+'</div>'
+    + '<div style="position:relative">'
+      + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'
+        + '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:'+v.cor+';text-transform:uppercase">🎯 Valor da semana</div>'
+        + '<div style="font-size:9px;color:'+v.cor+';opacity:.7;font-weight:600;background:white;padding:2px 7px;border-radius:8px;border:1px solid '+v.cor+'33">Semana '+(semana+1)+'/52</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">'
+        + '<div style="font-size:48px;flex-shrink:0">'+v.icone+'</div>'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-family:\'Syne\',sans-serif;font-size:22px;font-weight:800;color:'+v.cor+';line-height:1.1;margin-bottom:4px">'+v.nome+'</div>'
+          + '<div style="font-size:13px;color:#1F2937;font-style:italic;line-height:1.4">"'+v.frase+'"</div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="background:rgba(255,255,255,.6);border:1px dashed '+v.cor+'66;border-radius:10px;padding:12px 14px;margin-bottom:10px">'
+        + '<div style="font-size:10px;font-weight:700;color:'+v.cor+';text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px">📖 Como vivemos isso</div>'
+        + '<div style="font-size:12px;color:#374151;line-height:1.55">'+v.exemplo+'</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:'+v.cor+';opacity:.8;font-weight:600">'
+        + '<div>💡 Toda segunda muda</div>'
+        + '<div>Próximo: '+prox.icone+' '+prox.nome+' →</div>'
+      + '</div>'
+    + '</div>'
+  + '</div>';
+}
+
+/* ===== 🆕 v26.62 — HEADER SUB com stats inline ===== */
+function renderCultureHeaderSub(){
+  var el = document.getElementById('culture-header-sub');
+  if(!el) return;
+  var assinaturas = _cultureGetAssinaturas();
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  // Valor da semana atual
+  var hoje = new Date();
+  var inicio = new Date(hoje.getFullYear(), 0, 1);
+  var semana = Math.floor((hoje - inicio) / 86400000 / 7);
+  var v = CULTURE_VALORES_DETALHE[semana % CULTURE_VALORES_DETALHE.length];
+  
+  var partes = ['O jeito Gâmi'];
+  partes.push('<strong style="color:#FFD93D">'+assinaturas.length+' assinaram</strong>');
+  partes.push('Valor da semana: <strong style="color:'+v.cor+'">'+v.icone+' '+v.nome+'</strong>');
+  el.innerHTML = partes.join(' · ');
+}
+
 function renderCulture(){
   // STATS no hero
   renderCultureStats();
   // VERSÍCULO + FRASE
   renderCultureInspiracao();
+  // 🆕 v26.62: Valor da Semana
+  try { renderCultureValorSemana(); } catch(e){ console.warn('Valor da semana:', e); }
+  // 🆕 v26.62: Header sub atualizado
+  try { renderCultureHeaderSub(); } catch(e){ console.warn('Header sub:', e); }
+  // 🆕 v26.62: Grid de quem assinou
+  try { renderCultureAssinaturasGrid(); } catch(e){ console.warn('Grid assinaturas:', e); }
 
   // VALORES
   var valoresHost = document.getElementById('culture-valores');
   if(valoresHost){
+    // 🆕 v26.62: Cada valor com ícone + descrição (flip hover)
     var valores = [
-      ['Caráter','Agimos com honestidade, ética e responsabilidade, mesmo quando ninguém está olhando.','#1E88E5'],
-      ['Pessoas em Primeiro Lugar','Valorizamos quem faz a Gâmi acontecer. Pessoas não são números.','#1AB8F0'],
-      ['Propósito Além do Lucro','O lucro é consequência. Nosso foco é gerar impacto e transformação.','#1D9E75'],
-      ['Integridade','Transparência, verdade e compromisso em todas as relações.','#7F77DD'],
-      ['Excelência com Simplicidade','Fazemos bem feito, sem complicar.','#EF9F27'],
-      ['Crescimento Sustentável','Expandimos com estratégia e visão de longo prazo.','#185FA5'],
-      ['Comunidade e Família','Acreditamos na força da união e do cuidado mútuo.','#D4537E'],
-      ['Fé com Respeito','Vivemos princípios cristãos através de atitudes, respeitando todas as pessoas.','#FFB300'],
+      ['Caráter','Agimos com honestidade, ética e responsabilidade, mesmo quando ninguém está olhando.','#1E88E5','🛡️'],
+      ['Pessoas em Primeiro Lugar','Valorizamos quem faz a Gâmi acontecer. Pessoas não são números.','#10B981','👥'],
+      ['Propósito Além do Lucro','O lucro é consequência. Nosso foco é gerar impacto e transformação.','#06B6D4','🎯'],
+      ['Integridade','Transparência, verdade e compromisso em todas as relações.','#7C3AED','💎'],
+      ['Excelência com Simplicidade','Fazemos bem feito, sem complicar.','#F59E0B','✨'],
+      ['Crescimento Sustentável','Expandimos com estratégia e visão de longo prazo.','#0E7AB8','🌱'],
+      ['Comunidade e Família','Acreditamos na força da união e do cuidado mútuo.','#EC4899','🏠'],
+      ['Fé com Respeito','Vivemos princípios cristãos através de atitudes, respeitando todas as pessoas.','#D97706','🙏'],
     ];
     valoresHost.innerHTML =
-      '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">💎</span> Nossos Valores</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">' +
+      '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:6px"><span style="font-size:16px">💎</span> Nossos Valores <span style="font-size:10px;color:var(--text3);font-weight:500;margin-left:6px">passe o mouse pra ver detalhes</span></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">' +
       valores.map(function(v){
-        return '<div style="border:1px solid var(--border);border-left:3px solid '+v[2]+';border-radius:8px;padding:11px 13px;background:var(--surface)">'+
-          '<div style="font-size:12px;font-weight:600;color:'+v[2]+';margin-bottom:3px">'+v[0]+'</div>'+
-          '<div style="font-size:11px;color:var(--text2);line-height:1.5">'+v[1]+'</div>'+
+        return '<div class="culture-valor-flip">'+
+          '<div class="culture-valor-flip-inner">'+
+            '<div class="culture-valor-flip-face" style="background:white;border:1px solid '+v[2]+'33;border-left:4px solid '+v[2]+';text-align:center">'+
+              '<div style="font-size:36px;margin-bottom:6px">'+v[3]+'</div>'+
+              '<div style="font-size:12.5px;font-weight:700;color:'+v[2]+';line-height:1.2">'+v[0]+'</div>'+
+            '</div>'+
+            '<div class="culture-valor-flip-face culture-valor-flip-back" style="background:linear-gradient(135deg,'+v[2]+','+v[2]+'dd)">'+
+              '<div style="font-size:24px;text-align:center;margin-bottom:6px">'+v[3]+'</div>'+
+              '<div style="font-size:11px;line-height:1.5;text-align:center;font-weight:500">'+v[1]+'</div>'+
+            '</div>'+
+          '</div>'+
         '</div>';
       }).join('') + '</div>';
   }
@@ -40759,6 +41245,93 @@ function renderCulture(){
   renderCultureMural();
   renderCultureGratidao();
   renderCultureCompromisso();
+  
+  // 🆕 v26.63: Typewriter animations no hero + frase final
+  try { _cultureAnimarTextos(); } catch(e){ console.warn('Typewriter:', e); }
+}
+
+// 🆕 v26.63: Anima textos de impacto (hero título + frase final)
+var _cultureAnimacaoExecutada = false;
+function _cultureAnimarTextos(){
+  if(_cultureAnimacaoExecutada) return;
+  _cultureAnimacaoExecutada = true;
+  
+  // 1️⃣ HERO: anima palavra por palavra (preserva o gradient no "jeito Gâmi")
+  var hero = document.getElementById('culture-hero-titulo');
+  if(hero){
+    var htmlOriginal = hero.innerHTML;
+    // Estilo inicial: invisível
+    hero.style.opacity = '0';
+    hero.innerHTML = htmlOriginal;
+    // Fade-in em cascata por palavras
+    setTimeout(function(){
+      hero.style.transition = 'opacity .6s ease';
+      hero.style.opacity = '1';
+      
+      // Wrap cada palavra com fade-in delay
+      var conteudo = hero.innerHTML;
+      // Quebra preservando <span>
+      var partes = conteudo.split(/(<span[^>]*>[^<]*<\/span>|\s+)/);
+      var i = 0;
+      var html = partes.map(function(parte){
+        if(/^\s+$/.test(parte)) return parte;
+        if(!parte.trim()) return parte;
+        var delay = i * 80;
+        i++;
+        if(parte.indexOf('<span') === 0){
+          // Preserva o span, só envelopa
+          return '<span style="opacity:0;display:inline-block;animation:cultureWordIn .55s ease both;animation-delay:'+delay+'ms">'+parte+'</span>';
+        }
+        return '<span style="opacity:0;display:inline-block;animation:cultureWordIn .55s ease both;animation-delay:'+delay+'ms">'+parte+'</span>';
+      }).join('');
+      hero.innerHTML = html;
+    }, 200);
+  }
+  
+  // 2️⃣ FRASE FINAL: ativa só quando entrar na viewport via IntersectionObserver
+  var frase1 = document.getElementById('culture-frase-1');
+  var frase2 = document.getElementById('culture-frase-2');
+  if(frase1 && frase2 && 'IntersectionObserver' in window){
+    var t1 = frase1.textContent;
+    var t2 = frase2.textContent;
+    frase1.textContent = '';
+    frase2.textContent = '';
+    
+    var observer = new IntersectionObserver(function(entries){
+      entries.forEach(function(ent){
+        if(ent.isIntersecting && !frase1.dataset.animado){
+          frase1.dataset.animado = '1';
+          _cultureTypewrite(frase1, t1, 50, function(){
+            frase1.classList.add('culture-typewriter-done');
+            setTimeout(function(){
+              _cultureTypewrite(frase2, t2, 50, function(){
+                frase2.classList.add('culture-typewriter-cursor');
+              });
+            }, 250);
+          });
+          observer.disconnect();
+        }
+      });
+    }, { threshold: 0.4 });
+    observer.observe(frase1);
+  }
+}
+
+// Typewriter helper
+function _cultureTypewrite(el, texto, speed, callback){
+  if(!el) return;
+  el.textContent = '';
+  el.classList.add('culture-typewriter-cursor');
+  var i = 0;
+  function tick(){
+    if(i >= texto.length){
+      if(callback) callback();
+      return;
+    }
+    el.textContent += texto[i++];
+    setTimeout(tick, speed + Math.random() * 30);
+  }
+  tick();
 }
 
 /* ===================== PLANO DE CARREIRA ===================== */
@@ -43377,7 +43950,22 @@ async function abrirEstoque(navEl){
   estAtualizarBannerSessao();
   estPopularSeletores();
   estPreencherDatasPadrao();
+  // 🆕 v26.64: Aplica permissão de visualização de valores monetários
+  estAplicarPermissaoValores();
   await estCarregarTudo();
+}
+
+// 🆕 v26.64: Esconde valores monetários do estoque pra quem não é super_admin/diretoria/gerencia
+function estAplicarPermissaoValores(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  var podeVer = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
+  if(podeVer){
+    document.body.classList.remove('gami-no-valor');
+  } else {
+    document.body.classList.add('gami-no-valor');
+  }
+  console.log('[Estoque] Permissão valores monetários:', podeVer ? 'PODE VER' : 'ESCONDIDO', '(nivel='+nivel+')');
 }
 
 function estAtualizarBannerSessao(){
