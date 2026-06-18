@@ -1,4 +1,4 @@
-<!-- v26.84 - Meu Ponto: fallback triplo email->id->nome + comando força bruta - 18/06/2026 -->
+<!-- v26.85 - LISTA FIXA das 9 colaboradoras Ji-Paraná: Meu Ponto SEMPRE aparece - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -46071,14 +46071,70 @@ async function _notificarGestoresDoPonto(resp, params){
 }
 
 // ============ Verifica acesso ============
+
+// 🆕 v26.85: LISTA FIXA das 9 colaboradoras de Ji-Paraná que SEMPRE veem Meu Ponto
+// Funciona INDEPENDENTE do Supabase. Nunca mais vai sumir.
+// Match por primeiro nome (case insensitive, ignora acentos).
+var MP_NOMES_FIXOS = [
+  'andreia luiza damke',
+  'bruna eduarda',
+  'camily barbosa',
+  'estefania cavalcante',
+  'gabriella da cruz',
+  'jessica nayara',
+  'jheniffer andrade',
+  'karen de andrade lipinski',
+  'whiny fernandes de souza'
+];
+
+function _mpNormalizar(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+
+// Retorna true se o usuário logado bate com algum nome da lista fixa
+function _mpEhPessoaFixa(u){
+  if(!u || !u.nome) return false;
+  var nomeUsuario = _mpNormalizar(u.nome);
+  
+  for(var i=0; i<MP_NOMES_FIXOS.length; i++){
+    var nomeFixo = MP_NOMES_FIXOS[i];
+    // Match: nome completo OU primeiro nome do fixo
+    if(nomeUsuario === nomeFixo) return nomeFixo;
+    // Primeiro nome: "Whiny Fernandes de Souza" → "whiny" bate
+    var primeiroNomeFixo = nomeFixo.split(' ')[0];
+    var primeiroNomeUsuario = nomeUsuario.split(' ')[0];
+    if(primeiroNomeFixo === primeiroNomeUsuario) return nomeFixo;
+    // Caso especial pra Andréia LUIZA: pode ser chamada de "Luiza"
+    if(nomeFixo.indexOf(primeiroNomeUsuario) >= 0 && primeiroNomeUsuario.length >= 4) return nomeFixo;
+  }
+  return null;
+}
+
 async function mpVerificarAcessoSidebar(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var navMp = document.getElementById('nav-meu-ponto');
   var navGestao = document.getElementById('nav-ponto-gestao');
   if(!u) return;
   
+  // 🆕 v26.85: ATALHO FIXO — se é uma das 9, libera SEMPRE (sem depender de Supabase)
+  var matchFixo = _mpEhPessoaFixa(u);
+  if(matchFixo){
+    MP_PESSOA = {
+      id: u.id || u.pessoa_id,
+      nome: u.nome,
+      foto: u.foto || null,
+      cargo: u.cargo || 'Suporte Operacional',
+      bate_ponto: true,
+      _viaListaFixa: true
+    };
+    if(navMp) navMp.style.display = '';
+    console.log('[MP] ✓ Acesso FIXO liberado pra ' + u.nome + ' (match: ' + matchFixo + ')');
+    
+    // Em background: tenta enriquecer com dados do Supabase (foto, cargo, etc), mas SEM bloquear
+    _mpEnriquecerComSupabase(u).catch(function(){});
+  }
   // 🆕 MODO TESTE: se o perfil é impersonado e tem bate_ponto, usa direto (não consulta banco)
-  if(u._impersonacao){
+  else if(u._impersonacao){
     if(u.bate_ponto){
       MP_PESSOA = {
         id: u.id || u.pessoa_id,
@@ -46540,6 +46596,48 @@ function mpPedirGeolocation(){
     }
   });
   }); // fecha _mpValidarIP().then
+}
+
+// 🆕 v26.85: Em background, busca dados completos no Supabase pra enriquecer MP_PESSOA
+// (foto, ID real, cargo certo). Se falhar, não tem problema — a lista fixa já garantiu o acesso.
+async function _mpEnriquecerComSupabase(u){
+  try {
+    if(!MP_PESSOA) return;
+    var nome = u.nome;
+    var email = u.email;
+    var id = u.id || u.pessoa_id;
+    
+    var p = null;
+    if(email){
+      var r = await fetch(SUPA_URL + '/rest/v1/pessoas?email=eq.' + encodeURIComponent(email) + '&select=*&limit=1', {
+        headers: _mpSupaHeaders(), cache: 'no-store'
+      });
+      if(r.ok){ var arr = await r.json(); p = arr[0]; }
+    }
+    if(!p && id){
+      var r2 = await fetch(SUPA_URL + '/rest/v1/pessoas?id=eq.' + encodeURIComponent(id) + '&select=*&limit=1', {
+        headers: _mpSupaHeaders(), cache: 'no-store'
+      });
+      if(r2.ok){ var arr2 = await r2.json(); p = arr2[0]; }
+    }
+    if(!p && nome){
+      var r3 = await fetch(SUPA_URL + '/rest/v1/pessoas?nome=ilike.*' + encodeURIComponent(nome.split(' ')[0]) + '*&select=*&limit=5', {
+        headers: _mpSupaHeaders(), cache: 'no-store'
+      });
+      if(r3.ok){ 
+        var arr3 = await r3.json(); 
+        p = arr3.find(function(x){ return _mpNormalizar(x.nome) === _mpNormalizar(nome); }) || arr3[0];
+      }
+    }
+    
+    if(p && MP_PESSOA && MP_PESSOA._viaListaFixa){
+      MP_PESSOA.id = p.id || MP_PESSOA.id;
+      MP_PESSOA.foto = p.foto || MP_PESSOA.foto;
+      MP_PESSOA.cargo = p.cargo || MP_PESSOA.cargo;
+      MP_PESSOA.ponto_sem_validacao_ate = p.ponto_sem_validacao_ate;
+      console.log('[MP] ✓ Enriquecido com dados do Supabase. ID: ' + p.id);
+    }
+  } catch(e){ /* silencioso — lista fixa já garantiu */ }
 }
 
 function _mpHaversine(lat1, lng1, lat2, lng2){
