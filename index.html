@@ -1,4 +1,4 @@
-<!-- v26.41 - 10 animacoes Gami dashboard interativo - 17/06/2026 -->
+<!-- v26.42 - Remove cascata + fix versiculo nao piscar - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -808,8 +808,8 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
 #pg-dashboard.gami-cascata > #dash-foco-vazio,
 #pg-dashboard.gami-cascata > #dash-direcao { animation: gamiFadeUp .55s ease-out forwards; }
 
-/* 2️⃣ Hover suave em todos cards do dashboard */
-#pg-dashboard .dash-section,
+/* 2️⃣ Hover suave em todos cards do dashboard (EXCLUI o hero) */
+#pg-dashboard .dash-section:not(#dash-hero),
 #pg-dashboard #dash-card-ponto,
 #pg-dashboard #dash-card-delegadas,
 #pg-dashboard #dash-foco-bloco > div,
@@ -817,7 +817,7 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
 #pg-dashboard #dash-direcao > div {
   transition: transform .22s ease, box-shadow .22s ease;
 }
-#pg-dashboard .dash-section:hover,
+#pg-dashboard .dash-section:not(#dash-hero):hover,
 #pg-dashboard #dash-card-ponto:hover,
 #pg-dashboard #dash-card-delegadas:hover,
 #pg-dashboard #dash-foco-bloco > div:hover,
@@ -2167,7 +2167,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   </div>
 
   <!-- ====== 1. SAUDAÇÃO + VERSÍCULO DO DIA (unificados) ====== -->
-  <div class="dash-section" style="margin-bottom:14px;padding:22px 26px;background:linear-gradient(135deg,#0a1428 0%,#15294f 50%,#1f3a6b 100%);border-radius:16px;position:relative;overflow:hidden">
+  <div class="dash-section" id="dash-hero" style="margin-bottom:14px;padding:22px 26px;background:linear-gradient(135deg,#0a1428 0%,#15294f 50%,#1f3a6b 100%);border-radius:16px;position:relative;overflow:hidden">
     <!-- Acentos visuais sutis -->
     <div style="position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(100,181,246,.10),transparent 70%);pointer-events:none"></div>
     <div style="position:absolute;bottom:-40px;left:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.05),transparent 70%);pointer-events:none"></div>
@@ -27794,10 +27794,8 @@ function _gamiAnimacoesDashboard(){
   var dash = document.getElementById('pg-dashboard');
   if(!dash) return;
   
-  // 1️⃣ Cascata: adiciona classe que dispara animation-delay sequencial
-  dash.classList.add('gami-cascata');
-  // Remove após 2s pra não animar de novo se navegar e voltar logo
-  setTimeout(function(){ try { dash.classList.remove('gami-cascata'); } catch(e){} }, 2000);
+  // 1️⃣ Cascata DESATIVADA (estava fazendo o versículo piscar)
+  // dash.classList.add('gami-cascata');
   
   // 3️⃣ Contadores animados (pontos, métricas)
   setTimeout(function(){ _gamiAnimarContadores(); }, 600);
@@ -27991,9 +27989,10 @@ function _gamiConfetti(){
 })();
 
 function initDashboard(){
+  // 📖 Versículo PRIMEIRO (sem demora, sem pisca)
+  try { carregarVersiculo(); } catch(e){ console.warn('versiculo:', e); }
   initDashboardHero();
   renderFraseMotivacional();
-  carregarVersiculo();
   carregarFrase();
   atualizarClima();
   // Pontuação Gâmi do usuário (abaixo do versículo)
