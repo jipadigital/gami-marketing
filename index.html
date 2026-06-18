@@ -1,4 +1,4 @@
-<!-- v26.69 - Bate ponto fuso Rondônia + Sino notificações reais com click - 18/06/2026 -->
+<!-- v26.70 - Bate ponto detecta PC com fuso errado: bloqueia e mostra banner vermelho - 18/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -45924,6 +45924,37 @@ function mpRenderCardsDia(dados){
     fusoEl.innerHTML = 'Horário aplicado: <strong style="color:#0E7AB8">'+ag.str+'</strong> · '+(tzNomes[ag.tz] || ag.tz);
   }
   
+  // 🆕 v26.70: Banner VERMELHO persistente se PC tem fuso errado
+  var alertaPC = _mpDetectarPCFusoErrado();
+  var bannerEl = document.getElementById('mp-fuso-banner');
+  if(alertaPC){
+    if(!bannerEl){
+      // Cria o banner antes do card de batida
+      bannerEl = document.createElement('div');
+      bannerEl.id = 'mp-fuso-banner';
+      bannerEl.style.cssText = 'margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#FFF5F5,#FCEBEB);border:2px solid #E24B4A;border-left:5px solid #E24B4A;border-radius:10px;animation:cidFadeUp .4s ease both';
+      var fusoInfoCard = document.getElementById('mp-fuso-info');
+      if(fusoInfoCard && fusoInfoCard.parentNode){
+        fusoInfoCard.parentNode.parentNode.insertBefore(bannerEl, fusoInfoCard.parentNode);
+      }
+    }
+    bannerEl.innerHTML = '<div style="display:flex;align-items:flex-start;gap:12px">'
+      + '<span style="font-size:28px">⚠️</span>'
+      + '<div style="flex:1">'
+        + '<div style="font-size:14px;font-weight:800;color:#A32D2D;margin-bottom:4px">RELÓGIO DO PC ESTÁ ERRADO!</div>'
+        + '<div style="font-size:12px;color:#7B1F1F;line-height:1.5">'
+          + '🖥️ PC marcando <strong>'+alertaPC.pcHora+'</strong> · '
+          + '🕐 Hora correta em '+alertaPC.fusoNome+': <strong>'+alertaPC.fusoHora+'</strong> '
+          + '<br>📊 Diferença de <strong>'+alertaPC.difMin+' min</strong> — pode causar registro errado de atraso!'
+        + '</div>'
+        + '<div style="font-size:11px;color:#7B1F1F;background:#FFFFFF99;border-radius:6px;padding:8px 10px;margin-top:8px"><strong>📋 Solução:</strong> Peça pro Cleyton ou TI ajustar o relógio: Configurações do Windows → Data e hora → Fuso (UTC-04:00) Manaus → Ligar "Definir automaticamente".</div>'
+      + '</div>'
+    + '</div>';
+    bannerEl.style.display = 'block';
+  } else if(bannerEl){
+    bannerEl.style.display = 'none';
+  }
+  
   document.getElementById('mp-cards-dia').innerHTML = tipos.map(function(t, i){
     var reg = registros[t];
     var esperado = horario ? horario[t] : null;
@@ -45982,6 +46013,9 @@ function mpRenderCardsDia(dados){
 // ============ BATER PONTO ============
 // Bater ponto sem GPS (fallback quando localização falha)
 async function mpBaterPontoSemGPS(){
+  // 🆕 v26.70: Bloqueia se PC tem fuso errado
+  var fuso = _mpAlertarPCFuso();
+  if(!fuso.prosseguir) return;
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
   var justif = prompt(
@@ -46031,6 +46065,11 @@ async function mpBaterPontoSemGPS(){
 
 async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
+  
+  // 🆕 v26.70: Bloqueia se PC tem fuso errado
+  var fuso = _mpAlertarPCFuso();
+  if(!fuso.prosseguir) return;
+  var justifFuso = fuso.justificativa;
   
   var btn = document.getElementById('mp-btn-bater');
   var justifInput = document.getElementById('mp-justificativa');
@@ -47820,6 +47859,71 @@ function _pessoaLiberadaValidacao(pessoa){
 
 // Calcula próxima batida + atraso vs horário esperado
 // Retorna: { tipo, label, esperado, atrasoMin, exigeJustificativa }
+// 🆕 v26.70: Detecta se o PC está em fuso horário DIFERENTE do esperado pra cidade
+// Retorna null se OK, ou objeto com detalhes se discrepância >= 30 min
+function _mpDetectarPCFusoErrado(){
+  try {
+    var pcD = new Date();
+    var pcHora = String(pcD.getHours()).padStart(2,'0') + ':' + String(pcD.getMinutes()).padStart(2,'0');
+    var fusoAg = _mpAgoraNoFuso();
+    
+    // Se o fallback foi usado (sem timezone deduzível), não bloqueia
+    if(fusoAg.tz === 'local') return null;
+    
+    // Compara em minutos absolutos do dia
+    var pcMin = pcD.getHours()*60 + pcD.getMinutes();
+    var fusoMin = fusoAg.h*60 + fusoAg.m;
+    var difMin = Math.abs(pcMin - fusoMin);
+    
+    // Considera só diferenças >= 30 min (filtra ruído)
+    if(difMin >= 30 && difMin < 24*60 - 30){
+      var tzNomes = {
+        'America/Porto_Velho': 'Rondônia (Ji-Paraná)',
+        'America/Cuiaba': 'Mato Grosso (Cuiabá)',
+        'America/Campo_Grande': 'Mato Grosso do Sul (Campo Grande)',
+        'America/Manaus': 'Amazonas (Manaus)',
+        'America/Boa_Vista': 'Roraima (Boa Vista)',
+        'America/Rio_Branco': 'Acre (Rio Branco)',
+        'America/Sao_Paulo': 'Horário de Brasília'
+      };
+      return {
+        pcHora: pcHora,
+        fusoHora: fusoAg.str,
+        fusoTz: fusoAg.tz,
+        fusoNome: tzNomes[fusoAg.tz] || fusoAg.tz,
+        difMin: difMin
+      };
+    }
+    return null;
+  } catch(e){ return null; }
+}
+
+// 🆕 v26.70: Alerta sobre PC com fuso errado ANTES de bater ponto
+// Retorna {prosseguir: bool, justificativa: string}
+function _mpAlertarPCFuso(){
+  var info = _mpDetectarPCFusoErrado();
+  if(!info) return { prosseguir: true, justificativa: '' };
+  
+  var msg = '⚠️ ATENÇÃO: O RELÓGIO DO PC ESTÁ INCORRETO!\n\n' +
+    '🖥️ Hora do PC: ' + info.pcHora + '\n' +
+    '🕐 Hora correta (' + info.fusoNome + '): ' + info.fusoHora + '\n' +
+    '📊 Diferença: ' + info.difMin + ' minutos\n\n' +
+    'Se bater agora, o sistema pode marcar atraso ERRADO.\n\n' +
+    'SOLUÇÃO: Peça pro Cleyton ajustar o relógio do PC:\n' +
+    '• Configurações Windows → Data e hora\n' +
+    '• Fuso: (UTC-04:00) Manaus / Cuiabá\n' +
+    '• Ligar "Definir horário automaticamente"\n\n' +
+    'Quer bater MESMO ASSIM? (vai ser registrado com aviso sobre o fuso errado)';
+  
+  if(confirm(msg)){
+    return {
+      prosseguir: true,
+      justificativa: '[FUSO PC ERRADO] PC marcando ' + info.pcHora + ' mas hora correta de ' + info.fusoNome + ' é ' + info.fusoHora + ' (' + info.difMin + ' min de diferença). Ajustar relógio do PC.'
+    };
+  }
+  return { prosseguir: false, justificativa: '' };
+}
+
 function _calcularProximaBatidaEAtraso(){
   if(!MP_DIA_DADOS) return null;
   var horario = MP_DIA_DADOS.horario_esperado;
@@ -47899,6 +48003,10 @@ function _mpAgoraNoFuso(){
 
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
+  
+  // 🆕 v26.70: Bloqueia se PC tem fuso errado
+  var fuso = _mpAlertarPCFuso();
+  if(!fuso.prosseguir) return;
   
   var btn = document.getElementById('dash-btn-bater-ponto');
   var originalText = btn ? btn.innerHTML : '';
