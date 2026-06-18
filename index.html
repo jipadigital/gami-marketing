@@ -1,4 +1,4 @@
-<!-- v26.45 - Hoje ao lado calendario + Proximos dias full width embaixo - 17/06/2026 -->
+<!-- v26.46 - Painel Hoje carrega real + botoes Tarefa/Anotacao - 17/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -7353,28 +7353,57 @@ function calRenderPainelLateral(){
   }
 }
 
-// Pega dados do dia (tarefas, aniversários, eventos)
+// Pega dados do dia (tarefas, aniversários, eventos, anotações)
 function _calCarregarDadosDoDia(dia){
   var html = '';
   var itens = 0;
   
   try {
-    var dStr = dia.toISOString().split('T')[0];
+    var y = dia.getFullYear();
+    var m = String(dia.getMonth()+1).padStart(2,'0');
+    var d = String(dia.getDate()).padStart(2,'0');
+    var dStr = y + '-' + m + '-' + d;
+    var tfKeyDia = 'gami_tf_v2_d_' + y + '_' + m + '_' + d;
     
-    // Tarefas
+    // Tarefas do dia (do localStorage diário)
     var tarefas = [];
-    try { tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]'); } catch(e){}
-    var tarefasDia = tarefas.filter(function(t){
-      return t && t.data === dStr && !t.concluida;
-    });
+    try { tarefas = JSON.parse(localStorage.getItem(tfKeyDia) || '[]'); } catch(e){}
     
-    if(tarefasDia.length){
-      html += '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Tarefas (' + tarefasDia.length + ')</div>';
-      tarefasDia.slice(0,5).forEach(function(t){
-        html += '<div class="cal-painel-item" onclick="nav(document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px">▢</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word">' + (t.texto || '(sem título)') + '</div></div>';
+    // Filtra por permissão se aplicável
+    if(typeof filtrarTarefasPorPermissao === 'function'){
+      try { tarefas = filtrarTarefasPorPermissao(tarefas); } catch(e){}
+    }
+    
+    var pendentes = tarefas.filter(function(t){ return t && !t.feito && !t.concluida; });
+    var feitas = tarefas.filter(function(t){ return t && (t.feito || t.concluida); });
+    
+    if(pendentes.length || feitas.length){
+      html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Tarefas (' + (pendentes.length+feitas.length) + ')</div>';
+      pendentes.slice(0,5).forEach(function(t){
+        html += '<div class="cal-painel-item" style="align-items:flex-start" onclick="nav(document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px;flex-shrink:0">▢</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word">' + ((t.texto||t.titulo)||'(sem título)').replace(/</g,'&lt;') + '</div></div>';
         itens++;
       });
-      if(tarefasDia.length > 5) html += '<div style="font-size:10.5px;color:var(--text3);padding:5px 0">+' + (tarefasDia.length-5) + ' tarefas</div>';
+      feitas.slice(0,3).forEach(function(t){
+        html += '<div class="cal-painel-item" style="align-items:flex-start;opacity:.5"><div style="font-size:14px;flex-shrink:0">✓</div><div style="flex:1;font-size:12px;color:var(--text2);line-height:1.35;text-decoration:line-through;overflow-wrap:break-word">' + ((t.texto||t.titulo)||'(sem título)').replace(/</g,'&lt;') + '</div></div>';
+        itens++;
+      });
+      if(pendentes.length > 5) html += '<div style="font-size:10.5px;color:var(--text3);padding:5px 0">+' + (pendentes.length-5) + ' mais</div>';
+      html += '</div>';
+    }
+    
+    // Anotações do dia
+    var notas = [];
+    if(typeof getNotasCalendario === 'function'){
+      try { notas = getNotasCalendario(dStr) || []; } catch(e){}
+    }
+    if(notas.length){
+      html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📝 Anotações (' + notas.length + ')</div>';
+      notas.slice(0,3).forEach(function(n){
+        var corBg = {amarelo:'#FFF8E1', verde:'#E8F5E9', rosa:'#FCE4EC', azul:'#E3F2FD'}[n.cor] || '#FFF8E1';
+        html += '<div style="padding:7px 10px;background:' + corBg + ';border-radius:6px;margin-bottom:6px;font-size:11.5px;color:var(--text);line-height:1.45;overflow-wrap:break-word;border-left:3px solid rgba(0,0,0,.08)">' + (n.texto||'').slice(0,100).replace(/</g,'&lt;') + (n.texto && n.texto.length > 100 ? '...' : '') + '</div>';
+        itens++;
+      });
+      if(notas.length > 3) html += '<div style="font-size:10.5px;color:var(--text3);padding:2px 0">+' + (notas.length-3) + ' mais</div>';
       html += '</div>';
     }
     
@@ -7389,7 +7418,7 @@ function _calCarregarDadosDoDia(dia){
         } catch(e){ return false; }
       });
       if(bdays.length){
-        html += '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎂 Aniversário</div>';
+        html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎂 Aniversário</div>';
         bdays.forEach(function(p){
           var idade = '';
           try {
@@ -7403,23 +7432,97 @@ function _calCarregarDadosDoDia(dia){
       }
     }
     
-    // Eventos especiais (feriados, etc) — verifica datas comemorativas
+    // Eventos especiais (feriados, etc)
     var especiais = _calDatasEspeciais(dia);
     if(especiais.length){
-      html += '<div style="margin-bottom:12px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎉 Eventos</div>';
+      html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🎉 Eventos</div>';
       especiais.forEach(function(e){
         html += '<div class="cal-painel-item"><div style="font-size:14px">' + e.emoji + '</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35">' + e.nome + '</div></div>';
         itens++;
       });
       html += '</div>';
     }
-  } catch(e){ console.warn(e); }
+  } catch(e){ console.warn('_calCarregarDadosDoDia:', e); }
   
   if(itens === 0){
-    html = '<div style="text-align:center;padding:24px 0;color:var(--text3)"><div style="font-size:36px;opacity:.3;margin-bottom:6px">🌱</div><div style="font-size:12px">Nada agendado pra esse dia</div></div>';
+    html = '<div style="text-align:center;padding:22px 0;color:var(--text3)"><div style="font-size:32px;opacity:.3;margin-bottom:6px">🌱</div><div style="font-size:12px;margin-bottom:4px">Nada agendado pra esse dia</div><div style="font-size:10.5px;color:var(--text3);opacity:.8">Adicione abaixo</div></div>';
   }
   
+  // 🆕 Botões de Ação (Adicionar Tarefa/Anotação)
+  html += '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+    + '<button onclick="_calAdicionarTarefaDoDia()" style="padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--gami-blue);color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px">📋 + Tarefa</button>'
+    + '<button onclick="_calAdicionarAnotacaoDoDia()" style="padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--orange);color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px">📝 + Anotação</button>'
+    + '</div>';
+  
   return { html: html, count: itens };
+}
+
+// Adiciona tarefa no dia do painel
+function _calAdicionarTarefaDoDia(){
+  if(typeof abrirModalNovaTarefa === 'function'){
+    abrirModalNovaTarefa('diario');
+  } else {
+    alert('Funcionalidade de tarefas não está disponível.');
+  }
+}
+
+// Adiciona anotação no dia do painel
+function _calAdicionarAnotacaoDoDia(){
+  var diaRef = _calPainelDia ? new Date(_calPainelDia) : new Date();
+  var y = diaRef.getFullYear();
+  var m = String(diaRef.getMonth()+1).padStart(2,'0');
+  var d = String(diaRef.getDate()).padStart(2,'0');
+  var dStr = y + '-' + m + '-' + d;
+  
+  // Modal simples inline
+  var modal = document.getElementById('modal-cal-anotacao');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'modal-cal-anotacao';
+    modal.className = 'modal-overlay';
+    document.body.appendChild(modal);
+  }
+  
+  var diasSem = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  var dataLabel = diasSem[diaRef.getDay()] + ', ' + diaRef.getDate() + ' ' + meses[diaRef.getMonth()];
+  
+  modal.classList.add('open');
+  modal.innerHTML = '<div class="modal-box" style="max-width:420px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+      + '<div style="font-size:15px;font-weight:700">📝 Nova anotação</div>'
+      + '<button onclick="document.getElementById(\'modal-cal-anotacao\').classList.remove(\'open\')" style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:14px">×</button>'
+    + '</div>'
+    + '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">📅 ' + dataLabel + '</div>'
+    + '<textarea id="cal-anota-texto" placeholder="Escreva sua anotação..." style="width:100%;min-height:100px;padding:10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--surface);box-sizing:border-box;resize:vertical"></textarea>'
+    + '<div style="display:flex;gap:6px;margin-top:10px;align-items:center;flex-wrap:wrap">'
+      + '<div style="font-size:11px;color:var(--text2);margin-right:4px">Cor:</div>'
+      + '<button onclick="window._calNotaCor=\'amarelo\';this.parentElement.querySelectorAll(\'.cor-btn\').forEach(function(b){b.style.boxShadow=\'none\'});this.style.boxShadow=\'0 0 0 2px var(--gami-blue)\'" class="cor-btn" style="width:24px;height:24px;border-radius:50%;background:#FFE066;border:1px solid #E5C633;cursor:pointer;box-shadow:0 0 0 2px var(--gami-blue)"></button>'
+      + '<button onclick="window._calNotaCor=\'verde\';this.parentElement.querySelectorAll(\'.cor-btn\').forEach(function(b){b.style.boxShadow=\'none\'});this.style.boxShadow=\'0 0 0 2px var(--gami-blue)\'" class="cor-btn" style="width:24px;height:24px;border-radius:50%;background:#A5D6A7;border:1px solid #66BB6A;cursor:pointer"></button>'
+      + '<button onclick="window._calNotaCor=\'rosa\';this.parentElement.querySelectorAll(\'.cor-btn\').forEach(function(b){b.style.boxShadow=\'none\'});this.style.boxShadow=\'0 0 0 2px var(--gami-blue)\'" class="cor-btn" style="width:24px;height:24px;border-radius:50%;background:#F8BBD0;border:1px solid #EC407A;cursor:pointer"></button>'
+      + '<button onclick="window._calNotaCor=\'azul\';this.parentElement.querySelectorAll(\'.cor-btn\').forEach(function(b){b.style.boxShadow=\'none\'});this.style.boxShadow=\'0 0 0 2px var(--gami-blue)\'" class="cor-btn" style="width:24px;height:24px;border-radius:50%;background:#90CAF9;border:1px solid #1E88E5;cursor:pointer"></button>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+      + '<button onclick="document.getElementById(\'modal-cal-anotacao\').classList.remove(\'open\')" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">Cancelar</button>'
+      + '<button onclick="_calSalvarAnotacao(\'' + dStr + '\')" style="flex:1;padding:10px;border:none;border-radius:8px;background:var(--gami-blue);color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">💾 Salvar</button>'
+    + '</div>'
+    + '</div>';
+  
+  window._calNotaCor = 'amarelo';
+  setTimeout(function(){ try { document.getElementById('cal-anota-texto').focus(); } catch(e){} }, 100);
+}
+
+function _calSalvarAnotacao(dStr){
+  var texto = (document.getElementById('cal-anota-texto').value || '').trim();
+  if(!texto){ alert('Escreva alguma coisa.'); return; }
+  var cor = window._calNotaCor || 'amarelo';
+  if(typeof adicionarNotaCalendario === 'function'){
+    adicionarNotaCalendario(dStr, texto, cor);
+    if(typeof toast === 'function') toast('📝 Anotação salva!', 'success');
+  }
+  document.getElementById('modal-cal-anotacao').classList.remove('open');
+  try { calRenderPainelLateral(); } catch(e){}
+  try { if(typeof renderCalendar === 'function') renderCalendar(); } catch(e){}
 }
 
 // Renderiza lista de próximos N dias (em grid horizontal full-width)
@@ -7433,11 +7536,23 @@ function _calRenderProximosDias(n){
     
     // Pega resumo curto
     var resumo = [];
+    var y = d.getFullYear();
+    var mm = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    var dStr = y + '-' + mm + '-' + dd;
+    var tfKeyDia = 'gami_tf_v2_d_' + y + '_' + mm + '_' + dd;
+    
     var tarefas = [];
-    try { tarefas = JSON.parse(localStorage.getItem('gami_tarefas_v1') || '[]'); } catch(e){}
-    var dStr = d.toISOString().split('T')[0];
-    var qtdTar = tarefas.filter(function(t){ return t && t.data === dStr && !t.concluida; }).length;
+    try { tarefas = JSON.parse(localStorage.getItem(tfKeyDia) || '[]'); } catch(e){}
+    var qtdTar = tarefas.filter(function(t){ return t && !t.feito && !t.concluida; }).length;
     if(qtdTar) resumo.push('📋 ' + qtdTar + ' tarefa' + (qtdTar>1?'s':''));
+    
+    // Anotações
+    var qtdNotas = 0;
+    if(typeof getNotasCalendario === 'function'){
+      try { qtdNotas = (getNotasCalendario(dStr) || []).length; } catch(e){}
+    }
+    if(qtdNotas) resumo.push('📝 ' + qtdNotas + ' nota' + (qtdNotas>1?'s':''));
     
     var especiais = _calDatasEspeciais(d);
     especiais.forEach(function(e){ resumo.push(e.emoji + ' ' + e.nome); });
