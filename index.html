@@ -1,4 +1,4 @@
-<!-- v26.95 - Tarefas: isolamento total por pessoa_id + limpeza de outros usuários + RPC tarefas_minhas - 19/06/2026 -->
+<!-- v26.96 - Relatórios: telefone em 4 a mais (clientes novos, em alta, top moto, moto queda) + pararam 90d - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -15595,6 +15595,9 @@ var RELATORIOS = {
       { id:'empresas_pararam_30d', icone:'🛑', nome:'Empresas que pararam (30d)',
         descricao:'Empresas que TINHAM pedidos antes mas ZERARAM nos últimos 30 dias — churn confirmado',
         temValor:false, fase:1 },
+      { id:'empresas_pararam_90d', icone:'🛑', nome:'Empresas que pararam (90d)',
+        descricao:'Empresas que TINHAM pedidos antes mas ZERARAM nos últimos 90 dias — churn confirmado',
+        temValor:false, fase:1 },
       { id:'empresas_ativas_periodos', icone:'📋', nome:'Empresas ativas (15/30/45d)',
         descricao:'Todas as empresas que pediram nos últimos 45 dias com contagem por janela e telefone',
         temValor:false, fase:1 }
@@ -16173,6 +16176,16 @@ function _rlMesclarMotoboysHoje(historico, corridasHoje){
   return Object.values(porId);
 }
 
+/* 🆕 v26.96: Helper único pra formatar célula de telefone (usado em TODOS os relatórios) */
+function _rlTelefoneCell(telefoneRaw){
+  var tel = (telefoneRaw||'').toString().trim();
+  if(!tel) return '<span style="color:#999;font-size:11px">—</span>';
+  var telLimpo = tel.replace(/\D/g, '');
+  if(telLimpo.length < 10) return '<span style="color:#999;font-size:11px">'+tel+'</span>';
+  return '<span style="font-weight:600;color:#1a1a1a">'+tel+'</span> '
+    + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
+}
+
 /* ─── 1) EMPRESAS SUMIDAS (Supabase + hoje) ─── */
 async function _sb_empresas_sumidas(){
   var c = _rlGetCidade();
@@ -16619,7 +16632,8 @@ async function _sb_clientes_novos(){
   console.log('[Clientes Novos] '+slug+' · '+novos.length+' novos nos últimos '+periodo+' dias');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','1º pedido','Cliente há','Corridas','Paradas','✅ Fin','❌ Canc'];
+  // 🆕 v26.96: telefone sempre na lista pro time de prospecção
+  var colunas = ['Empresa','1º pedido','Cliente há','Corridas','Paradas','✅ Fin','❌ Canc','📞 Telefone'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = novos.map(function(e){
@@ -16627,7 +16641,8 @@ async function _sb_clientes_novos(){
     var dias = Math.floor((Date.now() - prim.getTime()) / 86400000);
     var row = ['🌟 '+e.nome_passageiro, prim.toLocaleDateString('pt-BR'), dias+' dias',
                (parseInt(e.total_corridas)||0), (parseInt(e.total_paradas)||0),
-               (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0)];
+               (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0),
+               _rlTelefoneCell(e.telefone)];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
@@ -16687,14 +16702,15 @@ async function _sb_empresas_alta(){
   console.log('[Em Alta] '+slug+' · '+emAlta.length+' empresas crescendo ≥'+altaMin+'%');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Empresa','Último','Corridas','Paradas','Crescimento'];
+  // 🆕 v26.96: telefone pro time
+  var colunas = ['Empresa','Último','Corridas','Paradas','Crescimento','📞 Telefone'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = emAlta.map(function(e){
     var c1 = e._crescPct >= 100 ? '🚀' : e._crescPct >= 50 ? '🔥' : '📈';
     var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
     var variacao = e.count_antigo+' → '+e.count_recente+' corr · '+e.paradas_antigo+' → '+e.paradas_recente+' par';
-    var row = [c1+' '+e.nome_passageiro, ultFmt, variacao, parseInt(e.total_paradas||0), '+'+e._crescPct+'%'];
+    var row = [c1+' '+e.nome_passageiro, ultFmt, variacao, parseInt(e.total_paradas||0), '+'+e._crescPct+'%', _rlTelefoneCell(e.telefone)];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
@@ -17106,6 +17122,113 @@ async function _sb_empresas_pararam_30d(){
 }
 
 /* ─── 4.3) EMPRESAS ATIVAS POR PERÍODOS (15/30/45d) ─── */
+/* 🆕 v26.96: EMPRESAS QUE PARARAM (90d) — churn de longo prazo */
+async function _sb_empresas_pararam_90d(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var minAntes = _RL.minPedidosAntes90 !== undefined ? _RL.minPedidosAntes90 : 3;
+  var maxRecente = _RL.maxRecente90 !== undefined ? _RL.maxRecente90 : 0;
+  var lookbackTotal = 180; // janela completa: 90d antes + 90d recentes
+  
+  console.log('═══════════════════════════════════════════════════');
+  console.log('[🛑 Pararam 90d] INICIANDO · slug:', slug, '· min antes:', minAntes, '· max recente:', maxRecente);
+  
+  if(!slug){
+    return {
+      id:'empresas_pararam_90d', icone:'🛑', titulo:'Empresas que pararam (90d)',
+      descricao:'⚠️ Selecione uma cidade primeiro.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'🛑 Pararam', valor:0, cor:'#E24B4A' }]
+    };
+  }
+  
+  var lista = null;
+  var erroDetalhado = null;
+  
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_pararam_90d', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({
+        p_cidade_slug: slug,
+        p_min_pedidos_antes: minAntes,
+        p_max_recente: maxRecente,
+        p_dias_lookback_total: lookbackTotal
+      })
+    });
+    console.log('[🛑 Pararam 90d] HTTP:', rpcResp.status);
+    if(rpcResp.ok){
+      lista = await rpcResp.json();
+      console.log('[🛑 Pararam 90d] ✓', lista.length, 'empresas');
+    } else {
+      erroDetalhado = 'HTTP '+rpcResp.status+': '+(await rpcResp.text()).substring(0,200);
+      console.error('[🛑 Pararam 90d] ❌', erroDetalhado);
+    }
+  } catch(e){
+    erroDetalhado = e.message;
+    console.error('[🛑 Pararam 90d] ❌', e);
+  }
+  console.log('═══════════════════════════════════════════════════');
+  
+  if(!Array.isArray(lista)){
+    return {
+      id:'empresas_pararam_90d', icone:'🛑', titulo:'Empresas que pararam (90d)',
+      descricao:'⚠️ RPC falhou: '+(erroDetalhado||'erro')+'. Rode v26.96_rpc_pararam_90d.sql no Supabase.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'🛑 Pararam', valor:0, cor:'#E24B4A' }]
+    };
+  }
+  
+  var colunas = ['Empresa','Bairro','Último pedido','Sem pedir há','Pedidos antes','📞 Telefone'];
+  var linhas = lista.map(function(p){
+    var diasSem = parseInt(p.dias_sem_pedir) || 0;
+    var icone = diasSem >= 150 ? '🔴' : diasSem >= 120 ? '🟠' : '🟡';
+    var ultFmt = '—';
+    if(p.ultimo_pedido){
+      var dt = new Date(p.ultimo_pedido);
+      if(!isNaN(dt.getTime())) ultFmt = dt.toLocaleDateString('pt-BR');
+    }
+    var qtdAntes = parseInt(p.qtd_antes_90d || p.qtd_antes_30d) || 0;
+    var antesBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#FDE8E8;color:#9B1C1C;font-weight:700">'+qtdAntes+' pedidos</span>';
+    
+    return [
+      icone+' '+(p.nome||'?'),
+      p.bairro || '—',
+      ultFmt,
+      diasSem+' dias',
+      antesBadge,
+      _rlTelefoneCell(p.telefone)
+    ];
+  });
+  
+  return {
+    id:'empresas_pararam_90d', icone:'🛑', titulo:'Empresas que pararam (90d)',
+    descricao:'⚡ Supabase · Empresas com '+minAntes+'+ pedidos no período anterior (90-180d) mas com '+maxRecente+' pedido(s) nos últimos 90 dias · churn confirmado, ordem das mais recentes paradas',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: lista.length === 0,
+    kpis:[
+      { label:'🛑 Pararam', valor:lista.length, cor:'#E24B4A' },
+      { label:'Pedidos perdidos', valor: lista.reduce(function(s,p){return s+(parseInt(p.qtd_antes_90d||p.qtd_antes_30d)||0);},0), cor:'#9B1C1C' }
+    ],
+    filtros: '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Tinha antes (mín):</strong>'
+        +'<select onchange="_RL.minPedidosAntes90=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="1"'+(minAntes===1?' selected':'')+'>1+ pedido</option>'
+          +'<option value="3"'+(minAntes===3?' selected':'')+'>3+ pedidos</option>'
+          +'<option value="5"'+(minAntes===5?' selected':'')+'>5+ pedidos</option>'
+          +'<option value="10"'+(minAntes===10?' selected':'')+'>10+ pedidos</option>'
+        +'</select>'
+      +'</label>'
+      +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Últimos 90d (máx):</strong>'
+        +'<select onchange="_RL.maxRecente90=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+          +'<option value="0"'+(maxRecente===0?' selected':'')+'>0 (parou de vez)</option>'
+          +'<option value="1"'+(maxRecente===1?' selected':'')+'>0-1 (quase zerou)</option>'
+          +'<option value="2"'+(maxRecente===2?' selected':'')+'>0-2 (caiu muito)</option>'
+        +'</select>'
+      +'</label>'
+    +'</div>'
+  };
+}
+
 async function _sb_empresas_ativas_periodos(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
@@ -17419,7 +17542,8 @@ async function _sb_top_motoboys(){
   console.log('[Top Motoboys] '+slug+' · Top '+topN+':', top);
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['#','Motoboy','Corridas','Paradas','✅ Fin','❌ Canc','% do top '+topN,'Última'];
+  // 🆕 v26.96: telefone pro time
+  var colunas = ['#','Motoboy','Corridas','Paradas','✅ Fin','❌ Canc','% do top '+topN,'Última','📞 Telefone'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = top.map(function(m, i){
@@ -17428,7 +17552,8 @@ async function _sb_top_motoboys(){
     var pct = totalParadasGeral > 0 ? ((paradas / totalParadasGeral) * 100).toFixed(1) + '%' : '—';
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
     var row = [medal, m.nome_condutor, (parseInt(m.total_corridas)||0), paradas,
-               (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0), pct, ultFmt];
+               (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0), pct, ultFmt,
+               _rlTelefoneCell(m.telefone)];
     if(podeValor){
       row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
@@ -17487,7 +17612,8 @@ async function _sb_motoboys_queda(){
   console.log('[Motoboys Em Queda] '+slug+' · '+emQueda.length+' regulares em queda ≥'+quedaMin+'%');
   
   var podeValor = _rlPodeVerValor();
-  var colunas = ['Motoboy','Frequência','Última','Corridas → Paradas','Queda %'];
+  // 🆕 v26.96: telefone pro time
+  var colunas = ['Motoboy','Frequência','Última','Corridas → Paradas','Queda %','📞 Telefone'];
   if(podeValor) colunas.push('Faturamento','Ticket/parada');
   
   var linhas = emQueda.map(function(m){
@@ -17496,7 +17622,7 @@ async function _sb_motoboys_queda(){
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR') + ' ('+m.dias_sem_rodar+'d)';
     var ativ = m.dias_distintos+'/'+diasTotal+'d';
     var variacao = m.count_antigo+' → '+m.count_recente+' corr · '+m.paradas_antigo+' → '+m.paradas_recente+' par';
-    var row = [icone+' '+m.nome_condutor, ativ, ultFmt, variacao, '-'+queda+'%'];
+    var row = [icone+' '+m.nome_condutor, ativ, ultFmt, variacao, '-'+queda+'%', _rlTelefoneCell(m.telefone)];
     if(podeValor){
       row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
@@ -18133,6 +18259,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
     case 'empresas_fantasmas': return await _sb_empresas_fantasmas();  // sempre tenta — RPC funciona em qualquer cidade sincronizada
     case 'empresas_pararam_30d': return await _sb_empresas_pararam_30d();
+    case 'empresas_pararam_90d': return await _sb_empresas_pararam_90d();
     case 'empresas_ativas_periodos': return await _sb_empresas_ativas_periodos();
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
     case 'motoboys_queda':     return temSupa ? await _sb_motoboys_queda() : { id:'motoboys_queda', icone:'📉', titulo:'Motoboys em queda', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
