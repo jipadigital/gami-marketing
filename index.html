@@ -1,4 +1,4 @@
-<!-- v26.88 - Editor de Batidas estilo Painel Hoje: cards por pessoa, 4 slots clicáveis, navegação data - 19/06/2026 -->
+<!-- v26.89 - Editor robusto: fallback colaboradoras + RPC ponto_painel_hoje + logs debug - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -48167,16 +48167,94 @@ async function pgEditorCarregar(){
   
   grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3);font-size:12px">Carregando...</div>';
   
+  // 🆕 v26.89: garante que PG_COLABORADORAS esteja carregado
+  if(!PG_COLABORADORAS || !PG_COLABORADORAS.length){
+    try {
+      console.log('[Editor] Colaboradoras não carregadas. Carregando agora...');
+      PG_COLABORADORAS = await _pgRPC('ponto_lista_colaboradoras', {});
+      console.log('[Editor] Carregadas ' + PG_COLABORADORAS.length + ' colaboradoras.');
+    } catch(e){
+      console.error('[Editor] Erro ao carregar colaboradoras:', e);
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">❌ Erro ao carregar lista de colaboradoras: '+e.message+'</div>';
+      return;
+    }
+  }
+  
   try {
-    // Busca batidas da data
+    // 🆕 v26.89: estratégia DUAL
+    // Se data == hoje, usa RPC ponto_painel_hoje (TESTADO E FUNCIONANDO)
+    // Se outra data, busca via REST
+    var registros = [];
+    var hojeStr2 = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Porto_Velho', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+    
+    if(data === hojeStr2){
+      console.log('[Editor] Usando RPC ponto_painel_hoje (data é hoje)');
+      var dadosHoje = await _pgRPC('ponto_painel_hoje', {});
+      var colabs = dadosHoje.colaboradoras || [];
+      // Converte formato pra ficar igual ao REST
+      colabs.forEach(function(c){
+        var pontos = c.pontos_hoje || {};
+        ['entrada1','saida1','entrada2','saida2'].forEach(function(tipo){
+          var b = pontos[tipo];
+          if(b){
+            // RPC retorna id, hora, dentro_do_raio, etc.
+            registros.push({
+              id: b.id || null,
+              pessoa_id: c.pessoa_id,
+              data: data,
+              tipo: tipo,
+              hora_registrada: b.hora_registrada || (data + 'T' + (b.hora||'00:00') + ':00-04:00'),
+              hora_label: b.hora,
+              dentro_do_raio: b.dentro_do_raio,
+              justificativa: b.justificativa,
+              validado_por: b.validado_por,
+              editado_por: b.editado_por,
+              motivo_edicao: b.motivo_edicao,
+              latitude: b.latitude,
+              longitude: b.longitude,
+              distancia_metros: b.distancia_metros,
+              ip: b.ip,
+              _fonte: 'rpc'
+            });
+          }
+        });
+      });
+    } else {
+      console.log('[Editor] Usando REST API (data não é hoje)');
+    }
+    
+    // Sempre tenta REST tb pra pegar duplicadas (que o RPC pode esconder)
     var query = '?data=eq.' + data
       + '&select=id,pessoa_id,data,tipo,hora_registrada,latitude,longitude,distancia_metros,dentro_do_raio,justificativa,validado_por,editado_por,editado_em,motivo_edicao,ip,created_at'
       + '&order=created_at.asc&limit=500';
+    console.log('[Editor] GET ' + SUPA_URL + '/rest/v1/ponto_registros' + query);
+    
     var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros' + query, {
       headers: _pgSupaHeaders(), cache: 'no-store'
     });
-    var registros = r.ok ? await r.json() : [];
+    console.log('[Editor] REST HTTP', r.status);
+    
+    if(r.ok){
+      var registrosRest = await r.json();
+      console.log('[Editor] REST retornou ' + (registrosRest||[]).length + ' registros');
+      if(Array.isArray(registrosRest) && registrosRest.length){
+        // Se REST tem mais registros que RPC (porque RPC só pega 1 de cada tipo), usa REST
+        if(registrosRest.length >= registros.length){
+          registros = registrosRest.map(function(x){ x._fonte = 'rest'; return x; });
+        }
+      }
+    } else {
+      var errTxt = '';
+      try { errTxt = await r.text(); } catch(e){}
+      console.error('[Editor] REST erro:', r.status, errTxt);
+      if(registros.length === 0){
+        grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">❌ Erro REST '+r.status+': '+errTxt+'</div>';
+        return;
+      }
+    }
+    
     window._pgEdRegistros = registros;
+    console.log('[Editor] Total final: ' + registros.length + ' registros · ' + PG_COLABORADORAS.length + ' colaboradoras');
     
     // Agrupa por pessoa_id (lista pode ter múltiplas batidas do mesmo tipo = duplicadas)
     var porPessoa = {};
@@ -48186,9 +48264,8 @@ async function pgEditorCarregar(){
       bucket.push(reg);
     });
     
-    // Renderiza grid pra TODAS as colaboradoras com bate_ponto=true
     if(!PG_COLABORADORAS || !PG_COLABORADORAS.length){
-      grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhuma colaboradora cadastrada.</div>';
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhuma colaboradora cadastrada como bate_ponto.</div>';
       return;
     }
     
@@ -48214,21 +48291,23 @@ async function pgEditorCarregar(){
         if(!batidas.length){
           // Slot vazio: botão "+"
           return '<div onclick="pgAbrirAdicionarBatidaPra(\''+c.pessoa_id+'\',\''+t+'\',\''+data+'\')" '
-            + 'style="padding:8px 4px;border:1.5px dashed var(--border);border-radius:6px;cursor:pointer;background:transparent;transition:all .12s" '
+            + 'style="padding:10px 4px;border:1.5px dashed var(--border);border-radius:6px;cursor:pointer;background:transparent;transition:all .12s;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center" '
             + 'onmouseover="this.style.background=\'#EAF6FE\';this.style.borderColor=\'#1AB8F0\'" '
             + 'onmouseout="this.style.background=\'transparent\';this.style.borderColor=\'var(--border)\'">'
-            + '<div style="font-size:14px;color:var(--text3);text-align:center;line-height:1">+</div>'
+            + '<div style="font-size:18px;color:var(--text3);text-align:center;line-height:1">+</div>'
             + '<div style="font-size:9px;color:var(--text3);text-align:center;margin-top:2px">vazio</div>'
           + '</div>';
         }
         
         // Tem 1 ou mais batidas (mostra cada uma)
         return batidas.map(function(b){
-          var hora = '--:--';
-          try {
-            var d = new Date(b.hora_registrada);
-            hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-          } catch(e){}
+          var hora = b.hora_label || '--:--';
+          if(!b.hora_label){
+            try {
+              var d = new Date(b.hora_registrada);
+              hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+            } catch(e){}
+          }
           
           var iconCor = '#5A6678';
           if(b.validado_por === 'IP' || b.dentro_do_raio) iconCor = '#0F6D52';
@@ -48238,14 +48317,16 @@ async function pgEditorCarregar(){
           else iconCor = '#A32D2D';
           
           var temEditado = b.editado_por ? '<div style="position:absolute;top:-3px;right:-3px;background:#EF9F27;color:white;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px">✏️</div>' : '';
-          var temDup = batidas.length > 1 ? '<div style="font-size:8px;color:#A32D2D;font-weight:700;margin-top:1px">DUPLICADA</div>' : '';
+          var temDup = batidas.length > 1 ? '<div style="font-size:8px;color:#A32D2D;font-weight:700;margin-top:1px;text-align:center">DUPLICADA</div>' : '';
           
-          return '<div onclick="pgEditarBatida('+b.id+')" '
-            + 'style="position:relative;padding:8px 4px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;background:var(--surface2);transition:all .12s" '
+          var clickHandler = b.id ? 'pgEditarBatida('+b.id+')' : 'alert(\'Esta batida ainda não tem ID — recarregue.\')';
+          
+          return '<div onclick="'+clickHandler+'" '
+            + 'style="position:relative;padding:10px 4px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;background:var(--surface2);transition:all .12s;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center" '
             + 'onmouseover="this.style.borderColor=\'#1AB8F0\';this.style.background=\'#EAF6FE\'" '
             + 'onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--surface2)\'">'
             + temEditado
-            + '<div style="font-size:12px;font-weight:700;color:var(--text);text-align:center;font-family:\'JetBrains Mono\',monospace"><span style="color:'+iconCor+'">●</span> '+hora+'</div>'
+            + '<div style="font-size:13px;font-weight:700;color:var(--text);text-align:center;font-family:\'JetBrains Mono\',monospace;line-height:1.2"><span style="color:'+iconCor+'">●</span> '+hora+'</div>'
             + temDup
           + '</div>';
         }).join('');
@@ -48268,8 +48349,14 @@ async function pgEditorCarregar(){
         + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">'+slotsHtml+'</div>'
       + '</div>';
     }).join('');
+    
+    // Mostra contador no label de data
+    if(lblData){
+      var existente = lblData.innerHTML;
+      lblData.innerHTML = existente + ' · <span style="color:#1AB8F0">' + registros.length + ' batida(s)</span>';
+    }
   } catch(e){
-    grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: '+e.message+'</div>';
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: '+e.message+'<br><small>Veja F12 → Console pra detalhes</small></div>';
     console.error('[Editor]', e);
   }
 }
