@@ -1,4 +1,4 @@
-<!-- v26.97 - Tarefas: STRICT mode (bloqueio criação sem login, sem órfãs, limpeza auto) - 19/06/2026 -->
+<!-- v27.00 - Estoque Nova Venda: TODOS campos obrigatórios + foco no inválido - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1299,37 +1299,24 @@ function coletarNotificacoes(){
   }
 
   try{
-    // 1) 🆕 v26.69: Tarefas atrasadas — usa chaves ATUAIS (gami_tarefas_v2 + gami_tf_v2_*)
+    // 🆕 v26.98: Tarefas atrasadas — USA helper STRICT (lê das chaves v3 atualizadas)
+    // Antes (v26.69) lia de gami_tf_v2_* que tinha versão antiga = mostrava tarefa concluída como atrasada
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     if(u && u.id){
-      // Coleta todas as tarefas dos diferentes formatos
-      var todasTarefas = [];
+      // Helper retorna SÓ minhas tarefas válidas, das chaves v3 atualizadas em tempo real
+      var todasTarefas = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
       
-      // Formato novo: gami_tf_v2_d_YYYY_MM_DD (tarefas do dia)
-      try {
-        for(var i=0; i<localStorage.length; i++){
-          var key = localStorage.key(i);
-          if(!key) continue;
-          if(key.indexOf('gami_tf_v2_d_') === 0 || key.indexOf('gami_tf_v2_s_') === 0 || key.indexOf('gami_tf_v2_m_') === 0){
-            try {
-              var arr = JSON.parse(localStorage.getItem(key) || '[]');
-              if(Array.isArray(arr)) arr.forEach(function(t){ if(t) todasTarefas.push(t); });
-            } catch(e){}
-          }
-        }
-      } catch(e){}
-      
-      // Filtra: minhas tarefas, não concluídas, com prazo atrasado
+      // Filtra: não concluídas, com prazo atrasado
       var hojeStr = hoje.toISOString().slice(0,10);
       var atrasadas = todasTarefas.filter(function(t){
-        if(!t || t.feito || t.concluida) return false;
-        if(t.pessoa_id && t.pessoa_id !== u.id) return false; // só minhas
+        if(!t) return false;
+        if(t.feito || t.concluida) return false;  // ✅ feita = NÃO atrasada
         if(!t.prazo) return false;
         return t.prazo < hojeStr;
       });
       
       if(atrasadas.length){
-        // 🆕 v26.76: Mostra primeiras 3 tarefas COM TEXTO
+        // Mostra primeiras 3 com texto
         var detalhes = atrasadas.slice(0, 3).map(function(t){
           var diasAtraso = 0;
           try {
@@ -1347,10 +1334,9 @@ function coletarNotificacoes(){
         });
       }
       
-      // Tarefas DELEGADAS pra mim (não vistas ainda)
+      // Tarefas DELEGADAS pra mim (não vistas ainda) — também usa o helper
       var delegadas = todasTarefas.filter(function(t){
         if(!t || t.feito || t.concluida) return false;
-        if(t.pessoa_id !== u.id) return false;
         if(!t.delegada_por) return false; // só conta as delegadas
         if(t.vista_em) return false; // já vista
         return true;
@@ -1371,10 +1357,9 @@ function coletarNotificacoes(){
         });
       }
       
-      // Tarefas pra HOJE (não concluídas)
+      // Tarefas pra HOJE (não concluídas) — 🆕 v26.98 strict (já vem só do usuário do helper)
       var hojeTarefas = todasTarefas.filter(function(t){
         if(!t || t.feito || t.concluida) return false;
-        if(t.pessoa_id && t.pessoa_id !== u.id) return false;
         return t.prazo === hojeStr;
       });
       
@@ -5860,32 +5845,35 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div style="font-size:11px;color:var(--text3);margin-bottom:18px">Registre uma venda — saldo da cidade é validado automaticamente</div>
     
     <div class="card" style="padding:18px;max-width:560px">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:12px;padding:8px 10px;background:#FFF8E1;border-left:3px solid #EF9F27;border-radius:4px">
+        ⚠️ <strong>Todos os campos são obrigatórios</strong> — pra manter histórico completo e rastreável
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">👤 NOME DO CLIENTE</label>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">👤 NOME DO CLIENTE <span style="color:#E24B4A">*</span></label>
           <input id="est-vd-cliente" placeholder="Nome completo" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📱 TELEFONE</label>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📱 TELEFONE <span style="color:#E24B4A">*</span></label>
           <input id="est-vd-telefone" placeholder="(00) 00000-0000" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
         </div>
       </div>
       
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">🏙️ CIDADE</label>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">🏙️ CIDADE <span style="color:#E24B4A">*</span></label>
           <select id="est-vd-cidade" onchange="estCarregarItensVenda()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
             <option value="">— escolha —</option>
           </select>
         </div>
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📅 DATA</label>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📅 DATA <span style="color:#E24B4A">*</span></label>
           <input id="est-vd-data" type="date" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
         </div>
       </div>
       
       <div style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📦 ITEM</label>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📦 ITEM <span style="color:#E24B4A">*</span></label>
         <select id="est-vd-item" onchange="estPreencherValorVenda()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
           <option value="">— escolha a cidade primeiro —</option>
         </select>
@@ -5893,24 +5881,22 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       
       <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-bottom:14px">
         <div>
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">QUANTIDADE</label>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">QUANTIDADE <span style="color:#E24B4A">*</span></label>
           <input id="est-vd-qtd" type="number" min="1" placeholder="1" oninput="estPreencherValorVenda()" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
         </div>
         <div class="gami-valor">
-          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💰 VALOR TOTAL DA VENDA (R$)</label>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💰 VALOR TOTAL DA VENDA (R$) <span style="color:#E24B4A">*</span></label>
           <input id="est-vd-valor" type="number" step="0.01" min="0" placeholder="0,00" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
         </div>
       </div>
       
-      <!-- 🆕 v26.75: NOMINAL DO COMPROVANTE -->
       <div style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📋 NOMINAL DO COMPROVANTE</label>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📋 NOMINAL DO COMPROVANTE <span style="color:#E24B4A">*</span></label>
         <input id="est-vd-nominal" placeholder="Em nome de quem recebeu o comprovante" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/>
       </div>
       
-      <!-- 🆕 v26.77/78: FORMA DE PAGAMENTO (simplificada) -->
       <div style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💳 FORMA DE PAGAMENTO</label>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">💳 FORMA DE PAGAMENTO <span style="color:#E24B4A">*</span></label>
         <select id="est-vd-pagamento" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">
           <option value="">— escolha —</option>
           <option value="pix">💚 Pix</option>
@@ -5921,7 +5907,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       </div>
       
       <div style="margin-bottom:14px">
-        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📝 OBSERVAÇÕES <span style="color:#E24B4A">*</span> <span style="color:var(--text3);font-weight:500">(obrigatório)</span></label>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px">📝 OBSERVAÇÕES <span style="color:#E24B4A">*</span></label>
         <textarea id="est-vd-obs" rows="2" placeholder="Detalhes da venda, prazo de entrega, número de parcelas, etc." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>
       </div>
       
@@ -8821,11 +8807,10 @@ function _calCarregarDadosDoDia(dia){
     var m = String(dia.getMonth()+1).padStart(2,'0');
     var d = String(dia.getDate()).padStart(2,'0');
     var dStr = y + '-' + m + '-' + d;
-    var tfKeyDia = 'gami_tf_v2_d_' + y + '_' + m + '_' + d;
-    
-    // Tarefas do dia (do localStorage diário)
-    var tarefas = [];
-    try { tarefas = JSON.parse(localStorage.getItem(tfKeyDia) || '[]'); } catch(e){}
+    // 🆕 v26.98: usa helper STRICT (v3 com fallback v2)
+    var tarefas = (typeof _tfLerTarefasDoDia === 'function') 
+      ? _tfLerTarefasDoDia(y + '_' + m + '_' + d) 
+      : [];
     
     // Filtra por permissão se aplicável
     if(typeof filtrarTarefasPorPermissao === 'function'){
@@ -8998,10 +8983,10 @@ function _calRenderProximosDias(n){
     var mm = String(d.getMonth()+1).padStart(2,'0');
     var dd = String(d.getDate()).padStart(2,'0');
     var dStr = y + '-' + mm + '-' + dd;
-    var tfKeyDia = 'gami_tf_v2_d_' + y + '_' + mm + '_' + dd;
-    
-    var tarefas = [];
-    try { tarefas = JSON.parse(localStorage.getItem(tfKeyDia) || '[]'); } catch(e){}
+    // 🆕 v26.98: helper STRICT
+    var tarefas = (typeof _tfLerTarefasDoDia === 'function') 
+      ? _tfLerTarefasDoDia(y + '_' + mm + '_' + dd) 
+      : [];
     var qtdTar = tarefas.filter(function(t){ return t && !t.feito && !t.concluida; }).length;
     if(qtdTar) resumo.push('📋 ' + qtdTar + ' tarefa' + (qtdTar>1?'s':''));
     
@@ -12796,9 +12781,10 @@ function renderPessoasTop3(){
   for(var i=0; i<7; i++){
     var d = new Date(hoje); d.setDate(d.getDate() - i);
     var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-    var key = 'gami_tf_v2_d_' + y + '_' + m + '_' + dd;
+    var key_norm = y + '_' + m + '_' + dd;
     try {
-      var lista = JSON.parse(localStorage.getItem(key) || '[]');
+      // 🆕 v26.98: usa helper que pega de TODAS as pessoas (pra ranking funcionar)
+      var lista = (typeof _tfLerTarefasDoDiaTodos === 'function') ? _tfLerTarefasDoDiaTodos(key_norm) : [];
       lista.forEach(function(t){
         if(!t || !(t.feito || t.concluida)) return;
         // 🆕 Pega pessoa_id real; sem fallback pra 'eu' ou strings aleatórias
@@ -13055,9 +13041,10 @@ function _pm_montarDetalhePessoa(pessoaId){
   for(var i=0; i<7; i++){
     var d = new Date(hoje); d.setDate(d.getDate() - i);
     var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-    var key = 'gami_tf_v2_d_' + y + '_' + m + '_' + dd;
+    var key_norm = y + '_' + m + '_' + dd;
     try {
-      var lista = JSON.parse(localStorage.getItem(key) || '[]');
+      // 🆕 v26.98: pega de TODAS as pessoas e filtra pela específica (suporta delegadas)
+      var lista = (typeof _tfLerTarefasDoDiaTodos === 'function') ? _tfLerTarefasDoDiaTodos(key_norm) : [];
       lista.forEach(function(t){
         if(t && (t.pessoa_id === pessoaId || t.delegada_por === pessoaId)){
           tarefas.push({texto: t.texto || '(sem título)', feito: !!(t.feito || t.concluida), data: y+'-'+m+'-'+dd});
@@ -13242,8 +13229,8 @@ function _pm_coletarEventosRecentes(){
   // 1. Tarefas concluídas hoje
   try {
     var y = hoje.getFullYear(), m = String(hoje.getMonth()+1).padStart(2,'0'), d = String(hoje.getDate()).padStart(2,'0');
-    var tfKey = 'gami_tf_v2_d_' + y + '_' + m + '_' + d;
-    var tarefas = JSON.parse(localStorage.getItem(tfKey) || '[]');
+    // 🆕 v26.98: usa helper STRICT (só logado)
+    var tarefas = (typeof _tfLerTarefasDoDia === 'function') ? _tfLerTarefasDoDia(y + '_' + m + '_' + d) : [];
     var feitas = tarefas.filter(function(t){ return t && (t.feito || t.concluida); }).slice(0,3);
     feitas.forEach(function(t){
       var quando = t.feitaEm || t.concluidaEm;
@@ -36160,6 +36147,59 @@ function _tfLimparTarefasOutrosUsuarios(){
   } catch(e){}
 }
 
+// 🆕 v26.98: Lê tarefas de um dia específico (YYYY_MM_DD com underscore)
+// Sempre tenta v3 (chaves isoladas por pessoa) primeiro, fallback v2
+// Retorna SÓ tarefas da pessoa logada (STRICT)
+function _tfLerTarefasDoDia(yyyy_mm_dd_normalizado){
+  var pid = _tfPessoaId();
+  if(!pid || pid === 'anon') return [];
+  
+  // v3 (atual — isolada por pessoa)
+  try {
+    var v3 = JSON.parse(localStorage.getItem(TF_KEY_PREFIX + pid + '_d_' + yyyy_mm_dd_normalizado) || '[]');
+    if(Array.isArray(v3) && v3.length){
+      return v3.filter(function(t){ return t && t.pessoa_id === pid; });
+    }
+  } catch(e){}
+  
+  // v2 (fallback — código legado que ainda não migrou)
+  try {
+    var v2 = JSON.parse(localStorage.getItem('gami_tf_v2_d_' + yyyy_mm_dd_normalizado) || '[]');
+    if(!Array.isArray(v2)) return [];
+    return v2.filter(function(t){ return t && t.pessoa_id === pid; });
+  } catch(e){ return []; }
+}
+
+// 🆕 v26.98: Lê tarefas de um dia de TODAS as pessoas (pra ranking, etc)
+// Varre todas as chaves v3 (qualquer pessoa) + v2 legado
+function _tfLerTarefasDoDiaTodos(yyyy_mm_dd_normalizado){
+  var todas = [];
+  var idsVistos = {};
+  // v3 — qualquer pessoa
+  try {
+    var sufixo = '_d_' + yyyy_mm_dd_normalizado;
+    for(var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf(TF_KEY_PREFIX) !== 0) continue;
+      if(k.indexOf(sufixo) === -1) continue;
+      try {
+        var arr = JSON.parse(localStorage.getItem(k) || '[]');
+        if(Array.isArray(arr)) arr.forEach(function(t){
+          if(t && t.id && !idsVistos[t.id]){ idsVistos[t.id] = true; todas.push(t); }
+        });
+      } catch(e){}
+    }
+  } catch(e){}
+  // v2 — fallback
+  try {
+    var v2 = JSON.parse(localStorage.getItem('gami_tf_v2_d_' + yyyy_mm_dd_normalizado) || '[]');
+    if(Array.isArray(v2)) v2.forEach(function(t){
+      if(t && t.id && !idsVistos[t.id]){ idsVistos[t.id] = true; todas.push(t); }
+    });
+  } catch(e){}
+  return todas;
+}
+
 function tfKey(tipo, sufixo){
   // 🆕 v26.94: TODA chave agora começa com pessoa_id — isola completamente entre usuários
   var pid = _tfPessoaId();
@@ -37295,16 +37335,103 @@ function renderDelegadasPorMim(){
     if(t.prazo){
       try { var pz = t.prazo.split('-'); prazoFmt = pz[2]+'/'+pz[1]; } catch(e){ prazoFmt = t.prazo; }
     }
+    // 🆕 v26.99: Checkbox clicável (marca como feita pelo delegante)
+    var corCheck = t.feito ? '#1D9E75' : corStatus;
+    var checkHtml = '<div onclick="tfToggleDelegada(\''+t.id+'\')" '
+      + 'style="width:24px;height:24px;border-radius:7px;border:2px solid '+corCheck+';'
+      + 'background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;'
+      + 'display:flex;align-items:center;justify-content:center;flex-shrink:0;'
+      + 'transition:all .15s" '
+      + 'onmouseover="this.style.transform=\'scale(1.08)\'" '
+      + 'onmouseout="this.style.transform=\'scale(1)\'" '
+      + 'title="'+(t.feito?'Reabrir tarefa':'Marcar como feita')+'">'
+      + (t.feito?'<span style="color:white;font-size:14px;font-weight:700">✓</span>':'')
+      + '</div>';
+    
+    var textoStyle = t.feito 
+      ? 'font-size:13px;font-weight:500;color:var(--text3);margin-bottom:2px;text-decoration:line-through' 
+      : 'font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px';
+    
     return '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-left:4px solid '+corStatus+';border-radius:10px;background:'+bgStatus+';margin-bottom:8px">'
+      + checkHtml
       + _avatarHTML(p)
       +'<div style="flex:1;min-width:0">'
-        +'<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px">'+(t.texto||'')+'</div>'
+        +'<div style="'+textoStyle+'">'+(t.texto||'')+'</div>'
         +'<div style="font-size:11px;color:var(--text2)">📨 Para <strong>'+(p.nome||t.pessoa_id).split(' ').slice(0,2).join(' ')+'</strong>'+(prazoFmt?' · ⏰ '+prazoFmt:'')+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+'</div>'
         +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px">"'+t.mensagem_delegacao+'"</div>':'')
       +'</div>'
       +'<span style="font-size:10px;padding:4px 8px;border-radius:6px;background:'+corStatus+';color:white;font-weight:600;flex-shrink:0">'+lblStatus+'</span>'
     +'</div>';
   }).join('');
+}
+
+// 🆕 v26.99: Toggle de tarefa delegada (do ponto de vista de quem delegou)
+async function tfToggleDelegada(id){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){ alert('Faça login pra marcar tarefas'); return; }
+  
+  // Acha a tarefa no cache Supabase ou localStorage
+  var tarefa = null;
+  if(window._tfSupaCache){
+    tarefa = window._tfSupaCache.find(function(t){return t.id===id;});
+  }
+  if(!tarefa && typeof _tfLerTodasMinhasTarefas === 'function'){
+    var locais = _tfLerTodasMinhasTarefas();
+    tarefa = locais.find(function(t){return t.id===id;});
+  }
+  if(!tarefa){
+    alert('Tarefa não encontrada. Recarregue a página.');
+    return;
+  }
+  
+  // Toggle do feito
+  var novoFeito = !tarefa.feito;
+  tarefa.feito = novoFeito;
+  tarefa.concluidoEm = novoFeito ? new Date().toISOString() : null;
+  
+  // Salva no Supabase via Netlify Function (rota segura)
+  try {
+    if(typeof _syncEscrever === 'function'){
+      await _syncEscrever({
+        tabela: 'tarefas',
+        operacao: 'upsert',
+        dados: [{
+          id: id,
+          feito: novoFeito,
+          concluido_em: tarefa.concluidoEm
+        }]
+      });
+    } else if(typeof supaUpsert === 'function'){
+      await supaUpsert('tarefas', {
+        id: id, 
+        feito: novoFeito, 
+        concluido_em: tarefa.concluidoEm
+      });
+    }
+    
+    if(typeof toast === 'function'){
+      toast(novoFeito ? '✅ Marcada como feita' : '↩️ Reaberta', 'success');
+    }
+    if(typeof auditLog === 'function'){
+      auditLog(novoFeito?'tarefa_concluida_pelo_delegante':'tarefa_reaberta_pelo_delegante', 
+               id, (tarefa.texto||'').slice(0,60));
+    }
+    
+    // Re-renderiza
+    if(typeof renderDelegadasPorMim === 'function') renderDelegadasPorMim();
+    
+    // Se tem pessoa destinatária, notifica
+    if(novoFeito && tarefa.pessoa_id && tarefa.pessoa_id !== u.id && typeof criarNotificacao === 'function'){
+      criarNotificacao(tarefa.pessoa_id, 'tarefa_concluida_delegante',
+        (u.nome||u.email)+' marcou como feita a tarefa que delegou pra você',
+        tarefa.texto||'', 'tarefas');
+    }
+  } catch(e){
+    console.error('[tfToggleDelegada]', e);
+    alert('❌ Erro ao salvar: ' + (e.message||'tente de novo'));
+    // Reverte estado local
+    tarefa.feito = !novoFeito;
+  }
 }
 
 /* ============================================================ */
@@ -37801,9 +37928,8 @@ function _tfCalcularStreak(){
       var y = d.getFullYear();
       var m = String(d.getMonth()+1).padStart(2,'0');
       var dd = String(d.getDate()).padStart(2,'0');
-      var key = 'gami_tf_v2_d_' + y + '_' + m + '_' + dd;
-      var lista = [];
-      try { lista = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e){}
+      // 🆕 v26.98: usa helper STRICT (só logado)
+      var lista = (typeof _tfLerTarefasDoDia === 'function') ? _tfLerTarefasDoDia(y + '_' + m + '_' + dd) : [];
       var temFeita = lista.some(function(t){ return t && (t.feito || t.concluida); });
       if(temFeita) streak++;
       else if(i > 0) break; // tolera "hoje sem nenhuma feita ainda"
@@ -46711,35 +46837,55 @@ async function estConfirmarVenda(){
   var pagamento = document.getElementById('est-vd-pagamento').value;
   var nominal = document.getElementById('est-vd-nominal').value.trim();
   
+  // 🆕 v27.00: helper que destaca campo inválido e dá foco
+  function _estErroCampo(idCampo, msg){
+    alert('⚠️ ' + msg);
+    var el = document.getElementById(idCampo);
+    if(el){
+      el.style.borderColor = '#E24B4A';
+      el.style.borderWidth = '2px';
+      el.focus();
+      setTimeout(function(){ 
+        el.style.borderColor = 'var(--border)';
+        el.style.borderWidth = '1px';
+      }, 3000);
+      try { el.scrollIntoView({ behavior:'smooth', block:'center' }); } catch(e){}
+    }
+  }
+  
   var dados = {
     p_item_id: parseInt(document.getElementById('est-vd-item').value),
     p_cidade: document.getElementById('est-vd-cidade').value,
     p_quantidade: parseInt(document.getElementById('est-vd-qtd').value),
     p_valor_total: parseFloat(document.getElementById('est-vd-valor').value),
     p_cliente_nome: document.getElementById('est-vd-cliente').value.trim(),
-    p_cliente_telefone: document.getElementById('est-vd-telefone').value.trim() || null,
-    p_data: document.getElementById('est-vd-data').value || null,
-    // 🆕 v26.75: obs agora obrigatório + concatena forma pagamento + nominal pra registro completo
+    p_cliente_telefone: document.getElementById('est-vd-telefone').value.trim(),
+    p_data: document.getElementById('est-vd-data').value,
     p_observacao: obsValor + 
       (pagamento ? '\n💳 Pagamento: ' + pagamento : '') +
       (nominal ? '\n📋 Nominal: ' + nominal : ''),
     p_usuario_id: EST_SESSAO.pessoa_id,
     p_usuario_nome: EST_SESSAO.nome,
-    // 🆕 v26.75: campos individualizados (RPC pode ignorar se não existirem)
     p_forma_pagamento: pagamento || null,
     p_nominal_comprovante: nominal || null
   };
   
-  if(!dados.p_item_id){ alert('Escolha o item.'); return; }
-  if(!dados.p_cidade){ alert('Escolha a cidade.'); return; }
-  if(!dados.p_quantidade || dados.p_quantidade <= 0){ alert('Quantidade inválida.'); return; }
-  if(isNaN(dados.p_valor_total) || dados.p_valor_total < 0){ alert('Valor inválido.'); return; }
-  if(!dados.p_cliente_nome){ alert('Informe o nome do cliente.'); return; }
+  // 🆕 v27.00: TODOS os campos obrigatórios + foco no primeiro vazio
+  if(!dados.p_cliente_nome){ return _estErroCampo('est-vd-cliente', 'Informe o nome do cliente.'); }
   
-  // 🆕 v26.75: Validações dos novos campos
-  if(!pagamento){ alert('Escolha a forma de pagamento.'); return; }
-  if(!nominal){ alert('Informe o nominal do comprovante (em nome de quem recebeu).'); return; }
-  if(!obsValor){ alert('Preencha as observações da venda (obrigatório).'); return; }
+  // Telefone obrigatório + validação de formato
+  var telLimpo = (dados.p_cliente_telefone||'').replace(/\D/g, '');
+  if(!dados.p_cliente_telefone){ return _estErroCampo('est-vd-telefone', 'Informe o telefone do cliente.'); }
+  if(telLimpo.length < 10){ return _estErroCampo('est-vd-telefone', 'Telefone inválido. Use 10 dígitos ou mais (com DDD).'); }
+  
+  if(!dados.p_cidade){ return _estErroCampo('est-vd-cidade', 'Escolha a cidade da venda.'); }
+  if(!dados.p_data){ return _estErroCampo('est-vd-data', 'Informe a data da venda.'); }
+  if(!dados.p_item_id){ return _estErroCampo('est-vd-item', 'Escolha o item vendido.'); }
+  if(!dados.p_quantidade || dados.p_quantidade <= 0){ return _estErroCampo('est-vd-qtd', 'Informe a quantidade (mínimo 1).'); }
+  if(isNaN(dados.p_valor_total) || dados.p_valor_total < 0){ return _estErroCampo('est-vd-valor', 'Informe o valor total da venda.'); }
+  if(!nominal){ return _estErroCampo('est-vd-nominal', 'Informe o nominal do comprovante (em nome de quem recebeu).'); }
+  if(!pagamento){ return _estErroCampo('est-vd-pagamento', 'Escolha a forma de pagamento.'); }
+  if(!obsValor){ return _estErroCampo('est-vd-obs', 'Preencha as observações da venda.'); }
   
   // Valida que a cidade está nas permissões
   if(EST_SESSAO && EST_SESSAO.cidades_permitidas && EST_SESSAO.cidades_permitidas.indexOf(dados.p_cidade) < 0){
@@ -46751,12 +46897,10 @@ async function estConfirmarVenda(){
     var r = await _estRPC('estoque_registrar_venda', dados);
     if(r && r.ok){
       if(typeof toast === 'function') toast('✅ Venda registrada! Saldo após: ' + r.saldo_apos, 'success');
-      // Limpa form (🆕 v26.75: inclui novos campos)
       ['est-vd-cliente','est-vd-telefone','est-vd-cidade','est-vd-item','est-vd-qtd','est-vd-valor','est-vd-obs','est-vd-pagamento','est-vd-nominal'].forEach(function(id){
         var el = document.getElementById(id); if(el) el.value = '';
       });
       estPreencherDatasPadrao();
-      // Recarrega
       await estCarregarTudo();
       estIrParaTab('historico');
     } else {
