@@ -1,4 +1,4 @@
-<!-- v27.00 - Estoque Nova Venda: TODOS campos obrigatórios + foco no inválido - 19/06/2026 -->
+<!-- v27.01 - Pontos & Ranking: login pontua no boot, hooks religados (tarefa/pulse/anotacao), sync Sementinha/XP, patentes unificadas - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8325,6 +8325,8 @@ function salvarNotaCalendario(dataKey, texto){
   // Compat: cria como nota unica substituindo tudo
   if(!texto || !texto.trim()){ _salvarNotasArray(dataKey, []); return; }
   _salvarNotasArray(dataKey, [{id:'n'+Date.now(), texto:texto.trim(), data:new Date().toISOString()}]);
+  // 🆕 Pontua a anotação no calendário (limite_dia:1 evita farm)
+  try { if(typeof hookAnotacao === 'function') hookAnotacao(); } catch(e){}
 }
 
 /* Toggle tarefa no calendario: marca/desmarca + re-renderiza grid + painel + toast */
@@ -10622,6 +10624,18 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
   // Busca dados da pessoa
   var pessoas = typeof getPessoas === 'function' ? getPessoas() : [];
   var pessoa = pessoas.find(function(p){ return p.id === pessoaId; });
+  // 🆕 Blindagem: ações automáticas são sempre da própria pessoa logada.
+  // Se o cache local de pessoas ainda não carregou (race no boot) OU a pessoa
+  // não tem linha em `pessoas` (ex: prospecção/externas), usa o nome da sessão
+  // em vez de abortar — assim o ponto SEMPRE grava.
+  if(!pessoa){
+    var _ul = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(_ul && _ul.id === pessoaId){
+      pessoa = { id: pessoaId, nome: _ul.nome || _ul.email || 'Colaborador' };
+    } else if(opcoes.pessoa_nome){
+      pessoa = { id: pessoaId, nome: opcoes.pessoa_nome };
+    }
+  }
   if(!pessoa){
     console.warn('Pessoa não encontrada:', pessoaId);
     return false;
@@ -12073,6 +12087,14 @@ function checarLoginInicial(){
   migracaoTarefasLegado();
   // 🆕 v26.68: Limpa chaves antigas globais (que vazavam dados entre usuários)
   limparChavesAntigasContaminadas();
+  // 🆕 Pontua o login do dia também na restauração de sessão (refresh) —
+  // antes só pontuava ao digitar credencial, então quase ninguém pontuava.
+  // hookLoginDiario tem trava de 1x/dia, então é seguro chamar todo boot.
+  try {
+    var _pid = u.id || u.pessoa_id;
+    if(_pid && typeof hookLoginDiario === 'function') hookLoginDiario(_pid);
+    else if(_pid && typeof sincronizarPontosPessoa === 'function') sincronizarPontosPessoa(_pid);
+  } catch(e){}
   return true;
 }
 
@@ -31912,6 +31934,11 @@ function renderPontuacaoGami(){
     } else {
       // Fallback: XP do localStorage simples
       pontosTotais = parseInt(localStorage.getItem('gami_xp_'+uid) || '0', 10);
+      // 🆕 Sem cache ainda → busca o total real no Supabase e re-renderiza.
+      // Evita o bug histórico de travar em "Sementinha 0" pra sempre.
+      if(typeof sincronizarPontosPessoa === 'function'){
+        sincronizarPontosPessoa(uid);
+      }
     }
   } catch(e){}
   
@@ -38085,6 +38112,10 @@ function tfToggle(tipo, id, sufixo){
         (uu?(uu.nome||uu.email):'Alguém')+' concluiu a tarefa', (tarefaTocada.texto||''),'tarefas');
     }
   }
+  // 🆕 Pontua a conclusão da tarefa (só quando MARCA como feita, não ao reabrir)
+  if(tarefaTocada && tarefaTocada.feito && typeof hookTarefaConcluida === 'function'){
+    try { hookTarefaConcluida(tarefaTocada); } catch(e){}
+  }
 
   if(tipo==='diario') tfRenderDiario();
   if(tipo==='semana') tfRenderSemana();
@@ -41045,17 +41076,18 @@ function _rkSparklineSVG(pessoaId, ptsAtuais, gigante){
 
 // Próxima conquista (patente Gâmi)
 function _rkProximaConquista(pts){
-  var patentes = [
-    { nome: 'Sementinha', meta: 500, icone: '🌱', atual: 0 },
-    { nome: 'Broto', meta: 1500, icone: '🌿', atual: 500 },
-    { nome: 'Árvore', meta: 3000, icone: '🌳', atual: 1500 },
-    { nome: 'Estrela', meta: 5000, icone: '⭐', atual: 3000 },
-    { nome: 'Lenda Gâmi', meta: 10000, icone: '👑', atual: 5000 }
-  ];
-  for(var i=0; i<patentes.length; i++){
-    if(pts < patentes[i].meta) return patentes[i];
+  pts = pts || 0;
+  // 🆕 Fonte única: deriva da constante PATENTES (antes havia limiares
+  // divergentes — Árvore 3000 vs 1500, Estrela 5000 vs 4000 — e ícones
+  // conflitantes ⭐/👑 vs 🌟/🏆). Agora tudo lê do mesmo lugar.
+  if(typeof PATENTES === 'undefined' || !PATENTES.length) return null;
+  for(var i=0; i<PATENTES.length; i++){
+    if(pts < PATENTES[i].min){
+      var atual = i > 0 ? PATENTES[i-1].min : 0;
+      return { nome: PATENTES[i].nome, meta: PATENTES[i].min, icone: PATENTES[i].emoji, atual: atual };
+    }
   }
-  return null;
+  return null; // já atingiu a patente máxima
 }
 
 async function renderRankingPorCargo(){
@@ -41761,7 +41793,38 @@ async function desafioCriar(){
 /* HOOKS automáticos — pontos por ações */
 async function hookLoginDiario(pessoaId){
   if(!pessoaId) return;
+  // 🆕 Trava local de 1x/dia — permite chamar no login E na restauração de
+  // sessão (boot) sem rede redundante. O limite_dia do Supabase é a 2ª barreira.
+  try {
+    var hojeStr = new Date().toISOString().split('T')[0];
+    var kGuard = 'gami_login_pts_dia_' + pessoaId;
+    if(localStorage.getItem(kGuard) === hojeStr) return;
+    localStorage.setItem(kGuard, hojeStr);
+  } catch(e){}
   await atribuirPontos(pessoaId, 'login_diario');
+  // Após pontuar, ressincroniza o total exibido (Sementinha/XP)
+  try { if(typeof sincronizarPontosPessoa === 'function') sincronizarPontosPessoa(pessoaId); } catch(e){}
+}
+
+/* 🆕 SINCRONIZA o total real de pontos (Supabase) → localStorage, pra que o
+   widget "Sementinha Gâmi" do dashboard e o card de XP do perfil leiam o MESMO
+   número que o Ranking. Fonte única de verdade = pontos_log. */
+async function sincronizarPontosPessoa(pessoaId){
+  if(!pessoaId) return null;
+  try {
+    var total = (typeof obterPontosTotaisPessoa === 'function') ? await obterPontosTotaisPessoa(pessoaId) : 0;
+    var mes   = (typeof obterPontosMesPessoa   === 'function') ? await obterPontosMesPessoa(pessoaId)   : 0;
+    var payload = { total: total, mes: mes, ts: Date.now() };
+    localStorage.setItem('gami_pontos_pessoa_' + pessoaId, JSON.stringify(payload));
+    // XP do card do perfil = total acumulado (mantém consistência)
+    localStorage.setItem('gami_xp_' + pessoaId, String(total));
+    var lvl = Math.max(1, Math.floor(total / 100) + 1);
+    localStorage.setItem('gami_level_' + pessoaId, String(lvl));
+    // Re-renderiza displays que dependem disso (se estiverem na tela)
+    try { if(typeof renderPontuacaoGami === 'function') renderPontuacaoGami(); } catch(e){}
+    try { if(typeof tfRenderXpCard === 'function') tfRenderXpCard(); } catch(e){}
+    return payload;
+  } catch(e){ console.warn('[sincronizarPontosPessoa]', e && e.message); return null; }
 }
 var _abasVisitadas = {};
 function hookNavAba(nomeAba){
@@ -43576,6 +43639,8 @@ function votarPulse(emoji){
   var p = getPulseHoje();
   p[emoji] = (p[emoji]||0) + 1;
   _pulseSetMeuVoto(emoji);
+  // 🆕 Pontua o pulse respondido (limite_dia:1 evita farm)
+  try { if(typeof hookPulse === 'function') hookPulse(); } catch(e){}
   try { localStorage.setItem(pulseKey(), JSON.stringify(p)); } catch(e){}
   
   // 🆕 Salva no Supabase (anônimo nos resultados, mas com user_id pra constraint de 1/dia)
