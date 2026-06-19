@@ -1,4 +1,4 @@
-<!-- v26.91 - Editor usa RPC ponto_dia_editor (passa por cima de RLS) - 19/06/2026 -->
+<!-- v26.92 - Editor 100% via RPC + função antiga renomeada pra Espelho - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -48442,24 +48442,28 @@ async function pgSalvarEdicaoBatida(id){
   
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var admin = u ? (u.id || 'admin') : 'admin';
-  var adminNome = u ? (u.nome || 'Admin') : 'Admin';
   
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros?id=eq.' + id, {
-      method: 'PATCH',
-      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=minimal' }),
-      body: JSON.stringify({
-        tipo: tipo,
-        hora_registrada: novaDataHora,
-        justificativa: just || null,
-        editado_por: admin,
-        editado_em: new Date().toISOString(),
-        motivo_edicao: motivo
-      })
+    // 🆕 v26.92: usa RPC ponto_editar (passa por cima de RLS)
+    await _pgRPC('ponto_editar', {
+      p_registro_id: id,
+      p_nova_hora: novaDataHora,
+      p_motivo: motivo,
+      p_editor_id: admin
     });
-    if(!r.ok){
-      var err = await r.text();
-      throw new Error('HTTP ' + r.status + ': ' + err);
+    
+    // Se mudou tipo ou justificativa também, faz UPDATE adicional via RPC
+    if(tipo !== reg.tipo || just !== (reg.justificativa||'')){
+      try {
+        await _pgRPC('ponto_editar_campos', {
+          p_registro_id: id,
+          p_tipo: tipo,
+          p_justificativa: just || null,
+          p_editor_id: admin
+        });
+      } catch(e){
+        console.warn('[Editor] ponto_editar_campos pode não existir, OK', e);
+      }
     }
     
     if(typeof toast === 'function') toast('✅ Batida editada com sucesso', 'success');
@@ -48484,33 +48488,16 @@ async function pgApagarBatida(id, pessoaNome, tipo, dataFmt, hora){
   var adminNome = u ? (u.nome || 'Admin') : 'Admin';
   
   try {
-    // 1) Grava no log
-    await fetch(SUPA_URL + '/rest/v1/ponto_log_admin', {
-      method: 'POST',
-      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=minimal' }),
-      body: JSON.stringify({
-        acao: 'DELETE',
-        registro_id: id,
-        pessoa_id: reg.pessoa_id,
-        data_registro: reg.data,
-        tipo: reg.tipo,
-        hora_registrada: reg.hora_registrada,
-        feito_por: admin,
-        feito_por_nome: adminNome,
-        motivo: motivo.trim(),
-        snapshot: reg
-      })
+    // 🆕 v26.92: usa RPC ponto_apagar (passa por cima de RLS e auditoria automática)
+    await _pgRPC('ponto_apagar', {
+      p_registro_id: id,
+      p_motivo: motivo.trim(),
+      p_editor_id: admin,
+      p_editor_nome: adminNome
     });
-    // 2) Deleta o registro
-    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros?id=eq.' + id, {
-      method: 'DELETE',
-      headers: _pgSupaHeaders()
-    });
-    if(!r.ok){
-      var err = await r.text();
-      throw new Error('HTTP ' + r.status + ': ' + err);
-    }
+    
     if(typeof toast === 'function') toast('🗑️ Batida apagada (auditada)', 'success');
+    else alert('🗑️ Apagado!');
     pgEditorCarregar();
     pgEditorCarregarHistorico();
   } catch(e){
@@ -48576,51 +48563,20 @@ async function pgSalvarBatidaManual(){
   
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var admin = u ? (u.id || 'admin') : 'admin';
-  var adminNome = u ? (u.nome || 'Admin') : 'Admin';
-  
-  var horaTs = data + 'T' + hora + ':00-04:00'; // Fuso Rondônia
   
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros', {
-      method: 'POST',
-      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=representation' }),
-      body: JSON.stringify({
-        pessoa_id: pessoaId,
-        data: data,
-        tipo: tipo,
-        hora_registrada: horaTs,
-        validado_por: 'MANUAL_ADMIN',
-        justificativa: motivo,
-        editado_por: admin,
-        editado_em: new Date().toISOString(),
-        motivo_edicao: '[INSERIDA MANUALMENTE] ' + motivo
-      })
-    });
-    if(!r.ok){
-      var err = await r.text();
-      throw new Error('HTTP ' + r.status + ': ' + err);
-    }
-    var inserido = await r.json();
-    var novoId = (inserido[0] && inserido[0].id) || null;
-    
-    // Grava no log
-    await fetch(SUPA_URL + '/rest/v1/ponto_log_admin', {
-      method: 'POST',
-      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=minimal' }),
-      body: JSON.stringify({
-        acao: 'INSERT_MANUAL',
-        registro_id: novoId,
-        pessoa_id: pessoaId,
-        data_registro: data,
-        tipo: tipo,
-        hora_registrada: horaTs,
-        feito_por: admin,
-        feito_por_nome: adminNome,
-        motivo: motivo
-      })
+    // 🆕 v26.92: usa RPC ponto_criar_manual (já existe no banco)
+    await _pgRPC('ponto_criar_manual', {
+      p_pessoa_id: pessoaId,
+      p_data: data,
+      p_tipo: tipo,
+      p_hora: hora,
+      p_motivo: motivo,
+      p_editor_id: admin
     });
     
     if(typeof toast === 'function') toast('✅ Batida manual registrada', 'success');
+    else alert('✅ Adicionado!');
     pgFecharAddModal();
     pgEditorCarregar();
     pgEditorCarregarHistorico();
@@ -48815,7 +48771,7 @@ function pgRenderEspelho(dados){
             if(!p[tipo]) return '<button onclick="pgCriarBatida(\'' + d.data + '\',\'' + tipo + '\')" style="padding:3px 6px;border:1px dashed var(--border);background:transparent;color:var(--text3);font-size:10px;border-radius:4px;cursor:pointer;font-family:inherit" title="Lançar manualmente">+ Add</button>';
             var edit = p[tipo].editado ? '<span title="Editado" style="color:#EF9F27">✏️</span>' : '';
             var foraRaio = p[tipo].dentro_do_raio === false ? '<span title="Bateu fora do raio" style="color:#A32D2D">📍</span>' : '';
-            return '<a onclick="pgEditarBatida(' + p[tipo].id + ',\'' + d.data + '\',\'' + tipo + '\',\'' + p[tipo].hora + '\')" style="font-weight:600;cursor:pointer;color:var(--text);text-decoration:underline;text-decoration-style:dotted">' + p[tipo].hora + '</a> ' + edit + foraRaio;
+            return '<a onclick="pgEditarBatidaEspelho(' + p[tipo].id + ',\'' + d.data + '\',\'' + tipo + '\',\'' + p[tipo].hora + '\')" style="font-weight:600;cursor:pointer;color:var(--text);text-decoration:underline;text-decoration-style:dotted">' + p[tipo].hora + '</a> ' + edit + foraRaio;
           };
           
           var bgRow = fimSem ? 'background:var(--surface2)' : '';
@@ -48838,8 +48794,8 @@ function pgRenderEspelho(dados){
     + '</tbody></table>';
 }
 
-// ============ EDITAR / CRIAR BATIDA ============
-function pgEditarBatida(registroId, data, tipo, horaAtual){
+// ============ EDITAR / CRIAR BATIDA (legado do Espelho) ============
+function pgEditarBatidaEspelho(registroId, data, tipo, horaAtual){
   var nova = prompt('✏️ Editar ' + PG_TIPO_LBL[tipo] + ' do dia ' + data + '\n\nHora atual: ' + horaAtual + '\nNova hora (HH:MM):', horaAtual);
   if(!nova) return;
   var motivo = prompt('Motivo da edição (obrigatório):');
