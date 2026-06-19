@@ -1,4 +1,4 @@
-<!-- v26.88 - Tarefa pra EQUIPE (broadcast): admin cria, todos veem, marca individual - 18/06/2026 -->
+<!-- v26.87 - Editor de Batidas no Painel Admin (editar/apagar/adicionar) com auditoria - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -6083,22 +6083,57 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px" id="mp-cards-dia"></div>
 
-  <div class="card" style="padding:20px;text-align:center;margin-bottom:18px">
-    <div id="mp-info-batida" style="font-size:13px;color:var(--text);margin-bottom:6px;font-weight:600">Próxima batida: <span id="mp-proxima-batida" style="color:#1AB8F0">—</span></div>
-    <!-- 🆕 v26.69: indicador do fuso horário aplicado -->
-    <div id="mp-fuso-info" style="font-size:11px;color:var(--text3);margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:6px"><span>🕐</span><span id="mp-fuso-texto">—</span></div>
-    
-    <button id="mp-btn-bater" onclick="mpBaterPonto()" style="width:100%;max-width:380px;padding:18px 24px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:18px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(26,184,240,0.3);transition:transform .15s"
-      onmouseover="this.style.transform='translateY(-2px)'"
-      onmouseout="this.style.transform=''">
-      🕒 BATER PONTO
-    </button>
-    
-    <div id="mp-status-geo" style="margin-top:14px;font-size:11px;color:var(--text3);min-height:18px">Aguardando localização...</div>
-    
-    <div id="mp-justificativa-box" style="display:none;margin-top:14px;padding:12px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;text-align:left">
-      <label class="justif-label" style="display:block;font-size:11px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Você está fora do raio do escritório. Justifique:</label>
-      <textarea id="mp-justificativa" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px 10px;border:1px solid #EF9F27;border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>
+  <!-- 🆕 v26.86: CARD CONSOLIDADO DO PONTO -->
+  <div class="card" style="padding:0;margin-bottom:18px;overflow:hidden">
+    <!-- LINHA 1: Hora atual + fuso (header destaque) -->
+    <div style="padding:14px 18px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:white;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:1.5px;opacity:.85">AGORA</div>
+        <div style="font-size:32px;font-weight:800;line-height:1.1;font-family:'JetBrains Mono',monospace" id="mp-hora-agora">--:--</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;font-weight:600;opacity:.85" id="mp-fuso-cidade">Rondônia</div>
+        <div style="font-size:11px;font-weight:600;opacity:.9;margin-top:2px" id="mp-data-hoje">Hoje</div>
+      </div>
+    </div>
+
+    <!-- LINHA 2: Próxima batida -->
+    <div style="padding:14px 18px;background:#F5F9FF;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:#0E7AB8">PRÓXIMA BATIDA</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text);margin-top:2px" id="mp-proxima-tipo">—</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:10px;color:var(--text3);font-weight:600">ESPERADO</div>
+        <div style="font-size:18px;font-weight:800;color:var(--text);font-family:'JetBrains Mono',monospace" id="mp-proxima-esperado">--:--</div>
+        <div id="mp-atraso-info" style="font-size:11px;font-weight:700;margin-top:2px;display:none"></div>
+      </div>
+    </div>
+
+    <!-- LINHA 3: Status de validação (IP/GPS) -->
+    <div id="mp-validacao-status" style="padding:12px 18px;background:#FAFBFC;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);line-height:1.5">
+      🔍 Verificando presença...
+    </div>
+
+    <!-- LINHA 4: Botão + justificativa -->
+    <div style="padding:18px;text-align:center">
+      <div id="mp-justificativa-box" style="display:none;margin-bottom:14px;padding:12px;background:#FFF8E1;border:1px solid #EF9F27;border-radius:8px;text-align:left">
+        <label class="justif-label" style="display:block;font-size:11px;font-weight:600;color:#854F0B;margin-bottom:4px">⚠️ Justifique sua batida:</label>
+        <textarea id="mp-justificativa" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px 10px;border:1px solid #EF9F27;border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>
+      </div>
+      
+      <button id="mp-btn-bater" onclick="mpBaterPonto()" style="width:100%;max-width:380px;padding:18px 24px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:18px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(26,184,240,0.3);transition:transform .15s"
+        onmouseover="this.style.transform='translateY(-2px)'"
+        onmouseout="this.style.transform=''">
+        🕒 BATER PONTO
+      </button>
+      
+      <!-- Compatibilidade com código antigo: campos ocultos -->
+      <div style="display:none">
+        <span id="mp-info-batida"><span id="mp-proxima-batida">—</span></span>
+        <span id="mp-fuso-info"><span id="mp-fuso-texto">—</span></span>
+        <span id="mp-status-geo">—</span>
+      </div>
     </div>
   </div>
 
@@ -6139,6 +6174,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div style="display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:16px;overflow-x:auto">
     <button onclick="pgIrParaTab('hoje')" id="pg-tab-hoje-btn" class="pg-tab-btn active">📅 Painel Hoje</button>
     <button onclick="pgIrParaTab('espelho')" id="pg-tab-espelho-btn" class="pg-tab-btn">📋 Espelho Mensal</button>
+    <button onclick="pgIrParaTab('editor')" id="pg-tab-editor-btn" class="pg-tab-btn">✏️ Editor</button>
     <button onclick="pgIrParaTab('excecoes')" id="pg-tab-excecoes-btn" class="pg-tab-btn">📝 Exceções</button>
     <button onclick="pgIrParaTab('config')" id="pg-tab-config-btn" class="pg-tab-btn">⚙️ Configurações</button>
   </div>
@@ -6177,6 +6213,67 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div id="pg-esp-tabela" style="overflow-x:auto">
       <div style="padding:30px;text-align:center;color:var(--text3)">Selecione colaboradora e mês.</div>
     </div>
+  </div>
+
+  <!-- ============ TAB: EDITOR DE BATIDAS ============ -->
+  <div id="pg-tab-editor" class="pg-tab-pane" style="display:none">
+    <!-- Filtros -->
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:18px">✏️</span>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:700;color:var(--text)">Editor de Batidas</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:1px">Corrigir, apagar ou adicionar batidas manualmente. Tudo fica auditado.</div>
+        </div>
+        <button onclick="pgAbrirAdicionarBatida()" style="padding:8px 14px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit;white-space:nowrap">➕ Adicionar batida</button>
+      </div>
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">
+        <div>
+          <label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">PESSOA</label>
+          <select id="pg-ed-pessoa" onchange="pgEditorCarregar()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+            <option value="">Todas</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">MÊS</label>
+          <input id="pg-ed-mes" type="month" onchange="pgEditorCarregar()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">TIPO</label>
+          <select id="pg-ed-tipo" onchange="pgEditorCarregar()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+            <option value="">Todos</option>
+            <option value="entrada1">🌅 Entrada</option>
+            <option value="saida1">🍽️ Saída almoço</option>
+            <option value="entrada2">↩️ Volta almoço</option>
+            <option value="saida2">🌆 Saída</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">STATUS</label>
+          <select id="pg-ed-status" onchange="pgEditorCarregar()" style="width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">
+            <option value="">Todos</option>
+            <option value="duplicadas">🔴 Duplicadas (mesmo tipo)</option>
+            <option value="com_just">🟡 Com justificativa</option>
+            <option value="sem_validacao">⚠️ Sem validação</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Resultado -->
+    <div id="pg-ed-resumo" style="font-size:11px;color:var(--text3);margin-bottom:8px;padding:0 4px"></div>
+    <div id="pg-ed-lista" style="display:flex;flex-direction:column;gap:6px">
+      <div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Selecione um filtro pra começar.</div>
+    </div>
+    
+    <!-- Histórico de edições recentes -->
+    <details style="margin-top:18px;border-top:1px solid var(--border);padding-top:12px">
+      <summary style="font-size:12px;font-weight:700;color:var(--text2);cursor:pointer">📜 Últimas edições feitas (auditoria)</summary>
+      <div id="pg-ed-historico" style="margin-top:10px;font-size:11px;color:var(--text3);display:flex;flex-direction:column;gap:4px">
+        <div style="font-style:italic">Nenhuma edição registrada ainda.</div>
+      </div>
+    </details>
   </div>
 
   <!-- ============ TAB: EXCEÇÕES ============ -->
@@ -46861,6 +46958,8 @@ async function mpCarregarDia(){
     var dados = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
     MP_DIA_DADOS = dados;
     mpRenderCardsDia(dados);
+    // 🆕 v26.86: inicia auto-refresh do card
+    _mpIniciarAutoRefresh();
   } catch(e){
     console.error('[MP] dia:', e);
     document.getElementById('mp-cards-dia').innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: ' + e.message + '</div>';
@@ -46876,24 +46975,13 @@ function mpRenderCardsDia(dados){
   var tiposLbl = ['🌅 Entrada','🍽️ Saída almoço','↩️ Volta almoço','🌆 Saída'];
   var proximo = null;
   
-  // 🆕 v26.69: Atualiza indicador de fuso horário na tela
+  // 🆕 v26.86: Atualiza CARD CONSOLIDADO
+  _mpAtualizarCardConsolidado(dados);
+  // Mantém indicador antigo pra compatibilidade
   var fusoEl = document.getElementById('mp-fuso-texto');
   if(fusoEl){
     var ag = _mpAgoraNoFuso();
-    var tzNomes = {
-      'America/Porto_Velho': 'Rondônia (Ji-Paraná)',
-      'America/Cuiaba': 'Mato Grosso (Cuiabá)',
-      'America/Campo_Grande': 'Mato Grosso do Sul',
-      'America/Manaus': 'Amazonas (Manaus)',
-      'America/Boa_Vista': 'Roraima',
-      'America/Rio_Branco': 'Acre',
-      'America/Sao_Paulo': 'Horário de Brasília',
-      'local': 'Hora do seu PC (pode estar errada)'
-    };
-    // 🆕 v26.72: indica se está usando horário Brasília por configuração individual
-    var usaBrasilia = MP_PESSOA && _pessoaUsaHorarioBrasilia(MP_PESSOA.id);
-    var sufixo = usaBrasilia ? ' <span style="color:#1D9E75;font-weight:600">🇧🇷 (configurada pra atender Brasília)</span>' : '';
-    fusoEl.innerHTML = 'Horário aplicado: <strong style="color:#0E7AB8">'+ag.str+'</strong> · '+(tzNomes[ag.tz] || ag.tz) + sufixo;
+    fusoEl.innerHTML = 'Horário: '+ag.str+' · '+ag.tz;
   }
   
   // 🆕 v26.70: Banner VERMELHO persistente se PC tem fuso errado
@@ -46905,9 +46993,9 @@ function mpRenderCardsDia(dados){
       bannerEl = document.createElement('div');
       bannerEl.id = 'mp-fuso-banner';
       bannerEl.style.cssText = 'margin-bottom:14px;padding:14px 16px;background:linear-gradient(135deg,#FFF5F5,#FCEBEB);border:2px solid #E24B4A;border-left:5px solid #E24B4A;border-radius:10px;animation:cidFadeUp .4s ease both';
-      var fusoInfoCard = document.getElementById('mp-fuso-info');
-      if(fusoInfoCard && fusoInfoCard.parentNode){
-        fusoInfoCard.parentNode.parentNode.insertBefore(bannerEl, fusoInfoCard.parentNode);
+      var cardConsolidado = document.getElementById('mp-cards-dia');
+      if(cardConsolidado && cardConsolidado.parentNode){
+        cardConsolidado.parentNode.insertBefore(bannerEl, cardConsolidado.nextSibling);
       }
     }
     bannerEl.innerHTML = '<div style="display:flex;align-items:flex-start;gap:12px">'
@@ -46917,9 +47005,8 @@ function mpRenderCardsDia(dados){
         + '<div style="font-size:12px;color:#7B1F1F;line-height:1.5">'
           + '🖥️ PC marcando <strong>'+alertaPC.pcHora+'</strong> · '
           + '🕐 Hora correta em '+alertaPC.fusoNome+': <strong>'+alertaPC.fusoHora+'</strong> '
-          + '<br>📊 Diferença de <strong>'+alertaPC.difMin+' min</strong> — pode causar registro errado de atraso!'
+          + '<br>📊 Diferença de <strong>'+alertaPC.difMin+' min</strong>'
         + '</div>'
-        + '<div style="font-size:11px;color:#7B1F1F;background:#FFFFFF99;border-radius:6px;padding:8px 10px;margin-top:8px"><strong>📋 Solução:</strong> Peça pro Cleyton ou TI ajustar o relógio: Configurações do Windows → Data e hora → Fuso (UTC-04:00) Manaus → Ligar "Definir automaticamente".</div>'
       + '</div>'
     + '</div>';
     bannerEl.style.display = 'block';
@@ -47038,9 +47125,300 @@ async function mpBaterPontoSemGPS(){
   }
 }
 
+// 🆕 v26.85: Lock global pra impedir bate ponto múltiplo (Whiny bateu 4 em sequência)
+var MP_BATENDO_AGORA = false;
+var MP_ULTIMA_BATIDA_TS = 0; // timestamp da última batida (anti-rajada)
+var MP_INTERVALO_MIN_BATIDAS = 30 * 1000; // 30 segundos entre batidas
+
+// 🆕 v26.86: Estado pra renderização consolidada
+var MP_ULTIMO_DADOS = null;     // último ponto_dia carregado
+var MP_TIMER_REFRESH = null;     // timer auto-refresh
+var MP_VALIDACAO_ATUAL = null;   // { metodo, detalhe }
+
+function _mpVerificarIntervaloBatidas(){
+  var agora = Date.now();
+  var dt = agora - MP_ULTIMA_BATIDA_TS;
+  if(dt < MP_INTERVALO_MIN_BATIDAS){
+    var sobra = Math.ceil((MP_INTERVALO_MIN_BATIDAS - dt) / 1000);
+    return { ok: false, mensagem: 'Acabou de bater um ponto. Aguarde ' + sobra + 's antes de bater outro.' };
+  }
+  return { ok: true };
+}
+
+// 🆕 v26.86: Atualiza o card consolidado (hora, próxima, validação)
+function _mpAtualizarCardConsolidado(dados){
+  if(dados) MP_ULTIMO_DADOS = dados;
+  var d = MP_ULTIMO_DADOS;
+  if(!d) return;
+  
+  // === Hora atual + fuso ===
+  var ag = _mpAgoraNoFuso();
+  var elHora = document.getElementById('mp-hora-agora');
+  if(elHora) elHora.textContent = ag.str;
+  
+  var tzNomes = {
+    'America/Porto_Velho': 'Rondônia',
+    'America/Cuiaba': 'Mato Grosso',
+    'America/Campo_Grande': 'Mato Grosso do Sul',
+    'America/Manaus': 'Amazonas',
+    'America/Boa_Vista': 'Roraima',
+    'America/Rio_Branco': 'Acre',
+    'America/Sao_Paulo': 'Brasília',
+    'local': '⚠️ PC (verifique fuso)'
+  };
+  var usaBrasilia = MP_PESSOA && _pessoaUsaHorarioBrasilia(MP_PESSOA.id);
+  var elFuso = document.getElementById('mp-fuso-cidade');
+  if(elFuso) elFuso.textContent = (tzNomes[ag.tz] || ag.tz) + (usaBrasilia ? ' 🇧🇷' : '');
+  
+  var elData = document.getElementById('mp-data-hoje');
+  if(elData){
+    var hojeStr = new Date().toLocaleDateString('pt-BR', { 
+      timeZone: _mpTimezone(),
+      weekday:'short', day:'2-digit', month:'short' 
+    });
+    elData.textContent = hojeStr;
+  }
+  
+  // === Próxima batida ===
+  var horario = d.horario_esperado;
+  var registros = {};
+  (d.registros || []).forEach(function(r){ registros[r.tipo] = r; });
+  
+  var tiposLbl = {
+    entrada1: '🌅 Entrada',
+    saida1:   '🍽️ Saída pro almoço',
+    entrada2: '↩️ Volta do almoço',
+    saida2:   '🌆 Saída'
+  };
+  
+  var tipos = ['entrada1','saida1','entrada2','saida2'];
+  var proximoTipo = null;
+  for(var i=0; i<tipos.length; i++){
+    if(!registros[tipos[i]]){ proximoTipo = tipos[i]; break; }
+  }
+  
+  var elProxTipo = document.getElementById('mp-proxima-tipo');
+  var elProxEsp = document.getElementById('mp-proxima-esperado');
+  var elAtraso = document.getElementById('mp-atraso-info');
+  var elBtn = document.getElementById('mp-btn-bater');
+  
+  if(!proximoTipo){
+    // Todas batidas feitas hoje
+    if(elProxTipo) elProxTipo.innerHTML = '✅ <span style="color:#1D9E75">Tudo certo hoje!</span>';
+    if(elProxEsp) elProxEsp.textContent = '—';
+    if(elAtraso) elAtraso.style.display = 'none';
+    if(elBtn){ elBtn.disabled = true; elBtn.textContent = '✅ Dia concluído'; elBtn.style.background = '#A0A0A0'; }
+    var elValid = document.getElementById('mp-validacao-status');
+    if(elValid) elValid.innerHTML = '✅ Suas 4 batidas de hoje já foram registradas. Bom trabalho!';
+    return;
+  }
+  
+  if(elProxTipo) elProxTipo.textContent = tiposLbl[proximoTipo] || proximoTipo;
+  var esperado = horario ? horario[proximoTipo] : null;
+  if(elProxEsp) elProxEsp.textContent = esperado || '--:--';
+  if(elBtn){ elBtn.disabled = false; elBtn.textContent = '🕒 BATER ' + (tiposLbl[proximoTipo] || '').toUpperCase().replace(/[🌅🍽️↩️🌆]/g, '').trim(); elBtn.style.background = 'linear-gradient(135deg,#1AB8F0,#0E7AB8)'; }
+  
+  // Atraso vs esperado
+  if(esperado){
+    var partsE = esperado.split(':').map(Number);
+    var atrasoMin = (ag.h*60 + ag.m) - (partsE[0]*60 + partsE[1]);
+    if(elAtraso){
+      if(atrasoMin > 5){
+        elAtraso.style.display = '';
+        elAtraso.style.color = '#A32D2D';
+        elAtraso.innerHTML = '⏰ '+atrasoMin+' min atrasada';
+      } else if(atrasoMin < -10){
+        elAtraso.style.display = '';
+        elAtraso.style.color = '#1D9E75';
+        elAtraso.innerHTML = '✓ '+Math.abs(atrasoMin)+' min adiantada';
+      } else {
+        elAtraso.style.display = '';
+        elAtraso.style.color = '#1D9E75';
+        elAtraso.innerHTML = '✓ no horário';
+      }
+    }
+  }
+  
+  // === Validação (IP/GPS/Justificativa) ===
+  _mpAtualizarStatusValidacao();
+}
+
+// 🆕 v26.86: Mostra status atual de validação em cascata
+async function _mpAtualizarStatusValidacao(){
+  var el = document.getElementById('mp-validacao-status');
+  if(!el) return;
+  
+  // 1) Pessoa tem liberação temporária?
+  if(MP_PESSOA && _pessoaLiberadaValidacao(MP_PESSOA)){
+    var ate = (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10);
+    el.innerHTML = '🆓 <strong style="color:#1D9E75">Liberação ativa</strong> até ' + ate + ' — pode bater sem GPS/IP.';
+    MP_VALIDACAO_ATUAL = { metodo: 'LIBERACAO', detalhe: ate };
+    var jb = document.getElementById('mp-justificativa-box');
+    if(jb) jb.style.display = 'none';
+    return;
+  }
+  
+  // 2) Tenta IP
+  try {
+    var ipInfo = await _mpValidarIP();
+    if(ipInfo && ipInfo.dentro){
+      el.innerHTML = '🌐 <strong style="color:#1D9E75">✓ Na rede do escritório</strong> · IP <code style="background:#E6F6FE;padding:1px 6px;border-radius:4px;font-family:\'JetBrains Mono\',monospace;font-size:11px">'+ipInfo.ip+'</code>';
+      MP_VALIDACAO_ATUAL = { metodo: 'IP', detalhe: ipInfo.ip };
+      var jb1 = document.getElementById('mp-justificativa-box');
+      if(jb1) jb1.style.display = 'none';
+      return;
+    }
+  } catch(e){}
+  
+  // 3) Tenta GPS
+  if(MP_GEO && MP_GEO.lat){
+    if(MP_GEO.dentro){
+      el.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório por GPS</strong> · ' + Math.round(MP_GEO.distancia) + 'm de distância';
+      MP_VALIDACAO_ATUAL = { metodo: 'GPS', detalhe: Math.round(MP_GEO.distancia) + 'm' };
+      var jb2 = document.getElementById('mp-justificativa-box');
+      if(jb2) jb2.style.display = 'none';
+      return;
+    } else {
+      el.innerHTML = '📍 <strong style="color:#854F0B">⚠️ Fora do escritório</strong> · ' + Math.round(MP_GEO.distancia) + 'm — preencha justificativa';
+      MP_VALIDACAO_ATUAL = { metodo: 'JUSTIFICATIVA', detalhe: 'Fora do raio: '+Math.round(MP_GEO.distancia)+'m' };
+      var jb3 = document.getElementById('mp-justificativa-box');
+      if(jb3) jb3.style.display = 'block';
+      return;
+    }
+  }
+  
+  // 4) GPS pendente
+  el.innerHTML = '🔍 <strong>Verificando localização...</strong> Aguarde ou libere o GPS no navegador.';
+  MP_VALIDACAO_ATUAL = null;
+}
+
+// 🆕 v26.86: Auto-refresh do card a cada 15s
+function _mpIniciarAutoRefresh(){
+  if(MP_TIMER_REFRESH) clearInterval(MP_TIMER_REFRESH);
+  MP_TIMER_REFRESH = setInterval(function(){
+    if(MP_ULTIMO_DADOS) _mpAtualizarCardConsolidado();
+  }, 15000);
+}
+
+function _mpVerificarIntervaloBatidasOld(){
+  return _mpVerificarIntervaloBatidas();
+}
+
+// 🆕 v26.86: Modal de confirmação ANTES de bater (mostra tipo, hora, validação)
+function _mpAbrirModalConfirmacao(opts){
+  return new Promise(function(resolve){
+    var validacaoTexto = '🔍 sem validação';
+    var validacaoCor = '#A32D2D';
+    if(opts.validacao){
+      var m = opts.validacao.metodo;
+      if(m === 'IP'){ validacaoTexto = '🌐 Rede do escritório (IP ' + opts.validacao.detalhe + ')'; validacaoCor = '#1D9E75'; }
+      else if(m === 'GPS'){ validacaoTexto = '📍 GPS (no escritório, ' + opts.validacao.detalhe + ')'; validacaoCor = '#1D9E75'; }
+      else if(m === 'LIBERACAO'){ validacaoTexto = '🆓 Liberação temporária ativa'; validacaoCor = '#1D9E75'; }
+      else if(m === 'JUSTIFICATIVA'){ validacaoTexto = '📝 Com justificativa'; validacaoCor = '#854F0B'; }
+    }
+    
+    var atrasoTexto = '';
+    if(opts.esperado){
+      var partsE = opts.esperado.split(':').map(Number);
+      var partsA = opts.horaAtual.split(':').map(Number);
+      var atrasoMin = (partsA[0]*60 + partsA[1]) - (partsE[0]*60 + partsE[1]);
+      if(atrasoMin > 5){
+        atrasoTexto = '<div style="font-size:12px;color:#A32D2D;font-weight:700;margin-top:6px">⏰ '+atrasoMin+' min de atraso (esperado '+opts.esperado+')</div>';
+      } else if(atrasoMin < -30){
+        atrasoTexto = '<div style="font-size:12px;color:#0E7AB8;margin-top:6px">⏰ '+Math.abs(atrasoMin)+' min antes do esperado ('+opts.esperado+')</div>';
+      }
+    }
+    
+    var modal = document.createElement('div');
+    modal.id = 'mp-modal-confirma';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px;animation:cidFadeUp .2s ease both';
+    modal.innerHTML = '<div style="background:var(--surface);border-radius:16px;max-width:420px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4)">'
+      + '<div style="text-align:center;margin-bottom:18px">'
+        + '<div style="font-size:38px;margin-bottom:4px">'+(opts.tipoLabel||'').split(' ')[0]+'</div>'
+        + '<div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:2px">Você está prestes a bater</div>'
+        + '<div style="font-size:18px;font-weight:800;color:var(--text)">'+(opts.tipoLabel||'').replace(/^[^\s]+\s*/, '')+'</div>'
+        + atrasoTexto
+      + '</div>'
+      + '<div style="background:#F5F7FA;border-radius:10px;padding:12px;margin-bottom:16px;font-size:12.5px;line-height:1.7">'
+        + '🕐 <strong>Horário:</strong> ' + opts.horaAtual + '<br>'
+        + '✅ <strong>Validado por:</strong> <span style="color:'+validacaoCor+';font-weight:700">' + validacaoTexto + '</span>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px">'
+        + '<button onclick="_mpFecharConfirma(false)" style="flex:1;padding:12px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-size:13px;font-weight:700;border-radius:10px;cursor:pointer;font-family:inherit">Cancelar</button>'
+        + '<button onclick="_mpFecharConfirma(true)" style="flex:2;padding:12px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:14px;font-weight:800;border-radius:10px;cursor:pointer;font-family:inherit">✓ Confirmar e bater</button>'
+      + '</div>'
+    + '</div>';
+    document.body.appendChild(modal);
+    window._mpConfirmaCallback = resolve;
+  });
+}
+
+window._mpFecharConfirma = function(confirmou){
+  var m = document.getElementById('mp-modal-confirma');
+  if(m) m.remove();
+  if(window._mpConfirmaCallback){
+    window._mpConfirmaCallback(confirmou);
+    window._mpConfirmaCallback = null;
+  }
+};
+
 async function mpBaterPonto(){
   if(!MP_PESSOA){ alert('Não autenticado.'); return; }
   
+  // 🆕 v26.85: BLOQUEIO ANTI-DUPLO-CLICK
+  if(MP_BATENDO_AGORA){
+    console.warn('[MP] Bloqueado: já está batendo um ponto agora.');
+    return;
+  }
+  
+  // 🆕 v26.85: BLOQUEIO ANTI-RAJADA (30s entre batidas)
+  var checkIntervalo = _mpVerificarIntervaloBatidas();
+  if(!checkIntervalo.ok){
+    alert('⏱️ ' + checkIntervalo.mensagem);
+    return;
+  }
+  
+  // 🆕 v26.86: CONFIRMAÇÃO VISUAL ANTES DE BATER
+  // Recarrega dados frescos pra ter certeza do tipo correto
+  try {
+    var dadosFrescos = await _mpRPC('ponto_dia', { p_pessoa_id: MP_PESSOA.id });
+    MP_DIA_DADOS = dadosFrescos;
+    
+    // Determina qual tipo vai bater AGORA
+    var registros = {};
+    (dadosFrescos.registros || []).forEach(function(r){ registros[r.tipo] = r; });
+    var tipos = ['entrada1','saida1','entrada2','saida2'];
+    var tiposLbl = {
+      entrada1: '🌅 Entrada',
+      saida1:   '🍽️ Saída pro almoço',
+      entrada2: '↩️ Volta do almoço',
+      saida2:   '🌆 Saída'
+    };
+    var proximoTipo = null;
+    for(var i=0; i<tipos.length; i++){
+      if(!registros[tipos[i]]){ proximoTipo = tipos[i]; break; }
+    }
+    
+    if(!proximoTipo){
+      alert('✅ Você já bateu todas as 4 batidas de hoje. Nada a fazer.');
+      _mpAtualizarCardConsolidado(dadosFrescos);
+      return;
+    }
+    
+    // Mostra modal de confirmação
+    var confirma = await _mpAbrirModalConfirmacao({
+      tipo: proximoTipo,
+      tipoLabel: tiposLbl[proximoTipo],
+      horaAtual: _mpAgoraNoFuso().str,
+      esperado: dadosFrescos.horario_esperado ? dadosFrescos.horario_esperado[proximoTipo] : null,
+      validacao: MP_VALIDACAO_ATUAL
+    });
+    if(!confirma) return;
+  } catch(e){ console.warn('[MP] confirmação:', e); }
+  
+  MP_BATENDO_AGORA = true;
+  
+  try {
   // 🆕 v26.81: Modal interativo (não bloqueia, dá escolha)
   var fuso = _mpAlertarPCFuso();
   if(fuso === null){
@@ -47087,7 +47465,8 @@ async function mpBaterPonto(){
         p_user_agent: navigator.userAgent.slice(0, 150)
       });
       if(typeof toast === 'function'){
-        toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+        MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
       } else {
         alert('✅ Ponto registrado às ' + resp.hora);
       }
@@ -47192,6 +47571,7 @@ async function mpBaterPonto(){
     });
     
     if(typeof toast === 'function'){
+      MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
     } else {
       alert('✅ Ponto registrado às ' + resp.hora);
@@ -47209,6 +47589,10 @@ async function mpBaterPonto(){
       btn.disabled = false;
       btn.textContent = '🕒 BATER PONTO';
     }
+  }
+  } finally {
+    // 🆕 v26.85: Libera o lock global
+    MP_BATENDO_AGORA = false;
   }
 }
 
@@ -47741,8 +48125,436 @@ function pgIrParaTab(tab){
   
   if(tab === 'hoje') pgCarregarHoje();
   else if(tab === 'espelho') pgInicializarEspelho();
+  else if(tab === 'editor') pgInicializarEditor();
   else if(tab === 'excecoes') pgCarregarExcecoes();
   else if(tab === 'config') pgCarregarConfig();
+}
+
+// ============ EDITOR DE BATIDAS (v26.87) ============
+function pgInicializarEditor(){
+  // Popula select de pessoas
+  var sel = document.getElementById('pg-ed-pessoa');
+  if(sel && sel.options.length <= 1){
+    PG_COLABORADORAS.forEach(function(c){
+      var o = document.createElement('option');
+      o.value = c.pessoa_id;
+      o.textContent = c.nome;
+      sel.appendChild(o);
+    });
+  }
+  // Mês corrente por padrão
+  var mes = document.getElementById('pg-ed-mes');
+  if(mes && !mes.value){
+    var hoje = new Date();
+    mes.value = hoje.toISOString().slice(0, 7);
+  }
+  pgEditorCarregar();
+  pgEditorCarregarHistorico();
+}
+
+async function pgEditorCarregar(){
+  var pessoaId = document.getElementById('pg-ed-pessoa').value;
+  var mesStr = document.getElementById('pg-ed-mes').value;
+  var tipo = document.getElementById('pg-ed-tipo').value;
+  var status = document.getElementById('pg-ed-status').value;
+  var lista = document.getElementById('pg-ed-lista');
+  var resumo = document.getElementById('pg-ed-resumo');
+  
+  if(!mesStr){
+    lista.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Escolha o mês.</div>';
+    return;
+  }
+  
+  lista.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Carregando...</div>';
+  
+  try {
+    var dtIni = mesStr + '-01';
+    var [ano, mes] = mesStr.split('-').map(Number);
+    var ultimoDia = new Date(ano, mes, 0).getDate();
+    var dtFim = mesStr + '-' + String(ultimoDia).padStart(2, '0');
+    
+    var query = '?data=gte.' + dtIni + '&data=lte.' + dtFim
+      + '&select=id,pessoa_id,data,tipo,hora_registrada,latitude,longitude,distancia_metros,dentro_do_raio,justificativa,validado_por,editado_por,editado_em,motivo_edicao,ip,created_at'
+      + '&order=data.desc,created_at.desc&limit=500';
+    if(pessoaId) query += '&pessoa_id=eq.' + encodeURIComponent(pessoaId);
+    if(tipo)     query += '&tipo=eq.' + encodeURIComponent(tipo);
+    
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros' + query, {
+      headers: _pgSupaHeaders(), cache: 'no-store'
+    });
+    var registros = r.ok ? await r.json() : [];
+    
+    // Filtros adicionais client-side
+    if(status === 'com_just') registros = registros.filter(function(x){ return x.justificativa; });
+    if(status === 'sem_validacao') registros = registros.filter(function(x){ return !x.validado_por && !x.dentro_do_raio; });
+    if(status === 'duplicadas'){
+      // Agrupa por pessoa+data+tipo
+      var grupos = {};
+      registros.forEach(function(x){
+        var k = x.pessoa_id + '|' + x.data + '|' + x.tipo;
+        grupos[k] = (grupos[k] || 0) + 1;
+      });
+      registros = registros.filter(function(x){
+        var k = x.pessoa_id + '|' + x.data + '|' + x.tipo;
+        return grupos[k] > 1;
+      });
+    }
+    
+    // Mapa de pessoas pra mostrar nome
+    var mapaPessoa = {};
+    PG_COLABORADORAS.forEach(function(c){ mapaPessoa[c.pessoa_id] = c; });
+    
+    resumo.textContent = registros.length + ' batida(s) encontrada(s).';
+    
+    if(!registros.length){
+      lista.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:12px">Nenhuma batida com esses filtros.</div>';
+      return;
+    }
+    
+    var tipoLabel = {
+      entrada1: '🌅 Entrada',
+      saida1:   '🍽️ Saída almoço',
+      entrada2: '↩️ Volta almoço',
+      saida2:   '🌆 Saída'
+    };
+    var validacaoLabel = {
+      IP: '🌐 IP rede',
+      GPS: '📍 GPS',
+      JUSTIFICATIVA: '📝 Justificada',
+      LIBERACAO: '🆓 Liberada',
+      MANUAL_ADMIN: '✏️ Manual'
+    };
+    
+    lista.innerHTML = registros.map(function(reg){
+      var pessoa = mapaPessoa[reg.pessoa_id] || { nome: '(?)', foto: null };
+      var hora = '—';
+      try {
+        var d = new Date(reg.hora_registrada);
+        hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      } catch(e){}
+      var dataFmt = '—';
+      try {
+        var [a,m,d2] = reg.data.split('-');
+        dataFmt = d2+'/'+m;
+      } catch(e){}
+      
+      var validacao = reg.validado_por ? validacaoLabel[reg.validado_por] || reg.validado_por : (reg.dentro_do_raio ? '📍 GPS' : '⚠️ sem validação');
+      var validacaoCor = reg.validado_por === 'IP' || reg.dentro_do_raio ? '#1D9E75' : (reg.justificativa ? '#854F0B' : '#A32D2D');
+      
+      var editadoBadge = reg.editado_por ? '<span style="background:#FAEEDA;color:#854F0B;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:700;letter-spacing:0.3px;margin-left:6px">✏️ EDITADA</span>' : '';
+      var justifBadge = reg.justificativa ? '<div style="font-size:10.5px;color:#854F0B;background:#FFF8E1;padding:5px 8px;border-radius:5px;margin-top:5px;line-height:1.4">📝 ' + reg.justificativa + '</div>' : '';
+      
+      var ac = (typeof avColor === 'function') ? avColor(pessoa.nome) : {bg:'#E0E0E0',color:'#333'};
+      var iniciais = (pessoa.nome||'?').split(' ').map(function(n){return n[0];}).slice(0,2).join('').toUpperCase();
+      var fotoEl = pessoa.foto ? '<img src="'+pessoa.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' : iniciais;
+      
+      return '<div style="display:flex;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;transition:all .15s" onmouseover="this.style.borderColor=\'#1AB8F0\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+        + '<div style="width:32px;height:32px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:2px solid white;overflow:hidden">'+fotoEl+'</div>'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+            + '<div style="font-size:12.5px;font-weight:700;color:var(--text)">'+pessoa.nome+'</div>'
+            + editadoBadge
+          + '</div>'
+          + '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text2);margin-top:3px">'
+            + '<span><strong>'+dataFmt+'</strong></span>'
+            + '<span>'+(tipoLabel[reg.tipo] || reg.tipo)+'</span>'
+            + '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;color:var(--text)">'+hora+'</span>'
+            + '<span style="color:'+validacaoCor+';font-weight:600">'+validacao+'</span>'
+          + '</div>'
+          + justifBadge
+        + '</div>'
+        + '<div style="display:flex;gap:4px;align-items:center">'
+          + '<button onclick="pgEditarBatida('+reg.id+')" title="Editar" style="padding:6px 10px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">✏️</button>'
+          + '<button onclick="pgApagarBatida('+reg.id+', \''+pessoa.nome.replace(/\x27/g,'\\\x27')+'\', \''+reg.tipo+'\', \''+dataFmt+'\', \''+hora+'\')" title="Apagar" style="padding:6px 10px;border:1px solid #f5b5b5;background:transparent;color:#A32D2D;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;font-family:inherit">🗑️</button>'
+        + '</div>'
+      + '</div>';
+    }).join('');
+    
+    // Guarda lista em cache pro modal editar
+    window._pgEdRegistros = registros;
+  } catch(e){
+    lista.innerHTML = '<div style="padding:20px;color:#A32D2D;font-size:12px">Erro: '+e.message+'</div>';
+    console.error('[Editor]', e);
+  }
+}
+
+async function pgEditorCarregarHistorico(){
+  var host = document.getElementById('pg-ed-historico');
+  if(!host) return;
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_log_admin?select=*&order=created_at.desc&limit=20', {
+      headers: _pgSupaHeaders(), cache: 'no-store'
+    });
+    var logs = r.ok ? await r.json() : [];
+    if(!logs.length){
+      host.innerHTML = '<div style="font-style:italic;color:var(--text3)">Nenhuma edição registrada ainda.</div>';
+      return;
+    }
+    var mapaPessoa = {};
+    PG_COLABORADORAS.forEach(function(c){ mapaPessoa[c.pessoa_id] = c; });
+    host.innerHTML = logs.map(function(l){
+      var pessoa = mapaPessoa[l.pessoa_id] || { nome: '(?)' };
+      var quando = new Date(l.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      var acaoIcon = l.acao === 'DELETE' ? '🗑️' : '➕';
+      return '<div style="padding:6px 10px;background:#FAFBFC;border:1px solid var(--border);border-radius:5px">'
+        + '<strong>'+acaoIcon+' '+l.acao+'</strong> · '+pessoa.nome+' · '+l.tipo+' · '+l.data_registro
+        + '<br><span style="color:var(--text3)">por '+l.feito_por_nome+' em '+quando+'</span>'
+        + '<br><span style="color:#854F0B;font-style:italic">"'+l.motivo+'"</span>'
+      + '</div>';
+    }).join('');
+  } catch(e){ console.warn('[Editor histórico]', e); }
+}
+
+function pgEditarBatida(id){
+  var reg = (window._pgEdRegistros || []).find(function(r){ return r.id === id; });
+  if(!reg){ alert('Registro não encontrado.'); return; }
+  
+  var hora = '00:00';
+  try {
+    var d = new Date(reg.hora_registrada);
+    hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  } catch(e){}
+  
+  var mapaPessoa = {};
+  PG_COLABORADORAS.forEach(function(c){ mapaPessoa[c.pessoa_id] = c; });
+  var pessoa = mapaPessoa[reg.pessoa_id] || { nome: '(?)' };
+  
+  var modal = document.createElement('div');
+  modal.id = 'pg-ed-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px';
+  modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto">'
+    + '<div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">✏️ Editar batida</div>'
+    + '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">'+pessoa.nome+' · '+reg.data+'</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">'
+      + '<div><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">TIPO</label>'
+        + '<select id="pg-edm-tipo" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit">'
+          + '<option value="entrada1"'+(reg.tipo==='entrada1'?' selected':'')+'>🌅 Entrada</option>'
+          + '<option value="saida1"'+(reg.tipo==='saida1'?' selected':'')+'>🍽️ Saída almoço</option>'
+          + '<option value="entrada2"'+(reg.tipo==='entrada2'?' selected':'')+'>↩️ Volta almoço</option>'
+          + '<option value="saida2"'+(reg.tipo==='saida2'?' selected':'')+'>🌆 Saída</option>'
+        + '</select>'
+      + '</div>'
+      + '<div><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">HORA</label>'
+        + '<input id="pg-edm-hora" type="time" value="'+hora+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"/></div>'
+    + '</div>'
+    + '<div style="margin-bottom:14px"><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">JUSTIFICATIVA</label>'
+      + '<textarea id="pg-edm-just" rows="2" placeholder="Justificativa (opcional)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;resize:vertical">'+(reg.justificativa||'')+'</textarea></div>'
+    + '<div style="margin-bottom:18px"><label style="display:block;font-size:10px;color:#A32D2D;font-weight:700;margin-bottom:3px">📋 MOTIVO DA EDIÇÃO (obrigatório)</label>'
+      + '<input id="pg-edm-motivo" placeholder="Ex: Hora errada, colaboradora pediu correção" style="width:100%;padding:8px 10px;border:1.5px solid #E24B4A;border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/></div>'
+    + '<div style="display:flex;gap:8px">'
+      + '<button onclick="pgFecharEditModal()" style="flex:1;padding:11px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>'
+      + '<button onclick="pgSalvarEdicaoBatida('+id+')" style="flex:2;padding:11px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:13px;font-weight:800;border-radius:8px;cursor:pointer;font-family:inherit">💾 Salvar mudanças</button>'
+    + '</div>'
+  + '</div>';
+  document.body.appendChild(modal);
+}
+
+function pgFecharEditModal(){
+  var m = document.getElementById('pg-ed-modal');
+  if(m) m.remove();
+}
+
+async function pgSalvarEdicaoBatida(id){
+  var tipo = document.getElementById('pg-edm-tipo').value;
+  var hora = document.getElementById('pg-edm-hora').value;
+  var just = document.getElementById('pg-edm-just').value.trim();
+  var motivo = document.getElementById('pg-edm-motivo').value.trim();
+  
+  if(!motivo){ alert('⚠️ Informe o motivo da edição (obrigatório).'); return; }
+  
+  var reg = (window._pgEdRegistros || []).find(function(r){ return r.id === id; });
+  if(!reg){ alert('Registro não encontrado.'); return; }
+  
+  // Reconstrói timestamp: data + hora (no fuso de Rondônia UTC-4)
+  var novaDataHora = reg.data + 'T' + hora + ':00-04:00';
+  
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var admin = u ? (u.id || 'admin') : 'admin';
+  var adminNome = u ? (u.nome || 'Admin') : 'Admin';
+  
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros?id=eq.' + id, {
+      method: 'PATCH',
+      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=minimal' }),
+      body: JSON.stringify({
+        tipo: tipo,
+        hora_registrada: novaDataHora,
+        justificativa: just || null,
+        editado_por: admin,
+        editado_em: new Date().toISOString(),
+        motivo_edicao: motivo
+      })
+    });
+    if(!r.ok){
+      var err = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + err);
+    }
+    
+    if(typeof toast === 'function') toast('✅ Batida editada com sucesso', 'success');
+    else alert('✅ Editado!');
+    pgFecharEditModal();
+    pgEditorCarregar();
+    pgEditorCarregarHistorico();
+  } catch(e){
+    alert('❌ Erro ao salvar: ' + e.message);
+  }
+}
+
+async function pgApagarBatida(id, pessoaNome, tipo, dataFmt, hora){
+  var motivo = prompt('🗑️ APAGAR batida de '+pessoaNome+'\n'+tipo+' às '+hora+' em '+dataFmt+'\n\n📋 Informe o motivo da exclusão (obrigatório):');
+  if(!motivo || !motivo.trim()){ return; }
+  
+  var reg = (window._pgEdRegistros || []).find(function(r){ return r.id === id; });
+  if(!reg){ alert('Registro não encontrado.'); return; }
+  
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var admin = u ? (u.id || 'admin') : 'admin';
+  var adminNome = u ? (u.nome || 'Admin') : 'Admin';
+  
+  try {
+    // 1) Grava no log
+    await fetch(SUPA_URL + '/rest/v1/ponto_log_admin', {
+      method: 'POST',
+      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=minimal' }),
+      body: JSON.stringify({
+        acao: 'DELETE',
+        registro_id: id,
+        pessoa_id: reg.pessoa_id,
+        data_registro: reg.data,
+        tipo: reg.tipo,
+        hora_registrada: reg.hora_registrada,
+        feito_por: admin,
+        feito_por_nome: adminNome,
+        motivo: motivo.trim(),
+        snapshot: reg
+      })
+    });
+    // 2) Deleta o registro
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros?id=eq.' + id, {
+      method: 'DELETE',
+      headers: _pgSupaHeaders()
+    });
+    if(!r.ok){
+      var err = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + err);
+    }
+    if(typeof toast === 'function') toast('🗑️ Batida apagada (auditada)', 'success');
+    pgEditorCarregar();
+    pgEditorCarregarHistorico();
+  } catch(e){
+    alert('❌ Erro: ' + e.message);
+  }
+}
+
+function pgAbrirAdicionarBatida(){
+  var pessoasOpts = PG_COLABORADORAS.map(function(c){
+    return '<option value="'+c.pessoa_id+'">'+c.nome+'</option>';
+  }).join('');
+  
+  var hojeStr = new Date().toISOString().slice(0,10);
+  
+  var modal = document.createElement('div');
+  modal.id = 'pg-ad-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px';
+  modal.innerHTML = '<div style="background:var(--surface);border-radius:14px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto">'
+    + '<div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px">➕ Adicionar batida manual</div>'
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:18px;background:#FFF8E1;border-left:3px solid #EF9F27;padding:8px 10px;border-radius:5px">⚠️ Use isso quando a colaboradora esqueceu de bater ou teve algum problema técnico. Tudo fica auditado.</div>'
+    + '<div style="margin-bottom:12px"><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">PESSOA</label>'
+      + '<select id="pg-adm-pessoa" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit"><option value="">— escolha —</option>'+pessoasOpts+'</select></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">'
+      + '<div><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">DATA</label>'
+        + '<input id="pg-adm-data" type="date" value="'+hojeStr+'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/></div>'
+      + '<div><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">TIPO</label>'
+        + '<select id="pg-adm-tipo" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit">'
+          + '<option value="entrada1">🌅 Entrada</option>'
+          + '<option value="saida1">🍽️ Saída almoço</option>'
+          + '<option value="entrada2">↩️ Volta almoço</option>'
+          + '<option value="saida2">🌆 Saída</option>'
+        + '</select></div>'
+      + '<div><label style="display:block;font-size:10px;color:var(--text3);font-weight:600;margin-bottom:3px">HORA</label>'
+        + '<input id="pg-adm-hora" type="time" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/></div>'
+    + '</div>'
+    + '<div style="margin-bottom:18px"><label style="display:block;font-size:10px;color:#A32D2D;font-weight:700;margin-bottom:3px">📋 MOTIVO (obrigatório)</label>'
+      + '<textarea id="pg-adm-motivo" rows="2" placeholder="Ex: Colaboradora esqueceu de bater entrada às 8h - confirmado por gestora" style="width:100%;padding:8px 10px;border:1.5px solid #E24B4A;border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea></div>'
+    + '<div style="display:flex;gap:8px">'
+      + '<button onclick="pgFecharAddModal()" style="flex:1;padding:11px;border:1.5px solid var(--border);background:transparent;color:var(--text2);font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit">Cancelar</button>'
+      + '<button onclick="pgSalvarBatidaManual()" style="flex:2;padding:11px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:13px;font-weight:800;border-radius:8px;cursor:pointer;font-family:inherit">➕ Adicionar batida</button>'
+    + '</div>'
+  + '</div>';
+  document.body.appendChild(modal);
+}
+
+function pgFecharAddModal(){
+  var m = document.getElementById('pg-ad-modal');
+  if(m) m.remove();
+}
+
+async function pgSalvarBatidaManual(){
+  var pessoaId = document.getElementById('pg-adm-pessoa').value;
+  var data = document.getElementById('pg-adm-data').value;
+  var tipo = document.getElementById('pg-adm-tipo').value;
+  var hora = document.getElementById('pg-adm-hora').value;
+  var motivo = document.getElementById('pg-adm-motivo').value.trim();
+  
+  if(!pessoaId){ alert('Escolha a pessoa.'); return; }
+  if(!data){ alert('Informe a data.'); return; }
+  if(!tipo){ alert('Escolha o tipo.'); return; }
+  if(!hora){ alert('Informe a hora.'); return; }
+  if(!motivo){ alert('⚠️ Motivo é obrigatório.'); return; }
+  
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var admin = u ? (u.id || 'admin') : 'admin';
+  var adminNome = u ? (u.nome || 'Admin') : 'Admin';
+  
+  var horaTs = data + 'T' + hora + ':00-04:00'; // Fuso Rondônia
+  
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros', {
+      method: 'POST',
+      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=representation' }),
+      body: JSON.stringify({
+        pessoa_id: pessoaId,
+        data: data,
+        tipo: tipo,
+        hora_registrada: horaTs,
+        validado_por: 'MANUAL_ADMIN',
+        justificativa: motivo,
+        editado_por: admin,
+        editado_em: new Date().toISOString(),
+        motivo_edicao: '[INSERIDA MANUALMENTE] ' + motivo
+      })
+    });
+    if(!r.ok){
+      var err = await r.text();
+      throw new Error('HTTP ' + r.status + ': ' + err);
+    }
+    var inserido = await r.json();
+    var novoId = (inserido[0] && inserido[0].id) || null;
+    
+    // Grava no log
+    await fetch(SUPA_URL + '/rest/v1/ponto_log_admin', {
+      method: 'POST',
+      headers: Object.assign({}, _pgSupaHeaders(), { 'Prefer': 'return=minimal' }),
+      body: JSON.stringify({
+        acao: 'INSERT_MANUAL',
+        registro_id: novoId,
+        pessoa_id: pessoaId,
+        data_registro: data,
+        tipo: tipo,
+        hora_registrada: horaTs,
+        feito_por: admin,
+        feito_por_nome: adminNome,
+        motivo: motivo
+      })
+    });
+    
+    if(typeof toast === 'function') toast('✅ Batida manual registrada', 'success');
+    pgFecharAddModal();
+    pgEditorCarregar();
+    pgEditorCarregarHistorico();
+  } catch(e){
+    alert('❌ Erro: ' + e.message);
+  }
 }
 
 // ============ PAINEL HOJE ============
@@ -49193,17 +50005,27 @@ function _hbCarregar(){
 function _hbSeedInicial(){
   // Identifica Bruna Eduarda, Andréia Luiza Damke e Jessica Nayara pelo nome
   // se ainda não tiver lista salva
+  // 🆕 v26.85: match BEM ESPECÍFICO (não pega outras com "luiza" ou "jessica" no meio)
   var ids = [];
   try {
     var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
-    var nomesAlvo = ['bruna', 'luiza', 'jessica'];
     pessoas.forEach(function(p){
       if(!p || !p.nome) return;
-      var nm = p.nome.toLowerCase();
-      // Bruna Eduarda OU contém "luiza" OU Jessica Nayara
-      if(nm.indexOf('bruna') === 0 || nm.indexOf('luiza') >= 0 || nm.indexOf('jessica') === 0){
-        if(p.id) ids.push(p.id);
-      }
+      var nm = p.nome.toLowerCase().trim();
+      // Match EXATO no início do nome ou em palavra completa
+      var palavras = nm.split(/\s+/);
+      var primeiraPalavra = palavras[0] || '';
+      
+      // Apenas estas 3 entram automaticamente:
+      // - Nome começa com "bruna"
+      // - Contém "luiza" como palavra inteira (não "luiza" parte de "guilherme" por ex)
+      // - Nome começa com "jessica"
+      var bate = false;
+      if(primeiraPalavra === 'bruna') bate = true;
+      if(primeiraPalavra === 'jessica') bate = true;
+      if(palavras.indexOf('luiza') >= 0) bate = true;
+      
+      if(bate && p.id) ids.push(p.id);
     });
   } catch(e){}
   return ids;
@@ -49283,6 +50105,22 @@ function _mpAgoraNoFuso(){
 async function dashBaterPontoRapido(){
   if(!MP_PESSOA){ alert('Não autenticado'); return; }
   
+  // 🆕 v26.85: BLOQUEIO ANTI-DUPLO-CLICK
+  if(MP_BATENDO_AGORA){
+    console.warn('[Dash] Bloqueado: já está batendo um ponto agora.');
+    return;
+  }
+  
+  // 🆕 v26.85: BLOQUEIO ANTI-RAJADA (30s entre batidas)
+  var checkIntervalo = _mpVerificarIntervaloBatidas();
+  if(!checkIntervalo.ok){
+    alert('⏱️ ' + checkIntervalo.mensagem);
+    return;
+  }
+  
+  MP_BATENDO_AGORA = true;
+  
+  try {
   // 🆕 v26.81: Modal interativo
   var fuso = _mpAlertarPCFuso();
   if(fuso === null){
@@ -49329,7 +50167,8 @@ async function dashBaterPontoRapido(){
         p_user_agent: navigator.userAgent.slice(0, 150)
       });
       if(typeof toast === 'function'){
-        toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+        MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
       } else {
         alert('✅ Ponto registrado às ' + resp.hora);
       }
@@ -49362,7 +50201,8 @@ async function dashBaterPontoRapido(){
           p_user_agent: navigator.userAgent.slice(0, 150)
         });
         if(typeof toast === 'function'){
-          toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
+          MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
+      toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
         } else {
           alert('✅ Ponto registrado às ' + resp.hora);
         }
@@ -49465,6 +50305,7 @@ async function dashBaterPontoRapido(){
     });
     
     if(typeof toast === 'function'){
+      MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' registrado às ' + resp.hora, 'success');
     } else {
       alert('✅ Ponto registrado às ' + resp.hora);
@@ -49480,6 +50321,10 @@ async function dashBaterPontoRapido(){
       btn.innerHTML = originalText;
       btn.disabled = false;
     }
+  }
+  } finally {
+    // 🆕 v26.85: Libera o lock global
+    MP_BATENDO_AGORA = false;
   }
 }
 
