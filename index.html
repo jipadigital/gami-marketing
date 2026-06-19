@@ -1,4 +1,4 @@
-<!-- v26.92 - Editor 100% via RPC + função antiga renomeada pra Espelho - 19/06/2026 -->
+<!-- v26.93 - Estoque: detecção robusta de Suporte (Jessica) + nav só pra autorizadas, sem alerta - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -44984,23 +44984,74 @@ function _estCidadesPermitidas(u){
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia') return null;
   
-  // Verifica mapa de suporte por primeiro nome
-  var primeiroNome = (u.nome || '').toLowerCase().split(' ')[0].trim()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-  // Também tenta sobrenome (no caso da Andréia LUIZA Damke)
-  var nomes = (u.nome || '').toLowerCase().split(/\s+/);
+  // 🆕 v26.93: Busca robusta — tenta múltiplas fontes do nome
+  var normalizar = function(s){
+    return (s||'').toString().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[._-]+/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+  };
   
+  // Junta TODAS as fontes possíveis: nome completo, nome de exibição, email (parte antes do @)
+  var fontes = [];
+  if(u.nome) fontes.push(normalizar(u.nome));
+  if(u.name) fontes.push(normalizar(u.name));
+  if(u.email){
+    var emailParte = u.email.split('@')[0];
+    fontes.push(normalizar(emailParte));
+  }
+  if(u.nickname) fontes.push(normalizar(u.nickname));
+  if(u.usuario) fontes.push(normalizar(u.usuario));
+  
+  // Para cada chave do mapa, vê se aparece em qualquer fonte
   for(var chave in EST_SUPORTE_PERMISSOES){
-    var chaveNorm = chave.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    if(nomes.some(function(n){ 
-      var nn = n.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      return nn === chaveNorm; 
-    })){
+    var chaveNorm = normalizar(chave);
+    var match = fontes.some(function(fonte){
+      // Match por palavra completa (split por espaço)
+      var palavras = fonte.split(' ');
+      if(palavras.indexOf(chaveNorm) >= 0) return true;
+      // Match por substring (cobre casos tipo "jessica.nayara")
+      if(fonte.indexOf(chaveNorm) >= 0) return true;
+      return false;
+    });
+    if(match){
+      console.log('[Estoque] ✓ Acesso liberado pra "'+u.nome+'" via chave "'+chave+'" → cidades:', EST_SUPORTE_PERMISSOES[chave]);
       return EST_SUPORTE_PERMISSOES[chave].slice();
     }
   }
+  console.warn('[Estoque] ✕ Acesso negado. Fontes verificadas:', fontes, '· Chaves disponíveis:', Object.keys(EST_SUPORTE_PERMISSOES));
   return [];
 }
+
+// 🆕 v26.93: Diagnóstico de acesso ao Estoque (console)
+window.gamiDiagEstoque = function(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u){ console.warn('[Diag Estoque] Sem usuário logado'); return; }
+  
+  console.group('📦 Diagnóstico de acesso ao Estoque');
+  console.log('Usuário logado:');
+  console.table({
+    id: u.id,
+    pessoa_id: u.pessoa_id,
+    nome: u.nome,
+    email: u.email,
+    cargo: u.cargo
+  });
+  
+  var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
+  console.log('Nível de permissão detectado:', nivel);
+  
+  var cidades = _estCidadesPermitidas(u);
+  console.log('Cidades permitidas:', cidades);
+  
+  if(cidades === null) console.log('✅ ACESSO TOTAL (admin/diretoria/gerência)');
+  else if(cidades && cidades.length) console.log('✅ ACESSO PARCIAL · cidades:', cidades);
+  else console.log('❌ SEM ACESSO');
+  
+  console.log('Mapa atual EST_SUPORTE_PERMISSOES:', EST_SUPORTE_PERMISSOES);
+  console.groupEnd();
+  return { usuario: u, nivel: nivel, cidades: cidades };
+};
 
 // ====== Helpers ======
 function _estSupaHeaders(){
@@ -45083,7 +45134,11 @@ async function estVerificarAcessoSidebar(){
 async function abrirEstoque(navEl){
   _estSincronizarSessao();
   if(!EST_SESSAO){
-    alert('🚫 Acesso restrito.\n\nEstoque é liberado pra:\n• Diretoria, Gerência, Marketing\n• Suporte com cidades atribuídas (Bruna, Luiza, Jessica, Camily, Estefânia)');
+    // 🆕 v26.93: Sem permissão = item nem deveria aparecer no menu.
+    // Se chegou aqui, força esconder de novo + volta pro dashboard.
+    var navEstoque = document.getElementById('nav-estoque');
+    if(navEstoque) navEstoque.style.display = 'none';
+    if(typeof navegarPara === 'function') navegarPara('dashboard');
     return;
   }
   
