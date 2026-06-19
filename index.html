@@ -1,4 +1,4 @@
-<!-- v26.96 - Relatórios: telefone em 4 a mais (clientes novos, em alta, top moto, moto queda) + pararam 90d - 19/06/2026 -->
+<!-- v26.97 - Tarefas: STRICT mode (bloqueio criação sem login, sem órfãs, limpeza auto) - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -36088,16 +36088,14 @@ function _tfLerTodasMinhasTarefas(){
     for(var i = 0; i < localStorage.length; i++){
       var k = localStorage.key(i);
       if(!k || k.indexOf(prefixMeu) !== 0) continue;
-      // Pula chaves de meta/foco/humor/etc (só pega listas de tarefas)
       var sufixo = k.substring(prefixMeu.length);
       if(!/^(d_|s_|m_|projetos$|geral$)/.test(sufixo)) continue;
       try {
         var lista = JSON.parse(localStorage.getItem(k) || '[]');
         if(Array.isArray(lista)){
-          // Defesa em profundidade: filtra por pessoa_id também
+          // 🆕 v26.97: STRICT — só inclui tarefas COM pessoa_id IGUAL ao logado
           lista.forEach(function(t){
-            if(t && (t.pessoa_id === pid || !t.pessoa_id)){
-              if(!t.pessoa_id) t.pessoa_id = pid;
+            if(t && t.pessoa_id === pid){
               todas.push(t);
             }
           });
@@ -36115,8 +36113,9 @@ function _tfLerMinhasTarefasHoje(){
   try {
     var lista = JSON.parse(localStorage.getItem(tfKey('diario', null)) || '[]');
     if(!Array.isArray(lista)) return [];
+    // 🆕 v26.97: STRICT — descarta órfãs
     return lista.filter(function(t){
-      return t && (t.pessoa_id === pid || !t.pessoa_id);
+      return t && t.pessoa_id === pid;
     });
   } catch(e){ return []; }
 }
@@ -36214,15 +36213,14 @@ function tfMigrarV2ParaV3(){
       var sufixoLegado = k.substring(TF_KEY_PREFIX_LEGADO.length);
       var novaChave = TF_KEY_PREFIX + pid + '_' + sufixoLegado;
       
-      // Filtra: só migra tarefas SEM dono OU tarefas DO usuário atual
+      // 🆕 v26.97: STRICT — descarta órfãs em vez de atribuir ao logado
       var tarefasParaUsuarioAtual = [];
+      var orfasDescartadas = 0;
       lista.forEach(function(t){
         if(!t) return;
-        if(!t.pessoa_id){
-          // Órfã: atribui ao usuário logado
-          t.pessoa_id = pid;
-          tarefasParaUsuarioAtual.push(t);
-          migradas++;
+        if(!t.pessoa_id || t.pessoa_id === '?' || t.pessoa_id === 'anon'){
+          orfasDescartadas++;
+          ignoradas++;
         } else if(t.pessoa_id === pid){
           tarefasParaUsuarioAtual.push(t);
           migradas++;
@@ -36232,6 +36230,9 @@ function tfMigrarV2ParaV3(){
           preservadas++;
         }
       });
+      if(orfasDescartadas > 0){
+        console.log('[Migração v2→v3] ' + orfasDescartadas + ' tarefa(s) órfã(s) descartadas de ' + sufixoLegado);
+      }
       
       if(tarefasParaUsuarioAtual.length){
         // Funde com possíveis tarefas já na chave nova (caso outro PC tenha migrado antes)
@@ -36266,11 +36267,9 @@ function tfMigrarV2ParaV3(){
       if(legadoV1){
         var lista = JSON.parse(legadoV1) || [];
         if(Array.isArray(lista) && lista.length){
+          // 🆕 v26.97: STRICT — só migra tarefas com pessoa_id IGUAL ao logado
           var minhasV1 = lista.filter(function(t){
-            return t && (!t.pessoa_id || t.pessoa_id === pid);
-          }).map(function(t){
-            if(!t.pessoa_id) t.pessoa_id = pid;
-            return t;
+            return t && t.pessoa_id === pid;
           });
           if(minhasV1.length){
             var chaveV3 = TF_KEY_PREFIX + pid + '_geral';
@@ -36461,8 +36460,11 @@ function saveTarefas(tipo, sufixo, lista){
     if(ids[t.id]) return false; // vai sobrescrever
     return t.pessoa_id && t.pessoa_id !== u.id; // mantém só de outros donos
   });
-  // Garante pessoa_id em todas as tarefas salvas
-  lista.forEach(function(t){ if(t && !t.pessoa_id) t.pessoa_id = u.id; });
+  // 🆕 v26.97: Garante pessoa_id válido em TODAS antes de salvar
+  // (defesa pra caso código antigo passe tarefa sem dono)
+  lista.forEach(function(t){
+    if(t && !t.pessoa_id) t.pessoa_id = u.id;
+  });
   var merged = outros.concat(lista);
   try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(merged)); }catch(e){}
 }
@@ -36475,8 +36477,12 @@ function tfDataHoje(){
 }
 
 function initTarefas(){
-  // 🆕 v26.94: Migração CRÍTICA pra isolamento (chaves v2 → v3 com pessoa_id)
-  // SEMPRE roda primeiro pra evitar vazamento entre usuários
+  // 🆕 v26.97: Limpeza definitiva de órfãs (modo strict)
+  try {
+    if(typeof _tfLimparOrfasDoLocalStorage === 'function') _tfLimparOrfasDoLocalStorage();
+  } catch(e){ console.warn('[Tarefas] limpeza órfãs:', e); }
+  
+  // Migração CRÍTICA pra isolamento (chaves v2 → v3 com pessoa_id)
   try {
     if(typeof tfMigrarV2ParaV3 === 'function') tfMigrarV2ParaV3();
   } catch(e){ console.warn('[Tarefas] migração v3:', e); }
@@ -36494,6 +36500,131 @@ function initTarefas(){
   }
   tarefaAba('diario');
 }
+
+// 🆕 v26.97: Apaga TODAS as tarefas sem dono ou com pessoa_id inválido do localStorage
+// Cleyton escolheu: "Apagar todas (limpeza total, começar do zero)"
+function _tfLimparOrfasDoLocalStorage(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id) return; // sem login, não faz nada
+  
+  var totalRemovidas = 0;
+  var totalChavesLimpas = 0;
+  
+  try {
+    var chavesProcessar = [];
+    for(var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if(!k) continue;
+      // Pega tanto chaves novas (v3) quanto antigas (v2 e v1)
+      if(k.indexOf(TF_KEY_PREFIX) === 0 ||
+         (typeof TF_KEY_PREFIX_LEGADO !== 'undefined' && k.indexOf(TF_KEY_PREFIX_LEGADO) === 0) ||
+         k === 'gami_tarefas_v2' || k === 'gami_tarefas_v1'){
+        chavesProcessar.push(k);
+      }
+    }
+    
+    chavesProcessar.forEach(function(k){
+      try {
+        var lista = JSON.parse(localStorage.getItem(k) || '[]');
+        if(!Array.isArray(lista) || !lista.length) return;
+        
+        var antes = lista.length;
+        var depois = lista.filter(function(t){
+          if(!t) return false;
+          var pid = t.pessoa_id;
+          // STRICT: só mantém se tem pessoa_id válido (não vazio, não '?', não 'anon')
+          if(!pid || pid === '?' || pid === 'anon' || pid.length < 3) return false;
+          return true;
+        });
+        
+        if(depois.length < antes){
+          totalRemovidas += (antes - depois.length);
+          totalChavesLimpas++;
+          if(depois.length > 0){
+            localStorage.setItem(k, JSON.stringify(depois));
+          } else {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch(e){}
+    });
+    
+    if(totalRemovidas > 0){
+      console.log('[v26.97 Limpeza] ' + totalRemovidas + ' tarefa(s) órfã(s) descartada(s) de ' + totalChavesLimpas + ' chave(s).');
+    }
+  } catch(e){ console.warn('[v26.97 Limpeza] erro:', e); }
+}
+
+// 🆕 v26.97: Diagnóstico completo de tarefas (rodar no console F12)
+window.gamiDiagTarefas = function(){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  console.group('📋 Diagnóstico de Tarefas');
+  
+  if(!u){
+    console.warn('❌ SEM LOGIN. Faça login pra ver suas tarefas.');
+    console.groupEnd();
+    return { semLogin: true };
+  }
+  
+  console.log('👤 Logado como:');
+  console.table({ id: u.id, nome: u.nome, email: u.email });
+  
+  var pid = u.id;
+  var minhas = 0;
+  var orfas = 0;
+  var deOutros = 0;
+  var deOutrosNoMeuPrefix = 0;
+  var detalheChaves = {};
+  
+  try {
+    for(var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf(TF_KEY_PREFIX) !== 0) continue;
+      try {
+        var lista = JSON.parse(localStorage.getItem(k) || '[]');
+        if(!Array.isArray(lista)) continue;
+        var c = { total: lista.length, minhas: 0, orfas: 0, deOutros: 0 };
+        var ehChaveMinha = k.indexOf(TF_KEY_PREFIX + pid + '_') === 0;
+        lista.forEach(function(t){
+          if(!t) return;
+          if(!t.pessoa_id || t.pessoa_id === '?' || t.pessoa_id === 'anon'){
+            orfas++; c.orfas++;
+          } else if(t.pessoa_id === pid){
+            minhas++; c.minhas++;
+          } else {
+            deOutros++; c.deOutros++;
+            if(ehChaveMinha) deOutrosNoMeuPrefix++;
+          }
+        });
+        detalheChaves[k] = c;
+      } catch(e){}
+    }
+  } catch(e){}
+  
+  console.log('📊 Resumo:');
+  console.table({
+    'Minhas (válidas)': minhas,
+    'Órfãs (sem dono)': orfas,
+    'De outros usuários': deOutros,
+    '⚠️ De outros NA MINHA chave (VAZAMENTO)': deOutrosNoMeuPrefix
+  });
+  
+  console.log('🗂️ Detalhe por chave:');
+  console.table(detalheChaves);
+  
+  if(orfas > 0){
+    console.warn('💡 Tem ' + orfas + ' órfã(s). Recarregue (F5) — limpeza automática vai apagar.');
+  }
+  if(deOutrosNoMeuPrefix > 0){
+    console.error('🚨 BUG: tem ' + deOutrosNoMeuPrefix + ' tarefa(s) de outros na sua chave. Isso é vazamento!');
+  }
+  if(minhas > 0 && orfas === 0 && deOutrosNoMeuPrefix === 0){
+    console.log('✅ Sistema limpo. Suas ' + minhas + ' tarefas estão isoladas corretamente.');
+  }
+  
+  console.groupEnd();
+  return { logado: u.id, minhas: minhas, orfas: orfas, deOutros: deOutros, vazamento: deOutrosNoMeuPrefix };
+};
 
 /* Atualiza o badge do menu Tarefas com nº de delegadas não vistas */
 async function tfAtualizarBadgeDelegadas(){
@@ -37936,12 +38067,27 @@ function tfFiltrar(btn, filtro){
 }
 
 function tfAdicionarRapido(){
+  // 🆕 v26.97: BLOQUEIO se não tem login — toda tarefa precisa de dono
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!u || !u.id){
+    alert('⚠️ Faça login primeiro pra criar tarefas.\n\nSem login, a tarefa não tem dono e pode vazar entre usuários.');
+    return;
+  }
+  
   var inp=document.getElementById('tf-add-input');
   var prio=document.getElementById('tf-add-prio');
   var cat=document.getElementById('tf-add-cat');
   if(!inp||!inp.value.trim()) return;
   var lista=getTarefas('diario');
-  var _nova={id:'tf'+Date.now(),texto:inp.value.trim(),prio:(prio||{}).value||'media',cat:(cat||{}).value||'Outro',feito:false,criadoEm:new Date().toISOString()};
+  var _nova={
+    id:'tf'+Date.now(),
+    texto:inp.value.trim(),
+    prio:(prio||{}).value||'media',
+    cat:(cat||{}).value||'Outro',
+    feito:false,
+    criadoEm:new Date().toISOString(),
+    pessoa_id: u.id  // ✅ v26.97: SEMPRE atribui dono na criação
+  };
   lista.push(_nova);
   saveTarefas('diario',null,lista);
   if(typeof tfSupaSalvar==='function') tfSupaSalvar(_nova,'diario',null);
@@ -39577,9 +39723,19 @@ function _tfBucketDe(tipo, sufixo){
 async function tfSupaSalvar(tarefa, tipo, sufixo){
   try{
     var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    
+    // 🆕 v26.97: BLOQUEIO TOTAL — sem pessoa_id válido NÃO grava no banco
+    var pidFinal = tarefa.pessoa_id || (u ? u.id : null);
+    if(!pidFinal || pidFinal === '?' || pidFinal === 'anon' || pidFinal.length < 3){
+      console.error('[tfSupaSalvar] BLOQUEADO: tarefa sem pessoa_id válido. Não vai pro Supabase.', {
+        tarefaId: tarefa.id, tarefa_pessoa_id: tarefa.pessoa_id, usuario_atual: u
+      });
+      return { ok:false, erro:'pessoa_id_invalido' };
+    }
+    
     var row = {
       id: tarefa.id,
-      pessoa_id: tarefa.pessoa_id || (u ? u.id : '?'),
+      pessoa_id: pidFinal,
       texto: tarefa.texto || '',
       tipo: tipo || 'diario',
       bucket: _tfBucketDe(tipo, sufixo),
