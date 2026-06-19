@@ -1,4 +1,4 @@
-<!-- v26.90 - Editor SEMPRE via REST (RPC não retorna ID) - 19/06/2026 -->
+<!-- v26.91 - Editor usa RPC ponto_dia_editor (passa por cima de RLS) - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -48181,26 +48181,12 @@ async function pgEditorCarregar(){
   }
   
   try {
-    // 🆕 v26.90: SEMPRE usa REST (RPC ponto_painel_hoje não retorna IDs!)
-    var query = '?data=eq.' + data
-      + '&select=id,pessoa_id,data,tipo,hora_registrada,latitude,longitude,distancia_metros,dentro_do_raio,justificativa,validado_por,editado_por,editado_em,motivo_edicao,ip,created_at'
-      + '&order=created_at.asc&limit=500';
-    console.log('[Editor] GET ponto_registros' + query);
+    // 🆕 v26.91: Usa RPC ponto_dia_editor (passa por cima de RLS via SECURITY DEFINER)
+    console.log('[Editor] RPC ponto_dia_editor data=' + data);
+    var resp = await _pgRPC('ponto_dia_editor', { p_data: data });
+    console.log('[Editor] RPC retornou:', resp);
     
-    var r = await fetch(SUPA_URL + '/rest/v1/ponto_registros' + query, {
-      headers: _pgSupaHeaders(), cache: 'no-store'
-    });
-    console.log('[Editor] REST HTTP', r.status);
-    
-    if(!r.ok){
-      var errTxt = '';
-      try { errTxt = await r.text(); } catch(e){}
-      console.error('[Editor] REST erro:', r.status, errTxt);
-      grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">❌ Erro REST '+r.status+': '+errTxt+'</div>';
-      return;
-    }
-    
-    var registros = await r.json();
+    var registros = (resp && resp.registros) || [];
     if(!Array.isArray(registros)) registros = [];
     window._pgEdRegistros = registros;
     console.log('[Editor] ' + registros.length + ' registros · ' + PG_COLABORADORAS.length + ' colaboradoras');
@@ -48248,11 +48234,13 @@ async function pgEditorCarregar(){
         }
         
         return batidas.map(function(b){
-          var hora = '--:--';
-          try {
-            var d = new Date(b.hora_registrada);
-            hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-          } catch(e){}
+          var hora = b.hora || '--:--';
+          if(!b.hora && b.hora_registrada){
+            try {
+              var d = new Date(b.hora_registrada);
+              hora = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+            } catch(e){}
+          }
           
           var iconCor = '#5A6678';
           if(b.validado_por === 'IP' || b.dentro_do_raio) iconCor = '#0F6D52';
