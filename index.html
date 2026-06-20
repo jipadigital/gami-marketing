@@ -1,4 +1,4 @@
-<!-- v27.02 - P0.1 supaWrite (gravacao segura+visivel) + fix guard fantasma supaInsert que bloqueava pontos_log - 19/06/2026 -->
+<!-- v27.03 - P0.2 campo canonico nivel_permissao (prioridade sobre cargo) + bridge no login/sync - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1705,9 +1705,19 @@ window.renderReactionsHTML = renderReactionsHTML;
 function detectarNivelPermissao(usuario){
   if(!usuario) return 'visitante';
   
-  // SUPER ADMIN — Cleyton (via email único)
+  // SUPER ADMIN — Cleyton (via email único). Trava de segurança: nunca se
+  // tranca fora, mesmo se o dado estiver errado.
   if(usuario.email && usuario.email.toLowerCase() === 'jipadigital@gmail.com') return 'super_admin';
   
+  // 🆕 P0.2 — CAMPO CANÔNICO tem prioridade. Quando `nivel_permissao` está
+  // preenchido em `pessoas`, ele manda — acaba a adivinhação por texto livre
+  // do cargo (que jogava gente pra colaborador em silêncio). O bloco abaixo
+  // vira só fallback enquanto a coluna não estiver 100% preenchida.
+  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','financeiro','prospeccao','colaborador','visitante'];
+  var _np = String(usuario.nivel_permissao || '').toLowerCase().trim();
+  if(_np && NIVEIS_VALIDOS.indexOf(_np) !== -1) return _np;
+  
+  // ----- FALLBACK DE MIGRAÇÃO (texto livre do cargo / listas por email) -----
   // 🆕 CONVIDADOS EXTERNOS — acesso completo (igual diretoria) sem aparecer em Pessoas
   var EMAILS_CONVIDADOS = [
     'iasmin.endringer@dealwise.com.br',  // Iasmin Endringer - Dealwise
@@ -11147,6 +11157,7 @@ async function tentarLogin(identificador, pin){
       cidade: pessoa ? pessoa.cidade : null,
       categoria: pessoa ? pessoa.categoria : null,
       nivel: pessoa ? pessoa.nivel : null,
+      nivel_permissao: pessoa ? pessoa.nivel_permissao : null,
       tipo: pessoa ? pessoa.tipo : null,
       data_admissao: pessoa ? (pessoa.entrada || pessoa.data_admissao || pessoa.admissao) : null,
       aniversario: pessoa ? (pessoa.nascimento || pessoa.aniversario || pessoa.aniversario_dia) : null,
@@ -12002,6 +12013,7 @@ async function resincronizarUsuarioLogado(mostrarAlerta){
     u.cidade = pessoa.cidade || u.cidade;
     u.categoria = pessoa.categoria || u.categoria;
     u.nivel = pessoa.nivel || u.nivel;
+    u.nivel_permissao = pessoa.nivel_permissao || u.nivel_permissao;
     u.tipo = pessoa.tipo || u.tipo;
     u.data_admissao = pessoa.entrada || pessoa.data_admissao || pessoa.admissao || u.data_admissao;
     u.aniversario = pessoa.nascimento || pessoa.aniversario || pessoa.aniversario_dia || u.aniversario;
