@@ -1,4 +1,4 @@
-<!-- v27.05 - Fix diagnostico gamiDiagPonto (coluna registrado_em faltava na lista) - Ponto auditado OK - 19/06/2026 -->
+<!-- v27.07 - Ponto: 3o IP do escritorio (138.122.17.79) adicionado ao hardcoded + faixa /24 - IP-first completo - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -48416,6 +48416,39 @@ async function mpBaterPonto(){
     return;
   }
   
+  // 🆕 ORDEM IP→GPS: tenta o IP do escritório PRIMEIRO (3 cadastrados + faixas).
+  // Se está na rede do escritório, bate na hora — sem esperar GPS nem pedir
+  // permissão de localização. GPS vira o fallback (pra quem está em campo).
+  try {
+    if(btn){ btn.disabled = true; btn.textContent = '📍 Verificando rede...'; }
+    var presencaIP0 = await _verificarPresencaPorIP();
+    if(presencaIP0 && presencaIP0.autorizado){
+      if(btn) btn.textContent = '⏳ Registrando...';
+      try {
+        var respIP = await _mpRPC('ponto_bater', {
+          p_pessoa_id: MP_PESSOA.id,
+          p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
+          p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
+          p_justificativa: '[IP ESCRITÓRIO ' + presencaIP0.ip + '] Presença validada pela rede do escritório.',
+          p_user_agent: navigator.userAgent.slice(0, 150)
+        });
+        if(typeof toast === 'function'){
+          toast('✅ ' + (MP_TIPO_LABEL[respIP.tipo] || 'Ponto') + ' às ' + respIP.hora + ' (validado pela rede)', 'success');
+        } else {
+          alert('✅ Ponto registrado às ' + respIP.hora + '\n\n📍 Validado pela rede do escritório.');
+        }
+        await mpCarregarDia();
+        await mpCarregarMes();
+      } catch(e){
+        alert('❌ ' + (e.message || 'Erro ao bater ponto'));
+      } finally {
+        if(btn){ btn.disabled = false; btn.textContent = '🕒 BATER PONTO'; }
+      }
+      return; // bateu por IP, não precisa de GPS
+    }
+    if(btn){ btn.disabled = false; btn.textContent = '🕒 BATER PONTO'; }
+  } catch(eIP){ console.warn('[MP] checagem IP-first:', eIP); if(btn){ btn.disabled = false; btn.textContent = '🕒 BATER PONTO'; } }
+
   // Aguarda GPS se ainda não foi capturado
   if(!MP_GEO){
     if(btn){
@@ -50271,10 +50304,12 @@ function dashRenderPontoStatus(dados){
 var ESCRITORIO_IPS_AUTORIZADOS = [
   '138.97.145.189',     // Internet 1 (Rede Completa) - Escritório Gâmi Ji-Paraná
   '177.152.117.123',    // Internet 2 (Souuni) - Escritório Gâmi Ji-Paraná
+  '138.122.17.79',      // Internet 3 - Escritório Gâmi Ji-Paraná
 ];
 var ESCRITORIO_FAIXAS_AUTORIZADAS = [
   '138.97.145.',        // Faixa /24 Rede Completa (caso IP mude no mesmo bloco)
   '177.152.117.',       // Faixa /24 Souuni (caso IP mude no mesmo bloco)
+  '138.122.17.',        // Faixa /24 Internet 3 (caso IP mude no mesmo bloco)
 ];
 
 // Cache do IP detectado (válido por 5min)
@@ -50317,7 +50352,15 @@ async function _obterIPPublico(){
 
 function _ipEhAutorizado(ip){
   if(!ip) return false;
-  // Match exato
+  // 🆕 Inclui os IPs CADASTRADOS no painel de gestão (MP_CONFIG.ips_autorizados).
+  // Antes só checava os hardcoded — os IPs que você cadastra eram ignorados aqui.
+  try {
+    if(typeof MP_CONFIG !== 'undefined' && MP_CONFIG && MP_CONFIG.ips_autorizados){
+      var cadastrados = MP_CONFIG.ips_autorizados.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      if(cadastrados.indexOf(ip) !== -1) return true;
+    }
+  } catch(e){}
+  // Match exato (hardcoded — fallback do escritório)
   if(ESCRITORIO_IPS_AUTORIZADOS.indexOf(ip) !== -1) return true;
   // Match por faixa (ex: "138.97.145." → autoriza 138.97.145.*)
   for(var i=0; i<ESCRITORIO_FAIXAS_AUTORIZADAS.length; i++){
