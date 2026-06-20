@@ -1,4 +1,4 @@
-<!-- v27.07 - Ponto: 3o IP do escritorio (138.122.17.79) adicionado ao hardcoded + faixa /24 - IP-first completo - 19/06/2026 -->
+<!-- v27.08 - Fix toggle tarefa: manda linha completa (parcial causava 400 INSERT) + tfSupaSalvar cai pro fallback direto - 20/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -38163,7 +38163,16 @@ function tfToggle(tipo, id, sufixo){
   }
   // Sincroniza estado com Supabase
   if(tarefaTocada && typeof supaUpsert==='function'){
-    supaUpsert('tarefas',{ id:id, feito:!!tarefaTocada.feito, concluido_em: tarefaTocada.feito?new Date().toISOString():null });
+    // P0.1: antes o toggle mandava payload PARCIAL {id,feito,concluido_em}. Se a
+    // tarefa ainda não existia no Supabase, virava INSERT sem colunas obrigatórias
+    // (pessoa_id, texto) → 400. Agora manda a LINHA COMPLETA via tfSupaSalvar
+    // (mesmo caminho da criação, que funciona). Cache delegado (parcial, já existe
+    // no banco) mantém o merge parcial.
+    if(tarefaTocada.texto && tarefaTocada.pessoa_id && typeof tfSupaSalvar==='function'){
+      tfSupaSalvar(tarefaTocada, tipo, sufixo);
+    } else {
+      supaUpsert('tarefas',{ id:id, feito:!!tarefaTocada.feito, concluido_em: tarefaTocada.feito?new Date().toISOString():null });
+    }
     if(typeof auditLog==='function') auditLog(tarefaTocada.feito?'tarefa_concluida':'tarefa_reaberta', id, (tarefaTocada.texto||'').slice(0,60));
     // Se era delegada e foi concluída, notifica quem delegou
     if(tarefaTocada.feito && tarefaTocada.delegada_por){
@@ -39983,8 +39992,8 @@ async function tfSupaSalvar(tarefa, tipo, sufixo){
         return { ok:true, status:200 };
       } catch(eSync){
         var msg = eSync && eSync.message ? eSync.message : String(eSync);
-        console.error('[tfSupaSalvar via Netlify]', msg);
-        return { ok:false, status:0, erro: msg };
+        console.warn('[tfSupaSalvar via Netlify falhou, tentando direto]', msg);
+        // 🆕 NÃO retorna — cai pro fallback REST direto abaixo (robustez)
       }
     }
     
