@@ -1,4 +1,4 @@
-<!-- v27.03 - P0.2 campo canonico nivel_permissao (prioridade sobre cargo) + bridge no login/sync - 19/06/2026 -->
+<!-- v27.04 - Fix tarefas: 400 ao editar (campos fantasma prazo/obs/editado_em) + prazo agora sincroniza - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -39762,10 +39762,11 @@ function tfSalvarModal(){
       saveTarefas(editTipo, editSufixo, listaEd);
       // Sincroniza com Supabase
       if(typeof supaUpsert==='function'){
+        // P0.1: antes mandava prazo/obs/editado_em (colunas inexistentes) → 400.
+        // obs fica só no localStorage; prazo mapeia pra data_limite (coluna real).
         supaUpsert('tarefas', {
           id: editId, texto: texto.trim(), prio: prio, cat: cat,
-          prazo: prazo, obs: obs, hora_limite: hora_limite,
-          editado_em: listaEd[idx].editadoEm
+          data_limite: (prazo || null), hora_limite: (hora_limite || null)
         });
       }
       if(typeof auditLog==='function') auditLog('tarefa_editada', editId, (texto||'').slice(0,60));
@@ -39965,7 +39966,7 @@ async function tfSupaSalvar(tarefa, tipo, sufixo){
       delegada_por_nome: tarefa.delegada_por_nome || null,
       delegada_em: tarefa.delegada_em || null,
       prioridade_deleg: tarefa.prioridade_deleg || 'normal',
-      data_limite: tarefa.data_limite || null,
+      data_limite: tarefa.data_limite || tarefa.prazo || null,
       hora_limite: tarefa.hora_limite || null,
       mensagem_delegacao: tarefa.mensagem_delegacao || null,
       vista_em: tarefa.vista_em || null
