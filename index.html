@@ -1,4 +1,4 @@
-<!-- v27.09 - Estoque: esconde so o VALOR TOTAL pra nao-gestao (antes borrava tudo, ate nova venda) - 20/06/2026 -->
+<!-- v27.10 - Delegar tarefa: fix permissao (usava u.nivel senioridade, Diretor/Gerente nao delegavam) + badge resiliente a RLS - 20/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -40055,8 +40055,22 @@ async function tfBuscarDelegadasParaMim(){
     if(!u) return [];
     var r = await supaSelect('tarefas',
       'pessoa_id=eq.'+encodeURIComponent(u.id)+'&delegada_por=not.is.null&select=*&order=delegada_em.desc');
+    if(r && r.length) return r;
+    // 🆕 Fallback: o select direto pode ser bloqueado por RLS (401) → o badge
+    // sumiria. Usa o cache sincronizado pela RPC segura tarefas_minhas.
+    if(window._tfSupaCache && window._tfSupaCache.length){
+      return window._tfSupaCache.filter(function(t){ return t && t.delegada_por && t.pessoa_id === u.id; });
+    }
     return r || [];
-  }catch(e){ return []; }
+  }catch(e){
+    try {
+      var uu = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+      if(uu && window._tfSupaCache){
+        return window._tfSupaCache.filter(function(t){ return t && t.delegada_por && t.pessoa_id === uu.id; });
+      }
+    } catch(e2){}
+    return [];
+  }
 }
 
 /* DELEGAÇÃO: cria tarefa direto pra outra pessoa (cai na aba dela) */
@@ -40064,10 +40078,12 @@ async function tfDelegar(destinoPessoaId, destinoNome, texto, prioridadeDeleg, d
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   if(!u) { alert('Sessão expirada. Faça login novamente.'); return { ok:false, erro:'Sessão expirada' }; }
 
-  // Permissão: super_admin, diretoria, gerencia, gestor, marketing
-  var nivel = (u.nivel||'').toLowerCase();
-  var ehSuper = u.email && u.email.toLowerCase()==='jipadigital@gmail.com';
-  var podeDelegar = ehSuper || ['diretoria','gerencia','gestor','marketing','super_admin'].indexOf(nivel)>=0;
+  // Permissão: usa o nível CANÔNICO (detectarNivelPermissao). ANTES usava
+  // u.nivel — que é a SENIORIDADE ('Diretor'/'Gerente') e não batia com
+  // 'diretoria'/'gerencia', então Diretor e Gerente NÃO conseguiam delegar.
+  // detectarNivelPermissao já resolve super_admin (Cleyton/email) e marketing.
+  var nivelPerm = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : (u.nivel||'').toLowerCase();
+  var podeDelegar = ['super_admin','diretoria','gerencia','gestor'].indexOf(nivelPerm) >= 0;
   if(!podeDelegar){ alert('Seu perfil não pode delegar tarefas.'); return { ok:false, erro:'Sem permissão' }; }
 
   var tarefa = {
