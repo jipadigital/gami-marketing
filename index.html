@@ -1,4 +1,4 @@
-<!-- v27.08 - Fix toggle tarefa: manda linha completa (parcial causava 400 INSERT) + tfSupaSalvar cai pro fallback direto - 20/06/2026 -->
+<!-- v27.09 - Estoque: esconde so o VALOR TOTAL pra nao-gestao (antes borrava tudo, ate nova venda) - 20/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -549,6 +549,11 @@ body.gami-no-valor .gami-valor {
   user-select: none;
   cursor: not-allowed;
   position: relative;
+}
+/* 🆕 Esconde APENAS o card do VALOR TOTAL do estoque pra quem não é gestão.
+   Os demais valores (faturamento, vendas, nova venda) continuam visíveis. */
+body.gami-sem-total-estoque .gami-valor-total-estoque{
+  display:none !important;
 }
 body.gami-no-valor .gami-valor::after {
   content: '🔒';
@@ -5653,7 +5658,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <div class="metric-val" id="est-kpi-pecas" style="color:#1AB8F0">0</div>
         <div class="metric-sub" style="color:#0E7AB8">unidades</div>
       </div>
-      <div class="metric" style="background:linear-gradient(135deg,#EAF7DD,#FFFFFF);border-left:3px solid #1D9E75">
+      <div class="metric gami-valor-total-estoque" style="background:linear-gradient(135deg,#EAF7DD,#FFFFFF);border-left:3px solid #1D9E75">
         <div class="metric-label gami-valor">💰 Valor do Estoque</div>
         <div class="metric-val gami-valor" id="est-kpi-valor" style="color:#1D9E75">R$ 0,00</div>
         <div class="metric-sub gami-valor" style="color:#0F6D52">saldo × valor unit.</div>
@@ -46068,20 +46073,24 @@ async function abrirEstoque(navEl){
   await estCarregarTudo();
 }
 
-// 🆕 v26.64: Esconde valores monetários do estoque pra quem não é super_admin/diretoria/gerencia
+// 🆕 v27.09: Esconde APENAS o VALOR TOTAL do estoque pra quem não é gestão.
+// Antes borrava TODOS os valores (.gami-valor) — incluindo faturamento, vendas e
+// o campo de NOVA VENDA, que ela precisa ver. Agora só o card do total some.
 function estAplicarPermissaoValores(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
-  var podeVer = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
-  if(podeVer){
-    document.body.classList.remove('gami-no-valor');
+  var podeVerTotal = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
+  // Limpa o blur antigo (não borra mais nada) e esconde só o card do total.
+  document.body.classList.remove('gami-no-valor');
+  if(podeVerTotal){
+    document.body.classList.remove('gami-sem-total-estoque');
   } else {
-    document.body.classList.add('gami-no-valor');
+    document.body.classList.add('gami-sem-total-estoque');
   }
-  console.log('[Estoque] Permissão valores monetários:', podeVer ? 'PODE VER' : 'ESCONDIDO', '(nivel='+nivel+')');
+  console.log('[Estoque] Valor TOTAL do estoque:', podeVerTotal ? 'VISÍVEL' : 'OCULTO', '(nivel='+nivel+'). Demais valores: visíveis.');
   
-  // 🆕 v26.75: Esconde elementos est-admin-only (aba Adicionar + botões + Adicionar Item)
-  var ehAdmin = podeVer;
+  // 🆕 v26.75: Esconde elementos est-admin-only (aba Adicionar item — só gestão)
+  var ehAdmin = podeVerTotal;
   document.querySelectorAll('.est-admin-only').forEach(function(el){
     el.style.display = ehAdmin ? '' : 'none';
   });
