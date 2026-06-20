@@ -1,4 +1,4 @@
-<!-- v27.01 - Pontos & Ranking: login pontua no boot, hooks religados (tarefa/pulse/anotacao), sync Sementinha/XP, patentes unificadas - 19/06/2026 -->
+<!-- v27.02 - P0.1 supaWrite (gravacao segura+visivel) + fix guard fantasma supaInsert que bloqueava pontos_log - 19/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10670,22 +10670,10 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
     data_acao: new Date().toISOString().split('T')[0]
   };
   
-  // Salva no Supabase
-  if(typeof supaInsert === 'function' && typeof SUPA_URL !== 'undefined'){
-    try {
-      var url = SUPA_URL + '/rest/v1/pontos_log';
-      var r = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPA_KEY,
-          'Authorization': 'Bearer ' + SUPA_KEY,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify(registro)
-      });
-      if(!r.ok) console.warn('Erro salvando ponto:', r.status);
-    } catch(e){ console.warn('Erro pontos:', e.message); }
+  // Salva no Supabase (P0.1: era gated por `supaInsert` — função que NUNCA
+  // existiu — então o insert nunca rodava. Agora via supaWrite, com falha visível.)
+  if(typeof supaWrite === 'function' && typeof SUPA_URL !== 'undefined'){
+    await supaWrite('pontos_log', registro, { operacao: 'insert', contexto: 'pontos', silencioso: true });
   }
   
   // Também salva no localStorage como cache
@@ -35438,8 +35426,68 @@ async function supaUpsert(tabela, dados){
       headers:Object.assign({},supaHeaders(),{'Prefer':'resolution=merge-duplicates'}),
       body:JSON.stringify(Array.isArray(dados)?dados:[dados])
     });
+    if(!r.ok){ _supaWriteError(tabela, new Error('HTTP '+r.status), {}); }
     return r.ok;
-  }catch(e){return false;}
+  }catch(e){ _supaWriteError(tabela, e, {}); return false; }
+}
+
+/* ============================================================ */
+/* 🆕 P0.1 — GRAVAÇÃO SEGURA E VISÍVEL                          */
+/* Antes: 78 writes podiam falhar em silêncio (foi assim que o  */
+/* pontos_log ficou vazio). Agora toda falha aparece.          */
+/* ============================================================ */
+function _supaWriteError(contexto, erro, opcoes){
+  opcoes = opcoes || {};
+  var msg = (erro && erro.message) ? erro.message : String(erro || 'desconhecido');
+  console.error('[GRAVAÇÃO FALHOU] ' + contexto + ': ' + msg);
+  if(!opcoes.silencioso && typeof toast === 'function'){
+    toast('Não consegui salvar (' + contexto + '). Tenta de novo.', 'error');
+  }
+  // Telemetria local pra auditoria (últimas 50 falhas)
+  try {
+    var log = JSON.parse(localStorage.getItem('gami_write_falhas') || '[]');
+    log.push({ ctx: contexto, msg: msg, ts: Date.now() });
+    if(log.length > 50) log = log.slice(-50);
+    localStorage.setItem('gami_write_falhas', JSON.stringify(log));
+  } catch(e){}
+}
+
+/* Gravação única no Supabase. Usa a rota segura (Netlify + service key,
+   ignora RLS) quando existe; fallback REST direto. SEMPRE surfaceia falha.
+   opcoes: { operacao:'insert'|'upsert', contexto:'rótulo', silencioso:bool } */
+async function supaWrite(tabela, dados, opcoes){
+  opcoes = opcoes || {};
+  var operacao = opcoes.operacao || 'insert';
+  var contexto = opcoes.contexto || tabela;
+  var arr = Array.isArray(dados) ? dados : [dados];
+  // Rota segura (Netlify Function + service key)
+  if(typeof _syncEscrever === 'function'){
+    try {
+      await _syncEscrever({ tabela: tabela, operacao: operacao, dados: arr });
+      return true;
+    } catch(e){
+      console.warn('[supaWrite via Netlify falhou, tentando direto]', tabela, e && e.message);
+    }
+  }
+  // Fallback REST direto
+  try {
+    var prefer = operacao === 'upsert' ? 'resolution=merge-duplicates' : 'return=minimal';
+    var url = SUPA_URL + '/rest/v1/' + tabela + (operacao === 'upsert' ? '?on_conflict=id' : '');
+    var r = await fetch(url, {
+      method: 'POST',
+      headers: Object.assign({}, supaHeaders(), { 'Prefer': prefer }),
+      body: JSON.stringify(arr)
+    });
+    if(!r.ok){
+      var txt = ''; try { txt = await r.text(); } catch(e){}
+      _supaWriteError(contexto, new Error('HTTP ' + r.status + (txt ? ' · ' + txt.slice(0,120) : '')), opcoes);
+      return false;
+    }
+    return true;
+  } catch(e){
+    _supaWriteError(contexto, e, opcoes);
+    return false;
+  }
 }
 async function supaSelect(tabela, filtro){
   try{
