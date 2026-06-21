@@ -7,6 +7,12 @@ const HEADERS = {
   'Content-Type': 'application/json',
 };
 
+// Modelo padrao (valido). O modelo antigo 'claude-sonnet-4-20250514' foi
+// descontinuado e a API retornava not_found_error.
+// O app pode mandar um modelo por chamada (body.model) — ex: Haiku pra analise
+// rapida, Sonnet pra legenda/blog. Se nao mandar, usa o default abaixo.
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
+
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: HEADERS, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: HEADERS, body: JSON.stringify({ error: 'Method not allowed' }) };
@@ -23,9 +29,10 @@ exports.handler = async (event) => {
   if (!prompt) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'prompt obrigatorio' }) };
 
   const max_tokens = body.max_tokens || 2500;
+  const model = (typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : DEFAULT_MODEL;
 
   const payload = JSON.stringify({
-    model: 'claude-sonnet-4-20250514',
+    model: model,
     max_tokens: max_tokens,
     messages: [{ role: 'user', content: prompt }]
   });
