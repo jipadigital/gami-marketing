@@ -1,4 +1,4 @@
-<!-- v27.10 - Delegar tarefa: fix permissao (usava u.nivel senioridade, Diretor/Gerente nao delegavam) + badge resiliente a RLS - 20/06/2026 -->
+<!-- v27.16 - Cidades: sparkline+tendencia REAIS (serie 7d) e Corridas hoje da cidade populado + Pessoas: atividade recente sem expor nome da tarefa - 20/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1188,13 +1188,27 @@ function toggleNotifPanel(){
 var _supaNotifsCache = [];
 var _supaNotifsLoadedAt = 0;
 
+// 🆕 v27.12: Pausa com AUTO-RECUPERAÇÃO no lugar do kill-switch permanente.
+// Antes, 1 única falha (500 transitório, blip de rede, RLS) setava
+// window._notifErroLogado=true e MATAVA todas as notificações pela sessão toda.
+// Agora pausa por 3 min e volta a tentar sozinho.
+function _notifPausado(){
+  return !!(window._notifPausaAte && Date.now() < window._notifPausaAte);
+}
+function _notifPausar(motivo){
+  if(!_notifPausado()){
+    console.warn('[Notif] pausando buscas por 3min (auto-recupera). Motivo:', motivo);
+  }
+  window._notifPausaAte = Date.now() + 180000;
+}
+
 async function _carregarNotificacoesSupa(){
   try {
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     if(!u || !u.id) return [];
     
-    // 🆕 v26.87: Se já constatamos erro de schema, retorna lista vazia sem tentar de novo
-    if(window._notifErroLogado) return [];
+    // 🆕 v27.12: pausado temporariamente? devolve cache (não some o que já tinha).
+    if(_notifPausado()) return _supaNotifsCache || [];
     
     // 🆕 v26.87: SIMPLIFICADO — uma única query com select=* (mais resiliente a schemas)
     var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
@@ -1206,14 +1220,11 @@ async function _carregarNotificacoesSupa(){
     });
     
     if(!r.ok){
-      // Loga o erro real UMA vez só e marca pra parar de tentar
-      if(!window._notifErroLogado){
-        var errBody = '';
-        try { errBody = await r.text(); } catch(e){}
-        console.warn('[Notif] Tabela notificacoes não disponível (HTTP ' + r.status + '). Notificações reais desabilitadas. Detalhe:', errBody.slice(0, 200));
-        window._notifErroLogado = true;
-      }
-      return [];
+      // 🆕 v27.12: pausa 3min (auto-recupera) em vez de desligar pra sempre.
+      var errBody = '';
+      try { errBody = await r.text(); } catch(e){}
+      _notifPausar('HTTP ' + r.status + ' ' + errBody.slice(0, 150));
+      return _supaNotifsCache || [];
     }
     var data = await r.json();
     if(!Array.isArray(data)) return [];
@@ -1227,11 +1238,8 @@ async function _carregarNotificacoesSupa(){
     _supaNotifsLoadedAt = Date.now();
     return data;
   } catch(e){ 
-    if(!window._notifErroLogado){
-      console.warn('[Notif] erro buscar Supabase:', e);
-      window._notifErroLogado = true;
-    }
-    return []; 
+    _notifPausar('exceção: ' + (e && e.message ? e.message : e));
+    return _supaNotifsCache || []; 
   }
 }
 
@@ -13259,11 +13267,14 @@ function _pm_coletarEventosRecentes(){
     // 🆕 v26.98: usa helper STRICT (só logado)
     var tarefas = (typeof _tfLerTarefasDoDia === 'function') ? _tfLerTarefasDoDia(y + '_' + m + '_' + d) : [];
     var feitas = tarefas.filter(function(t){ return t && (t.feito || t.concluida); }).slice(0,3);
+    var _uAtiv = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    var _nomeAtiv = (_uAtiv && _uAtiv.nome) ? _uAtiv.nome.split(' ')[0] : 'Você';
     feitas.forEach(function(t){
       var quando = t.feitaEm || t.concluidaEm;
+      // 🆕 v27.16: NÃO expõe o texto da tarefa (privacidade) — só "X concluiu uma tarefa".
       eventos.push({
         icone: '✅',
-        texto: '<strong>Você</strong> concluiu: ' + (t.texto || '').slice(0, 50),
+        texto: '<strong>' + _nomeAtiv + '</strong> concluiu uma tarefa',
         tempo: quando ? _pm_tempoRelativo(quando) : 'hoje',
         ts: quando ? new Date(quando).getTime() : hoje.getTime()
       });
@@ -25042,6 +25053,68 @@ function toggleMapaBrasil(){
   +'</div>';
 }
 
+// 🆕 v27.14: Contagem REAL de entregas de HOJE por cidade (machine_corridas,
+// count=exact do dia). Cacheada 10min + localStorage do dia → não busca toda hora.
+var _CID_METRICAS = null;          // { slug: { serie:[7], hoje:n, pct:n } }
+var _CID_METRICAS_TS = 0;
+var _CID_METRICAS_CARREGANDO = false;
+// 🆕 v27.16: carrega a SÉRIE de 7 dias por cidade (count=exact por dia) → alimenta
+// entregas-hoje + sparkline REAL + % REAL (hoje vs média dos 6 dias anteriores).
+// Cacheada 30min + localStorage do dia → não fica buscando toda hora.
+async function _cidCarregarMetricas(forcar){
+  var TTL = 30 * 60 * 1000; // 30 min
+  var diaHoje = new Date().toISOString().slice(0,10);
+  if(!forcar && _CID_METRICAS && (Date.now() - _CID_METRICAS_TS < TTL)) return _CID_METRICAS;
+  if(!forcar){
+    try {
+      var ls = JSON.parse(localStorage.getItem('gami_cid_metricas') || 'null');
+      if(ls && ls.dia === diaHoje && (Date.now() - ls.ts < TTL)){
+        _CID_METRICAS = ls.map; _CID_METRICAS_TS = ls.ts; return _CID_METRICAS;
+      }
+    } catch(e){}
+  }
+  if(_CID_METRICAS_CARREGANDO) return _CID_METRICAS;
+  _CID_METRICAS_CARREGANDO = true;
+  try {
+    var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+    // 7 janelas de 1 dia (índice 0 = 6 dias atrás ... 6 = hoje)
+    var dias = [];
+    for(var k = 6; k >= 0; k--){
+      var d0 = new Date(); d0.setHours(0,0,0,0); d0.setDate(d0.getDate() - k);
+      var d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+      dias.push({ ini: d0.toISOString(), fim: d1.toISOString() });
+    }
+    function _hdrs(){ return Object.assign({}, (typeof supaHeaders==='function'?supaHeaders():{apikey:SUPA_KEY,Authorization:'Bearer '+SUPA_KEY}), {'Prefer':'count=exact'}); }
+    async function _contaDia(slug, ini, fim){
+      try {
+        var ctrl = new AbortController(); var to = setTimeout(function(){ ctrl.abort(); }, 5000);
+        var r = await fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(slug)+'&data_hora_solicitacao=gte.'+encodeURIComponent(ini)+'&data_hora_solicitacao=lt.'+encodeURIComponent(fim)+'&select=cidade_slug&limit=1', { headers: _hdrs(), signal: ctrl.signal });
+        clearTimeout(to);
+        var range = r.headers.get('content-range') || '';
+        var n = parseInt((range.split('/')[1] || '0'), 10);
+        return isNaN(n) ? null : n;
+      } catch(e){ return null; }
+    }
+    var map = {};
+    for(var i = 0; i < cidades.length; i++){
+      var slug = String(cidades[i].id || cidades[i].slug || '');
+      if(!slug) continue;
+      var serie = await Promise.all(dias.map(function(dd){ return _contaDia(slug, dd.ini, dd.fim); }));
+      if(!serie.some(function(v){ return v != null; })) continue; // sem dado → card mostra —
+      serie = serie.map(function(v){ return v == null ? 0 : v; });
+      var hojeN = serie[6];
+      var ant = serie.slice(0, 6);
+      var media = ant.length ? ant.reduce(function(a,b){ return a+b; }, 0) / ant.length : 0;
+      var pct = media > 0 ? Math.round((hojeN - media) / media * 100) : 0;
+      map[slug] = { serie: serie, hoje: hojeN, pct: pct };
+    }
+    _CID_METRICAS = map; _CID_METRICAS_TS = Date.now();
+    try { localStorage.setItem('gami_cid_metricas', JSON.stringify({ dia: diaHoje, ts: _CID_METRICAS_TS, map: map })); } catch(e){}
+  } catch(e){ console.warn('[Cidades] erro métricas:', e); }
+  _CID_METRICAS_CARREGANDO = false;
+  return _CID_METRICAS;
+}
+
 function renderCidadesGrid(){
   const grid = document.getElementById('cidades-grid');
   if(!grid) return;
@@ -25081,12 +25154,11 @@ function renderCidadesGrid(){
     // ETAPA 3 vai substituir por dados reais da Machine
     let seed, entHoje, pct, spark7d, sparkD, sparkArea, sinal, seta, pctClasse;
     try {
-      const seedStr = String(c.id || c.nome || 'fallback' + idx);
-      seed = (function(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h);})(seedStr);
-      entHoje = 40 + (seed % 130);
-      pct = -8 + ((seed * 7) % 30);
-      spark7d = [];
-      for(let i=0; i<7; i++){ spark7d.push(30 + ((seed * (i+3)) % 60)); }
+      // 🆕 v27.16: métricas REAIS da série de 7 dias (_cidCarregarMetricas)
+      const _met = (_CID_METRICAS && _CID_METRICAS[String(c.id||c.slug||'')]) || null;
+      entHoje = _met ? _met.hoje : null;
+      pct = _met ? _met.pct : 0;
+      spark7d = (_met && _met.serie && _met.serie.length === 7) ? _met.serie.slice() : [0,0,0,0,0,0,0];
       const maxV = Math.max(...spark7d), minV = Math.min(...spark7d);
       const range = Math.max(1, maxV - minV);
       sparkD = spark7d.map((v,i)=>{
@@ -25100,7 +25172,8 @@ function renderCidadesGrid(){
       pctClasse = pct > 1 ? 'up' : pct < -1 ? 'down' : 'flat';
     } catch(e){
       console.warn('[Cidades] Erro gerando métricas pra ' + (c.nome||'?') + ':', e);
-      entHoje = 50 + (idx * 8); pct = 5; spark7d = [40,42,48,50,55,52,58];
+      var _metC = (_CID_METRICAS && _CID_METRICAS[String(c.id||c.slug||'')]) || null;
+      entHoje = _metC ? _metC.hoje : null; pct = _metC ? _metC.pct : 0; spark7d = (_metC && _metC.serie) ? _metC.serie.slice() : [40,42,48,50,55,52,58];
       sparkD = 'M0,12 L16.7,11 L33.3,8 L50,7 L66.7,4 L83.3,6 L100,3';
       sparkArea = sparkD + ' L100,24 L0,24 Z';
       sinal = '+'; seta = '↑'; pctClasse = 'up';
@@ -25124,10 +25197,10 @@ function renderCidadesGrid(){
       <div class="cid-metricas-bloco" style="margin-bottom:10px;padding:10px 12px;background:linear-gradient(135deg,#F8FBFE,#EEF6FC);border:1px solid #D6E8F5;border-radius:9px">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:6px">
           <div>
-            <div class="cid-metric-num" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">${entHoje}</div>
+            <div class="cid-metric-num" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">${entHoje == null ? '—' : entHoje}</div>
             <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">entregas hoje</div>
           </div>
-          <div class="cid-metric-pct ${pctClasse}" style="display:flex;align-items:center;gap:3px;font-size:11px;font-weight:700">
+          <div class="cid-metric-pct ${pctClasse}" style="display:${entHoje == null ? 'none' : 'flex'};align-items:center;gap:3px;font-size:11px;font-weight:700">
             <span class="cid-metric-arrow">${seta}</span>
             <span class="cid-metric-pct-val">${sinal}${pct}%</span>
           </div>
@@ -25161,6 +25234,18 @@ function renderCidadesGrid(){
       </div>
     </div>`;
   }).join('');
+  
+  // 🆕 v27.16: carrega métricas REAIS (série 7d → hoje + sparkline + %) cacheadas
+  // e re-renderiza UMA vez quando chegam (evita loop e "buscar toda hora").
+  if(typeof _cidCarregarMetricas === 'function'){
+    var _jaTinhaMet = !!_CID_METRICAS;
+    _cidCarregarMetricas().then(function(map){
+      if(map && !_jaTinhaMet && !window._cidEntHojeRerender){
+        window._cidEntHojeRerender = true;
+        setTimeout(function(){ window._cidEntHojeRerender = false; renderCidadesGrid(); }, 50);
+      }
+    });
+  }
   
   // Renderiza headers (stats topo + aniversários) sempre que o grid muda
   if(typeof renderCidadesStatsTopo === 'function') renderCidadesStatsTopo();
@@ -25315,54 +25400,85 @@ function showCidTab(name){
 }
 
 // 🤖 IA DA REDE — fallback imediato + tenta upgrade em background
-function cidIaAtualizar(forcar){
+// 🆕 v27.14: Análise da rede agora é DIÁRIA e COMPARTILHADA (mesma pra todos).
+// Antes: cache de 2h POR USUÁRIO + cada um disparava a própria IA (buscava toda
+// hora, podia bugar). Agora: 1 análise por dia, gerada 1x (primeiro que abrir
+// após as 7h), salva no Supabase (configuracoes) e lida por todos. Espelho local
+// do dia evita bater no Supabase a cada render.
+function _cidIaDataBR(ymd){
+  try { var p = String(ymd).split('-'); return p[2]+'/'+p[1]; } catch(e){ return ymd; }
+}
+async function cidIaAtualizar(forcar){
   var btn = document.getElementById('cid-ia-btn-atualizar');
   var conteudo = document.getElementById('cid-ia-conteudo');
   var meta = document.getElementById('cid-ia-meta');
   if(!conteudo) return;
-  
-  // Cache de 2h
-  var CACHE_KEY = 'gami_cid_ia_rede_cache';
-  var CACHE_MAX = 2 * 60 * 60 * 1000; // 2 horas
-  
-  // 1️⃣ Tenta cache válido primeiro (mostra direto)
+
+  var hojeStr = new Date().toISOString().slice(0,10);   // YYYY-MM-DD
+  var CFG_KEY = 'ia_rede_analise_diaria';                // tabela configuracoes (compartilhado)
+  var LS_MIRROR = 'gami_cid_ia_rede_diaria';             // espelho local do dia
+
+  // 1️⃣ Espelho local do dia? mostra na hora, sem buscar nada.
   if(!forcar){
     try {
-      var cache = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-      if(cache && cache.texto && cache.ts && (Date.now() - cache.ts < CACHE_MAX)){
-        _cidIaRenderizar(cache.texto, cache.ts);
+      var loc = JSON.parse(localStorage.getItem(LS_MIRROR) || 'null');
+      if(loc && loc.data === hojeStr && loc.texto){
+        _cidIaRenderizar(loc.texto, loc.ts || Date.now());
+        if(meta) meta.innerHTML = '<span style="color:var(--text3)">📅 Análise de '+_cidIaDataBR(hojeStr)+' · compartilhada</span>';
         return;
       }
     } catch(e){}
   }
-  
-  // 2️⃣ Mostra FALLBACK IMEDIATO (sem esperar nada)
-  var textoFallback = _cidIaTextoFallback(null);
-  _cidIaRenderizar(textoFallback, Date.now(), true);
-  
-  // 3️⃣ Em BACKGROUND, tenta a IA real e atualiza se conseguir
-  if(meta) meta.innerHTML = '<span style="color:#8B5CF6">🤖 Tentando análise completa com IA...</span>';
-  if(btn){ btn.disabled = true; btn.style.opacity = '.55'; }
-  
-  _cidIaGerarPlaceholder().then(function(texto){
-    if(texto && texto.length > 80 && texto !== textoFallback){
-      var ts = Date.now();
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify({texto: texto, ts: ts})); } catch(e){}
-      // Atualiza texto com fade suave
-      conteudo.style.transition = 'opacity .3s';
-      conteudo.style.opacity = '0';
-      setTimeout(function(){
-        _cidIaRenderizar(texto, ts);
-        conteudo.style.opacity = '1';
-      }, 300);
-      // Easter egg motoboy se foi forçado
-      if(forcar && typeof _cidMotoboyZoom === 'function'){
-        setTimeout(_cidMotoboyZoom, 300);
-      }
+
+  // 2️⃣ Busca a análise COMPARTILHADA do dia no Supabase.
+  var compartilhada = null;
+  try {
+    var raw = (typeof loadConfigFromSupa === 'function') ? await loadConfigFromSupa(CFG_KEY) : null;
+    if(raw){ compartilhada = (typeof raw === 'string') ? JSON.parse(raw) : raw; }
+  } catch(e){}
+
+  if(!forcar && compartilhada && compartilhada.data === hojeStr && compartilhada.texto){
+    // Já existe a do dia → todos veem a MESMA. Espelha local.
+    try { localStorage.setItem(LS_MIRROR, JSON.stringify(compartilhada)); } catch(e){}
+    _cidIaRenderizar(compartilhada.texto, compartilhada.ts || Date.now());
+    if(meta) meta.innerHTML = '<span style="color:var(--text3)">📅 Análise de '+_cidIaDataBR(hojeStr)+' · compartilhada</span>';
+    return;
+  }
+
+  // 3️⃣ Não tem a de hoje. Só GERA depois das 7h (e não em paralelo entre usuários:
+  // o primeiro que gerar salva e os outros leem). Antes das 7h, mostra a anterior.
+  var passou7h = new Date().getHours() >= 7;
+  if(!forcar && !passou7h){
+    if(compartilhada && compartilhada.texto){
+      _cidIaRenderizar(compartilhada.texto, compartilhada.ts || Date.now());
+      if(meta) meta.innerHTML = '<span style="color:var(--text3)">📅 Análise de '+_cidIaDataBR(compartilhada.data)+' · nova sai às 7h</span>';
     } else {
-      // IA não conseguiu — mantém fallback que já tá na tela
-      if(meta) meta.innerHTML = '<span style="color:var(--text3)">📊 Análise simplificada · IA não respondeu</span>';
+      _cidIaRenderizar(_cidIaTextoFallback(null), Date.now(), true);
+      if(meta) meta.innerHTML = '<span style="color:var(--text3)">📊 Nova análise sai às 7h</span>';
     }
+    return;
+  }
+
+  // 4️⃣ Gera a análise do dia UMA vez e salva pra todos.
+  if(meta) meta.innerHTML = '<span style="color:#8B5CF6">🤖 Gerando a análise do dia...</span>';
+  if(btn){ btn.disabled = true; btn.style.opacity = '.55'; }
+  // Mostra fallback enquanto gera (não deixa em branco)
+  _cidIaRenderizar(_cidIaTextoFallback(null), Date.now(), true);
+
+  _cidIaGerarPlaceholder().then(function(texto){
+    var ts = Date.now();
+    var registro = { data: hojeStr, texto: texto, ts: ts };
+    try { localStorage.setItem(LS_MIRROR, JSON.stringify(registro)); } catch(e){}
+    // Salva compartilhado (best-effort) pra todos lerem a MESMA hoje.
+    try { if(typeof syncConfig === 'function') syncConfig(CFG_KEY, JSON.stringify(registro)); } catch(e){}
+    conteudo.style.transition = 'opacity .3s';
+    conteudo.style.opacity = '0';
+    setTimeout(function(){
+      _cidIaRenderizar(texto, ts);
+      conteudo.style.opacity = '1';
+    }, 300);
+    if(meta) meta.innerHTML = '<span style="color:var(--text3)">📅 Análise de '+_cidIaDataBR(hojeStr)+' · gerada agora, compartilhada</span>';
+    if(forcar && typeof _cidMotoboyZoom === 'function'){ setTimeout(_cidMotoboyZoom, 300); }
     if(btn){ btn.disabled = false; btn.style.opacity = '1'; }
   }).catch(function(e){
     console.warn('[IA Rede] Erro final:', e);
@@ -25606,7 +25722,7 @@ async function _cidIaChamarClaude(dados){
   var resp = await fetch('/.netlify/functions/blog-ai', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ prompt: prompt, max_tokens: 350 }),
+    body: JSON.stringify({ prompt: prompt, max_tokens: 350, model: 'claude-haiku-4-5-20251001' }),
     signal: ctrl.signal
   });
   clearTimeout(to);
@@ -26937,7 +27053,7 @@ async function empAnalisarIA(nomeEncoded){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 800 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 800, model: 'claude-haiku-4-5-20251001' })
     });
     var data = await resp.json();
     console.log('[empAnalisarIA] HTTP '+resp.status+' - resposta:', data);
@@ -28100,8 +28216,8 @@ function _mbCalcRanking(corridas, key){
   // Agrupa por condutor, filtra so finalizadas, ordena por total
   var map = {};
   corridas.filter(function(x){return x.status_solicitacao==='F';}).forEach(function(x){
-    var id = x.condutor_id || x.taxista_id; if(!id) return;
-    var nome = x.nome_condutor || x.nome_taxista || '?';
+    var id = x.condutor_id || x.taxista_id || (x.raw && (x.raw.condutor_id || x.raw.taxista_id)); if(!id) return;
+    var nome = x.nome_condutor || x.nome_taxista || (x.raw && (x.raw.nome_condutor || x.raw.nome_taxista)) || '?';
     if(!map[id]){ map[id] = {id:id, nome:nome, total:0, valor:0, finalizadas:0, canceladas:0}; }
     map[id].total++; map[id].finalizadas++;
     map[id].valor += parseFloat(x.valor_corrida||0);
@@ -28744,7 +28860,7 @@ async function mbAnalisarIA(idCondutor){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 800 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 800, model: 'claude-haiku-4-5-20251001' })
     });
     var data = await resp.json();
     console.log('[mbAnalisarIA] HTTP '+resp.status+' - resposta:', data);
@@ -29184,7 +29300,7 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
         + '?cidade_slug=eq.'+encodeURIComponent(slug)
         + '&data_hora_solicitacao=gte.'+ini+'T00:00:00'
         + '&data_hora_solicitacao=lte.'+fim+'T23:59:59'
-        + '&select=raw,data_hora_solicitacao,status_solicitacao,nome_passageiro,valor_corrida'
+        + '&select=raw,data_hora_solicitacao,status_solicitacao,nome_passageiro,valor_corrida,condutor_id,nome_condutor'
         + '&order=data_hora_solicitacao.asc'
         + '&limit=1000&offset='+offset;
       try {
@@ -29528,6 +29644,15 @@ function vgRenderPainel(corridas, corridasMes, condutores, cidadeNome, filtroOK,
   var canceladas = corridas.filter(function(x){ return x.status_solicitacao==='C'; });
   var total = corridas.length;
   var taxaConclusao = total>0 ? Math.round(finalizadas.length/total*100) : 0;
+
+  // 🆕 v27.16: popula o card "Corridas hoje" (mch-corridas) — antes ficava SEMPRE em "—"
+  // porque nenhum JS o preenchia.
+  try {
+    var _mchC = document.getElementById('mch-corridas');
+    if(_mchC) _mchC.textContent = total.toLocaleString('pt-BR');
+    var _mchS = document.getElementById('mch-corridas-sub');
+    if(_mchS) _mchS.textContent = finalizadas.length.toLocaleString('pt-BR') + ' finalizadas · ' + taxaConclusao + '%';
+  } catch(e){}
 
   // Paradas (entregas)
   var totalParadas = 0;
@@ -34632,7 +34757,7 @@ function gerarRespostaIA(){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
-      model:'claude-sonnet-4-20250514',
+      model:'claude-haiku-4-5-20251001',
       max_tokens:300,
       messages:[{
         role:'user',
@@ -39898,35 +40023,50 @@ async function registrarAcesso(usuario, sucesso){
 
 /* ---- NOTIFICAÇÕES ---- */
 async function criarNotificacao(paraPessoaId, tipo, titulo, mensagem, link){
-  try{
-    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
-    await supaUpsert('notificacoes', {
-      id: (crypto.randomUUID ? crypto.randomUUID() : 'n'+Date.now()+Math.random().toString(36).slice(2,8)),
-      para_pessoa_id: paraPessoaId,
-      de_pessoa_id: u ? u.id : null,
-      de_nome: u ? (u.nome||u.email) : null,
-      tipo: tipo,
-      titulo: titulo,
-      mensagem: mensagem || null,
-      link: link || null,
-      lida: false
-    });
-    
-    // 🔔 Dispara Push Notification via Netlify Function (se configurado)
-    try {
-      fetch('/.netlify/functions/send-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pessoa_id: paraPessoaId,
-          titulo: titulo,
-          mensagem: mensagem || '',
-          tipo: tipo,
-          url: link ? ('/?aba=' + link) : '/'
-        })
-      }).catch(function(){ /* silencioso: push é best-effort */ });
-    } catch(e){ /* silencioso */ }
-  }catch(e){}
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var linha = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : 'n'+Date.now()+Math.random().toString(36).slice(2,8)),
+    para_pessoa_id: paraPessoaId,
+    de_pessoa_id: u ? u.id : null,
+    de_nome: u ? (u.nome||u.email) : null,
+    tipo: tipo,
+    titulo: titulo,
+    mensagem: mensagem || null,
+    link: link || null,
+    lida: false
+  };
+
+  // 🆕 v27.12: grava pela rota SEGURA (Netlify service key, ignora RLS); se não
+  // estiver disponível/whitelistada, cai pro REST direto. ANTES gravava só via
+  // supaUpsert direto com catch vazio → se o RLS bloqueasse o insert, NINGUÉM
+  // recebia notificação e o erro era engolido em silêncio.
+  var gravou = false;
+  try {
+    if(typeof _syncEscrever === 'function'){
+      await _syncEscrever({ tabela:'notificacoes', operacao:'upsert', dados:[linha] });
+      gravou = true;
+    }
+  } catch(e){ /* tenta REST direto abaixo */ }
+  if(!gravou){
+    try { await supaUpsert('notificacoes', linha); gravou = true; }
+    catch(e){ console.warn('[Notif] Não consegui criar notificação (Netlify e REST falharam):', e && e.message ? e.message : e); }
+  }
+
+  // 🔔 Dispara Push Notification via Netlify Function (best-effort, não bloqueia)
+  try {
+    fetch('/.netlify/functions/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pessoa_id: paraPessoaId,
+        titulo: titulo,
+        mensagem: mensagem || '',
+        tipo: tipo,
+        url: link ? ('/?aba=' + link) : '/'
+      })
+    }).catch(function(){ /* silencioso: push é best-effort */ });
+  } catch(e){ /* silencioso */ }
+  return gravou;
 }
 
 async function contarNotificacoesNaoLidas(){
@@ -47273,10 +47413,11 @@ var _PONTO_GESTORES_IDS = null;
 async function _getPontoGestoresIds(){
   if(_PONTO_GESTORES_IDS) return _PONTO_GESTORES_IDS;
   try {
-    // Busca pessoas com cargo de Gerência Financeira (Leomara) por padrão
+    // 🆕 v27.13: SÓ a Leomara recebe notificação de ponto. ANTES pegava
+    // qualquer cargo financeiro + Leomara (podia notificar mais de uma pessoa).
+    // Agora filtra exclusivamente pelo nome dela.
     var r = await fetch(SUPA_URL 
-      + '/rest/v1/pessoas?or=(cargo.ilike.*Gerente%20Financeiro*,cargo.ilike.*Ger%C3%AAncia%20Financeira*,nome.ilike.*Leomara*)'
-      + '&select=id,nome&limit=5', 
+      + '/rest/v1/pessoas?nome=ilike.*Leomara*&select=id,nome&limit=2', 
       { headers: _mpSupaHeaders() }
     );
     if(r.ok){
@@ -47320,6 +47461,14 @@ async function _notificarGestoresDoPonto(resp, params){
   else if(isAtraso) emoji = '🟡';
   else if(isIP) emoji = '📡';
   else if(temJustif) emoji = '📝';
+  
+  // 🆕 v27.11: Antes a Leomara recebia TODA batida (entrada/almoço/volta/saída ×
+  // ~9-34 pessoas = ~136 notificações/dia) — chato demais e ela acabaria mutando tudo.
+  // Agora só notifica o que exige atenção dela: ATRASO (🟡), LIBERAÇÃO TEMPORÁRIA (🆓)
+  // ou JUSTIFICATIVA manual (📝). Batida normal (🟢) e IP rotineiro de escritório (📡)
+  // NÃO geram notificação. (Pra voltar a notificar tudo, é só remover este return.)
+  var vale_notificar = isAtraso || (temJustif && !isIP);
+  if(!vale_notificar) return;
   
   var titulo = emoji + ' ' + pessoaNome + ' bateu ' + tipoLabel;
   var mensagem = 'às ' + hora + (temJustif ? ' · ' + justif.slice(0, 100) : '');
@@ -47482,7 +47631,7 @@ async function mpVerificarAcessoSidebar(){
   // Pra Gestão: super_admin, diretoria, gerência (FUNCIONA em impersonação tb)
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   if(navGestao){
-    if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia'){
+    if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia' || nivel === 'financeiro'){
       navGestao.style.display = '';
     } else {
       navGestao.style.display = 'none';
@@ -49086,8 +49235,8 @@ async function abrirPontoGestao(navEl){
   // Permissão
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
-  if(!u || (nivel !== 'super_admin' && nivel !== 'diretoria' && nivel !== 'gerencia')){
-    alert('🚫 Acesso restrito a super_admin, diretoria e gerência.');
+  if(!u || (nivel !== 'super_admin' && nivel !== 'diretoria' && nivel !== 'gerencia' && nivel !== 'financeiro')){
+    alert('🚫 Acesso restrito a super_admin, diretoria, gerência e financeiro.');
     return;
   }
   
@@ -52079,41 +52228,35 @@ async function _notifChecar(){
   if(!u || !u.id) return;
   if(u._impersonacao) return; // não checa em modo teste
   
-  // 🆕 v26.80: Se a tabela já deu 400 antes, não tenta de novo (evita poluir o console)
-  if(window._notifErroLogado) return;
+  // 🆕 v27.12: respeita a pausa temporária (auto-recupera em 3min)
+  if(typeof _notifPausado === 'function' && _notifPausado()) return;
   
   try {
-    // Busca notificações recentes (últimas 5 min)
-    var horaCheck = NOTIF_RT.ultimaCheck || (Date.now() - 5*60*1000);
-    var desde = new Date(horaCheck).toISOString();
-    
-    var r = await fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-      + '&created_at=gte.' + encodeURIComponent(desde)
-      + '&select=id,tipo,titulo,mensagem,lida,created_at,de_nome'
-      + '&order=created_at.desc&limit=10', {
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
-      cache: 'no-store'
-    });
-    if(!r.ok){
-      // 🆕 v26.80: marca pra parar de tentar (já registramos o erro no _carregarNotificacoesSupa)
-      if(r.status === 400) window._notifErroLogado = true;
-      return;
-    }
-    
-    var notifs = await r.json();
-    if(!Array.isArray(notifs)) return;
+    // 🆕 v27.11: reusa o fetch do painel (_carregarNotificacoesSupa usa select=*,
+    // que FUNCIONA). Antes esta função consultava a coluna `created_at` que NÃO
+    // existe na tabela (é `criado_em`) → 400 a cada poll, e o real-time se
+    // autodesabilitava (window._notifErroLogado). Agora compartilha o mesmo cache.
+    var todas = (typeof _carregarNotificacoesSupa === 'function') ? await _carregarNotificacoesSupa() : [];
+    if(!Array.isArray(todas)) return;
+    // Só NÃO-LIDAS viram toast/som — não re-notifica o que você já leu (menos chato).
+    var notifs = todas.filter(function(n){ return n && !n.lida; });
     
     NOTIF_RT.ultimaCheck = Date.now();
     
     // Filtra só as novas (não vistas ainda)
     var novas = notifs.filter(function(n){ return !NOTIF_RT.notifsConhecidas.has(n.id); });
     
+    // 🆕 v27.12: 1ª carga só registra o que já existe (sem toast), evitando spam ao
+    // abrir o app. ANTES o guard era 'size > novas.length', que silenciava também a
+    // PRIMEIRA notificação quando o histórico começava vazio.
+    var primeiraCarga = !NOTIF_RT._jaCarregou;
+    NOTIF_RT._jaCarregou = true;
+    
     // Marca todas como conhecidas
     notifs.forEach(function(n){ NOTIF_RT.notifsConhecidas.add(n.id); });
     
-    // Pra cada NOVA, dispara toast + som + notificação sistema
-    if(novas.length > 0 && NOTIF_RT.notifsConhecidas.size > novas.length){
-      // Não dispara tudo na primeira carga (evita spam ao abrir o app)
+    // Pra cada NOVA (depois da 1ª carga), dispara toast + som + notificação sistema
+    if(novas.length > 0 && !primeiraCarga){
       novas.forEach(function(n, i){
         setTimeout(function(){
           _notifMostrarToast(n);
