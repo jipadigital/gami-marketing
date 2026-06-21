@@ -1,4 +1,4 @@
-<!-- v27.46 - LEVA 2 parte 1: Realtime do sino via Supabase Realtime (WebSocket cru, sem lib). Aditivo e seguro - polling segue de rede; acende quando habilitar replicacao na tabela notificacoes. Cliente reconecta sozinho e falha em silencio - 20/06/2026 -->
+<!-- v27.47 - LEVA 2 push: gatilho de reconhecimento - quem e reconhecido recebe notificacao in-app + push (send-push ja estava completo e o body do criarNotificacao ja batia). Eventos com push agora: tarefa nova/delegada, tarefa concluida, ponto batido, reconhecimento - 20/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -33703,7 +33703,15 @@ function salvarReconhecimento(){
     pessoaId: p.id,
     dataInicio: new Date().toISOString().split('T')[0]
   });
-  
+
+  // 🔔 v27.47: avisa (in-app + push) a pessoa reconhecida
+  try{
+    var _me = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(typeof criarNotificacao==='function' && (!_me || _me.id !== p.id)){
+      criarNotificacao(p.id, 'reconhecimento', '🌟 Você foi reconhecido!', texto, 'culture');
+    }
+  }catch(e){}
+
   document.getElementById('modal-reconhecimento') && fecharModalReconhecimento();
   renderReconhecimento();
   if(typeof renderPessoas === 'function') renderPessoas();
