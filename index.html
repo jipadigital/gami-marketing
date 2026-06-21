@@ -1,4 +1,4 @@
-<!-- v27.70 - GAMI_VERSION agora le a versao real do comentario da linha 1 (antes era fixo v26.54 e enganava no console mesmo apos deploy). Indicador de versao confiavel - 21/06/2026 -->
+<!-- v27.75 - FIX 400 notificacoes (definitivo): a tabela nao tem coluna de timestamp (nem created_at nem criado_em). Query de boot agora usa select=id<!-- v27.74 - Pulse: POST do voto agora reporta status real do insert ([pulse] insert FALHOU/voto salvo) p/ diagnosticar por que as stats (Total de votos) ficam 0. Stats vem de RPCs server-side (pulse_resumo_dia/kpis) - 21/06/2026 -->limit=50 SEM order, igual o sino que funciona. Resolve a chuva de toasts repetidos no boot - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -25692,10 +25692,16 @@ async function _cidCarregarMetricas(forcar){
   try {
     var cidades = (typeof getCidadesData === 'function') ? getCidadesData() : [];
     // 7 janelas de 1 dia (índice 0 = 6 dias atrás ... 6 = hoje)
+    // 🆕 v27.73: cada janela vai de 00:00 até a MESMA HORA de agora.
+    // Antes ia até o fim do dia, então "hoje" (parcial, ex. meio-dia) era
+    // comparado com dias anteriores INTEIROS → % injustamente negativo.
+    // Agora todos os dias contam o mesmo período (00:00 → hora atual).
     var dias = [];
+    var _agora = new Date();
     for(var k = 6; k >= 0; k--){
       var d0 = new Date(); d0.setHours(0,0,0,0); d0.setDate(d0.getDate() - k);
-      var d1 = new Date(d0); d1.setDate(d1.getDate() + 1);
+      var d1 = new Date(d0);
+      d1.setHours(_agora.getHours(), _agora.getMinutes(), _agora.getSeconds(), 999);
       dias.push({ ini: d0.toISOString(), fim: d1.toISOString() });
     }
     function _hdrs(){ return Object.assign({}, (typeof supaHeaders==='function'?supaHeaders():{apikey:SUPA_KEY,Authorization:'Bearer '+SUPA_KEY}), {'Prefer':'count=exact'}); }
@@ -26033,6 +26039,17 @@ function showCidTab(name){
 // hora, podia bugar). Agora: 1 análise por dia, gerada 1x (primeiro que abrir
 // após as 7h), salva no Supabase (configuracoes) e lida por todos. Espelho local
 // do dia evita bater no Supabase a cada render.
+// 🔒 v27.71: detecta gestor restrito à(s) própria(s) cidade(s)
+// (cidadesQueUsuarioAtende retorna array = vê só aquelas cidades, não a rede)
+function _cidEhGestorRestrito(){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u) return false;
+    var nivel = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : null;
+    var cids = (typeof cidadesQueUsuarioAtende==='function') ? cidadesQueUsuarioAtende(u) : null;
+    return nivel === 'gestor' && Array.isArray(cids) && cids.length > 0;
+  } catch(e){ return false; }
+}
 function _cidIaDataBR(ymd){
   try { var p = String(ymd).split('-'); return p[2]+'/'+p[1]; } catch(e){ return ymd; }
 }
@@ -26041,6 +26058,15 @@ async function cidIaAtualizar(forcar){
   var conteudo = document.getElementById('cid-ia-conteudo');
   var meta = document.getElementById('cid-ia-meta');
   if(!conteudo) return;
+
+  // 🔒 Gestor restrito NÃO vê a INTELIGÊNCIA DA REDE (análise das 11 cidades).
+  // Esconde o card inteiro e nem gera análise pra ele. Os relatórios da seção
+  // abaixo (semanal/mensal) já caem automaticamente só na cidade dele.
+  if(_cidEhGestorRestrito()){
+    var _cardIaRede = document.getElementById('cid-ia-rede');
+    if(_cardIaRede) _cardIaRede.style.display = 'none';
+    return;
+  }
 
   var hojeStr = new Date().toISOString().slice(0,10);   // YYYY-MM-DD
   var CFG_KEY = 'ia_rede_analise_diaria';                // tabela configuracoes (compartilhado)
@@ -26181,13 +26207,15 @@ function _cidIaTempoRelativo(ts){
 // 🤖 IA REAL — coleta dados Machine + chama Claude Haiku via blog-ai
 async function _cidIaGerarPlaceholder(){
   console.log('[IA Rede] === INÍCIO ===');
-  
-  // 🛡️ Timeout global de 15 segundos pra TODO o processo
+  var _dadosColetados = null; // pra fallback usar dados reais mesmo se der timeout
+
+  // 🛡️ Timeout global pra TODO o processo
   var promiseIA = (async function(){
     // 1️⃣ Coleta dados agregados das 11 cidades
     var dados;
     try {
       dados = await _cidIaColetarDadosMachine();
+      _dadosColetados = dados;
     } catch(e){
       console.warn('[IA Rede] Erro coletando Machine:', e);
       return _cidIaTextoFallback(null);
@@ -26220,12 +26248,12 @@ async function _cidIaGerarPlaceholder(){
     return _cidIaTextoFallback(dados);
   })();
   
-  // Timeout master: 10s
+  // Timeout master: 15s (coleta é client-side; haiku+350 é rápido, mas dá folga)
   var promiseTimeout = new Promise(function(resolve){
     setTimeout(function(){
-      console.warn('[IA Rede] ⏱️ Timeout global 10s, usando fallback');
-      resolve(_cidIaTextoFallback(null));
-    }, 10000);
+      console.warn('[IA Rede] ⏱️ Timeout global 15s, usando fallback');
+      resolve(_cidIaTextoFallback(_dadosColetados));
+    }, 15000);
   });
   
   var resultado = await Promise.race([promiseIA, promiseTimeout]);
@@ -44692,7 +44720,15 @@ function votarPulse(emoji){
         usuario_id: uid,
         emoji: emoji
       })
-    }).catch(function(e){ console.warn('[pulse] sync supabase:', e); });
+    }).then(function(r){
+      if(!r.ok){
+        r.text().then(function(t){
+          console.error('[pulse] ❌ insert FALHOU · status', r.status, '·', t);
+        });
+      } else {
+        console.log('[pulse] ✅ voto salvo no Supabase');
+      }
+    }).catch(function(e){ console.warn('[pulse] sync supabase (rede):', e); });
   } catch(e){}
   
   if(typeof toast === 'function') toast('Voto registrado · obrigado!', 'success');
@@ -53184,7 +53220,7 @@ function _notifIniciar(){
   if(!u || !u.id) return;
   
   fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-    + '&select=id&order=criado_em.desc&limit=50', {
+    + '&select=id&limit=50', {
     headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
   }).then(function(r){ return r.ok ? r.json() : []; })
     .then(function(arr){
