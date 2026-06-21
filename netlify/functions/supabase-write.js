@@ -37,7 +37,8 @@ const TABELAS_PERMITIDAS = [
   'blog_posts',        // posts do blog
   'cidades_extra',     // dados adicionais das cidades
   'configuracoes',     // configurações do dashboard
-  'reconhecimentos'    // reconhecimentos da semana
+  'reconhecimentos',   // reconhecimentos da semana
+  'badges_desbloqueadas' // conquistas/badges dos colaboradores (gamificação)
 ];
 
 // Funções RPC permitidas (whitelist)
