@@ -1,4 +1,4 @@
-<!-- v27.61 - FIX clique Empresas/Motoboys p/ Analise IA: empVerEmpresa e mbVerMotoboy agora auto-carregam a Machine e reabrem se o _vgCache estiver vazio (antes morriam num toast). Detalhe ja corrigido na v27.50 (campos raw elevados). + SQL badges_desbloqueadas - 21/06/2026 -->
+<!-- v27.67 - FIX card Inteligencia da Rede (#cid-ia-rede) preso no spinner Carregando: cidIaAtualizar travava no await loadConfigFromSupa quando o fetch pendurava. Agora mostra fallback na hora + timeout de 4s no fetch compartilhado - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8886,8 +8886,12 @@ function renderCalendar(){
   grid.innerHTML = html;
 
   // 🎂 Onda 7: confetinho se HOJE é aniversário de alguém (1x por dia/sessão)
+  // Trava: só dispara se o usuário está LOGADO e o calendário está visível na tela
+  // (antes disparava na inicialização, sobre a tela de login).
   try {
-    if(isCurrentMonth && bdayMap[today.getDate()] && bdayMap[today.getDate()].length && typeof gamiConfete==='function'){
+    var _gridVisivel = grid && grid.offsetParent !== null;
+    var _logado = (typeof getUsuarioLogado==='function') && getUsuarioLogado();
+    if(_logado && _gridVisivel && isCurrentMonth && bdayMap[today.getDate()] && bdayMap[today.getDate()].length && typeof gamiConfete==='function'){
       var _ckBday = 'gami_cal_bday_confete_'+today.toISOString().slice(0,10);
       if(!sessionStorage.getItem(_ckBday)){
         sessionStorage.setItem(_ckBday, '1');
@@ -26044,10 +26048,26 @@ async function cidIaAtualizar(forcar){
     } catch(e){}
   }
 
+  // 0️⃣ Blindagem: troca o spinner por um fallback NA HORA, pra nunca ficar
+  //    preso em "Carregando..." se a rede demorar ou pendurar. As etapas
+  //    abaixo fazem upgrade quando a análise compartilhada/gerada chegar.
+  try {
+    if(conteudo && /Carregando an[aá]lise da rede/.test(conteudo.textContent||'')){
+      _cidIaRenderizar(_cidIaTextoFallback(null), Date.now(), true);
+    }
+  } catch(e){}
+
   // 2️⃣ Busca a análise COMPARTILHADA do dia no Supabase.
+  //    ⏱️ Com timeout de 4s: se o fetch pendurar, resolve null e segue o fluxo
+  //    (antes, um await pendurado deixava o spinner preso pra sempre).
   var compartilhada = null;
   try {
-    var raw = (typeof loadConfigFromSupa === 'function') ? await loadConfigFromSupa(CFG_KEY) : null;
+    var raw = (typeof loadConfigFromSupa === 'function')
+      ? await Promise.race([
+          loadConfigFromSupa(CFG_KEY),
+          new Promise(function(res){ setTimeout(function(){ res(null); }, 4000); })
+        ])
+      : null;
     if(raw){ compartilhada = (typeof raw === 'string') ? JSON.parse(raw) : raw; }
   } catch(e){}
 
@@ -53491,4 +53511,125 @@ function cidImprimirRelatorioAuto(id){
   };
 })();
 </script>
+<style id="g-responsive-v1">
+/* ============================================================
+   RESPONSIVO — FASE 0 (FUNDAÇÃO) + FASE 1 (CIDADES)  v27.63
+   Breakpoints unificados:  telefone <=520px  ·  tablet <=820px
+   ============================================================ */
+
+/* ---- FASE 0: colapso seguro de grids de coluna fixa no telefone ----
+   Não toca em repeat(7, (calendário, via classe .cal-grid) nem repeat(24, (heatmap). */
+@media (max-width:520px){
+  [style*="grid-template-columns:repeat(4,"],
+  [style*="grid-template-columns: repeat(4,"],
+  [style*="grid-template-columns:repeat(5,"],
+  [style*="grid-template-columns: repeat(5,"],
+  [style*="grid-template-columns:repeat(6,"],
+  [style*="grid-template-columns: repeat(6,"]{
+    grid-template-columns:repeat(2,1fr) !important;
+  }
+  .mv-grid-6,.ag-grid-4,.mv-valores-grid{ grid-template-columns:repeat(2,1fr) !important; }
+}
+@media (max-width:400px){
+  [style*="grid-template-columns:repeat(3,"],
+  [style*="grid-template-columns: repeat(3,"],
+  .mv-grid-3,.dash-stickies-grid{ grid-template-columns:repeat(2,1fr) !important; }
+}
+
+/* ---- FASE 0: tabelas rolam de leve no mobile ---- */
+@media (max-width:820px){
+  table{ display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+}
+
+/* ============================================================
+   FASE 1 — CIDADES POR DENTRO
+   ============================================================ */
+/* Barra de tabs da cidade: rola em vez de espremer os botões */
+.cid-tabs-wrap{ -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+.cid-tabs-wrap .tab{ flex-shrink:0; }
+
+@media (max-width:520px){
+  /* Modais de detalhe (empresa/motoboy): aproveita a tela toda */
+  #emp-modal, #mb-modal{ padding:10px !important; }
+  /* Cards do painel da cidade: menos respiro perdido no telefone */
+  #ctab-overview .card, #ctab-indicadores .card, #ctab-motoboys .card,
+  #ctab-empresas .card, #ctab-equipe .card{ padding:12px; }
+  /* Qualquer grid de 3 col que sobre nos ctab vira 2 col */
+  #ctab-motoboys [style*="repeat(3,"],
+  #ctab-empresas [style*="repeat(3,"],
+  #ctab-overview [style*="repeat(3,"]{ grid-template-columns:repeat(2,1fr) !important; }
+}
+
+/* ============================================================
+   FASE 2 — DASHBOARD
+   ============================================================ */
+@media (max-width:520px){
+  /* Hero com padding menor no telefone */
+  #pg-dashboard #dash-hero{ padding:16px !important; }
+  /* Cards e seções com padding generoso → mais enxuto */
+  #pg-dashboard .dash-section,
+  #pg-dashboard #dash-card-ponto,
+  #pg-dashboard #dash-card-delegadas,
+  #pg-dashboard [style*="padding:18px 22px"]{ padding:14px 16px !important; }
+}
+@media (max-width:380px){
+  /* Stickies em 1 coluna nas telas bem estreitas */
+  #pg-dashboard .dash-stickies-grid{ grid-template-columns:1fr !important; }
+}
+
+/* ============================================================
+   FASE 3 — PESSOAS  (já era bem responsivo; refinamentos)
+   ============================================================ */
+@media (max-width:520px){
+  #pg-pessoas [style*="padding:18px 22px"],
+  #pg-pessoas [style*="padding:20px"]{ padding:14px 16px !important; }
+}
+
+/* ---- BÔNUS (preview Fase 6) — INBOX: lista + conversa empilham no mobile
+   (antes: 320px fixo esmagava a conversa) ---- */
+@media (max-width:820px){
+  #inbox-layout{ grid-template-columns:1fr !important; min-height:0 !important; }
+}
+
+/* ============================================================
+   BARRAS DE TABS ROLÁVEIS NO MOBILE (vale pro app todo)
+   usa :has() pra rolar o container sem depender da classe dele
+   ============================================================ */
+@media (max-width:820px){
+  div:has(> .rank-tab),
+  div:has(> .pg-tab-btn),
+  div:has(> .est-tab-btn){ overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap !important; }
+  .rank-tab, .pg-tab-btn, .est-tab-btn{ flex-shrink:0; white-space:nowrap; }
+}
+
+/* ============================================================
+   FASE 4 — RANKING / GAMIFICAÇÃO
+   ============================================================ */
+@media (max-width:520px){
+  #pg-ranking [style*="padding:18px 22px"],
+  #pg-ranking [style*="padding:20px"]{ padding:14px 16px !important; }
+}
+
+/* ============================================================
+   FASE 5 — RELATÓRIOS
+   ============================================================ */
+@media (max-width:480px){
+  /* cards de relatório em 2 colunas → 1 coluna em telas estreitas */
+  #pg-relatorios [style*="grid-template-columns:1fr 1fr"]{ grid-template-columns:1fr !important; }
+}
+
+/* ============================================================
+   FASE 6 — TAREFAS · CALENDÁRIO · MARKETING (laterais fixas empilham)
+   ============================================================ */
+@media (max-width:820px){
+  /* layouts conteúdo + lateral fixa → empilham */
+  #cal-layout-grid,
+  #tf-diario-layout,
+  .ag-grid-2{ grid-template-columns:1fr !important; }
+}
+@media (max-width:768px){
+  /* board da semana: 7 dias viram 2 colunas (mantém a ordem) */
+  #tf-semana-grid{ grid-template-columns:repeat(2,1fr) !important; }
+}
+</style>
 </html>
