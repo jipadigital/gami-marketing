@@ -1,4 +1,4 @@
-<!-- v27.76 - FIX Pulse stats de HOJE: liam da RPC pulse_kpis que agrega pela coluna data (UTC), entao votos da noite (UTC-4) caiam no dia seguinte e o hoje dava 0. Agora le direto da tabela pela janela do dia LOCAL (criado_em). O voto sempre salvou certo - 21/06/2026 -->
+<!-- v27.77 - FIX 504 IA de vez: TODAS as chamadas blog-ai agora usam haiku + tokens capados (2000/2200->1200), antes varias usavam modelo default lento com 2000+ tokens e estouravam os 10s da Netlify. Mensagem de erro nao culpa mais credito (era timeout) - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8157,7 +8157,7 @@ async function gerarLegendaRapida(){
   const el = document.getElementById('quick-legenda');
   el.value = 'Gerando com IA...';
   try{
-    const resp = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:`Crie uma legenda para Instagram da Gâmi Delivery.\nFormato: ${formato}\nCampanha: ${tipo}\nCidade: ${cidade}\n\nRetorne APENAS a legenda pronta, sem explicações.`,max_tokens:500})});
+    const resp = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:`Crie uma legenda para Instagram da Gâmi Delivery.\nFormato: ${formato}\nCampanha: ${tipo}\nCidade: ${cidade}\n\nRetorne APENAS a legenda pronta, sem explicações.`,max_tokens:500,model:'claude-haiku-4-5-20251001'})});
     const data = await resp.json();
     el.value = data.content.map(b=>b.text||'').join('').trim();
   }catch(e){ el.value='Erro ao gerar. Tente novamente.'; }
@@ -8170,7 +8170,7 @@ async function gerarLegendaModal(){
   btn.disabled = true;
   el.value = 'Gerando com IA...';
   try{
-    const resp = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:'Crie uma legenda criativa para post de Instagram da Gâmi Delivery para captação de motoboys em Fortaleza. Inclua emoji, CTA e hashtags. Retorne APENAS a legenda.',max_tokens:500})});
+    const resp = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:'Crie uma legenda criativa para post de Instagram da Gâmi Delivery para captação de motoboys em Fortaleza. Inclua emoji, CTA e hashtags. Retorne APENAS a legenda.',max_tokens:500,model:'claude-haiku-4-5-20251001'})});
     const data = await resp.json();
     el.value = data.content.map(b=>b.text||'').join('').trim();
   }catch(e){ el.value='Erro ao gerar.'; }
@@ -22963,7 +22963,7 @@ async function diagnosticoSemanalCidades(forceNew){
       if(data && data.error){
         throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
       }
-      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+      throw new Error('Resposta vazia da IA. Possíveis causas: tempo limite do servidor (10s), blog-ai com erro. F12 → Console pra ver detalhes.');
     }
     
     var cacheObj = {
@@ -22985,7 +22985,7 @@ async function diagnosticoSemanalCidades(forceNew){
     _renderDiagnosticoSemanal(cacheObj, false);
     if(typeof toast === 'function') toast('Diagnóstico operacional da semana gerado!', 'success');
   } catch(e){
-    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o diagnóstico:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados. Veja console (F12) pra detalhes.</span></div>';
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui gerar o diagnóstico:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente tempo limite do servidor (10s). Veja console (F12) pra detalhes.</span></div>';
     console.error('[diagnosticoSemanalCidades]', e);
   }
 }
@@ -23458,7 +23458,7 @@ async function relatorioMensalCidades(forceNew){
       try {
         var r = await fetch('/.netlify/functions/blog-ai', {
           method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 1500 })
+          body: JSON.stringify({ prompt: prompt, max_tokens: 1200, model: 'claude-haiku-4-5-20251001' })
         });
         if(r.ok){ resp = r; break; }
         ultimoErro = 'HTTP '+r.status;
@@ -23474,7 +23474,7 @@ async function relatorioMensalCidades(forceNew){
       if(data && data.error){
         throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
       }
-      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+      throw new Error('Resposta vazia da IA. Possíveis causas: tempo limite do servidor (10s), blog-ai com erro. F12 → Console pra ver detalhes.');
     }
     return texto;
   }
@@ -23727,7 +23727,7 @@ async function gerarPlanoSemanaCidade(cidadeId, forceNew){
         try {
           var rIa = await fetch('/.netlify/functions/blog-ai', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ prompt: p, max_tokens: 1500 })
+            body: JSON.stringify({ prompt: p, max_tokens: 1200, model: 'claude-haiku-4-5-20251001' })
           });
           if(rIa.ok){ resp = rIa; break; }
           ultimoErro = 'HTTP '+rIa.status;
@@ -24124,7 +24124,7 @@ async function relatorioMensalCidade(cidadeId, forceNew){
         var r = await fetch('/.netlify/functions/blog-ai', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 2200 })
+          body: JSON.stringify({ prompt: prompt, max_tokens: 1200, model: 'claude-haiku-4-5-20251001' })
         });
         if(r.ok){ resp = r; break; }
         ultimoErro = 'HTTP '+r.status;
@@ -24143,7 +24143,7 @@ async function relatorioMensalCidade(cidadeId, forceNew){
       if(data && data.error){
         throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
       }
-      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+      throw new Error('Resposta vazia da IA. Possíveis causas: tempo limite do servidor (10s), blog-ai com erro. F12 → Console pra ver detalhes.');
     }
     
     var cacheObj = {
@@ -25295,7 +25295,7 @@ async function diagnosticoIACidade(cidadeId, forceNew){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 2000 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 1200, model: 'claude-haiku-4-5-20251001' })
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
@@ -25306,7 +25306,7 @@ async function diagnosticoIACidade(cidadeId, forceNew){
       if(data && data.error){
         throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
       }
-      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+      throw new Error('Resposta vazia da IA. Possíveis causas: tempo limite do servidor (10s), blog-ai com erro. F12 → Console pra ver detalhes.');
     }
     
     // Salva no cache compartilhado (todos veem a mesma) com dados extras
@@ -25330,7 +25330,7 @@ async function diagnosticoIACidade(cidadeId, forceNew){
     _renderDiagnosticoCidade(c, cacheObj, false);
     if(typeof toast === 'function') toast('Análise operacional de '+c.nome+' pronta!', 'success');
   } catch(e){
-    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui analisar '+c.nome+':</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados.</span></div>';
+    painel.innerHTML = '<div style="padding:14px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;color:#A32D2D"><strong>⚠️ Não consegui analisar '+c.nome+':</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente tempo limite do servidor (10s).</span></div>';
     console.error('[diagnosticoIACidade]', e);
   }
 }
@@ -33626,7 +33626,7 @@ async function projetarDiaIA(){
     var r = await fetch('/.netlify/functions/blog-ai',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({prompt: promptIA, max_tokens: 1200})
+      body: JSON.stringify({prompt: promptIA, max_tokens: 1200, model: 'claude-haiku-4-5-20251001'})
     });
     var data = await r.json();
     var conteudo = (data && data.content) ? data.content : '';
@@ -35886,7 +35886,7 @@ async function classificarConversasIA(){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 2000 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 1200, model: 'claude-haiku-4-5-20251001' })
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
@@ -35931,7 +35931,7 @@ async function classificarConversasIA(){
     if(typeof renderInboxLista==='function') renderInboxLista();
     if(typeof toast==='function') toast('IA classificou '+classificacoes.length+' conversas!', 'success');
   } catch(e){
-    painel.innerHTML = '<div style="padding:10px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;font-size:11px;color:#A32D2D"><strong>⚠️ Não consegui classificar:</strong> '+e.message+'<br><span style="font-size:10px;opacity:.8">Pode ser créditos Anthropic esgotados. Veja console (F12) pra detalhes.</span></div>';
+    painel.innerHTML = '<div style="padding:10px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:8px;font-size:11px;color:#A32D2D"><strong>⚠️ Não consegui classificar:</strong> '+e.message+'<br><span style="font-size:10px;opacity:.8">Pode ser tempo limite do servidor (10s). Veja console (F12) pra detalhes.</span></div>';
     console.error('[classificarConversasIA]', e);
   }
 }
@@ -37935,7 +37935,7 @@ async function iaGerarComIA(){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({prompt: prompt, max_tokens: 1200})
+      body: JSON.stringify({prompt: prompt, max_tokens: 1200, model: 'claude-haiku-4-5-20251001'})
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
@@ -43133,7 +43133,7 @@ async function gerarRelatorioExecutivoMensal(){
       if(data && data.error){
         throw new Error('IA retornou erro: ' + JSON.stringify(data.error).slice(0, 200));
       }
-      throw new Error('Resposta vazia da IA. Possíveis causas: créditos Anthropic esgotados, blog-ai com erro. F12 → Console pra ver detalhes.');
+      throw new Error('Resposta vazia da IA. Possíveis causas: tempo limite do servidor (10s), blog-ai com erro. F12 → Console pra ver detalhes.');
     }
 
     // Renderiza
@@ -43147,7 +43147,7 @@ async function gerarRelatorioExecutivoMensal(){
     // Marca como gerado neste mês (pra lembrete não disparar de novo)
     try { localStorage.setItem('gami_rel_mensal_gerado_'+ref.getFullYear()+'_'+(ref.getMonth()+1), '1'); } catch(e){}
   } catch(e){
-    content.innerHTML = '<div style="padding:16px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:10px;color:#A32D2D"><strong>⚠️ Não consegui gerar o relatório:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente créditos Anthropic esgotados. Recarregue e tente de novo.</span></div>';
+    content.innerHTML = '<div style="padding:16px;background:#FFF5F5;border:1px solid #E24B4A33;border-radius:10px;color:#A32D2D"><strong>⚠️ Não consegui gerar o relatório:</strong> '+e.message+'<br><span style="font-size:11px;opacity:.85">Provavelmente tempo limite do servidor (10s). Recarregue e tente de novo.</span></div>';
     console.error('[RelMensal]', e);
   }
 }
@@ -45446,7 +45446,7 @@ async function agGerarLegendaIA(){
   var prompt = 'Crie uma legenda para Instagram da Gâmi Delivery. Tipo: '+tipo+'. Cidades: '+(cidadesNames||'genérico')+'. Use {cidade} como placeholder pra cidade. Retorne APENAS a legenda, com hashtags ao final, sem explicações. Tom amigável e brasileiro.';
   ta.value = '✨ Gerando…';
   try{
-    var r = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt, max_tokens:400})});
+    var r = await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt, max_tokens:400,model:'claude-haiku-4-5-20251001'})});
     var d = await r.json();
     ta.value = (d.content||'').trim();
   }catch(e){ ta.value = ''; alert('Erro ao gerar: '+e.message); }
