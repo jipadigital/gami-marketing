@@ -1,4 +1,4 @@
-<!-- v27.78 - Card da rede trocado: INTELIGENCIA DA REDE (IA instavel) virou VISAO GERAL DA REDE com dados reais do ranking_cidades_mes RPC (KPIs + mini-ranking por cidade, sem IA/504). + Fix prompt empresa: valor da corrida e taxa de entrega, nao ticket do restaurante - 21/06/2026 -->
+<!-- v27.80 - FIX delegacao: tfMontarDelegacao usava u.nivel (senioridade Diretor/Gerente) contra strings de permissao (diretoria/gerencia), entao Diretor e Gerente NAO viam o botao de delegar (so Gestor batia por acaso). Agora usa detectarNivelPermissao igual tfDelegar. + badge-tar limpa quando zera - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2430,6 +2430,9 @@ window.nav = function(el, page){
                               } catch(e){ console.warn('auto-abrir cidade único:', e); }
                               // Fluxo normal — lista de cidades
                               if(typeof voltarCidades==='function'){voltarCidades(); renderCidadesGrid();} 
+                              // 🆕 v27.79: carrega a Visão Geral da Rede aqui (o wrapper externo de nav
+                              // era morto porque window.nav está congelado via defineProperty).
+                              try { if(typeof cidIaAtualizar==='function') setTimeout(function(){ cidIaAtualizar(false); }, 150); } catch(e){}
                             },
         'pessoas':         function(){ if(typeof renderPessoas==='function') renderPessoas(); },
         'inbox':           function(){
@@ -26055,15 +26058,20 @@ function _cidIaDataBR(ymd){
 }
 // 🆕 v27.78: VISÃO GERAL DA REDE — dados reais do ranking RPC (confiável),
 // substitui a antiga análise por IA que era instável no free tier.
-async function cidVisaoGeralRede(){
+async function cidVisaoGeralRede(_tent){
   var conteudo = document.getElementById('cid-ia-conteudo');
   var meta = document.getElementById('cid-ia-meta');
   var card = document.getElementById('cid-ia-rede');
-  if(!conteudo) return;
   if(typeof _cidEhGestorRestrito === 'function' && _cidEhGestorRestrito()){
     if(card) card.style.display = 'none';
     return;
   }
+  if(!conteudo){
+    _tent = (_tent||0) + 1;
+    if(_tent <= 8){ setTimeout(function(){ cidVisaoGeralRede(_tent); }, 400); }
+    return;
+  }
+  console.log('[Visão Rede] carregando dados reais da rede...');
   conteudo.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--text3);font-size:12px;font-style:italic"><div class="cid-ia-spinner" style="width:14px;height:14px;border:2px solid #D6C7F0;border-top-color:#8B5CF6;border-radius:50%;animation:cidIaSpin .8s linear infinite"></div>Carregando visão da rede...</div>';
   var lista = null;
   try { lista = (typeof _rankingBuscarSupabase === 'function') ? await _rankingBuscarSupabase() : null; } catch(e){}
@@ -26101,22 +26109,21 @@ async function cidVisaoGeralRede(){
   if(meta) meta.innerHTML = '📊 Dados reais da operação · atualizado agora';
 }
 async function cidIaAtualizar(forcar){
-  var btn = document.getElementById('cid-ia-btn-atualizar');
-  var conteudo = document.getElementById('cid-ia-conteudo');
-  var meta = document.getElementById('cid-ia-meta');
-  if(!conteudo) return;
-
-  // 🔒 Gestor restrito NÃO vê a INTELIGÊNCIA DA REDE (análise das 11 cidades).
-  // Esconde o card inteiro e nem gera análise pra ele. Os relatórios da seção
-  // abaixo (semanal/mensal) já caem automaticamente só na cidade dele.
-  if(_cidEhGestorRestrito()){
+  // 🔒 Gestor restrito não vê a rede
+  if(typeof _cidEhGestorRestrito === 'function' && _cidEhGestorRestrito()){
     var _cardIaRede = document.getElementById('cid-ia-rede');
     if(_cardIaRede) _cardIaRede.style.display = 'none';
     return;
   }
-
-  // 🆕 v27.78: card mostra VISÃO GERAL DA REDE (dados reais), não mais IA instável.
+  // 🆕 v27.79: card mostra VISÃO GERAL DA REDE (dados reais). Delega direto;
+  // cidVisaoGeralRede tenta de novo se o elemento ainda não renderizou.
   return cidVisaoGeralRede();
+
+  // --- código antigo de IA abaixo fica inacessível (mantido p/ histórico) ---
+  var btn = document.getElementById('cid-ia-btn-atualizar');
+  var conteudo = document.getElementById('cid-ia-conteudo');
+  var meta = document.getElementById('cid-ia-meta');
+  if(!conteudo) return;
 
   var hojeStr = new Date().toISOString().slice(0,10);   // YYYY-MM-DD
   var CFG_KEY = 'ia_rede_analise_diaria';                // tabela configuracoes (compartilhado)
@@ -40430,9 +40437,12 @@ function tfMontarDelegacao(){
   if(!wrap) return;
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   if(!u){ wrap.innerHTML=''; return; }
-  var nivel = (u.nivel||'').toLowerCase();
-  var ehSuper = u.email && u.email.toLowerCase()==='jipadigital@gmail.com';
-  var podeDelegar = ehSuper || ['diretoria','gerencia','gestor','marketing','super_admin'].indexOf(nivel)>=0;
+  // 🐛 v27.80 FIX: ANTES usava u.nivel (SENIORIDADE 'Diretor'/'Gerente') contra
+  // strings de PERMISSÃO ('diretoria'/'gerencia') → Diretor e Gerente NUNCA viam
+  // o UI de delegar (só Gestor batia, por coincidência). Agora usa o nível
+  // canônico igual tfDelegar (detectarNivelPermissao já resolve super_admin/Cleyton).
+  var nivelPerm = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : (u.nivel||'').toLowerCase();
+  var podeDelegar = ['super_admin','diretoria','gerencia','gestor'].indexOf(nivelPerm) >= 0;
   if(!podeDelegar){ wrap.innerHTML=''; return; }
 
   var pessoas = (typeof getPessoas==='function') ? getPessoas() : [];
@@ -51714,6 +51724,8 @@ async function dashRenderTarefasDelegadas(opts){
       if(naoFeitas > 0){
         badge.textContent = naoFeitas;
         badge.style.display = '';
+      } else {
+        badge.style.display = 'none'; // 🐛 v27.80: antes ficava preso no nº antigo
       }
     }
     
