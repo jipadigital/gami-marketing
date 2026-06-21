@@ -1,4 +1,4 @@
-<!-- v27.47 - LEVA 2 push: gatilho de reconhecimento - quem e reconhecido recebe notificacao in-app + push (send-push ja estava completo e o body do criarNotificacao ja batia). Eventos com push agora: tarefa nova/delegada, tarefa concluida, ponto batido, reconhecimento - 20/06/2026 -->
+<!-- v27.51 - Opcao A: seção Relatorios da Rede (em Cidades) agora le o relatorio automatico do Supabase (relatorios_rede). Diretoria ve o da rede, gestor ve o da cidade dele - aparece pronto no topo com botao Ver/Baixar PDF, sem clique. Geração sob demanda intacta. Link da notificação ajustado p/ 'cidades' - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1804,7 +1804,7 @@ var MATRIZ_PERMISSOES = {
     ocultar_valores: true
   },
   super_admin: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual','comando'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
     pode_editar_pessoas: true,
     pode_admin_pontos: true,
     pode_criar_desafios: true,
@@ -1814,7 +1814,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   diretoria: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual','comando'],
+    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -2412,6 +2412,7 @@ window.nav = function(el, page){
         'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('visao'); },
         'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
         'cidades':         function(){ 
+                              try { if(typeof cidCarregarRelatorioAuto==='function') cidCarregarRelatorioAuto(); } catch(e){}
                               // Se atende SÓ 1 cidade → abre direto (Gestor ou Colaborador de 1 cidade)
                               try {
                                 var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
@@ -2450,8 +2451,7 @@ window.nav = function(el, page){
         'portal':          function(){ if(typeof renderPortal==='function') renderPortal(); },
         'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
         'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
-        'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); },
-        'comando':         function(){ if(typeof renderComando==='function') renderComando(); }
+        'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); }
       };
       if(initMap[page]) setTimeout(initMap[page], 80);
       try{ document.getElementById('main-content').scrollTop = 0; }catch(e){}
@@ -2488,16 +2488,11 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       </div>
     </div>
 
-  <div onclick="abrirBusca()" title="Buscar (Ctrl+K)" style="margin:2px 12px 8px;display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,.06);border:1px solid rgba(26,184,240,.22);border-radius:8px;cursor:pointer;color:#9DB4D6;font-size:12px">
-    <span>🔎</span><span style="flex:1">Buscar...</span><span style="font-size:9px;border:1px solid rgba(157,180,214,.4);border-radius:4px;padding:1px 5px">Ctrl K</span>
-  </div>
-
   <!-- GÂMI NAV -->
   <div id="nav-gami" style="display:block">
   <div class="sb-section">
     <div class="sb-label">Principal</div>
     <div class="nav-item active" onclick="nav(this,'dashboard')">🏠 Dashboard</div>
-    <div class="nav-item" onclick="nav(this,'comando')">🧭 Central de Comando</div>
     <div class="nav-item" onclick="nav(this,'calendario')">📅 Calendário<span class="nav-badge" id="badge-cal">3</span></div>
     <div class="nav-item" onclick="nav(this,'tarefas')">✅ Tarefas<span class="nav-badge" id="badge-tar">5</span></div>
   </div>
@@ -5177,6 +5172,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           <div style="font-size:10px;opacity:.75;line-height:1.4">Diagnósticos e relatórios anteriores</div>
         </button>
       </div>
+      <div id="cid-rel-auto"></div>
     </div>
 
     <!-- 🆕 ABAS NAVEGAÇÃO -->
@@ -5646,17 +5642,6 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 </div>
 
 <!-- ==================== SAÚDE DO SISTEMA ==================== -->
-<div class="page" id="pg-comando">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-    <div>
-      <div style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text)">🧭 Central de Comando</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:2px">Visão executiva da rede Gâmi — dados da última sincronização</div>
-    </div>
-    <button onclick="renderComando()" style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-size:12px;cursor:pointer;font-family:inherit">🔄 Atualizar</button>
-  </div>
-  <div id="cmd-conteudo"></div>
-</div>
-
 <div class="page" id="pg-saude">
   <div class="page-header">
     <div><div class="page-title">🩺 Saúde do Sistema</div><div class="page-sub">Status técnico do dashboard, integrações e backups</div></div>
@@ -25678,7 +25663,7 @@ async function _cidCarregarMetricas(forcar){
   if(!forcar && _CID_METRICAS && (Date.now() - _CID_METRICAS_TS < TTL)) return _CID_METRICAS;
   if(!forcar){
     try {
-      var ls = JSON.parse(localStorage.getItem('gami_cid_metricas') || 'null');
+      var ls = JSON.parse(localStorage.getItem('gami_cid_metricas_v2') || 'null');
       if(ls && ls.dia === diaHoje && (Date.now() - ls.ts < TTL)){
         _CID_METRICAS = ls.map; _CID_METRICAS_TS = ls.ts; return _CID_METRICAS;
       }
@@ -25708,7 +25693,10 @@ async function _cidCarregarMetricas(forcar){
     }
     var map = {};
     for(var i = 0; i < cidades.length; i++){
-      var slug = String(cidades[i].id || cidades[i].slug || '');
+      // 🔧 FIX: usa o slug por NOME (joao-pessoa), igual ao painel/Machine.
+      // Antes usava c.id ('c3') → cidade_slug=eq.c3 não casava → card mostrava 0.
+      var slug = (typeof _vgSlug === 'function') ? _vgSlug(cidades[i].nome)
+                 : String(cidades[i].nome||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-');
       if(!slug) continue;
       var serie = await Promise.all(dias.map(function(dd){ return _contaDia(slug, dd.ini, dd.fim); }));
       if(!serie.some(function(v){ return v != null; })) continue; // sem dado → card mostra —
@@ -25720,7 +25708,7 @@ async function _cidCarregarMetricas(forcar){
       map[slug] = { serie: serie, hoje: hojeN, pct: pct };
     }
     _CID_METRICAS = map; _CID_METRICAS_TS = Date.now();
-    try { localStorage.setItem('gami_cid_metricas', JSON.stringify({ dia: diaHoje, ts: _CID_METRICAS_TS, map: map })); } catch(e){}
+    try { localStorage.setItem('gami_cid_metricas_v2', JSON.stringify({ dia: diaHoje, ts: _CID_METRICAS_TS, map: map })); } catch(e){}
   } catch(e){ console.warn('[Cidades] erro métricas:', e); }
   _CID_METRICAS_CARREGANDO = false;
   return _CID_METRICAS;
@@ -25766,7 +25754,7 @@ function renderCidadesGrid(){
     let seed, entHoje, pct, spark7d, sparkD, sparkArea, sinal, seta, pctClasse;
     try {
       // 🆕 v27.16: métricas REAIS da série de 7 dias (_cidCarregarMetricas)
-      const _met = (_CID_METRICAS && _CID_METRICAS[String(c.id||c.slug||'')]) || null;
+      const _met = (_CID_METRICAS && _CID_METRICAS[(typeof _vgSlug==='function'?_vgSlug(c.nome):'')]) || null;
       entHoje = _met ? _met.hoje : null;
       pct = _met ? _met.pct : 0;
       spark7d = (_met && _met.serie && _met.serie.length === 7) ? _met.serie.slice() : [0,0,0,0,0,0,0];
@@ -25783,7 +25771,7 @@ function renderCidadesGrid(){
       pctClasse = pct > 1 ? 'up' : pct < -1 ? 'down' : 'flat';
     } catch(e){
       console.warn('[Cidades] Erro gerando métricas pra ' + (c.nome||'?') + ':', e);
-      var _metC = (_CID_METRICAS && _CID_METRICAS[String(c.id||c.slug||'')]) || null;
+      var _metC = (_CID_METRICAS && _CID_METRICAS[(typeof _vgSlug==='function'?_vgSlug(c.nome):'')]) || null;
       entHoje = _metC ? _metC.hoje : null; pct = _metC ? _metC.pct : 0; spark7d = (_metC && _metC.serie) ? _metC.serie.slice() : [40,42,48,50,55,52,58];
       sparkD = 'M0,12 L16.7,11 L33.3,8 L50,7 L66.7,4 L83.3,6 L100,3';
       sparkArea = sparkD + ' L100,24 L0,24 Z';
@@ -29921,11 +29909,28 @@ async function _vgBuscarCorridasPeriodo(slug, dataInicio, dataFim, forcado){
         if(!Array.isArray(pagina) || pagina.length === 0) break;
         pagina.forEach(function(row){
           var paradas = (row.raw && Array.isArray(row.raw.paradas)) ? row.raw.paradas : [];
+          var rw = row.raw || {};
           dados.push({
             data_hora_solicitacao: row.data_hora_solicitacao,
             status_solicitacao: row.status_solicitacao,
-            nome_passageiro: row.nome_passageiro || (row.raw && row.raw.nome_passageiro) || '',
-            valor_corrida: row.valor_corrida || (row.raw && row.raw.valor_corrida) || 0,
+            nome_passageiro: row.nome_passageiro || rw.nome_passageiro || '',
+            valor_corrida: row.valor_corrida || rw.valor_corrida || 0,
+            // 🔧 v27.50: a Machine achatou a corrida (condutor/tempo/bairro foram pro raw).
+            // Elevamos pro topo os campos que os blocos leem, senão Top Motoboys, detalhe
+            // do motoboy, tempo médio e bairros ficam "Sem dados" / "não encontrado".
+            condutor_id: row.condutor_id || rw.condutor_id || rw.taxista_id || null,
+            taxista_id: rw.taxista_id || rw.condutor_id || null,
+            nome_condutor: row.nome_condutor || rw.nome_condutor || rw.nome_taxista || null,
+            nome_taxista: rw.nome_taxista || rw.nome_condutor || null,
+            telefone_condutor: rw.telefone_condutor || rw.telefone_taxista || null,
+            telefone_taxista: rw.telefone_taxista || rw.telefone_condutor || null,
+            duracao_corrida: rw.duracao_corrida || null,
+            data_hora_aceite: rw.data_hora_aceite || null,
+            data_hora_finalizacao: rw.data_hora_finalizacao || null,
+            data_hora_cancelamento: rw.data_hora_cancelamento || null,
+            bairro: (rw.coleta && rw.coleta.bairro) || null,
+            coleta: rw.coleta || null,
+            entrega: (paradas && paradas.length) ? paradas[paradas.length - 1] : null,
             paradas: paradas,
             raw: row.raw
           });
@@ -53116,153 +53121,6 @@ function _notifIniciar(){
 
 </script>
 <script>
-/* 🔎 v27.43 — Busca global / paleta de comando (Ctrl+K) */
-(function(){
-  var PAGINAS = [
-    ['dashboard','🏠','Dashboard'],['cidades','🏙️','Cidades'],['tarefas','✅','Tarefas'],
-    ['calendario','📅','Calendário'],['pessoas','👥','Pessoas'],['ranking','🏆','Ranking Gâmi'],
-    ['inbox','📩','Inbox Instagram'],['relatorios','📈','Relatórios'],['relatorio-diario','📋','Relatório diário'],
-    ['marketing','📣','Marketing'],['campanhas','🎯','Campanhas'],['clima','🌤️','Clima do time'],
-    ['culture','🎯','Culture Code'],['carreira','🚀','Plano de Carreira'],['portal','🚪','Portal Gâmi'],
-    ['blog','📝','Blog'],['ideias','💡','Ideias'],['scripts','📜','Scripts'],['saude','🩺','Saúde do Sistema'],
-    ['manual','📘','Manual']
-  ];
-  function _norm(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''); }
-  function _navPagina(page){
-    var item = document.querySelector('#nav-gami .nav-item[onclick*="\'' + page + '\'"]') || document.querySelector('.nav-item[onclick*="' + page + '"]');
-    if(typeof window.nav==='function') window.nav(item||null, page);
-  }
-  function _abrirCidadeBusca(id){ _navPagina('cidades'); setTimeout(function(){ if(typeof abrirCidade==='function') abrirCidade(id); }, 130); }
-  function _abrirArtigoBusca(id){ _navPagina('manual'); setTimeout(function(){ if(typeof manualAbrirArtigo==='function') manualAbrirArtigo(id); }, 130); }
-  function _coletar(q){
-    var nq=_norm(q); var res=[];
-    PAGINAS.forEach(function(p){ if(!nq || _norm(p[2]).indexOf(nq)!==-1) res.push({tipo:'Página', icone:p[1], titulo:p[2], sub:'', fn:(function(pg){return function(){ _navPagina(pg); };})(p[0])}); });
-    try{ var ps=(typeof getPessoas==='function')?getPessoas():[];
-      ps.forEach(function(p){ if(!p||!p.nome) return;
-        var cid=Array.isArray(p.cidade)?p.cidade.join(', '):(p.cidade||'');
-        var hay=_norm(p.nome+' '+(p.cargo||'')+' '+cid);
-        if(!nq || hay.indexOf(nq)!==-1) res.push({tipo:'Pessoa', icone:'👤', titulo:p.nome, sub:[p.cargo,cid].filter(Boolean).join(' · '), fn:(function(id){return function(){ if(typeof abrirPerfilGami==='function') abrirPerfilGami(id); };})(p.id)});
-      });
-    }catch(e){}
-    try{ var cs=(typeof getCidadesData==='function')?getCidadesData():[];
-      cs.forEach(function(c){ if(!c||!c.nome) return;
-        var hay=_norm(c.nome+' '+(c.gestor||''));
-        if(!nq || hay.indexOf(nq)!==-1) res.push({tipo:'Cidade', icone:'🏙️', titulo:c.nome, sub:c.gestor?('Gestor: '+c.gestor):'', fn:(function(id){return function(){ _abrirCidadeBusca(id); };})(c.id)});
-      });
-    }catch(e){}
-    try{ var arts=window.MANUAL_ARTIGOS||[];
-      arts.forEach(function(a){ var hay=_norm(a.titulo+' '+((a.tags||[]).join(' ')));
-        if(!nq || hay.indexOf(nq)!==-1) res.push({tipo:'Ajuda', icone:a.icone||'📘', titulo:a.titulo, sub:'Artigo do manual', fn:(function(id){return function(){ _abrirArtigoBusca(id); };})(a.id)});
-      });
-    }catch(e){}
-    return res;
-  }
-  var _sel=0, _cache=[];
-  function _render(q){
-    var lista=document.getElementById('busca-resultados'); if(!lista) return;
-    var res=_coletar(q).slice(0,40); _cache=res; if(_sel>=res.length) _sel=0;
-    if(!res.length){ lista.innerHTML='<div style="padding:24px;text-align:center;color:#9DB4D6;font-size:13px">Nada encontrado.</div>'; return; }
-    lista.innerHTML=res.map(function(r,i){
-      return '<div class="busca-item" data-i="'+i+'" onclick="_buscaAtivar('+i+')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-radius:8px;'+(i===_sel?'background:#EAF4FB':'')+'">'
-        +'<span style="font-size:18px;width:24px;text-align:center;flex-shrink:0">'+r.icone+'</span>'
-        +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#0B2542;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.titulo+'</div>'
-        +(r.sub?'<div style="font-size:11px;color:#7A8AA0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.sub+'</div>':'')+'</div>'
-        +'<span style="font-size:10px;color:#9DB4D6;border:1px solid #E0E6EF;border-radius:5px;padding:1px 6px;flex-shrink:0">'+r.tipo+'</span></div>';
-    }).join('');
-  }
-  function _scrollSel(){ var el=document.querySelector('.busca-item[data-i="'+_sel+'"]'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'nearest'}); }
-  window._buscaAtivar=function(i){ var r=_cache[i]; if(!r) return; fecharBusca(); try{ r.fn(); }catch(e){} };
-  window._buscaInput=function(v){ _sel=0; _render(v); };
-  window.fecharBusca=function(){ var m=document.getElementById('modal-busca'); if(m) m.remove(); };
-  window.abrirBusca=function(){
-    if(document.getElementById('modal-busca')) return; _sel=0;
-    var html='<div id="modal-busca" style="position:fixed;inset:0;background:rgba(11,37,66,0.45);z-index:100000;display:flex;align-items:flex-start;justify-content:center;padding:70px 14px 14px" onclick="if(event.target===this)fecharBusca()">'
-      +'<div style="background:#fff;border-radius:14px;max-width:560px;width:100%;box-shadow:0 24px 70px rgba(0,0,0,.3);overflow:hidden">'
-      +'<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #EEF2F7"><span style="font-size:18px">🔎</span>'
-      +'<input id="busca-input" type="text" placeholder="Buscar cidade, pessoa, aba, ajuda..." autocomplete="off" oninput="_buscaInput(this.value)" style="flex:1;border:none;outline:none;font-size:15px;color:#0B2542;font-family:inherit;background:transparent"/>'
-      +'<span style="font-size:10px;color:#9DB4D6;border:1px solid #E0E6EF;border-radius:5px;padding:2px 6px">ESC</span></div>'
-      +'<div id="busca-resultados" style="max-height:60vh;overflow:auto;padding:6px"></div>'
-      +'<div style="padding:8px 14px;border-top:1px solid #EEF2F7;font-size:10px;color:#9DB4D6;display:flex;gap:14px"><span>↑↓ navegar</span><span>↵ abrir</span><span>esc fechar</span></div>'
-      +'</div></div>';
-    document.body.insertAdjacentHTML('beforeend', html);
-    _render(''); var inp=document.getElementById('busca-input'); if(inp) inp.focus();
-  };
-  document.addEventListener('keydown', function(e){
-    var aberto=document.getElementById('modal-busca');
-    if((e.ctrlKey||e.metaKey) && (e.key==='k'||e.key==='K')){ e.preventDefault(); if(aberto) fecharBusca(); else abrirBusca(); return; }
-    if(!aberto) return;
-    if(e.key==='Escape'){ e.preventDefault(); fecharBusca(); return; }
-    var inp=document.getElementById('busca-input'); var q=inp?inp.value:'';
-    if(e.key==='ArrowDown'){ e.preventDefault(); _sel=Math.min(_sel+1,_cache.length-1); _render(q); _scrollSel(); return; }
-    if(e.key==='ArrowUp'){ e.preventDefault(); _sel=Math.max(_sel-1,0); _render(q); _scrollSel(); return; }
-    if(e.key==='Enter'){ e.preventDefault(); _buscaAtivar(_sel); return; }
-  });
-})();
-</script>
-<script>
-/* 🧭 v27.44 — Central de Comando (visão executiva da rede, diretoria/super_admin) */
-async function renderComando(){
-  var host = document.getElementById('cmd-conteudo'); if(!host) return;
-  var cidades = (typeof getCidadesData==='function') ? getCidadesData() : [];
-  var ativas=0, atencao=0, critica=0;
-  cidades.forEach(function(c){ if(c.status==='ativa')ativas++; else if(c.status==='atencao')atencao++; else if(c.status==='critica')critica++; });
-  var scored = cidades.map(function(c){ return { c:c, s:(typeof calcScore==='function'?calcScore(c):70) }; });
-  var media = scored.length ? Math.round(scored.reduce(function(a,b){return a+b.s;},0)/scored.length) : 0;
-  var atencaoLista = scored.filter(function(x){ return x.c.status==='critica' || x.c.status==='atencao'; })
-     .sort(function(a,b){ var w={critica:0,atencao:1}; var d=(w[a.c.status]||9)-(w[b.c.status]||9); return d!==0?d:a.s-b.s; });
-  var sc = (typeof scoreColor==='function')?scoreColor(media):{bar:'#1D9E75'};
-  var kpiCard=function(icone,label,id){ return '<div style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="font-size:11px;color:var(--text3);font-weight:600">'+icone+' '+label+'</div><div id="'+id+'" style="font-size:26px;font-weight:800;color:var(--text);margin-top:4px;font-family:\'Syne\',sans-serif">…</div></div>'; };
-  host.innerHTML =
-    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
-    + kpiCard('🛵','Corridas (24h)','cmd-corridas') + kpiCard('✅','Taxa conclusão','cmd-taxa')
-    + kpiCard('🏍️','Motoboys ativos','cmd-motoboys') + kpiCard('🏪','Empresas ativas','cmd-empresas')
-    + '</div>'
-    + '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
-    +   '<div class="card" style="flex:2;min-width:240px"><div class="card-title">🩺 Saúde média da rede</div>'
-    +     '<div style="display:flex;align-items:center;gap:12px"><div style="font-size:40px;font-weight:800;color:'+sc.bar+';font-family:\'Syne\',sans-serif;line-height:1">'+media+'<span style="font-size:16px;color:var(--text3)">/100</span></div>'
-    +     '<div style="flex:1"><div style="height:10px;background:var(--surface2);border-radius:6px;overflow:hidden"><div style="height:100%;width:'+media+'%;background:'+sc.bar+'"></div></div>'
-    +     '<div style="font-size:11px;color:var(--text3);margin-top:6px">Média de '+scored.length+' cidades</div></div></div></div>'
-    +   '<div class="card" style="flex:1;min-width:200px"><div class="card-title">🚦 Status das cidades</div>'
-    +     '<div style="display:flex;gap:8px;text-align:center">'
-    +       '<div style="flex:1"><div style="font-size:24px;font-weight:800;color:#1D9E75">'+ativas+'</div><div style="font-size:10px;color:var(--text3)">🟢 Ativas</div></div>'
-    +       '<div style="flex:1"><div style="font-size:24px;font-weight:800;color:#EF9F27">'+atencao+'</div><div style="font-size:10px;color:var(--text3)">🟡 Atenção</div></div>'
-    +       '<div style="flex:1"><div style="font-size:24px;font-weight:800;color:#E24B4A">'+critica+'</div><div style="font-size:10px;color:var(--text3)">🔴 Críticas</div></div>'
-    +     '</div></div>'
-    + '</div>'
-    + '<div class="card"><div class="card-title">⚠️ Precisa de atenção hoje</div>'
-    + (atencaoLista.length ? '<div style="display:flex;flex-direction:column;gap:6px">'
-        + atencaoLista.map(function(x){
-            var cor = x.c.status==='critica' ? '#E24B4A' : '#EF9F27';
-            var emoji = x.c.status==='critica' ? '🔴' : '🟡';
-            return '<div onclick="_cmdAbrirCidade(\''+x.c.id+'\')" style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;background:var(--surface2);cursor:pointer;border-left:3px solid '+cor+'">'
-              +'<span>'+emoji+'</span><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text)">'+(x.c.nome||'—')+'</div>'
-              +'<div style="font-size:11px;color:var(--text3)">'+(x.c.gestor?('Gestor: '+x.c.gestor):'Sem gestor')+'</div></div>'
-              +'<div style="font-size:13px;font-weight:700;color:'+cor+'">'+x.s+'/100</div></div>';
-          }).join('') + '</div>'
-        : '<div style="padding:18px;text-align:center;color:#1D9E75;font-size:13px">✅ Todas as cidades operando normalmente.</div>')
-    + '</div>';
-  var setTxt=function(id,v){ var e=document.getElementById(id); if(e)e.textContent=v; };
-  try{
-    if(typeof _rlSupaRPC!=='function') throw new Error('RPC indisponível');
-    var rede = await _rlSupaRPC('rel_rede_visao_geral', { p_dias: 1 });
-    if(!Array.isArray(rede)) rede=[];
-    var sum=function(campo){ return rede.reduce(function(s,d){ return s+(parseInt(d[campo]||0)||0); },0); };
-    var corr=sum('total_corridas'), fin=sum('total_finalizadas');
-    setTxt('cmd-corridas', corr.toLocaleString('pt-BR'));
-    setTxt('cmd-taxa', corr>0 ? Math.round(fin/corr*100)+'%' : '—');
-    setTxt('cmd-motoboys', sum('motoboys_unicos').toLocaleString('pt-BR'));
-    setTxt('cmd-empresas', sum('empresas_unicas').toLocaleString('pt-BR'));
-  }catch(e){
-    ['cmd-corridas','cmd-taxa','cmd-motoboys','cmd-empresas'].forEach(function(id){ setTxt(id,'—'); });
-  }
-}
-window.renderComando = renderComando;
-window._cmdAbrirCidade = function(id){
-  if(typeof window.nav==='function'){ var it=document.querySelector('.nav-item[onclick*="cidades"]'); window.nav(it||null,'cidades'); }
-  setTimeout(function(){ if(typeof abrirCidade==='function') abrirCidade(id); }, 130);
-};
-</script>
-<script>
 /* ⚡ v27.46 — Realtime do sino via Supabase Realtime (WebSocket cru, best-effort).
    ADITIVO: o polling existente continua de rede. Só "acende" quando a replicação
    Realtime estiver habilitada na tabela 'notificacoes' no Supabase. Falha sempre em silêncio. */
@@ -53309,5 +53167,93 @@ window._cmdAbrirCidade = function(id){
   if(document.readyState!=='loading') setTimeout(_iniciar, 3000);
   else document.addEventListener('DOMContentLoaded', function(){ setTimeout(_iniciar, 3000); });
 })();
+</script>
+<script>
+/* ============================================================== */
+/* RELATÓRIO AUTOMÁTICO DA REDE (Opção A) — lê tabela relatorios_rede */
+/* Aditivo: mostra no topo da seção "Relatórios da Rede" o relatório   */
+/* gerado automaticamente (seg 7h). Diretoria → escopo 'rede';         */
+/* gestor → escopo 'cidade' (a dele). Não toca na geração sob demanda. */
+/* ============================================================== */
+window._cidRelAutoCache = {};
+
+async function cidCarregarRelatorioAuto(){
+  var box = document.getElementById('cid-rel-auto');
+  if(!box) return;
+  if(typeof _rlSupaQuery !== 'function'){ box.innerHTML=''; return; }
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    var permitidas = (typeof cidadesQueUsuarioAtende==='function') ? cidadesQueUsuarioAtende(u) : null;
+    var filtro;
+    if(permitidas === null){
+      filtro = 'escopo=eq.rede';                 // vê tudo → relatório da rede
+    } else if(permitidas && permitidas.length){
+      var slug = (permitidas[0]||'').toString().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,'-');
+      filtro = 'escopo=eq.cidade&cidade_slug=eq.'+encodeURIComponent(slug);
+    } else { box.innerHTML=''; return; }
+
+    var sel = 'select=id,tipo,escopo,cidade_nome,referencia,titulo,resumo,conteudo_html,plano_acao_html,criado_em';
+    var rows = await _rlSupaQuery('relatorios_rede?'+filtro+'&order=criado_em.desc&limit=6&'+sel);
+    if(!Array.isArray(rows) || !rows.length){ box.innerHTML=''; return; }
+
+    // Mantém só o mais recente de cada tipo (semanal / mensal)
+    var porTipo = {};
+    rows.forEach(function(r){ if(!porTipo[r.tipo]) porTipo[r.tipo] = r; });
+    var lista = Object.keys(porTipo).map(function(k){ return porTipo[k]; });
+
+    _cidRelAutoCache = {};
+    lista.forEach(function(r){ _cidRelAutoCache[r.id] = r; });
+
+    box.innerHTML = lista.map(function(r){
+      var ic = r.tipo==='mensal' ? '🗓️' : '📅';
+      var nomeTipo = r.tipo==='mensal' ? 'Relatório mensal' : 'Relatório semanal';
+      var quando = r.criado_em ? new Date(r.criado_em).toLocaleDateString('pt-BR') : '';
+      var resumo = (r.resumo||'').replace(/</g,'&lt;') || 'Pronto pra ver';
+      return '<div style="margin-top:10px;padding:11px 13px;background:white;border:1.5px solid #2E7D32;border-radius:10px;display:flex;align-items:center;gap:10px">'
+        + '<span style="font-size:18px">'+ic+'</span>'
+        + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:12px;font-weight:700;color:#1B5E20">'+nomeTipo+' automático'
+            + '<span style="font-weight:500;color:var(--text3);font-size:10.5px"> · '+quando+'</span></div>'
+          + '<div style="font-size:10.5px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+resumo+'</div>'
+        + '</div>'
+        + '<button onclick="cidVerRelatorioAuto(\''+r.id+'\')" style="padding:6px 13px;border:none;background:#2E7D32;color:white;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Ver</button>'
+      + '</div>';
+    }).join('');
+  } catch(e){ if(box) box.innerHTML=''; }
+}
+
+function cidVerRelatorioAuto(id){
+  var r = _cidRelAutoCache[id];
+  if(!r){ if(typeof toast==='function') toast('Relatório não encontrado','warn'); return; }
+  var titulo = r.titulo || (r.tipo==='mensal'?'Relatório mensal':'Relatório semanal');
+  var corpo = (r.conteudo_html||'') + (r.plano_acao_html ? '<h3 style="margin-top:18px;color:#1B5E20">📋 Plano de ação</h3>'+r.plano_acao_html : '');
+  var ov = document.createElement('div');
+  ov.id = 'cid-rel-modal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.onclick = function(e){ if(e.target===ov) ov.remove(); };
+  ov.innerHTML = '<div style="background:white;max-width:760px;width:100%;max-height:88vh;overflow:auto;border-radius:14px">'
+    + '<div style="position:sticky;top:0;background:white;border-bottom:1px solid var(--border);padding:14px 18px;display:flex;align-items:center;gap:10px;z-index:2">'
+      + '<div style="flex:1;font-size:15px;font-weight:700;color:var(--text)">'+titulo+'</div>'
+      + '<button onclick="cidImprimirRelatorioAuto(\''+id+'\')" style="padding:6px 12px;border:1px solid var(--border);background:white;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">⬇️ Baixar PDF</button>'
+      + '<button onclick="document.getElementById(\'cid-rel-modal\').remove()" style="padding:6px 11px;border:none;background:var(--surface2);border-radius:8px;font-size:14px;cursor:pointer">✕</button>'
+    + '</div>'
+    + '<div style="padding:18px 20px;font-size:13px;line-height:1.65;color:var(--text2)">'+corpo+'</div>'
+  + '</div>';
+  document.body.appendChild(ov);
+}
+
+function cidImprimirRelatorioAuto(id){
+  var r = _cidRelAutoCache[id]; if(!r) return;
+  var titulo = r.titulo || 'Relatório';
+  var corpo = (r.conteudo_html||'') + (r.plano_acao_html ? '<h3>Plano de ação</h3>'+r.plano_acao_html : '');
+  var w = window.open('', '_blank');
+  if(!w){ if(typeof toast==='function') toast('Permita pop-ups pra baixar o PDF','warn'); return; }
+  w.document.write('<html><head><title>'+titulo+'</title><meta charset="utf-8">'
+    + '<style>body{font-family:Arial,sans-serif;max-width:760px;margin:30px auto;padding:0 20px;color:#222;line-height:1.6}h1{font-size:20px}h3{margin-top:22px;color:#1B5E20}</style></head><body>'
+    + '<h1>'+titulo+'</h1>'+corpo
+    + '<scr'+'ipt>window.onload=function(){window.print();}</scr'+'ipt></body></html>');
+  w.document.close();
+}
 </script>
 </html>
