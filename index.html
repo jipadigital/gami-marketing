@@ -1,4 +1,4 @@
-<!-- v27.81 - Badges falsos da sidebar removidos: Calendario mostrava 3 e Pessoas 2 chumbados no HTML, sem nenhum JS atualizando (placeholders de design). Removidos. badge-tar (Tarefas) comeca escondido em vez de piscar 5 fake ate o JS corrigir - 21/06/2026 -->
+<!-- v27.82 - Card de Cidades virou RESUMO DO DIA: corridas de hoje por cidade (count na machine_corridas, 11 paralelos com timeout) + bloco de ALERTAS (cidade parada hoje, cancelamento >=15%, finalizacao <80%) + SAUDE por cidade (fin/canc % colorido). Resolve o descasamento com o ranking do dashboard (que e volume/entregas do mes) mostrando outro angulo - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -5126,8 +5126,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
         <div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);flex-shrink:0;font-size:16px">📊</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#5B21B6;text-transform:uppercase;margin-bottom:2px">Visão Geral da Rede</div>
-          <div style="font-size:11px;color:#7B4FCE">Operação real das cidades · mês atual</div>
+          <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#5B21B6;text-transform:uppercase;margin-bottom:2px">Resumo do Dia · Rede</div>
+          <div style="font-size:11px;color:#7B4FCE">Operação de hoje + saúde das cidades</div>
         </div>
         <button id="cid-ia-btn-atualizar" onclick="cidIaAtualizar()" style="padding:6px 12px;border:1px solid #8B5CF6;border-radius:7px;background:white;color:#5B21B6;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;white-space:nowrap" title="Forçar nova análise">🔄 Atualizar</button>
       </div>
@@ -26085,28 +26085,92 @@ async function cidVisaoGeralRede(_tent){
     if(nomePorSlug[slug]) return nomePorSlug[slug];
     return String(slug||'').split('-').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
   }
+  // ─── HOJE: conta corridas do dia por cidade (count leve na machine_corridas,
+  // mesmo padrão do detalhe da cidade). null = query falhou (≠ 0 = sem corridas). ───
+  var _d0 = new Date(); _d0.setHours(0,0,0,0);
+  var _iniDia = _d0.toISOString();
+  var _fimDia = new Date().toISOString();
+  function _hdrsHoje(){ return Object.assign({}, (typeof supaHeaders==='function'?supaHeaders():{apikey:SUPA_KEY,Authorization:'Bearer '+SUPA_KEY}), {'Prefer':'count=exact'}); }
+  function _contarHoje(slug){
+    return fetch(SUPA_URL+'/rest/v1/machine_corridas?cidade_slug=eq.'+encodeURIComponent(slug)+'&data_hora_solicitacao=gte.'+encodeURIComponent(_iniDia)+'&data_hora_solicitacao=lt.'+encodeURIComponent(_fimDia)+'&select=cidade_slug&limit=1', { headers: _hdrsHoje() })
+      .then(function(r){ var cr=r.headers.get('content-range'); return cr ? parseInt((cr.split('/')[1]||'0'),10) : 0; })
+      .catch(function(){ return null; });
+  }
+  function _comTimeout(p, ms){ return Promise.race([p, new Promise(function(res){ setTimeout(function(){res(null);}, ms); })]); }
+  var hojePorSlug = {};
+  try {
+    var _slugs = lista.map(function(r){ return r.cidade_slug; });
+    var _counts = await Promise.all(_slugs.map(function(s){ return _comTimeout(_contarHoje(s), 5000); }));
+    _slugs.forEach(function(s,i){ hojePorSlug[s] = _counts[i]; });
+  } catch(e){}
+
+  // ─── Objetos por cidade ───
+  var LIM_CANC = 15, LIM_FIN = 80; // limiares de alerta (ajustáveis)
   var totC=0, totF=0, totX=0;
-  lista.forEach(function(r){ totC+=(+r.corridas_total||0); totF+=(+r.corridas_finalizadas||0); totX+=(+r.corridas_canceladas||0); });
-  var taxaFin = totC>0 ? Math.round(totF/totC*100) : 0;
-  var taxaCanc = totC>0 ? Math.round(totX/totC*100) : 0;
-  var ord = lista.slice().sort(function(a,b){ return (+b.corridas_total||0)-(+a.corridas_total||0); });
-  var maxC = (+ord[0].corridas_total)||1;
+  var cities = lista.map(function(r){
+    var slug = r.cidade_slug;
+    var total = +r.corridas_total||0, fin=+r.corridas_finalizadas||0, canc=+r.corridas_canceladas||0;
+    totC+=total; totF+=fin; totX+=canc;
+    return { slug:slug, nome:_nomeCidade(slug),
+      hoje: hojePorSlug.hasOwnProperty(slug) ? hojePorSlug[slug] : null,
+      finPct: total>0?Math.round(fin/total*100):0,
+      cancPct: total>0?Math.round(canc/total*100):0, mes: total };
+  });
+  var algumHoje = cities.some(function(c){ return c.hoje !== null; });
+  var totalHoje = cities.reduce(function(s,c){ return s + (c.hoje||0); }, 0);
+  var ativasHoje = cities.filter(function(c){ return (c.hoje||0) > 0; }).length;
+  var finRede = totC>0 ? Math.round(totF/totC*100) : 0;
   var fmt = function(n){ return (+n||0).toLocaleString('pt-BR'); };
+  function _corFin(p){ return p>=85?'#1D9E75':(p>=75?'#EF9F27':'#E24B4A'); }
+  function _corCanc(p){ return p<10?'#1D9E75':(p<LIM_CANC?'#EF9F27':'#E24B4A'); }
+
+  // ─── KPIs do dia ───
   var kpis = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'
-    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:var(--text);line-height:1">'+fmt(totC)+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">corridas · rede</div></div>'
-    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:#1D9E75;line-height:1">'+taxaFin+'%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">finalização</div></div>'
-    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:'+(taxaCanc>=15?'#E24B4A':'#EF9F27')+';line-height:1">'+taxaCanc+'%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">cancelamento</div></div>'
+    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:var(--text);line-height:1">'+(algumHoje?fmt(totalHoje):'—')+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">corridas hoje</div></div>'
+    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:var(--text);line-height:1">'+(algumHoje?(ativasHoje+'/'+cities.length):'—')+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">ativas hoje</div></div>'
+    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:'+_corFin(finRede)+';line-height:1">'+finRede+'%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">finalização · mês</div></div>'
   + '</div>';
-  var linhas = ord.map(function(r, i){
-    var nome = _nomeCidade(r.cidade_slug);
-    var c = +r.corridas_total||0, f = +r.corridas_finalizadas||0;
-    var tf = c>0 ? Math.round(f/c*100) : 0;
-    var pct = Math.round(c/maxC*100);
-    var medalha = i===0?'🥇':i===1?'🥈':i===2?'🥉':'<span style="display:inline-block;width:16px;text-align:center;color:var(--text3);font-size:10px;font-weight:700">'+(i+1)+'</span>';
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="width:18px;text-align:center;flex-shrink:0;font-size:12px">'+medalha+'</div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</span><span style="font-size:11px;color:var(--text2);flex-shrink:0;margin-left:6px">'+fmt(c)+' · '+tf+'% fin.</span></div><div style="height:5px;background:var(--surface);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:3px"></div></div></div></div>';
+
+  // ─── Alertas (só o que precisa de atenção) ───
+  var alertas = [];
+  if(algumHoje){
+    var paradas = cities.filter(function(c){ return c.hoje === 0; });
+    if(paradas.length) alertas.push('🔴 <strong>Sem corridas hoje:</strong> ' + paradas.map(function(c){return c.nome;}).join(', '));
+  }
+  var cancAlto = cities.filter(function(c){ return c.cancPct >= LIM_CANC; }).sort(function(a,b){return b.cancPct-a.cancPct;});
+  if(cancAlto.length) alertas.push('🟠 <strong>Cancelamento alto:</strong> ' + cancAlto.map(function(c){return c.nome+' '+c.cancPct+'%';}).join(', '));
+  var finBaixo = cities.filter(function(c){ return c.finPct < LIM_FIN; }).sort(function(a,b){return a.finPct-b.finPct;});
+  if(finBaixo.length) alertas.push('🟡 <strong>Finalização baixa:</strong> ' + finBaixo.map(function(c){return c.nome+' '+c.finPct+'%';}).join(', '));
+  var alertasHtml;
+  if(alertas.length){
+    alertasHtml = '<div style="background:#FFF8F0;border:1px solid #EF9F2744;border-radius:10px;padding:10px 12px;margin-bottom:12px">'
+      + '<div style="font-size:9px;color:#B45309;text-transform:uppercase;letter-spacing:.5px;font-weight:800;margin-bottom:6px">⚠️ Precisa de atenção</div>'
+      + alertas.map(function(a){ return '<div style="font-size:11.5px;color:var(--text);line-height:1.5;margin-bottom:3px">'+a+'</div>'; }).join('')
+      + '</div>';
+  } else {
+    alertasHtml = '<div style="background:#F0FAF5;border:1px solid #1D9E7544;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#15803D;font-weight:600">✅ Tudo certo na rede — nenhum alerta.</div>';
+  }
+
+  // ─── Saúde por cidade (ordena por movimento de hoje, depois pelo mês) ───
+  var ordCities = cities.slice().sort(function(a,b){
+    var ah=a.hoje||0, bh=b.hoje||0;
+    if(bh!==ah) return bh-ah;
+    return b.mes - a.mes;
+  });
+  var linhas = ordCities.map(function(c){
+    var hojeTxt = (c.hoje===null) ? '<span style="color:var(--text3)">—</span>' : '<strong>'+fmt(c.hoje)+'</strong>';
+    return '<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      + '<div style="flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.nome+'</div>'
+      + '<div style="font-size:11px;color:var(--text2);width:48px;text-align:right;flex-shrink:0">'+hojeTxt+'<span style="font-size:8px;color:var(--text3)"> hoje</span></div>'
+      + '<div style="font-size:11px;width:50px;text-align:right;flex-shrink:0;color:'+_corFin(c.finPct)+';font-weight:700">'+c.finPct+'%<span style="font-size:8px;opacity:.7"> fin</span></div>'
+      + '<div style="font-size:11px;width:54px;text-align:right;flex-shrink:0;color:'+_corCanc(c.cancPct)+';font-weight:700">'+c.cancPct+'%<span style="font-size:8px;opacity:.7"> canc</span></div>'
+    + '</div>';
   }).join('');
-  conteudo.innerHTML = kpis + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">Ranking de movimento · mês</div>' + linhas;
-  if(meta) meta.innerHTML = '📊 Dados reais da operação · atualizado agora';
+
+  conteudo.innerHTML = kpis + alertasHtml
+    + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:2px">Saúde por cidade · hoje + mês</div>'
+    + linhas;
+  if(meta) meta.innerHTML = algumHoje ? '📊 Corridas de hoje + saúde do mês · agora' : '📊 Saúde do mês · movimento de hoje indisponível agora';
 }
 async function cidIaAtualizar(forcar){
   // 🔒 Gestor restrito não vê a rede
