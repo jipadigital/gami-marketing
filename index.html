@@ -1,4 +1,4 @@
-<!-- v27.58 - ONDA 5 (tarefas): confete + 'Tudo feito!' quando um balde (Diario/Semana/Mes/Projetos) fica TODO concluido, no tfToggle. Checkbox satisfatorio (bounce + risca + desliza/some) ja existia - 21/06/2026 -->
+<!-- v27.61 - FIX clique Empresas/Motoboys p/ Analise IA: empVerEmpresa e mbVerMotoboy agora auto-carregam a Machine e reabrem se o _vgCache estiver vazio (antes morriam num toast). Detalhe ja corrigido na v27.50 (campos raw elevados). + SQL badges_desbloqueadas - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -8885,6 +8885,17 @@ function renderCalendar(){
   html += '</div>';
   grid.innerHTML = html;
 
+  // 🎂 Onda 7: confetinho se HOJE é aniversário de alguém (1x por dia/sessão)
+  try {
+    if(isCurrentMonth && bdayMap[today.getDate()] && bdayMap[today.getDate()].length && typeof gamiConfete==='function'){
+      var _ckBday = 'gami_cal_bday_confete_'+today.toISOString().slice(0,10);
+      if(!sessionStorage.getItem(_ckBday)){
+        sessionStorage.setItem(_ckBday, '1');
+        setTimeout(function(){ gamiConfete({ n: 70 }); }, 250);
+      }
+    }
+  } catch(e){}
+
   // Update sidebar with month events
   renderCalSidebar();
   renderProximosBdays();
@@ -14662,13 +14673,13 @@ function renderPessoas(){
         <div style="flex:1;height:1px;background:var(--border)"></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        ${grupo.map(p=>{
+        ${grupo.map((p, idx)=>{
           const ac=avColor(p.nome);
           const bdayHoje=isBdayToday(p.nascimento);
           const bdayWeekP=isBdayWeek(p.nascimento);
           const dias=diasParaAniv(p.nascimento);
           return `
-          <div class="pessoa-list-card" data-pessoa-id="${p.id}" onclick="if(!event.target.closest('button')&&!event.target.closest('a'))_pm_toggleCardExpand(this,'${p.id}')" style="border:1px solid ${bdayHoje?'var(--orange)':'var(--border)'};border-radius:10px;padding:11px 13px;background:${bdayHoje?'#FEF9F7':'var(--surface)'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer">
+          <div class="pessoa-list-card" data-pessoa-id="${p.id}" onclick="if(!event.target.closest('button')&&!event.target.closest('a'))_pm_toggleCardExpand(this,'${p.id}')" style="border:1px solid ${bdayHoje?'var(--orange)':'var(--border)'};border-radius:10px;padding:11px 13px;background:${bdayHoje?'#FEF9F7':'var(--surface)'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;animation:gFadeInStagger .4s ease ${Math.min(idx,12)*45}ms both${bdayHoje?', gBdayGlow 2.2s ease-in-out '+(Math.min(idx,12)*45+400)+'ms infinite':''}">
             <div class="pessoa-avatar-foto" style="width:40px;height:40px;border-radius:50%;background:${ac.bg};color:${ac.color};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;overflow:hidden;position:relative">${p.foto?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`:`${initials(p.nome)}`}</div>
             <div style="flex:1;min-width:0">
               <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -27346,7 +27357,16 @@ function empRenderTopEmpresas(corridasDia, corridas45d, corridasMes, empresasGer
 function empVerEmpresa(nomeEncoded){
   var nome = decodeURIComponent(nomeEncoded);
   var c = window.__cidadeAtual; if(!c) return;
-  if(!_vgCache[c.id]){ toast('Carregue os dados da Machine primeiro','warn'); return; }
+  if(!_vgCache[c.id]){
+    if(typeof vgCarregarPainel === 'function'){
+      toast('Carregando dados da Machine...','info');
+      vgCarregarPainel({auto:true}).then(function(){
+        if(_vgCache[c.id]) empVerEmpresa(nomeEncoded);
+        else toast('Não foi possível carregar os dados da Machine','warn');
+      }).catch(function(){ toast('Não foi possível carregar os dados da Machine','warn'); });
+    } else { toast('Carregue os dados da Machine primeiro','warn'); }
+    return;
+  }
   var d = _vgCache[c.id].dados;
 
   // Procura empresa cadastrada (Machine /empresa) pelo nome - busca em TODA a lista (sem filtro)
@@ -29265,7 +29285,16 @@ function mbAtualizarLista(){
 /* ============================================================== */
 function mbVerMotoboy(idCondutor){
   var c = window.__cidadeAtual; if(!c) return;
-  if(!_vgCache[c.id]){ toast('Carregue os dados da Machine primeiro','warn'); return; }
+  if(!_vgCache[c.id]){
+    if(typeof vgCarregarPainel === 'function'){
+      toast('Carregando dados da Machine...','info');
+      vgCarregarPainel({auto:true}).then(function(){
+        if(_vgCache[c.id]) mbVerMotoboy(idCondutor);
+        else toast('Não foi possível carregar os dados da Machine','warn');
+      }).catch(function(){ toast('Não foi possível carregar os dados da Machine','warn'); });
+    } else { toast('Carregue os dados da Machine primeiro','warn'); }
+    return;
+  }
   var d = _vgCache[c.id].dados;
   var cond = (d.condutores||[]).find(function(x){ return String(x.id) === String(idCondutor); });
 
@@ -53340,6 +53369,8 @@ function cidImprimirRelatorioAuto(id){
 @keyframes gConfFall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
 @keyframes gCelebraIn{0%{transform:scale(.6);opacity:0}55%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
 @keyframes gCheckDraw{to{stroke-dashoffset:0}}
+@keyframes gFadeInStagger{from{opacity:0}to{opacity:1}}
+@keyframes gBdayGlow{0%,100%{box-shadow:0 0 0 0 rgba(239,159,39,0)}50%{box-shadow:0 0 0 4px rgba(239,159,39,.28)}}
 .g-anim-page{animation:gFadeUp .28s ease both}
 .g-pop{animation:gPop .35s cubic-bezier(.2,.9,.3,1.2) both}
 .g-skeleton{background:linear-gradient(90deg,var(--surface2,#eee) 25%,rgba(255,255,255,.55) 37%,var(--surface2,#eee) 63%);background-size:800px 100%;animation:gShimmer 1.3s linear infinite;border-radius:8px}
@@ -53353,7 +53384,7 @@ function cidImprimirRelatorioAuto(id){
 .g-celebra-card{background:white;border-radius:18px;padding:30px 34px;text-align:center;animation:gCelebraIn .5s cubic-bezier(.2,.9,.3,1.2) both;max-width:340px}
 .g-conf{position:fixed;top:-12px;width:9px;height:14px;z-index:100001;pointer-events:none;border-radius:2px;animation:gConfFall linear forwards}
 @media (prefers-reduced-motion: reduce){
-  .g-anim-page,.g-pop,.g-live,.g-shake,.g-skeleton,.g-conf,.g-celebra-card{animation:none!important}
+  .g-anim-page,.g-pop,.g-live,.g-shake,.g-skeleton,.g-conf,.g-celebra-card,.g-live-dot,.pessoa-list-card{animation:none!important}
 }
 </style>
 <script>
