@@ -1,4 +1,4 @@
-<!-- v27.44 - LEVA 1 parte 2: Central de Comando (aba comando, so diretoria+super_admin) - KPIs da rede via rel_rede_visao_geral, saude media (calcScore), status das cidades e lista priorizada Precisa de atencao hoje clicavel - 20/06/2026 -->
+<!-- v27.46 - LEVA 2 parte 1: Realtime do sino via Supabase Realtime (WebSocket cru, sem lib). Aditivo e seguro - polling segue de rede; acende quando habilitar replicacao na tabela notificacoes. Cliente reconecta sozinho e falha em silencio - 20/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11671,6 +11671,23 @@ async function tentarLogin(identificador, pin){
 }
 
 /* TROCAR PIN */
+/* 🔐 v27.45 — Detecta PINs óbvios (sequência, repetição, comuns) */
+function _pinFraco(pin){
+  pin = String(pin||'');
+  if(/^(.)\1+$/.test(pin)) return true; // todos os dígitos iguais (0000, 1111)
+  var comuns = ['1234','12345','123456','4321','54321','0123','2580','1212','6969','1230','2468','1357','7890'];
+  if(comuns.indexOf(pin) !== -1) return true;
+  if(/^\d+$/.test(pin) && pin.length >= 4){ // sequência crescente ou decrescente
+    var asc=true, desc=true;
+    for(var i=1;i<pin.length;i++){
+      if(+pin[i] !== +pin[i-1]+1) asc=false;
+      if(+pin[i] !== +pin[i-1]-1) desc=false;
+    }
+    if(asc||desc) return true;
+  }
+  return false;
+}
+
 async function trocarPIN(pessoaId, pinAtual, pinNovo){
   // Valida PIN novo
   if(!pinNovo || pinNovo.length < 4 || pinNovo.length > 8){
@@ -11678,6 +11695,9 @@ async function trocarPIN(pessoaId, pinAtual, pinNovo){
   }
   if(pinNovo === 'gami2026'){
     return { sucesso: false, erro: 'Escolha um PIN diferente do padrão' };
+  }
+  if(_pinFraco(pinNovo)){
+    return { sucesso: false, erro: 'PIN muito fácil de adivinhar. Evite sequências (1234) ou dígitos repetidos (0000).' };
   }
   
   try {
@@ -53233,5 +53253,53 @@ window._cmdAbrirCidade = function(id){
   if(typeof window.nav==='function'){ var it=document.querySelector('.nav-item[onclick*="cidades"]'); window.nav(it||null,'cidades'); }
   setTimeout(function(){ if(typeof abrirCidade==='function') abrirCidade(id); }, 130);
 };
+</script>
+<script>
+/* ⚡ v27.46 — Realtime do sino via Supabase Realtime (WebSocket cru, best-effort).
+   ADITIVO: o polling existente continua de rede. Só "acende" quando a replicação
+   Realtime estiver habilitada na tabela 'notificacoes' no Supabase. Falha sempre em silêncio. */
+(function(){
+  var ws=null, ref=0, hbTimer=null, reconnTimer=null;
+  function _meuId(){ try{ var u=getUsuarioLogado(); return (u&&u.id)?u.id:null; }catch(e){ return null; } }
+  function _send(o){ try{ ws.send(JSON.stringify(o)); }catch(e){} }
+  function _refrescarSino(rec){
+    try{
+      window._ultimasNotifsRender=null;
+      if(typeof _carregarNotificacoesSupa==='function'){
+        _carregarNotificacoesSupa().then(function(){ if(typeof renderNotificacoes==='function') renderNotificacoes(); }).catch(function(){});
+      } else if(typeof renderNotificacoes==='function'){ renderNotificacoes(); }
+      if(rec && rec.titulo && typeof toast==='function') toast('🔔 '+rec.titulo, 'info');
+    }catch(e){}
+  }
+  function _conectar(){
+    var id=_meuId();
+    if(!id){ reconnTimer=setTimeout(_conectar, 6000); return; }
+    if(typeof SUPA_URL==='undefined' || typeof SUPA_KEY==='undefined') return;
+    var host=SUPA_URL.replace(/^https?:\/\//,'');
+    try{ ws=new WebSocket('wss://'+host+'/realtime/v1/websocket?apikey='+encodeURIComponent(SUPA_KEY)+'&vsn=1.0.0'); }
+    catch(e){ return; }
+    ws.onopen=function(){
+      ref=0;
+      _send({ topic:'realtime:public:notificacoes', event:'phx_join', ref:String(++ref),
+        payload:{ config:{ postgres_changes:[{ event:'INSERT', schema:'public', table:'notificacoes', filter:'para_pessoa_id=eq.'+id }] } } });
+      clearInterval(hbTimer);
+      hbTimer=setInterval(function(){ _send({ topic:'phoenix', event:'heartbeat', ref:String(++ref), payload:{} }); }, 25000);
+    };
+    ws.onmessage=function(ev){
+      var m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
+      if(m.event==='postgres_changes'){
+        try{
+          var rec=m.payload && m.payload.data && m.payload.data.record;
+          if(rec && String(rec.para_pessoa_id)===String(_meuId())) _refrescarSino(rec);
+        }catch(e){}
+      }
+    };
+    ws.onclose=function(){ clearInterval(hbTimer); clearTimeout(reconnTimer); reconnTimer=setTimeout(_conectar, 8000); };
+    ws.onerror=function(){ try{ ws.close(); }catch(e){} };
+  }
+  function _iniciar(){ if(_meuId()) _conectar(); else setTimeout(_iniciar, 5000); }
+  if(document.readyState!=='loading') setTimeout(_iniciar, 3000);
+  else document.addEventListener('DOMContentLoaded', function(){ setTimeout(_iniciar, 3000); });
+})();
 </script>
 </html>
