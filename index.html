@@ -1,4 +1,4 @@
-<!-- v27.83 - Relatorio mensal da cidade cortava no meio das ACOES (estouro de tokens): prompt pedia 9 secoes pesadas incl. re-listar TOP5 empresas+motoboys, e as ACOES no fim nao cabiam em 1200 tokens. Enxugado pra 7 secoes concisas (TOP3 em vez de TOP5, secoes mais curtas, ACOES marcada obrigatoria) + teto subiu 1200->1400 - 21/06/2026 -->
+<!-- v27.85 - Patente Gami virou showpiece animado: emoji flutua + brilho verde pulsante + zoom no hover, varredura de luz cruzando o card, barra de progresso com listras diagonais fluindo, emoji de fundo flutuando, badges com pop. + Entrada suave (fade-up) em TODAS as telas ao navegar + micro-lift nos cards. Tudo CSS/GPU, respeita prefers-reduced-motion - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -42139,16 +42139,12 @@ function _rkAtualizarHeaderResumo(ranking){
   el.innerHTML = mesAtual.charAt(0).toUpperCase()+mesAtual.slice(1) + ' · <strong>'+nJogadores+'</strong> jogadores · <strong>'+totalPts.toLocaleString('pt-BR')+'</strong> pontos somados';
 }
 
-// Calcula mudança de posição (mock baseado em hash do ID)
+// ⚠️ v27.84: ERA mock — número FALSO derivado de hash do ID (mostrava "↓4 essa
+// semana" fixo, até pra quem está em 1º lugar, e o mesmo número aparecia em todos).
+// Sem histórico semanal real de ranking não dá pra calcular movimento de verdade,
+// então não exibimos nada (melhor vazio do que mentira).
 function _rkCalcularMudancaPos(pessoaId){
-  if(!pessoaId) return { seta:'→', label:'estável', classe:'rk-arrow-flat' };
-  var h = 0;
-  for(var i=0; i<String(pessoaId).length; i++){ h = ((h<<5)-h) + String(pessoaId).charCodeAt(i); h |= 0; }
-  var n = Math.abs(h) % 11;
-  if(n < 4){ var sub = (n+1); return { seta:'↑'+sub, label:'+'+sub+' essa semana', classe:'rk-arrow-up', cor:'#5A9E36' }; }
-  if(n < 7){ return { seta:'→', label:'estável', classe:'rk-arrow-flat', cor:'var(--text3)' }; }
-  var desc = n - 7;
-  return { seta:'↓'+(desc+1), label:'-'+(desc+1)+' essa semana', classe:'rk-arrow-down', cor:'#E24B4A' };
+  return { seta:'', label:'', classe:'rk-arrow-flat', cor:'var(--text3)' };
 }
 
 // Sparkline 7d (mock baseado em hash + pontos atuais)
@@ -53622,6 +53618,47 @@ function cidImprimirRelatorioAuto(id){
 .g-conf{position:fixed;top:-12px;width:9px;height:14px;z-index:100001;pointer-events:none;border-radius:2px;animation:gConfFall linear forwards}
 @media (prefers-reduced-motion: reduce){
   .g-anim-page,.g-pop,.g-live,.g-shake,.g-skeleton,.g-conf,.g-celebra-card,.g-live-dot,.pessoa-list-card{animation:none!important}
+}
+
+/* ===== v27.85 — Patente Gâmi animada + brilhos do dashboard ===== */
+@keyframes gPatBob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+@keyframes gPatGlow { 0%,100%{box-shadow:0 0 0 0 rgba(143,190,87,0)} 50%{box-shadow:0 0 16px 3px rgba(143,190,87,.40)} }
+@keyframes gPatSweep { 0%{transform:translateX(-160%) skewX(-18deg)} 55%,100%{transform:translateX(380%) skewX(-18deg)} }
+@keyframes gPatBarFlow { from{background-position:0 0} to{background-position:26px 0} }
+@keyframes gPatBgFloat { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-6px) rotate(5deg)} }
+@keyframes gBadgePop { 0%{transform:scale(.5);opacity:0} 70%{transform:scale(1.12)} 100%{transform:scale(1);opacity:1} }
+@keyframes gPageIn { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:translateY(0)} }
+
+/* Emoji da patente: flutua + pulsa um brilho verde; no hover do card, dá um zoom */
+#dash-patente-emoji{ animation:gPatBob 3.2s ease-in-out infinite, gPatGlow 2.8s ease-in-out infinite; will-change:transform; }
+#dash-pontuacao-card:hover #dash-patente-emoji{ transform:scale(1.1) rotate(-6deg); transition:transform .25s ease; }
+/* Emoji gigante de fundo flutua devagar */
+#dash-pontuacao-emoji-bg{ animation:gPatBgFloat 6s ease-in-out infinite; }
+/* Varredura de luz cruzando o card de tempos em tempos */
+#dash-pontuacao-card::before{
+  content:''; position:absolute; top:0; left:0; height:100%; width:34%;
+  background:linear-gradient(100deg,transparent 0%,rgba(255,255,255,.55) 50%,transparent 100%);
+  transform:translateX(-160%) skewX(-18deg); animation:gPatSweep 6s ease-in-out infinite;
+  pointer-events:none; z-index:3;
+}
+/* Barra de progresso: listras diagonais fluindo */
+#dash-patente-bar{ position:relative; }
+#dash-patente-bar::after{
+  content:''; position:absolute; inset:0; border-radius:4px;
+  background:repeating-linear-gradient(45deg,rgba(255,255,255,.25) 0 6px,transparent 6px 13px);
+  background-size:26px 26px; animation:gPatBarFlow 1.1s linear infinite;
+}
+/* Badges entram com um pop */
+#dash-patente-badges > *{ animation:gBadgePop .4s cubic-bezier(.2,.9,.3,1.3) both; }
+
+/* Entrada suave em TODAS as telas ao navegar */
+.page[data-active="true"]{ animation:gPageIn .34s ease both; }
+/* Micro-lift nos cards do dashboard */
+#pg-dashboard .dash-section{ transition:transform .2s ease, box-shadow .2s ease; }
+
+@media (prefers-reduced-motion: reduce){
+  #dash-patente-emoji,#dash-pontuacao-emoji-bg,#dash-patente-badges > *,.page[data-active="true"]{ animation:none!important; }
+  #dash-pontuacao-card::before,#dash-patente-bar::after{ animation:none!important; opacity:0; }
 }
 </style>
 <script>
