@@ -1,4 +1,4 @@
-<!-- v27.67 - FIX card Inteligencia da Rede (#cid-ia-rede) preso no spinner Carregando: cidIaAtualizar travava no await loadConfigFromSupa quando o fetch pendurava. Agora mostra fallback na hora + timeout de 4s no fetch compartilhado - 21/06/2026 -->
+<!-- v27.69 - FIX 504 ao gerar relatorio: diagnosticoSemanalCidades e relatorio mensal chamavam blog-ai com modelo default + 2500 tokens (>10s, estourava timeout Netlify). Agora haiku + 1500 tokens (rapido, cabe no limite) - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -22952,7 +22952,7 @@ async function diagnosticoSemanalCidades(forceNew){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 2500 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 1500, model: 'claude-haiku-4-5-20251001' })
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
@@ -43084,7 +43084,7 @@ async function gerarRelatorioExecutivoMensal(){
     var resp = await fetch('/.netlify/functions/blog-ai', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt: prompt, max_tokens: 2500 })
+      body: JSON.stringify({ prompt: prompt, max_tokens: 1500, model: 'claude-haiku-4-5-20251001' })
     });
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     var data = await resp.json();
@@ -53174,7 +53174,7 @@ function _notifIniciar(){
   if(!u || !u.id) return;
   
   fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-    + '&select=id&order=created_at.desc&limit=50', {
+    + '&select=id&order=criado_em.desc&limit=50', {
     headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
   }).then(function(r){ return r.ok ? r.json() : []; })
     .then(function(arr){
