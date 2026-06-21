@@ -1,4 +1,4 @@
-<!-- v27.51 - Opcao A: seção Relatorios da Rede (em Cidades) agora le o relatorio automatico do Supabase (relatorios_rede). Diretoria ve o da rede, gestor ve o da cidade dele - aparece pronto no topo com botao Ver/Baixar PDF, sem clique. Geração sob demanda intacta. Link da notificação ajustado p/ 'cidades' - 21/06/2026 -->
+<!-- v27.58 - ONDA 5 (tarefas): confete + 'Tudo feito!' quando um balde (Diario/Semana/Mes/Projetos) fica TODO concluido, no tfToggle. Checkbox satisfatorio (bounce + risca + desliza/some) ja existia - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2677,7 +2677,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <!-- preenchido pelo JS -->
     </div>
     
-    <button id="dash-btn-bater-ponto" onclick="dashBaterPontoRapido()" style="width:100%;padding:14px 20px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,184,240,0.3);transition:transform .15s"
+    <button id="dash-btn-bater-ponto" class="g-ripple-host" onclick="dashBaterPontoRapido()" style="width:100%;padding:14px 20px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:15px;font-weight:700;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,184,240,0.3);transition:transform .15s"
       onmouseover="this.style.transform='translateY(-1px)'"
       onmouseout="this.style.transform=''">
       🕒 BATER PONTO
@@ -5295,6 +5295,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     </div>
 
     <div id="ctab-overview">
+      <div id="cid-rel-auto-cidade"></div>
       <!-- PAINEL RESUMO (dados reais Machine) -->
       <div id="vg-painel-real" style="margin-bottom:14px">
         <div id="vg-painel-banner" style="background:linear-gradient(135deg,#FFF8E1,#FAEEDA);border:1.5px solid #EF9F2766;border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
@@ -6164,7 +6165,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <textarea id="mp-justificativa" rows="2" placeholder="Ex: Atendimento externo, reunião com cliente, home office aprovado" style="width:100%;padding:8px 10px;border:1px solid #EF9F27;border-radius:6px;background:white;color:var(--text);font-size:12px;font-family:inherit;resize:vertical"></textarea>
       </div>
       
-      <button id="mp-btn-bater" onclick="mpBaterPonto()" style="width:100%;max-width:380px;padding:18px 24px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:18px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(26,184,240,0.3);transition:transform .15s"
+      <button id="mp-btn-bater" class="g-ripple-host" onclick="mpBaterPonto()" style="width:100%;max-width:380px;padding:18px 24px;border:none;background:linear-gradient(135deg,#1AB8F0,#0E7AB8);color:white;font-size:18px;font-weight:700;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 6px 20px rgba(26,184,240,0.3);transition:transform .15s"
         onmouseover="this.style.transform='translateY(-2px)'"
         onmouseout="this.style.transform=''">
         🕒 BATER PONTO
@@ -10820,6 +10821,7 @@ async function desbloquearBadge(pessoa, badgeId){
   var cat = BADGES_CATALOGO[badgeId];
   if(!cat) return false;
   if(_badgeJaTem(pessoa.id, badgeId)) return false; // já tem (cache local)
+  if(window._badgesPersistOff) return false; // persistência indisponível nesta sessão — não insiste
 
   // Dedup no servidor antes de inserir (evita duplicado se outro device já gravou)
   try {
@@ -10835,7 +10837,7 @@ async function desbloquearBadge(pessoa, badgeId){
   // Grava pela rota SEGURA (Netlify service key) com fallback REST direto
   var gravou = false;
   try { if(typeof _syncEscrever === 'function'){ await _syncEscrever({ tabela:'badges_desbloqueadas', operacao:'upsert', dados:[linha] }); gravou = true; } } catch(e){}
-  if(!gravou){ try { await supaUpsert('badges_desbloqueadas', linha); gravou = true; } catch(e){ console.warn('[Badge] falha ao gravar', badgeId, e); } }
+  if(!gravou){ try { await supaUpsert('badges_desbloqueadas', linha); gravou = true; } catch(e){ window._badgesPersistOff = true; console.warn('[Badge] persistência indisponível (badges_desbloqueadas).'); } }
   if(!gravou) return false;
 
   _marcarBadgeLocal(pessoa.id, badgeId);
@@ -11000,8 +11002,9 @@ async function motorBadgesTodos(){
   });
   if(!novos.length){ console.log('[Badge] backfill: nada novo'); return { ok:true, novos:0 }; }
 
-  // 3) Grava em lote (rota segura; fallback REST direto)
+  // 3) Grava em lote (rota segura)
   var gravou = 0;
+  if(window._badgesPersistOff){ return { ok:true, novos: novos.length, persistido:false }; }
   try {
     if(typeof _syncEscrever === 'function'){
       for(var i=0;i<novos.length;i+=50){
@@ -11011,7 +11014,10 @@ async function motorBadgesTodos(){
       }
     } else { throw new Error('sem _syncEscrever'); }
   } catch(e){
-    for(var k=0;k<novos.length;k++){ try { await supaUpsert('badges_desbloqueadas', novos[k]); gravou++; } catch(e2){} }
+    // Persistência indisponível (tabela badges_desbloqueadas não configurada/whitelistada).
+    // Marca e para de tentar nesta sessão — evita o spam de 400. Badges seguem em memória.
+    window._badgesPersistOff = true;
+    console.warn('[Badge] persistência indisponível (badges_desbloqueadas) — seguindo só em memória nesta sessão.');
   }
   console.log('[Badge] backfill tempo de casa: ' + gravou + ' badge(s) concedido(s).');
   try { if(typeof renderGaleriaBadges === 'function') renderGaleriaBadges(); } catch(e){}
@@ -13302,7 +13308,6 @@ function renderPessoasBdaysCard(){
         + '<div style="font-size:12px;font-weight:700;color:#831843;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + p.nome + '</div>'
         + '<div>' + quando + '</div>'
       + '</div>'
-      + (hoje ? '<button onclick="openAI(\'Crie um post de aniversário para ' + (p.nome||'').replace(/'/g,'') + ' da Gâmi Delivery em ' + (p.cidade||'') + '. Cargo: ' + (p.cargo||'') + '. Mensagem personalizada.\')" style="font-size:10px;padding:5px 10px;border:1px solid #EC4899;border-radius:6px;background:white;color:#9D174D;cursor:pointer;font-weight:700;white-space:nowrap">📝 Post</button>' : '')
     + '</div>';
   }).join('');
   
@@ -14601,7 +14606,6 @@ function renderPessoas(){
                   <div style="font-size:12px;font-weight:500;color:var(--text)">${p.nome}</div>
                   <div style="font-size:10px;color:var(--text3)">${p.cidade} · ${hoje?'<span style="color:var(--orange);font-weight:600">Hoje!</span>':dias===1?'Amanhã':'Em '+dias+' dias'}</div>
                 </div>
-                <button onclick="openAI('Crie um post de aniversário para ${p.nome.replace(/'/g,"\\'")} da Gâmi Delivery em ${p.cidade}. Cargo: ${p.cargo}. Post para Instagram + story. Mensagem carinhosa e personalizada.')" style="font-size:10px;padding:3px 8px;border:1px solid var(--orange);border-radius:5px;background:transparent;color:var(--orange);cursor:pointer;white-space:nowrap">Post ↗</button>
               </div>`;
             }).join('')}
           </div>
@@ -14701,7 +14705,6 @@ function renderPessoas(){
               ${p.obs?`<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${p.obs}</div>`:''}
             </div>
             <div style="display:flex;gap:5px;flex-shrink:0;align-items:center">
-              ${bdayHoje?`<button onclick="event.stopPropagation();openAI('Crie um post de aniversário para ${p.nome.replace(/'/g,"\\'")} da Gâmi Delivery. Cargo: ${p.cargo}. Cidade: ${p.cidade}. Post Instagram + Story. Mensagem especial e personalizada.')" style="font-size:10px;padding:4px 8px;border:1px solid var(--orange);border-radius:5px;background:transparent;color:var(--orange);cursor:pointer;white-space:nowrap">Post ↗</button>`:''}
               <button onclick="event.stopPropagation();_pm_quickContactShow('${p.id}', this, event)" style="width:28px;height:28px;border-radius:6px;background:#FAF5FF;border:1px solid #D8B4FE;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px" title="Ver contato"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="#9333EA" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="7" r="4" stroke="#9333EA" stroke-width="1.6"/></svg></button>
               ${p.tel?`<a onclick="event.stopPropagation()" href="https://wa.me/55${p.tel.replace(/\D/g,'')}" target="_blank" style="width:28px;height:28px;border-radius:6px;background:#EAF3DE;border:1px solid #63992233;display:flex;align-items:center;justify-content:center;text-decoration:none" title="WhatsApp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a5.526 5.526 0 00-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z" fill="#3B6D11"/><path d="M11.95 2C6.478 2 2 6.478 2 11.95c0 1.75.455 3.45 1.317 4.946L2 22l5.233-1.29A9.974 9.974 0 0011.954 21.9C17.426 21.9 21.9 17.425 21.9 11.95 21.9 6.478 17.425 2 11.95 2z" stroke="#3B6D11" stroke-width=".8" fill="none"/></svg></a>`:'<div style="width:28px"></div>'}
               <button onclick="event.stopPropagation();openPessoaModal('${p.id}')" data-perm="editar-pessoa" style="width:26px;height:26px;border-radius:6px;background:#E3F2FD;border:1px solid #90CAF9;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Editar"><svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="#1E88E5" stroke-width="1.5" stroke-linecap="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="#1E88E5" stroke-width="1.5" stroke-linecap="round"/></svg></button>
@@ -25796,8 +25799,8 @@ function renderCidadesGrid(){
       <div class="cid-metricas-bloco" style="margin-bottom:10px;padding:10px 12px;background:linear-gradient(135deg,#F8FBFE,#EEF6FC);border:1px solid #D6E8F5;border-radius:9px">
         <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:6px">
           <div>
-            <div class="cid-metric-num" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">${entHoje == null ? '—' : entHoje}</div>
-            <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">entregas hoje</div>
+            <div class="cid-metric-num" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">${entHoje == null ? '—' : '<span data-countup="'+entHoje+'">0</span>'}</div>
+            <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">entregas hoje${entHoje > 0 ? ' <span class="g-live-dot" title="Ativa hoje"></span>' : ''}</div>
           </div>
           <div class="cid-metric-pct ${pctClasse}" style="display:${entHoje == null ? 'none' : 'flex'};align-items:center;gap:3px;font-size:11px;font-weight:700">
             <span class="cid-metric-arrow">${seta}</span>
@@ -25833,6 +25836,7 @@ function renderCidadesGrid(){
       </div>
     </div>`;
   }).join('');
+  if(typeof gamiCountUpAll === 'function') setTimeout(function(){ gamiCountUpAll(grid); }, 40);
   
   // 🆕 v27.16: carrega métricas REAIS (série 7d → hoje + sparkline + %) cacheadas
   // e re-renderiza UMA vez quando chegam (evita loop e "buscar toda hora").
@@ -26491,6 +26495,7 @@ function abrirCidade(id){
   const c = cidades.find(x=>x.id===id);
   if(!c) return;
   window.__cidadeAtual = c;
+  try { if(typeof cidCarregarRelatorioAutoCidade==='function') cidCarregarRelatorioAutoCidade(); } catch(e){}
 
   document.getElementById('cidades-lista').style.display='none';
   document.getElementById('cidade-painel').style.display='block';
@@ -26565,7 +26570,7 @@ function abrirCidade(id){
     const [,m,dd]=p.nascimento.split('-');
     const bday=new Date(new Date().getFullYear(),parseInt(m)-1,parseInt(dd));
     const diff=Math.round((bday-new Date().setHours(0,0,0,0))/(1000*60*60*24));
-    return `<div class="row"><span style="font-size:12px;font-weight:500">${p.nome}</span><span style="font-size:10px;color:var(--text3)">${diff===0?'Hoje!':diff===1?'Amanhã':'Em '+diff+' dias'}</span><button onclick="openAI('Crie um post de aniversário para ${p.nome} da Gâmi em ${c.nome}.')" style="font-size:10px;padding:2px 7px;border:1px solid var(--orange);border-radius:4px;background:transparent;color:var(--orange);cursor:pointer;margin-left:4px">Post ↗</button></div>`;
+    return `<div class="row"><span style="font-size:12px;font-weight:500">${p.nome}</span><span style="font-size:10px;color:var(--text3)">${diff===0?'Hoje!':diff===1?'Amanhã':'Em '+diff+' dias'}</span></div>`;
   }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px 0">Nenhum aniversário nos próximos 14 dias.</div>';
 
   // Equipe (renderiza com função dedicada)
@@ -32693,6 +32698,19 @@ function renderPontuacaoGami(){
     { id:'sementinha', nome:'Sementinha Gâmi', emoji:'🌱', min:0, max:499, cor:'#9DB4D6' };
   var idxAtual = (typeof PATENTES !== 'undefined') ? PATENTES.findIndex(function(p){return p.id===patenteAtual.id;}) : 0;
   var patenteProxima = (typeof PATENTES !== 'undefined' && idxAtual < PATENTES.length-1) ? PATENTES[idxAtual+1] : null;
+
+  // 🎉 Celebra quando o usuário SOBE de patente (compara com a última vista neste dispositivo)
+  try {
+    var _patKey = 'gami_patente_seen_'+uid;
+    var _patPrev = localStorage.getItem(_patKey);
+    if(_patPrev !== null && typeof PATENTES !== 'undefined'){
+      var _idxPrev = PATENTES.findIndex(function(p){ return p.id === _patPrev; });
+      if(_idxPrev >= 0 && idxAtual > _idxPrev && typeof gamiCelebrar === 'function'){
+        gamiCelebrar('Você subiu de patente!', 'Agora você é '+patenteAtual.nome+'!', patenteAtual.emoji);
+      }
+    }
+    localStorage.setItem(_patKey, patenteAtual.id);
+  } catch(e){}
   
   // Atualiza emoji da patente (centro)
   var elEmoji = document.getElementById('dash-patente-emoji');
@@ -32708,7 +32726,15 @@ function renderPontuacaoGami(){
   var elNome = document.getElementById('dash-patente-nome');
   if(elNome) elNome.textContent = patenteAtual.nome;
   var elPontos = document.getElementById('dash-patente-pontos');
-  if(elPontos) elPontos.textContent = pontosTotais.toLocaleString('pt-BR') + ' pontos acumulados';
+  if(elPontos){
+    var _pv = parseInt(elPontos.getAttribute('data-val')||'-1', 10);
+    if(typeof gamiCountUp === 'function' && _pv !== pontosTotais){
+      gamiCountUp(elPontos, pontosTotais, { from: (_pv>=0?_pv:0), fmt: function(v){ return Math.round(v).toLocaleString('pt-BR') + ' pontos acumulados'; } });
+    } else {
+      elPontos.textContent = pontosTotais.toLocaleString('pt-BR') + ' pontos acumulados';
+    }
+    elPontos.setAttribute('data-val', pontosTotais);
+  }
   
   // Próxima patente (esconde se for a última)
   var wrapProxima = document.getElementById('dash-patente-proxima-wrap');
@@ -33718,6 +33744,7 @@ function salvarReconhecimento(){
   }catch(e){}
 
   document.getElementById('modal-reconhecimento') && fecharModalReconhecimento();
+  if(typeof gamiConfete === 'function') gamiConfete({ n: 110 });
   renderReconhecimento();
   if(typeof renderPessoas === 'function') renderPessoas();
 }
@@ -38966,6 +38993,14 @@ function tfToggle(tipo, id, sufixo){
   if(typeof renderMinhaAgenda === 'function'){
     try { renderMinhaAgenda(); } catch(e){}
   }
+  // 🎉 Onda 5: balde TODO concluído → "Tudo feito!" com confete
+  try {
+    if(i>=0 && tarefaTocada && tarefaTocada.feito && lista.length>0 && lista.every(function(t){ return t.feito; }) && typeof gamiConfete==='function'){
+      var _nb = tipo==='diario'?'do dia':tipo==='semana'?'da semana':tipo==='mes'?'do mês':tipo==='projetos'?'de projetos':'';
+      gamiConfete({ n: 90 });
+      if(typeof toast==='function') toast('🎉 Tudo feito'+(_nb?' '+_nb:'')+'! Mandou bem!', 'success');
+    }
+  } catch(e){}
 }
 
 function tfExcluir(tipo, id, sufixo){
@@ -41750,7 +41785,7 @@ function _rkRenderHeroVoce(ranking){
         + '<div style="font-family:\'Syne\',sans-serif;font-size:32px;font-weight:800;color:#0E7AB8;line-height:1">'+posTopo+'º <span style="font-size:13px;font-weight:500;color:var(--text2)">lugar</span></div>'
       + '</div>'
       + '<div style="text-align:right">'
-        + '<div style="font-family:\'Syne\',sans-serif;font-size:28px;font-weight:800;color:#0E7AB8;line-height:1">'+meusPts+'</div>'
+        + '<div style="font-family:\'Syne\',sans-serif;font-size:28px;font-weight:800;color:#0E7AB8;line-height:1" data-countup="'+meusPts+'">0</div>'
         + '<div style="font-size:11px;color:#0E7AB8;font-weight:600;text-transform:uppercase;letter-spacing:.5px">pontos</div>'
         + '<div style="font-size:11px;color:'+(mudanca.cor||'var(--text3)')+';font-weight:700;margin-top:2px">'+mudanca.seta+' '+(mudanca.label||'')+'</div>'
       + '</div>'
@@ -41775,6 +41810,7 @@ function _rkRenderHeroVoce(ranking){
       posTopo === 1 ? '<div style="font-size:11.5px;color:#5A9E36;font-weight:700;background:#EAF7DD;padding:8px 10px;border-radius:7px;border-left:3px solid #5A9E36">🏆 Você está no TOPO! Continue assim!</div>' : ''
     ))
   + '</div>';
+  if(typeof gamiCountUpAll === 'function') setTimeout(function(){ gamiCountUpAll(host); }, 30);
 }
 
 // Renderiza pódio Top 3
@@ -46276,6 +46312,11 @@ function _renderClimaUI(dados, periodo){
   if(typeof origNav === 'function'){
     window.nav = function(el, page){
       origNav(el, page);
+      try {
+        var _pgAnim = document.getElementById('pg-'+page);
+        if(_pgAnim){ _pgAnim.classList.remove('g-anim-page'); void _pgAnim.offsetWidth; _pgAnim.classList.add('g-anim-page'); }
+        if(typeof gamiCountUpAll==='function' && _pgAnim) setTimeout(function(){ gamiCountUpAll(_pgAnim); }, 60);
+      } catch(e){}
       if(page === 'clima'){
         setTimeout(function(){ renderClimaTime(_climaPeriodoAtual || 'hoje'); }, 100);
       }
@@ -48923,7 +48964,7 @@ async function mpBaterPontoSemGPS(){
     if(typeof toast === 'function'){
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora + ' (sem GPS)', 'success');
     } else {
-      alert('✅ Ponto registrado às ' + resp.hora + '\n\n⚠️ Registrado sem GPS. O Cleyton vai revisar.');
+      gamiPontoOk('✅ Ponto registrado às ' + resp.hora + '\n\n⚠️ Registrado sem GPS. O Cleyton vai revisar.');
     }
     
     if(btn) btn.style.display = 'none';
@@ -49281,7 +49322,7 @@ async function mpBaterPonto(){
         MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
       } else {
-        alert('✅ Ponto registrado às ' + resp.hora);
+        gamiPontoOk('✅ Ponto registrado às ' + resp.hora);
       }
       await mpCarregarDia();
       await mpCarregarMes();
@@ -49315,7 +49356,7 @@ async function mpBaterPonto(){
         if(typeof toast === 'function'){
           toast('✅ ' + (MP_TIPO_LABEL[respIP.tipo] || 'Ponto') + ' às ' + respIP.hora + ' (validado pela rede)', 'success');
         } else {
-          alert('✅ Ponto registrado às ' + respIP.hora + '\n\n📍 Validado pela rede do escritório.');
+          gamiPontoOk('✅ Ponto registrado às ' + respIP.hora + '\n\n📍 Validado pela rede do escritório.');
         }
         await mpCarregarDia();
         await mpCarregarMes();
@@ -49365,7 +49406,7 @@ async function mpBaterPonto(){
           if(typeof toast === 'function'){
             toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora + ' (validado pela rede)', 'success');
           } else {
-            alert('✅ Ponto registrado às ' + resp.hora + '\n\n📍 Validado pela rede do escritório.');
+            gamiPontoOk('✅ Ponto registrado às ' + resp.hora + '\n\n📍 Validado pela rede do escritório.');
           }
           await mpCarregarDia();
           await mpCarregarMes();
@@ -49420,7 +49461,7 @@ async function mpBaterPonto(){
       MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
     } else {
-      alert('✅ Ponto registrado às ' + resp.hora);
+      gamiPontoOk('✅ Ponto registrado às ' + resp.hora);
     }
     
     document.getElementById('mp-justificativa').value = '';
@@ -51660,7 +51701,7 @@ async function dashBaterPontoSemGPS(){
     if(typeof toast === 'function'){
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' registrado às ' + resp.hora + ' (sem GPS)', 'success');
     } else {
-      alert('✅ Ponto registrado às ' + resp.hora + '\n\n⚠️ Registro sem GPS. O Cleyton vai revisar.');
+      gamiPontoOk('✅ Ponto registrado às ' + resp.hora + '\n\n⚠️ Registro sem GPS. O Cleyton vai revisar.');
     }
     
     if(btn) btn.style.display = 'none';
@@ -52078,7 +52119,7 @@ async function dashBaterPontoRapido(){
         MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
       } else {
-        alert('✅ Ponto registrado às ' + resp.hora);
+        gamiPontoOk('✅ Ponto registrado às ' + resp.hora);
       }
       await dashRenderCardPonto();
       return;
@@ -52112,7 +52153,7 @@ async function dashBaterPontoRapido(){
           MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora, 'success');
         } else {
-          alert('✅ Ponto registrado às ' + resp.hora);
+          gamiPontoOk('✅ Ponto registrado às ' + resp.hora);
         }
         await dashRenderCardPonto();
         return;
@@ -52159,7 +52200,7 @@ async function dashBaterPontoRapido(){
           if(typeof toast === 'function'){
             toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' às ' + resp.hora + ' (validado pela rede)', 'success');
           } else {
-            alert('✅ Ponto registrado às ' + resp.hora + '\n\n📍 Validado pela rede do escritório.');
+            gamiPontoOk('✅ Ponto registrado às ' + resp.hora + '\n\n📍 Validado pela rede do escritório.');
           }
           await dashRenderCardPonto();
           return;
@@ -52216,7 +52257,7 @@ async function dashBaterPontoRapido(){
       MP_ULTIMA_BATIDA_TS = Date.now(); // 🆕 v26.85: marca ts da batida
       toast('✅ ' + (MP_TIPO_LABEL[resp.tipo] || 'Ponto') + ' registrado às ' + resp.hora, 'success');
     } else {
-      alert('✅ Ponto registrado às ' + resp.hora);
+      gamiPontoOk('✅ Ponto registrado às ' + resp.hora);
     }
     
     document.getElementById('dash-ponto-justif').value = '';
@@ -53177,9 +53218,57 @@ function _notifIniciar(){
 /* ============================================================== */
 window._cidRelAutoCache = {};
 
+/* Só gestor + diretoria (+ super_admin/dono) veem o relatório automático */
+function _cidPodeVerRelAuto(){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    var nivel = (typeof detectarNivelPermissao==='function' && u) ? detectarNivelPermissao(u) : 'visitante';
+    return ['super_admin','diretoria','gestor'].indexOf(nivel) >= 0;
+  } catch(e){ return false; }
+}
+
+function _cidRelCardHTML(r){
+  var ic = r.tipo==='mensal' ? '🗓️' : '📅';
+  var nomeTipo = r.tipo==='mensal' ? 'Relatório mensal' : 'Relatório semanal';
+  var quando = r.criado_em ? new Date(r.criado_em).toLocaleDateString('pt-BR') : '';
+  var resumo = (r.resumo||'').replace(/</g,'&lt;') || 'Pronto pra ver';
+  return '<div style="margin-top:10px;padding:11px 13px;background:white;border:1.5px solid #2E7D32;border-radius:10px;display:flex;align-items:center;gap:10px">'
+    + '<span style="font-size:18px">'+ic+'</span>'
+    + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:12px;font-weight:700;color:#1B5E20">'+nomeTipo+' automático'
+        + '<span style="font-weight:500;color:var(--text3);font-size:10.5px"> · '+quando+'</span></div>'
+      + '<div style="font-size:10.5px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+resumo+'</div>'
+    + '</div>'
+    + '<button onclick="cidVerRelatorioAuto(\''+r.id+'\')" style="padding:6px 13px;border:none;background:#2E7D32;color:white;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Ver</button>'
+  + '</div>';
+}
+
+/* Relatório automático DENTRO do painel da cidade (gestor abre direto a dele) */
+async function cidCarregarRelatorioAutoCidade(){
+  var box = document.getElementById('cid-rel-auto-cidade');
+  if(!box) return;
+  if(!_cidPodeVerRelAuto()){ box.innerHTML=''; return; }
+  if(typeof _rlSupaQuery !== 'function'){ box.innerHTML=''; return; }
+  var c = window.__cidadeAtual;
+  if(!c){ box.innerHTML=''; return; }
+  try {
+    var slug = (typeof _vgSlug==='function') ? _vgSlug(c.nome)
+      : (c.nome||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-');
+    var sel = 'select=id,tipo,escopo,cidade_nome,referencia,titulo,resumo,conteudo_html,plano_acao_html,criado_em';
+    var rows = await _rlSupaQuery('relatorios_rede?escopo=eq.cidade&cidade_slug=eq.'+encodeURIComponent(slug)+'&order=criado_em.desc&limit=6&'+sel);
+    if(!Array.isArray(rows) || !rows.length){ box.innerHTML=''; return; }
+    var porTipo = {};
+    rows.forEach(function(r){ if(!porTipo[r.tipo]) porTipo[r.tipo]=r; });
+    var lista = Object.keys(porTipo).map(function(k){return porTipo[k];});
+    lista.forEach(function(r){ _cidRelAutoCache[r.id] = r; });
+    box.innerHTML = lista.map(_cidRelCardHTML).join('');
+  } catch(e){ if(box) box.innerHTML=''; }
+}
+
 async function cidCarregarRelatorioAuto(){
   var box = document.getElementById('cid-rel-auto');
   if(!box) return;
+  if(!_cidPodeVerRelAuto()){ box.innerHTML=''; return; }
   if(typeof _rlSupaQuery !== 'function'){ box.innerHTML=''; return; }
   try {
     var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
@@ -53202,24 +53291,8 @@ async function cidCarregarRelatorioAuto(){
     rows.forEach(function(r){ if(!porTipo[r.tipo]) porTipo[r.tipo] = r; });
     var lista = Object.keys(porTipo).map(function(k){ return porTipo[k]; });
 
-    _cidRelAutoCache = {};
     lista.forEach(function(r){ _cidRelAutoCache[r.id] = r; });
-
-    box.innerHTML = lista.map(function(r){
-      var ic = r.tipo==='mensal' ? '🗓️' : '📅';
-      var nomeTipo = r.tipo==='mensal' ? 'Relatório mensal' : 'Relatório semanal';
-      var quando = r.criado_em ? new Date(r.criado_em).toLocaleDateString('pt-BR') : '';
-      var resumo = (r.resumo||'').replace(/</g,'&lt;') || 'Pronto pra ver';
-      return '<div style="margin-top:10px;padding:11px 13px;background:white;border:1.5px solid #2E7D32;border-radius:10px;display:flex;align-items:center;gap:10px">'
-        + '<span style="font-size:18px">'+ic+'</span>'
-        + '<div style="flex:1;min-width:0">'
-          + '<div style="font-size:12px;font-weight:700;color:#1B5E20">'+nomeTipo+' automático'
-            + '<span style="font-weight:500;color:var(--text3);font-size:10.5px"> · '+quando+'</span></div>'
-          + '<div style="font-size:10.5px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+resumo+'</div>'
-        + '</div>'
-        + '<button onclick="cidVerRelatorioAuto(\''+r.id+'\')" style="padding:6px 13px;border:none;background:#2E7D32;color:white;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Ver</button>'
-      + '</div>';
-    }).join('');
+    box.innerHTML = lista.map(_cidRelCardHTML).join('');
   } catch(e){ if(box) box.innerHTML=''; }
 }
 
@@ -53255,5 +53328,136 @@ function cidImprimirRelatorioAuto(id){
     + '<scr'+'ipt>window.onload=function(){window.print();}</scr'+'ipt></body></html>');
   w.document.close();
 }
+</script>
+<style>
+/* ===== ENGINE DE ANIMAÇÃO GÂMI (reutilizável em todas as abas) ===== */
+@keyframes gFadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes gPop{0%{transform:scale(.7);opacity:0}60%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+@keyframes gShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+@keyframes gLive{0%,100%{box-shadow:0 0 0 0 rgba(46,125,50,0)}50%{box-shadow:0 0 0 4px rgba(46,125,50,.14)}}
+@keyframes gShake{0%,100%{transform:rotate(0)}15%{transform:rotate(12deg)}30%{transform:rotate(-10deg)}45%{transform:rotate(8deg)}60%{transform:rotate(-6deg)}75%{transform:rotate(3deg)}}
+@keyframes gRipple{to{transform:scale(2.6);opacity:0}}
+@keyframes gConfFall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
+@keyframes gCelebraIn{0%{transform:scale(.6);opacity:0}55%{transform:scale(1.06)}100%{transform:scale(1);opacity:1}}
+@keyframes gCheckDraw{to{stroke-dashoffset:0}}
+.g-anim-page{animation:gFadeUp .28s ease both}
+.g-pop{animation:gPop .35s cubic-bezier(.2,.9,.3,1.2) both}
+.g-skeleton{background:linear-gradient(90deg,var(--surface2,#eee) 25%,rgba(255,255,255,.55) 37%,var(--surface2,#eee) 63%);background-size:800px 100%;animation:gShimmer 1.3s linear infinite;border-radius:8px}
+.g-live{animation:gLive 2.2s ease-in-out infinite}
+@keyframes gDotPulse{0%{box-shadow:0 0 0 0 rgba(46,125,50,.5)}70%{box-shadow:0 0 0 6px rgba(46,125,50,0)}100%{box-shadow:0 0 0 0 rgba(46,125,50,0)}}
+.g-live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#2E7D32;vertical-align:middle;margin-left:3px;animation:gDotPulse 1.8s ease-out infinite}
+.g-shake{animation:gShake .7s ease}
+.g-ripple-host{position:relative;overflow:hidden}
+.g-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.5);transform:scale(0);pointer-events:none;animation:gRipple .6s ease-out}
+.g-celebra-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px}
+.g-celebra-card{background:white;border-radius:18px;padding:30px 34px;text-align:center;animation:gCelebraIn .5s cubic-bezier(.2,.9,.3,1.2) both;max-width:340px}
+.g-conf{position:fixed;top:-12px;width:9px;height:14px;z-index:100001;pointer-events:none;border-radius:2px;animation:gConfFall linear forwards}
+@media (prefers-reduced-motion: reduce){
+  .g-anim-page,.g-pop,.g-live,.g-shake,.g-skeleton,.g-conf,.g-celebra-card{animation:none!important}
+}
+</style>
+<script>
+/* ===== ENGINE DE ANIMAÇÃO GÂMI — helpers globais ===== */
+(function(){
+  function reduz(){ return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; }
+
+  // Count-up de números (de->para, com easing)
+  window.gamiCountUp = function(el, to, opts){
+    if(!el) return; opts = opts || {};
+    var dec = opts.dec||0, pre = opts.pre||'', suf = opts.suf||'';
+    var fim = function(v){ return opts.fmt ? opts.fmt(v) : (pre + Number(v).toFixed(dec) + suf); };
+    if(reduz()){ el.textContent = fim(to); return; }
+    var dur = opts.dur||900, from = (typeof opts.from==='number')?opts.from:0, t0=null;
+    function step(ts){ if(!t0) t0=ts; var p=Math.min(1,(ts-t0)/dur); var e=1-Math.pow(1-p,3);
+      el.textContent = fim(from+(to-from)*e); if(p<1) requestAnimationFrame(step); else el.textContent=fim(to); }
+    requestAnimationFrame(step);
+  };
+  // Anima todos os [data-countup] num container
+  window.gamiCountUpAll = function(root){
+    (root||document).querySelectorAll('[data-countup]').forEach(function(el){
+      if(el._cu) return; el._cu=1;
+      gamiCountUp(el, parseFloat(el.getAttribute('data-countup'))||0, {
+        dec: parseInt(el.getAttribute('data-dec')||'0',10),
+        pre: el.getAttribute('data-pre')||'', suf: el.getAttribute('data-suf')||''
+      });
+    });
+  };
+  // Confete
+  window.gamiConfete = function(opts){
+    opts = opts||{}; if(reduz()) return;
+    var n = opts.n||80, cores = opts.cores||['#EF9F27','#2E7D32','#1AB8F0','#EC4899','#FFD54F','#9333EA'];
+    var ox = (opts.x!=null)?opts.x:window.innerWidth/2;
+    for(var i=0;i<n;i++){
+      var d=document.createElement('div'); d.className='g-conf';
+      d.style.background=cores[i%cores.length];
+      d.style.left=(ox+(Math.random()-.5)*Math.min(window.innerWidth*0.8,600))+'px';
+      d.style.top=((opts.y!=null?opts.y:-12))+'px';
+      d.style.animationDuration=(1.6+Math.random()*1.4)+'s';
+      d.style.animationDelay=(Math.random()*.25)+'s';
+      d.style.transform='rotate('+(Math.random()*360)+'deg)';
+      if(Math.random()>.5) d.style.borderRadius='50%';
+      document.body.appendChild(d);
+      (function(node){ setTimeout(function(){ node.remove(); },3400); })(d);
+    }
+  };
+  // Celebração (subir de patente, conquista, meta batida...)
+  window.gamiCelebrar = function(titulo, sub, emoji){
+    if(document.querySelector('.g-celebra-ov')) return;
+    var ov=document.createElement('div'); ov.className='g-celebra-ov';
+    ov.onclick=function(e){ if(e.target===ov) ov.remove(); };
+    ov.innerHTML='<div class="g-celebra-card">'
+      +'<div style="font-size:54px;line-height:1">'+(emoji||'🎉')+'</div>'
+      +'<div style="font-size:18px;font-weight:800;color:#1B5E20;margin-top:8px">'+(titulo||'Parabéns!')+'</div>'
+      +(sub?'<div style="font-size:13px;color:var(--text2,#555);margin-top:4px">'+sub+'</div>':'')
+      +'<button onclick="this.closest(\'.g-celebra-ov\').remove()" style="margin-top:16px;padding:8px 20px;border:none;border-radius:9px;background:#2E7D32;color:white;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit">Show!</button>'
+    +'</div>';
+    document.body.appendChild(ov);
+    gamiConfete({n:120});
+    try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
+  };
+  // Skeleton de loading
+  window.gamiSkeleton = function(el, linhas){
+    if(!el) return; linhas=linhas||3; var h='';
+    for(var i=0;i<linhas;i++){ h+='<div class="g-skeleton" style="height:14px;margin:8px 0;width:'+(60+Math.random()*35).toFixed(0)+'%"></div>'; }
+    el.innerHTML=h;
+  };
+  // Ripple em clique (qualquer elemento com classe .g-ripple-host)
+  document.addEventListener('click', function(e){
+    var host = e.target.closest && e.target.closest('.g-ripple-host');
+    if(!host || reduz()) return;
+    var r=host.getBoundingClientRect(), s=Math.max(r.width,r.height);
+    var rip=document.createElement('span'); rip.className='g-ripple';
+    rip.style.width=rip.style.height=s+'px';
+    rip.style.left=(e.clientX-r.left-s/2)+'px';
+    rip.style.top=(e.clientY-r.top-s/2)+'px';
+    host.appendChild(rip); setTimeout(function(){ rip.remove(); },650);
+  }, true);
+
+  // Shake do sino quando chega notificação
+  window.gamiShakeSino = function(){
+    if(reduz()) return;
+    var b = document.getElementById('gami-bell') || document.querySelector('[onclick*="gami-bell"], .gami-bell-btn');
+    if(b){ b.classList.remove('g-shake'); void b.offsetWidth; b.classList.add('g-shake'); }
+  };
+
+  // Sucesso de ponto: checkmark desenhando + confete leve (substitui o alert)
+  window.gamiPontoOk = function(msg){
+    var txt = (msg||'Ponto registrado!').replace(/^✅\s*/, '');
+    if(reduz()){ alert('✅ '+txt); return; }
+    var ov=document.createElement('div'); ov.className='g-celebra-ov';
+    ov.onclick=function(){ ov.remove(); };
+    ov.innerHTML='<div class="g-celebra-card" style="max-width:300px">'
+      +'<svg width="76" height="76" viewBox="0 0 52 52" style="display:block;margin:0 auto">'
+        +'<circle cx="26" cy="26" r="24" fill="none" stroke="#2E7D32" stroke-width="3" style="opacity:.25"/>'
+        +'<path d="M14 27 l8 8 l16 -18" fill="none" stroke="#2E7D32" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:48;stroke-dashoffset:48;animation:gCheckDraw .5s .15s ease-out forwards"/>'
+      +'</svg>'
+      +'<div style="font-size:14px;font-weight:700;color:#1B5E20;margin-top:12px;line-height:1.45">'+txt.replace(/\n/g,'<br>')+'</div>'
+    +'</div>';
+    document.body.appendChild(ov);
+    gamiConfete({n:60});
+    try{ if(navigator.vibrate) navigator.vibrate(30); }catch(e){}
+    setTimeout(function(){ if(ov.parentNode) ov.remove(); }, 2800);
+  };
+})();
 </script>
 </html>
