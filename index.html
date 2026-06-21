@@ -1,4 +1,4 @@
-<!-- v27.77 - FIX 504 IA de vez: TODAS as chamadas blog-ai agora usam haiku + tokens capados (2000/2200->1200), antes varias usavam modelo default lento com 2000+ tokens e estouravam os 10s da Netlify. Mensagem de erro nao culpa mais credito (era timeout) - 21/06/2026 -->
+<!-- v27.78 - Card da rede trocado: INTELIGENCIA DA REDE (IA instavel) virou VISAO GERAL DA REDE com dados reais do ranking_cidades_mes RPC (KPIs + mini-ranking por cidade, sem IA/504). + Fix prompt empresa: valor da corrida e taxa de entrega, nao ticket do restaurante - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -5121,10 +5121,10 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <!-- 🤖 BLOCO IA DA REDE (no topo) -->
     <div id="cid-ia-rede" class="cid-ia-bloco" style="margin-bottom:14px;padding:18px 20px;background:linear-gradient(135deg,#F9F6FF,#F0E9FB);border-radius:14px;border:1px solid #D6C7F0;position:relative;overflow:hidden;animation:cidFadeUp .4s ease both">
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
-        <div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);flex-shrink:0;font-size:16px">🤖</div>
+        <div style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);flex-shrink:0;font-size:16px">📊</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#5B21B6;text-transform:uppercase;margin-bottom:2px">Inteligência da Rede</div>
-          <div style="font-size:11px;color:#7B4FCE">Análise da operação das 11 cidades</div>
+          <div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:#5B21B6;text-transform:uppercase;margin-bottom:2px">Visão Geral da Rede</div>
+          <div style="font-size:11px;color:#7B4FCE">Operação real das cidades · mês atual</div>
         </div>
         <button id="cid-ia-btn-atualizar" onclick="cidIaAtualizar()" style="padding:6px 12px;border:1px solid #8B5CF6;border-radius:7px;background:white;color:#5B21B6;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;white-space:nowrap" title="Forçar nova análise">🔄 Atualizar</button>
       </div>
@@ -26053,6 +26053,53 @@ function _cidEhGestorRestrito(){
 function _cidIaDataBR(ymd){
   try { var p = String(ymd).split('-'); return p[2]+'/'+p[1]; } catch(e){ return ymd; }
 }
+// 🆕 v27.78: VISÃO GERAL DA REDE — dados reais do ranking RPC (confiável),
+// substitui a antiga análise por IA que era instável no free tier.
+async function cidVisaoGeralRede(){
+  var conteudo = document.getElementById('cid-ia-conteudo');
+  var meta = document.getElementById('cid-ia-meta');
+  var card = document.getElementById('cid-ia-rede');
+  if(!conteudo) return;
+  if(typeof _cidEhGestorRestrito === 'function' && _cidEhGestorRestrito()){
+    if(card) card.style.display = 'none';
+    return;
+  }
+  conteudo.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--text3);font-size:12px;font-style:italic"><div class="cid-ia-spinner" style="width:14px;height:14px;border:2px solid #D6C7F0;border-top-color:#8B5CF6;border-radius:50%;animation:cidIaSpin .8s linear infinite"></div>Carregando visão da rede...</div>';
+  var lista = null;
+  try { lista = (typeof _rankingBuscarSupabase === 'function') ? await _rankingBuscarSupabase() : null; } catch(e){}
+  if(!lista || !lista.length){
+    conteudo.innerHTML = '<div style="font-size:12px;color:var(--text3)">Sem dados da rede no momento. Tente novamente em instantes.</div>';
+    return;
+  }
+  var nomePorSlug = {};
+  try { (getCidadesData()||[]).forEach(function(c){ if(typeof _vgSlug==='function') nomePorSlug[_vgSlug(c.nome)] = c.nome; }); } catch(e){}
+  function _nomeCidade(slug){
+    if(nomePorSlug[slug]) return nomePorSlug[slug];
+    return String(slug||'').split('-').map(function(w){ return w.charAt(0).toUpperCase()+w.slice(1); }).join(' ');
+  }
+  var totC=0, totF=0, totX=0;
+  lista.forEach(function(r){ totC+=(+r.corridas_total||0); totF+=(+r.corridas_finalizadas||0); totX+=(+r.corridas_canceladas||0); });
+  var taxaFin = totC>0 ? Math.round(totF/totC*100) : 0;
+  var taxaCanc = totC>0 ? Math.round(totX/totC*100) : 0;
+  var ord = lista.slice().sort(function(a,b){ return (+b.corridas_total||0)-(+a.corridas_total||0); });
+  var maxC = (+ord[0].corridas_total)||1;
+  var fmt = function(n){ return (+n||0).toLocaleString('pt-BR'); };
+  var kpis = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'
+    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:var(--text);line-height:1">'+fmt(totC)+'</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">corridas · rede</div></div>'
+    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:#1D9E75;line-height:1">'+taxaFin+'%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">finalização</div></div>'
+    + '<div style="background:var(--surface2);border-radius:10px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:900;color:'+(taxaCanc>=15?'#E24B4A':'#EF9F27')+';line-height:1">'+taxaCanc+'%</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-top:3px">cancelamento</div></div>'
+  + '</div>';
+  var linhas = ord.map(function(r, i){
+    var nome = _nomeCidade(r.cidade_slug);
+    var c = +r.corridas_total||0, f = +r.corridas_finalizadas||0;
+    var tf = c>0 ? Math.round(f/c*100) : 0;
+    var pct = Math.round(c/maxC*100);
+    var medalha = i===0?'🥇':i===1?'🥈':i===2?'🥉':'<span style="display:inline-block;width:16px;text-align:center;color:var(--text3);font-size:10px;font-weight:700">'+(i+1)+'</span>';
+    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><div style="width:18px;text-align:center;flex-shrink:0;font-size:12px">'+medalha+'</div><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span style="font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nome+'</span><span style="font-size:11px;color:var(--text2);flex-shrink:0;margin-left:6px">'+fmt(c)+' · '+tf+'% fin.</span></div><div style="height:5px;background:var(--surface);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#8B5CF6,#A78BFA);border-radius:3px"></div></div></div></div>';
+  }).join('');
+  conteudo.innerHTML = kpis + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:6px">Ranking de movimento · mês</div>' + linhas;
+  if(meta) meta.innerHTML = '📊 Dados reais da operação · atualizado agora';
+}
 async function cidIaAtualizar(forcar){
   var btn = document.getElementById('cid-ia-btn-atualizar');
   var conteudo = document.getElementById('cid-ia-conteudo');
@@ -26067,6 +26114,9 @@ async function cidIaAtualizar(forcar){
     if(_cardIaRede) _cardIaRede.style.display = 'none';
     return;
   }
+
+  // 🆕 v27.78: card mostra VISÃO GERAL DA REDE (dados reais), não mais IA instável.
+  return cidVisaoGeralRede();
 
   var hojeStr = new Date().toISOString().slice(0,10);   // YYYY-MM-DD
   var CFG_KEY = 'ia_rede_analise_diaria';                // tabela configuracoes (compartilhado)
@@ -27721,7 +27771,7 @@ async function empAnalisarIA(nomeEncoded){
     + '- Pedidos semana anterior: ' + semAnt.length + '\n'
     + '- Total nos últimos 45 dias: ' + corridas45.length + ' (' + fin.length + ' finalizados, ' + can.length + ' cancelados)\n'
     + '- Taxa de cancelamento: ' + taxaCanc + '%\n'
-    + '- Ticket médio: R$ ' + ticket.toFixed(2) + '\n'
+    + '- Valor médio por corrida (taxa da ENTREGA paga ao motoboy, NÃO o valor gasto no restaurante; não classifique como ticket alto/baixo): R$ ' + ticket.toFixed(2) + '\n'
     + '- Último pedido: ' + (diasSemPedir===999?'nunca registrado':'há '+diasSemPedir+' dias') + '\n\n'
     + 'Em 3-5 frases curtas: diagnóstico breve + 3 ações sugeridas pra atendimento/comercial agir. Tom direto, sem rodeios. Sem markdown, sem emoji, texto corrido.';
 
