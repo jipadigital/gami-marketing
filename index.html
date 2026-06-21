@@ -1,4 +1,4 @@
-<!-- v27.82 - Card de Cidades virou RESUMO DO DIA: corridas de hoje por cidade (count na machine_corridas, 11 paralelos com timeout) + bloco de ALERTAS (cidade parada hoje, cancelamento >=15%, finalizacao <80%) + SAUDE por cidade (fin/canc % colorido). Resolve o descasamento com o ranking do dashboard (que e volume/entregas do mes) mostrando outro angulo - 21/06/2026 -->
+<!-- v27.83 - Relatorio mensal da cidade cortava no meio das ACOES (estouro de tokens): prompt pedia 9 secoes pesadas incl. re-listar TOP5 empresas+motoboys, e as ACOES no fim nao cabiam em 1200 tokens. Enxugado pra 7 secoes concisas (TOP3 em vez de TOP5, secoes mais curtas, ACOES marcada obrigatoria) + teto subiu 1200->1400 - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -24098,18 +24098,14 @@ async function relatorioMensalCidade(cidadeId, forceNew){
     +'• TOP 5 EMPRESAS (concentração '+m.pctConcentracaoTop5+'%): '+top5EmpTxt+'\n'
     +'• TOP 10 MOTOBOYS: '+top10MotoTxt+'\n'
     +'• Distribuição motoboys (por nº corridas/mês): '+(distMoto.ate5||0)+' até5/'+(distMoto.de5a20||0)+' 5-20/'+(distMoto.de20a50||0)+' 20-50/'+(distMoto.mais50||0)+' 50+\n\n'
-    +'Estrutura OBRIGATÓRIA (8 seções, sem markdown, sem ## ou **):\n\n'
-    +'RESUMO EXECUTIVO DO MÊS\n(3-4 bullets curtos: números-chave + veredito)\n\n'
-    +'RESUMO FINANCEIRO\n• Receita e variação\n• Ticket médio\n• Receita não capturada\n\n'
-    +'PERFORMANCE OPERACIONAL\n(volume, conclusão, cancelamentos — 2-3 frases)\n\n'
-    +'SAÚDE DA REDE\n• Engajamento motoboys ('+pctMot+'%) — saudável ou preocupante?\n• Ativação empresas ('+pctEmp+'%)\n• Riscos identificados\n\n'
-    +'MOTOBOYS DA CIDADE\n• Engajamento da rede: '+m.motoboysAtivosCount+' ATIVOS de '+m.motoboysCadastrados+' cadastrados ('+pctMot+'%)\n• Distribuição por performance: '+(distMoto.mais50||0)+' elite (50+), '+(distMoto.de20a50||0)+' alta (20-50), '+(distMoto.de5a20||0)+' média (5-20), '+(distMoto.ate5||0)+' baixa (até 5)\n• Análise da saúde operacional: a rede está balanceada ou com risco de dependência em poucos motoboys?\n\n'
-    +'CONCENTRAÇÃO E DEPENDÊNCIA\n('+m.pctConcentracaoTop5+'% nas top 5 — saudável? Risco?)\n\n'
-    +'RECONHECIMENTOS DO MÊS\n'
-    +'🏆 TOP 5 EMPRESAS: liste as 5 com nome e número de corridas dos dados acima\n'
-    +'🏍️ TOP 5 MOTOBOYS: liste os 5 com nome e corridas. Destaque o motoboy do mês (#1)\n\n'
-    +'AÇÕES PRO PRÓXIMO MÊS\n• 5 ações concretas pra '+(c.gestor||'gestor')+'\n\n'
-    +'META PRINCIPAL DO MÊS\n(1 meta mensurável em 3 frases com KPI)\n\n'
+    +'Estrutura (sem markdown, sem ## nem **). SEJA CONCISO: no máximo 3 frases ou 4 bullets por seção, pra o relatório caber por completo (~600 palavras):\\n\\n'
+    +'RESUMO EXECUTIVO DO MÊS\\n(3 bullets curtos: números-chave + veredito)\\n\\n'
+    +'RESUMO FINANCEIRO\\n• Receita e variação • Ticket médio • Receita não capturada\\n\\n'
+    +'PERFORMANCE OPERACIONAL\\n(volume, conclusão, cancelamentos — 2 frases)\\n\\n'
+    +'SAÚDE E RISCOS\\n• Motoboys ('+pctMot+'% engajados; '+(distMoto.mais50||0)+' elite 50+, '+(distMoto.ate5||0)+' baixos até5) • Empresas ('+pctEmp+'% ativadas) • Concentração top5 '+m.pctConcentracaoTop5+'% — risco principal\\n\\n'
+    +'RECONHECIMENTOS DO MÊS\\n🏆 TOP 3 EMPRESAS (nome + corridas) · 🏍️ TOP 3 MOTOBOYS (nome + corridas, destaque o #1 do mês)\\n\\n'
+    +'AÇÕES PRO PRÓXIMO MÊS\\n(4 ações concretas pra '+(c.gestor||'gestor')+', cada uma CURTA com responsável e meta. SEÇÃO OBRIGATÓRIA — escreva as 4 por completo, não corte aqui.)\\n\\n'
+    +'META PRINCIPAL DO MÊS\\n(1 meta mensurável com KPI, 2 frases)\\n\\n'
     +'Tom executivo, direto. Português Brasil.';
   
   try {
@@ -24127,7 +24123,7 @@ async function relatorioMensalCidade(cidadeId, forceNew){
         var r = await fetch('/.netlify/functions/blog-ai', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ prompt: prompt, max_tokens: 1200, model: 'claude-haiku-4-5-20251001' })
+          body: JSON.stringify({ prompt: prompt, max_tokens: 1400, model: 'claude-haiku-4-5-20251001' })
         });
         if(r.ok){ resp = r; break; }
         ultimoErro = 'HTTP '+r.status;
