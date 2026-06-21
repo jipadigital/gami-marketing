@@ -1,4 +1,4 @@
-<!-- v27.85 - Patente Gami virou showpiece animado: emoji flutua + brilho verde pulsante + zoom no hover, varredura de luz cruzando o card, barra de progresso com listras diagonais fluindo, emoji de fundo flutuando, badges com pop. + Entrada suave (fade-up) em TODAS as telas ao navegar + micro-lift nos cards. Tudo CSS/GPU, respeita prefers-reduced-motion - 21/06/2026 -->
+<!-- v27.86 - +14 badges novos: 4 patentes (Broto/Arvore/Estrela/Lenda via pontos), Inabalavel 60d + Centuriao 100d (streak), Pulse Voz Ativa 30/Termometro 100/Bom Humor 7d positivos seguidos (conta de pulse_votos), Reconhecido 1/Querido 10/Coracao de Ouro 25 (reconhecimentos_pares), Colecionador 15 badges, Tri-Perfeito raro (1o+30d+Func do Mes). Helpers _pulseStatsPessoa/_contarReconhecimentos/_contarBadges - 21/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -10796,7 +10796,22 @@ var BADGES_CATALOGO = {
   'quinzena_fogo':        { nome: 'Quinzena de Fogo',   emoji: '🔥', desc: '15 dias seguidos de atividade' },
   'primeiro_ranking':     { nome: 'Nº 1 do Mês',        emoji: '🥇', desc: 'Chegou ao 1º lugar do ranking do mês' },
   'subiu_patente':        { nome: 'Subiu Degrau',       emoji: '⬆️', desc: 'Subiu de patente (ex: Sementinha → Broto)' },
-  'aniversariante_badge': { nome: 'Aniversariante',     emoji: '🎂', desc: 'No dia do seu aniversário' }
+  'aniversariante_badge': { nome: 'Aniversariante',     emoji: '🎂', desc: 'No dia do seu aniversário' },
+  // 🆕 v27.86 — leva nova de badges (patentes, ponto, pulse, reconhecimento, raros)
+  'patente_broto':    { nome: 'Virou Broto',      emoji: '🌿', desc: 'Alcançou a patente Broto Gâmi (500 pts)' },
+  'patente_arvore':   { nome: 'Virou Árvore',     emoji: '🌳', desc: 'Alcançou a patente Árvore Gâmi (1.500 pts)' },
+  'patente_estrela':  { nome: 'Virou Estrela',    emoji: '🌟', desc: 'Alcançou a patente Estrela Gâmi (4.000 pts)' },
+  'patente_lenda':    { nome: 'Lenda Gâmi',       emoji: '🏆', desc: 'Alcançou a patente máxima: Lenda Gâmi (10.000 pts)' },
+  'inabalavel_60':    { nome: 'Inabalável',       emoji: '🗿', desc: '60 dias seguidos de atividade' },
+  'centuriao_100':    { nome: 'Centurião',        emoji: '🌘', desc: '100 dias seguidos de atividade' },
+  'pulse_voz_ativa':  { nome: 'Voz Ativa',        emoji: '🗳️', desc: 'Votou no Pulse 30 vezes' },
+  'pulse_bom_humor':  { nome: 'Bom Humor',        emoji: '☀️', desc: '7 dias seguidos votando positivo no Pulse' },
+  'pulse_termometro': { nome: 'Termômetro',       emoji: '🌡️', desc: 'Votou no Pulse 100 vezes' },
+  'reconhecido':      { nome: 'Reconhecido',      emoji: '🤗', desc: 'Recebeu o primeiro reconhecimento' },
+  'querido_equipe':   { nome: 'Querido da Equipe',emoji: '🏅', desc: '10 reconhecimentos recebidos' },
+  'coracao_ouro':     { nome: 'Coração de Ouro',  emoji: '🌻', desc: '25 reconhecimentos recebidos' },
+  'colecionador':     { nome: 'Colecionador',     emoji: '💎', desc: 'Desbloqueou 15 badges' },
+  'tri_perfeito':     { nome: 'Tri-Perfeito',     emoji: '🦄', desc: '1º lugar + 30 dias seguidos + Funcionário do Mês, tudo no mesmo momento', pontos_extra: 50 }
 };
 
 /* PATENTES (acumulado vitalício) */
@@ -10906,6 +10921,46 @@ async function _contarTarefasConcluidas(pessoaId){
 }
 
 // Orquestrador: roda os checks de badge AUTOMÁTICOS pra uma pessoa (a logada).
+// 🆕 v27.86 — helpers pros novos badges
+// Conta votos no Pulse + maior sequência de dias positivos (positivos = 😊 💪 🙏)
+async function _pulseStatsPessoa(pessoaId){
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/pulse_votos?usuario_id=eq.'+encodeURIComponent(pessoaId)+'&select=emoji,data&order=data.asc', { headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
+    if(!r.ok) return { total:0, maxPositivosSeguidos:0 };
+    var arr = await r.json();
+    if(!Array.isArray(arr)) return { total:0, maxPositivosSeguidos:0 };
+    var POS = ['😊','💪','🙏'];
+    var diasPos = {};
+    arr.forEach(function(v){ if(v && POS.indexOf(v.emoji)>=0 && v.data) diasPos[String(v.data).slice(0,10)]=true; });
+    var dias = Object.keys(diasPos).sort();
+    var maxSeg=0, atual=0, prev=null;
+    dias.forEach(function(d){
+      if(prev){
+        var diff = Math.round((new Date(d+'T00:00:00') - new Date(prev+'T00:00:00'))/86400000);
+        atual = (diff===1) ? atual+1 : 1;
+      } else { atual = 1; }
+      if(atual>maxSeg) maxSeg=atual;
+      prev=d;
+    });
+    return { total: arr.length, maxPositivosSeguidos: maxSeg };
+  } catch(e){ return { total:0, maxPositivosSeguidos:0 }; }
+}
+// Conta reconhecimentos recebidos por uma pessoa (tabela reconhecimentos_pares)
+async function _contarReconhecimentos(pessoaId){
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/reconhecimentos_pares?para_pessoa_id=eq.'+encodeURIComponent(pessoaId)+'&select=para_pessoa_id', { headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'count=exact'} });
+    var cr = r.headers.get('content-range'); if(cr) return parseInt((cr.split('/')[1]||'0'),10);
+    var a = await r.json(); return Array.isArray(a)?a.length:0;
+  } catch(e){ return 0; }
+}
+// Conta badges desbloqueados por uma pessoa (pro Colecionador)
+async function _contarBadges(pessoaId){
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/badges_desbloqueadas?pessoa_id=eq.'+encodeURIComponent(pessoaId)+'&select=badge_id', { headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Prefer':'count=exact'} });
+    var cr = r.headers.get('content-range'); if(cr) return parseInt((cr.split('/')[1]||'0'),10);
+    var a = await r.json(); return Array.isArray(a)?a.length:0;
+  } catch(e){ return 0; }
+}
 async function motorBadges(pessoa){
   if(!pessoa || !pessoa.id) return;
   if(typeof _ehIdTeste === 'function' && _ehIdTeste(pessoa.id)) return;
@@ -10939,6 +10994,8 @@ async function motorBadges(pessoa){
     if(maiorStreak >= 7)  await desbloquearBadge(pessoa, 'semana_perfeita');
     if(maiorStreak >= 15) await desbloquearBadge(pessoa, 'quinzena_fogo');
     if(maiorStreak >= 30) await desbloquearBadge(pessoa, 'imparavel_30dias');
+    if(maiorStreak >= 60) await desbloquearBadge(pessoa, 'inabalavel_60');
+    if(maiorStreak >= 100) await desbloquearBadge(pessoa, 'centuriao_100');
   } catch(e){}
 
   // 3) Caça-tarefas (total concluído: 50 / 100 / 500)
@@ -10960,6 +11017,10 @@ async function motorBadges(pessoa){
   // então não dispara em cima do estado atual — só num avanço futuro real).
   try {
     var totalP = parseInt(localStorage.getItem('gami_xp_' + pessoa.id) || '0', 10) || 0;
+    if(totalP >= 500)   await desbloquearBadge(pessoa, 'patente_broto');
+    if(totalP >= 1500)  await desbloquearBadge(pessoa, 'patente_arvore');
+    if(totalP >= 4000)  await desbloquearBadge(pessoa, 'patente_estrela');
+    if(totalP >= 10000) await desbloquearBadge(pessoa, 'patente_lenda');
     var patAtual = (typeof obterPatente === 'function') ? obterPatente(totalP) : null;
     if(patAtual){
       var idxAtual = PATENTES.findIndex(function(x){ return x.id === patAtual.id; });
@@ -10977,8 +11038,33 @@ async function motorBadges(pessoa){
       if(rk && rk.length){
         if(rk[0] && rk[0].pessoa_id === pessoa.id) await desbloquearBadge(pessoa, 'primeiro_ranking');
         if(rk.slice(0,10).some(function(x){ return x && x.pessoa_id === pessoa.id; })) await desbloquearBadge(pessoa, 'top10_primeira_vez');
+        // 🦄 Tri-Perfeito: 1º lugar + 30 dias seguidos + Funcionário do Mês, tudo junto
+        if(rk[0] && rk[0].pessoa_id === pessoa.id && (maiorStreak||0) >= 30 && _badgeJaTem(pessoa.id, 'funcionario_mes_badge')){
+          await desbloquearBadge(pessoa, 'tri_perfeito');
+        }
       }
     }
+  } catch(e){}
+
+  // 7) Pulse — Voz Ativa (30 votos) / Termômetro (100) / Bom Humor (7 dias positivos seguidos)
+  try {
+    var ps = await _pulseStatsPessoa(pessoa.id);
+    if(ps.total >= 30)  await desbloquearBadge(pessoa, 'pulse_voz_ativa');
+    if(ps.total >= 100) await desbloquearBadge(pessoa, 'pulse_termometro');
+    if(ps.maxPositivosSeguidos >= 7) await desbloquearBadge(pessoa, 'pulse_bom_humor');
+  } catch(e){}
+
+  // 8) Reconhecimentos recebidos — 1 / 10 / 25
+  try {
+    var nRec = await _contarReconhecimentos(pessoa.id);
+    if(nRec >= 1)  await desbloquearBadge(pessoa, 'reconhecido');
+    if(nRec >= 10) await desbloquearBadge(pessoa, 'querido_equipe');
+    if(nRec >= 25) await desbloquearBadge(pessoa, 'coracao_ouro');
+  } catch(e){}
+
+  // 9) Colecionador — 15+ badges (checa por último, já contando os desta rodada)
+  try {
+    if(await _contarBadges(pessoa.id) >= 15) await desbloquearBadge(pessoa, 'colecionador');
   } catch(e){}
 }
 
