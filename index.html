@@ -1,4 +1,4 @@
-<!-- v27.93 - Tirado o botao 'Concluir todas (sem pontuar)' + texto explicativo do card de Tarefas atrasadas, os toasts 'Concluida fora do prazo - sem pontos' (tfToggle) e 'Concluida (sem pontos)' (atrasada individual), e o tooltip. Funcao dashConcluirAtrasadas removida. Card de atrasadas continua (lista + concluir 1 a 1, silencioso). Regra de NAO pontuar tarefa atrasada MANTIDA (silenciosa no hookTarefaConcluida) - 22/06/2026 -->
+<!-- v27.95 - BUGFIX anti-farming de pontos em tarefas: tfToggle dava +1 ponto TODA vez que marcava feito (desmarcar/remarcar = farming infinito; tarefa_concluida nao tem limite_dia). Agora flag .pontuada pontua 1x por tarefa (local + cache delegado). Foco do dia (dashMarcarFocoFeito) idem: so pontua na 1a vez do dia (guarda por gami_meu_foco_feito). Diario/semana/mes/atrasadas: contagem ok. v27.94 ja corrigiu atrasada que voltava - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -35520,8 +35520,12 @@ function mfFocoWidgets(ativo){
 function _tfAtrasadasMinhas(){
   var hojeStr = new Date().toISOString().slice(0,10);
   var todas = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
+  var vistos = {};
   return todas.filter(function(t){
-    return t && !t.feito && !t.concluida && t.prazo && t.prazo < hojeStr && !t.fixa;
+    if(!(t && !t.feito && !t.concluida && t.prazo && t.prazo < hojeStr && !t.fixa)) return false;
+    if(vistos[t.id]) return false; // 🆕 v27.94: dedupe — mesma tarefa em mais de um bucket aparece 1x
+    vistos[t.id] = true;
+    return true;
   });
 }
 // Marca uma tarefa como feita na chave/dia em que ela estiver (qualquer bucket), SEM pontos
@@ -35530,6 +35534,7 @@ function _tfMarcarFeitaCrossBucket(id){
   if(!pid || pid === 'anon') return false;
   var prefixMeu = TF_KEY_PREFIX + pid + '_';
   var nowIso = new Date().toISOString();
+  var any = false;
   try {
     for(var i = 0; i < localStorage.length; i++){
       var k = localStorage.key(i);
@@ -35543,10 +35548,12 @@ function _tfMarcarFeitaCrossBucket(id){
           arr[j].feito = true; arr[j].feitaEm = nowIso; changed = true;
         }
       }
-      if(changed){ localStorage.setItem(k, JSON.stringify(arr)); return true; }
+      // 🆕 v27.94: marca em TODOS os buckets que tiverem essa tarefa (NÃO para no primeiro)
+      // — atrasada que está duplicada em outro bucket voltava porque só uma cópia era marcada
+      if(changed){ localStorage.setItem(k, JSON.stringify(arr)); any = true; }
     }
   } catch(e){}
-  return false;
+  return any;
 }
 function _tfSyncConcluidaSemPonto(t){
   try {
@@ -39617,13 +39624,25 @@ function tfToggle(tipo, id, sufixo){
   var lista=getTarefas(tipo,sufixo);
   var i=lista.findIndex(function(t){return t.id===id;});
   var tarefaTocada=null;
-  if(i>=0){ lista[i].feito=!lista[i].feito; lista[i].feitaEm=lista[i].feito?new Date().toISOString():null; tarefaTocada=lista[i]; }
+  var jaPontuou=false; // 🆕 v27.95: trava anti-farming — pontua 1x por tarefa
+  if(i>=0){
+    jaPontuou = !!lista[i].pontuada;
+    lista[i].feito=!lista[i].feito;
+    lista[i].feitaEm=lista[i].feito?new Date().toISOString():null;
+    if(lista[i].feito && !jaPontuou) lista[i].pontuada=true;
+    tarefaTocada=lista[i];
+  }
   saveTarefas(tipo,sufixo,lista);
 
   // Tarefa delegada (vem do Supabase cache, não está no localStorage)
   if(!tarefaTocada && window._tfSupaCache){
     var sc=window._tfSupaCache.find(function(t){return t.id===id;});
-    if(sc){ sc.feito=!sc.feito; tarefaTocada={id:sc.id,texto:sc.texto,feito:sc.feito,delegada_por:sc.delegada_por,delegada_por_nome:sc.delegada_por_nome}; }
+    if(sc){
+      jaPontuou = !!sc.pontuada;
+      sc.feito=!sc.feito;
+      if(sc.feito && !jaPontuou) sc.pontuada=true;
+      tarefaTocada={id:sc.id,texto:sc.texto,feito:sc.feito,delegada_por:sc.delegada_por,delegada_por_nome:sc.delegada_por_nome};
+    }
   }
   // Sincroniza estado com Supabase
   if(tarefaTocada && typeof supaUpsert==='function'){
@@ -39645,8 +39664,8 @@ function tfToggle(tipo, id, sufixo){
         (uu?(uu.nome||uu.email):'Alguém')+' concluiu a tarefa', (tarefaTocada.texto||''),'tarefas');
     }
   }
-  // 🆕 Pontua a conclusão da tarefa (só quando MARCA como feita, não ao reabrir)
-  if(tarefaTocada && tarefaTocada.feito && typeof hookTarefaConcluida === 'function'){
+  // 🆕 Pontua a conclusão da tarefa (1x por tarefa: só na 1ª vez que vira feita)
+  if(tarefaTocada && tarefaTocada.feito && !jaPontuou && typeof hookTarefaConcluida === 'function'){
     try { hookTarefaConcluida(tarefaTocada); } catch(e){}
   }
 
@@ -39855,18 +39874,22 @@ function dashMarcarFocoFeito(){
   var hoje = new Date().toISOString().split('T')[0];
   // 🆕 v26.68: chave individual por usuário
   var key = _meuKey('gami_meu_foco_feito_', hoje);
+  var jaFeito = false; // 🆕 v27.95: trava anti-farming
+  try { jaFeito = localStorage.getItem(key) === '1'; } catch(e){}
   try { localStorage.setItem(key, '1'); } catch(e){}
   
   // Re-renderiza pra mostrar o estado "missão cumprida"
   if(typeof renderFocoDoDia === 'function') renderFocoDoDia();
   
-  // Dá pontos pela ação
-  try {
-    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
-    if(u && u.id && typeof atribuirPontos === 'function'){
-      atribuirPontos(u.id, 'tarefa_concluida', { descricao: 'Foco do dia concluído' });
-    }
-  } catch(e){}
+  // Dá pontos pela ação — só na 1ª vez do dia
+  if(!jaFeito){
+    try {
+      var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+      if(u && u.id && typeof atribuirPontos === 'function'){
+        atribuirPontos(u.id, 'tarefa_concluida', { descricao: 'Foco do dia concluído' });
+      }
+    } catch(e){}
+  }
   
   if(typeof toast === 'function') toast('🎯 Missão cumprida! Você arrasou hoje! 🎉', 'success');
 }
