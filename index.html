@@ -1,4 +1,4 @@
-<!-- v27.95 - BUGFIX anti-farming de pontos em tarefas: tfToggle dava +1 ponto TODA vez que marcava feito (desmarcar/remarcar = farming infinito; tarefa_concluida nao tem limite_dia). Agora flag .pontuada pontua 1x por tarefa (local + cache delegado). Foco do dia (dashMarcarFocoFeito) idem: so pontua na 1a vez do dia (guarda por gami_meu_foco_feito). Diario/semana/mes/atrasadas: contagem ok. v27.94 ja corrigiu atrasada que voltava - 22/06/2026 -->
+<!-- v27.96 - DESAFIOS: BUGFIX card 'Desafio Ativo' nao aparecia (lia localStorage gami_desafios_v1 nunca gravado; criacao salva no Supabase desafios_admin) - agora _rkRenderDesafioAtivo le do Supabase (async). Card bonito+animado (gradiente roxo, trofeu pulsando, chip de pontos shimmer dourado, countdown 'termina em X dias', alvo). Aba Desafios com mesmo visual + botoes Editar (modal pre-preenchido, PATCH) e Encerrar (admin). Modal serve criar(POST)/editar(PATCH). _desafiosCache p/ editar sem refetch. Respeita reduced-motion - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -42565,21 +42565,19 @@ function _rkRenderPodio(ranking){
 }
 
 // Renderiza desafio ativo na Visão Geral
-function _rkRenderDesafioAtivo(){
+async function _rkRenderDesafioAtivo(){
   var host = document.getElementById('rank-desafio-card');
   if(!host) return;
-  
-  // Tenta pegar desafio ativo
-  var desafios = [];
+  // 🆕 v27.96: lê do MESMO lugar que a criação grava (Supabase desafios_admin).
+  // Antes lia de localStorage 'gami_desafios_v1' (nunca gravado) → ficava sempre "Sem desafio ativo".
+  var ativo = null;
   try {
-    var raw = localStorage.getItem('gami_desafios_v1');
-    if(raw) desafios = JSON.parse(raw) || [];
+    var r = await fetch(SUPA_URL + '/rest/v1/desafios_admin?status=eq.ativo&order=data_inicio.desc&limit=1', { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+    if(r.ok){ var arr = await r.json(); ativo = (arr && arr[0]) || null; }
   } catch(e){}
-  
-  var ativo = desafios.find(function(d){ return d && d.status === 'ativo'; });
-  
+
   if(!ativo){
-    host.innerHTML = '<div class="card" style="padding:14px;background:linear-gradient(135deg,#F5F0FF,#E8DEFF);border:1px solid #D5C2F0;border-left:4px solid #8B5CF6">'
+    host.innerHTML = '<div class="card g-des-card" style="padding:14px;background:linear-gradient(135deg,#F5F0FF,#E8DEFF);border:1px solid #D5C2F0;border-left:4px solid #8B5CF6">'
       + '<div style="display:flex;align-items:center;gap:10px">'
         + '<div style="font-size:24px">🎯</div>'
         + '<div style="flex:1">'
@@ -42591,25 +42589,32 @@ function _rkRenderDesafioAtivo(){
     + '</div>';
     return;
   }
-  
-  var atual = ativo.atual || 0;
-  var meta = ativo.meta || 100;
-  var pct = Math.min(100, Math.round(atual / meta * 100));
-  
-  host.innerHTML = '<div class="card" style="padding:14px;background:linear-gradient(135deg,#FCE7F3,#FBCFE8);border:1px solid #F472B6;border-left:4px solid #E879F9">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap">'
-      + '<div>'
-        + '<div style="font-size:10px;font-weight:800;color:#A21CAF;text-transform:uppercase;letter-spacing:.5px">🎯 Desafio Ativo</div>'
-        + '<div style="font-family:\'Syne\',sans-serif;font-size:15px;font-weight:800;color:#86198F;margin-top:2px">' + (ativo.titulo || 'Desafio Gâmi') + '</div>'
+
+  var diasTxt = '';
+  try {
+    var fim = new Date((ativo.data_fim || '') + 'T23:59:59');
+    var dias = Math.ceil((fim - new Date()) / 86400000);
+    diasTxt = isNaN(dias) ? '' : (dias > 1 ? ('Termina em ' + dias + ' dias') : (dias === 1 ? 'Último dia!' : (dias === 0 ? 'Termina hoje!' : 'Encerrando')));
+  } catch(e){}
+
+  host.innerHTML = '<div class="card g-des-card" style="padding:0;overflow:hidden;border:none;background:linear-gradient(135deg,#7C3AED,#A21CAF,#DB2777)">'
+    + '<div style="padding:16px;color:#fff">'
+      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">'
+        + '<div style="display:flex;align-items:center;gap:9px">'
+          + '<span class="g-des-trophy" style="font-size:26px">🏆</span>'
+          + '<div>'
+            + '<div style="font-size:10px;font-weight:800;letter-spacing:1px;opacity:.85">DESAFIO ATIVO</div>'
+            + '<div style="font-family:\'Syne\',sans-serif;font-size:17px;font-weight:800;line-height:1.15">' + (ativo.titulo || 'Desafio Gâmi') + '</div>'
+          + '</div>'
+        + '</div>'
+        + '<span class="g-des-reward" style="padding:5px 11px;border-radius:20px;color:#5B3A00;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.18)">+' + (ativo.pontos_recompensa || 0) + ' pts</span>'
       + '</div>'
-      + '<button onclick="setRankTab(\'desafios\')" style="padding:7px 14px;border:none;border-radius:7px;background:#A21CAF;color:white;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Participar →</button>'
-    + '</div>'
-    + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">'
-      + '<div style="font-size:11.5px;color:#86198F;font-weight:700">'+atual+' / '+meta+'</div>'
-      + '<div style="flex:1;height:8px;background:white;border-radius:4px;overflow:hidden">'
-        + '<div class="rk-progress-bar" style="--rk-progress-val:'+pct+'%;background:linear-gradient(90deg,#E879F9,#A21CAF)"></div>'
+      + (ativo.descricao ? '<div style="font-size:12px;opacity:.93;margin-top:9px;line-height:1.4">' + ativo.descricao + '</div>' : '')
+      + '<div style="display:flex;align-items:center;gap:8px;margin-top:13px;flex-wrap:wrap">'
+        + (diasTxt ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700">⏳ ' + diasTxt + '</span>' : '')
+        + '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700;text-transform:capitalize">🎯 ' + (ativo.tipo_alvo || 'todos') + '</span>'
+        + '<button onclick="setRankTab(\'desafios\')" style="margin-left:auto;padding:7px 15px;border:none;border-radius:8px;background:#fff;color:#A21CAF;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Participar →</button>'
       + '</div>'
-      + '<div style="font-size:11px;color:#86198F;font-weight:700">'+pct+'%</div>'
     + '</div>'
   + '</div>';
 }
@@ -42864,20 +42869,34 @@ async function renderDesafios(){
     var url = SUPA_URL + '/rest/v1/desafios_admin?select=*&order=data_inicio.desc';
     var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
     var dados = r.ok ? await r.json() : [];
+    window._desafiosCache = dados; // 🆕 v27.96: cache p/ editar sem refetch
     var ativos = dados.filter(function(d){ return d.status === 'ativo'; });
     var encerrados = dados.filter(function(d){ return d.status !== 'ativo'; });
+    var admin = isAdminPontos();
     if(!ativos.length){
-      elAtivos.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:30px;margin-bottom:8px">🎯</div>Nenhum desafio ativo no momento.<br><span style="font-size:11px">'+(isAdminPontos()?'Clique em "+ Novo desafio" pra criar!':'Aguarde — Diretoria/Marketing cria desafios.')+'</span></div>';
+      elAtivos.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:30px;margin-bottom:8px">🎯</div>Nenhum desafio ativo no momento.<br><span style="font-size:11px">'+(admin?'Clique em "+ Novo desafio" pra criar!':'Aguarde — Diretoria/Marketing cria desafios.')+'</span></div>';
     } else {
       elAtivos.innerHTML = ativos.map(function(d){
-        return '<div class="card" style="margin-bottom:8px;border-left:3px solid var(--gami-blue)">'
-          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-          + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:700">'+d.titulo+'</div>'
-          + '<span class="chip chip-a">+'+d.pontos_recompensa+' pts</span>'
+        var diasTxt = '';
+        try { var fim = new Date((d.data_fim||'')+'T23:59:59'); var dias = Math.ceil((fim-new Date())/86400000); diasTxt = isNaN(dias)?'':(dias>1?('Termina em '+dias+' dias'):(dias===1?'Último dia!':(dias===0?'Termina hoje!':'Encerrando'))); } catch(e){}
+        return '<div class="card g-des-card" style="margin-bottom:10px;padding:0;overflow:hidden;border:none;background:linear-gradient(135deg,#7C3AED,#A21CAF,#DB2777)">'
+          + '<div style="padding:14px;color:#fff">'
+            + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">'
+              + '<div style="display:flex;align-items:center;gap:9px">'
+                + '<span class="g-des-trophy" style="font-size:24px">🏆</span>'
+                + '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;line-height:1.15">'+d.titulo+'</div>'
+              + '</div>'
+              + '<span class="g-des-reward" style="padding:5px 11px;border-radius:20px;color:#5B3A00;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.18)">+'+d.pontos_recompensa+' pts</span>'
+            + '</div>'
+            + (d.descricao ? '<div style="font-size:12px;opacity:.93;margin-top:9px;line-height:1.4">'+d.descricao+'</div>' : '')
+            + '<div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">'
+              + (diasTxt ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700">⏳ '+diasTxt+'</span>' : '')
+              + '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700;text-transform:capitalize">🎯 '+d.tipo_alvo+'</span>'
+              + (admin ? '<button onclick="desafioEditar(\''+d.id+'\')" style="margin-left:auto;padding:6px 12px;border:none;border-radius:8px;background:rgba(255,255,255,.92);color:#7C3AED;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">✏️ Editar</button>'
+                       + '<button onclick="desafioEncerrar(\''+d.id+'\')" style="padding:6px 12px;border:1px solid rgba(255,255,255,.6);border-radius:8px;background:transparent;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Encerrar</button>' : '')
+            + '</div>'
           + '</div>'
-          + '<div style="font-size:11px;color:var(--text3);margin-bottom:4px">'+(d.descricao||'')+'</div>'
-          + '<div style="font-size:10px;color:var(--text3)">Até '+d.data_fim+' · Alvo: '+d.tipo_alvo+'</div>'
-          + '</div>';
+        + '</div>';
       }).join('');
     }
     if(elEnc){
@@ -43356,24 +43375,31 @@ async function abrirPerfilGami(pessoaId){
 }
 
 /* Modal novo desafio (admin) */
-function abrirModalNovoDesafio(){
+function abrirModalNovoDesafio(d){
   if(!isAdminPontos()){ alert('⚠️ Apenas admin pode criar desafios.'); return; }
+  d = d || {};
+  var ehEdicao = !!d.id;
+  var hoje = new Date().toISOString().slice(0,10);
+  function esc(v){ return String(v==null?'':v).replace(/"/g,'&quot;'); }
   var html = '<div id="modal-novo-desafio" style="position:fixed;inset:0;background:rgba(11,37,66,0.6);z-index:9999;overflow-y:auto;padding:24px 14px;-webkit-overflow-scrolling:touch">'
     + '<div style="background:var(--surface);border-radius:14px;max-width:480px;width:100%;margin:0 auto;padding:20px">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700">🎯 Novo Desafio</div><button onclick="document.getElementById(\'modal-novo-desafio\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button></div>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px"><div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700">🎯 '+(ehEdicao?'Editar Desafio':'Novo Desafio')+'</div><button onclick="document.getElementById(\'modal-novo-desafio\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3)">×</button></div>'
     + '<div style="display:grid;gap:8px">'
-    + '<input id="des-titulo" class="inp" placeholder="Título (ex: Cidade que mais crescer)" style="width:100%">'
-    + '<textarea id="des-descricao" class="inp" placeholder="Descrição/regras" rows="3" style="width:100%;font-family:inherit"></textarea>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:11px;color:var(--text3)">Pontos</label><input id="des-pontos" type="number" class="inp" value="100" style="width:100%"></div><div><label style="font-size:11px;color:var(--text3)">Alvo</label><select id="des-alvo" class="sel" style="width:100%"><option value="cidade">Cidade</option><option value="pessoa">Pessoa</option><option value="todos">Todos</option></select></div></div>'
-    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:11px;color:var(--text3)">Início</label><input id="des-inicio" type="date" class="inp" value="'+new Date().toISOString().slice(0,10)+'" style="width:100%"></div><div><label style="font-size:11px;color:var(--text3)">Fim</label><input id="des-fim" type="date" class="inp" style="width:100%"></div></div>'
-    + '<button class="btn btn-primary" onclick="desafioCriar()" style="margin-top:6px">✓ Criar desafio</button>'
+    + '<input type="hidden" id="des-id" value="'+esc(d.id)+'">'
+    + '<input id="des-titulo" class="inp" placeholder="Título (ex: Cidade que mais crescer)" value="'+esc(d.titulo)+'" style="width:100%">'
+    + '<textarea id="des-descricao" class="inp" placeholder="Descrição/regras" rows="3" style="width:100%;font-family:inherit">'+esc(d.descricao)+'</textarea>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:11px;color:var(--text3)">Pontos</label><input id="des-pontos" type="number" class="inp" value="'+(d.pontos_recompensa||100)+'" style="width:100%"></div><div><label style="font-size:11px;color:var(--text3)">Alvo</label><select id="des-alvo" class="sel" style="width:100%"><option value="cidade">Cidade</option><option value="pessoa">Pessoa</option><option value="todos">Todos</option></select></div></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div><label style="font-size:11px;color:var(--text3)">Início</label><input id="des-inicio" type="date" class="inp" value="'+esc(d.data_inicio||hoje)+'" style="width:100%"></div><div><label style="font-size:11px;color:var(--text3)">Fim</label><input id="des-fim" type="date" class="inp" value="'+esc(d.data_fim)+'" style="width:100%"></div></div>'
+    + '<button class="btn btn-primary" onclick="desafioCriar()" style="margin-top:6px">✓ '+(ehEdicao?'Salvar alterações':'Criar desafio')+'</button>'
     + '</div></div></div>';
   var antigo = document.getElementById('modal-novo-desafio');
   if(antigo) antigo.remove();
   document.body.insertAdjacentHTML('beforeend', html);
+  if(d.tipo_alvo){ var sel = document.getElementById('des-alvo'); if(sel) sel.value = d.tipo_alvo; }
 }
 
 async function desafioCriar(){
+  var id = (document.getElementById('des-id')||{}).value;
   var titulo = (document.getElementById('des-titulo')||{}).value;
   var descricao = (document.getElementById('des-descricao')||{}).value;
   var pontos = parseInt((document.getElementById('des-pontos')||{}).value, 10);
@@ -43381,14 +43407,45 @@ async function desafioCriar(){
   var inicio = (document.getElementById('des-inicio')||{}).value;
   var fim = (document.getElementById('des-fim')||{}).value;
   if(!titulo || !pontos || !inicio || !fim){ alert('⚠️ Preencha título, pontos, datas'); return; }
+  var corpo = { titulo: titulo, descricao: descricao, pontos_recompensa: pontos, tipo_alvo: alvo, data_inicio: inicio, data_fim: fim };
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/desafios_admin', {
-      method: 'POST',
+    var url, metodo;
+    if(id){ url = SUPA_URL + '/rest/v1/desafios_admin?id=eq.' + encodeURIComponent(id); metodo = 'PATCH'; }
+    else { url = SUPA_URL + '/rest/v1/desafios_admin'; metodo = 'POST'; corpo.status = 'ativo'; corpo.criado_por = 'cleyton'; }
+    var r = await fetch(url, {
+      method: metodo,
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ titulo: titulo, descricao: descricao, pontos_recompensa: pontos, tipo_alvo: alvo, data_inicio: inicio, data_fim: fim, status: 'ativo', criado_por: 'cleyton' })
+      body: JSON.stringify(corpo)
     });
-    if(r.ok){ alert('✅ Desafio criado!'); document.getElementById('modal-novo-desafio').remove(); renderDesafios(); }
-    else { alert('❌ Erro ao criar'); }
+    if(r.ok){
+      alert(id ? '✅ Desafio atualizado!' : '✅ Desafio criado!');
+      var m = document.getElementById('modal-novo-desafio'); if(m) m.remove();
+      if(typeof renderDesafios === 'function') renderDesafios();
+      if(typeof _rkRenderDesafioAtivo === 'function') _rkRenderDesafioAtivo();
+    } else { alert('❌ Erro ao salvar'); }
+  } catch(e){ alert('❌ '+e.message); }
+}
+
+// 🆕 v27.96: editar / encerrar desafio (admin)
+function desafioEditar(id){
+  if(!isAdminPontos()){ alert('⚠️ Apenas admin.'); return; }
+  var d = (window._desafiosCache || []).find(function(x){ return String(x.id) === String(id); });
+  if(!d){ alert('Desafio não encontrado'); return; }
+  abrirModalNovoDesafio(d);
+}
+async function desafioEncerrar(id){
+  if(!isAdminPontos()){ alert('⚠️ Apenas admin.'); return; }
+  if(!confirm('Encerrar este desafio? Ele sai dos ativos e vai pros encerrados.')) return;
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/desafios_admin?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ status: 'encerrado' })
+    });
+    if(r.ok){
+      if(typeof renderDesafios === 'function') renderDesafios();
+      if(typeof _rkRenderDesafioAtivo === 'function') _rkRenderDesafioAtivo();
+    } else { alert('❌ Erro ao encerrar'); }
   } catch(e){ alert('❌ '+e.message); }
 }
 
@@ -54129,6 +54186,13 @@ function cidImprimirRelatorioAuto(id){
 .gmasc-wheel { transform-box:fill-box; transform-origin:center; animation:gmascWheel 1.1s linear infinite }
 .gmasc-pop { animation:gmascPop .6s ease }
 @media (prefers-reduced-motion:reduce){ .gmasc-rider,.gmasc-wheel,.gmasc-pop{ animation:none!important } }
+@keyframes gDesIn { 0%{opacity:0;transform:translateY(10px)} 100%{opacity:1;transform:translateY(0)} }
+@keyframes gDesPulse { 0%,100%{transform:scale(1) rotate(0)} 50%{transform:scale(1.12) rotate(-6deg)} }
+@keyframes gDesShimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.g-des-card { animation:gDesIn .5s ease both; box-shadow:0 6px 22px rgba(124,58,237,.28); }
+.g-des-trophy { display:inline-block; animation:gDesPulse 2.2s ease-in-out infinite; transform-origin:center; }
+.g-des-reward { background-image:linear-gradient(90deg,#FBBF24,#FFFFFF,#FBBF24); background-size:200% 100%; animation:gDesShimmer 2.6s linear infinite; }
+@media (prefers-reduced-motion:reduce){ .g-des-card,.g-des-trophy,.g-des-reward{ animation:none!important } }
 
 /* Emoji da patente: flutua + pulsa um brilho verde; no hover do card, dá um zoom */
 #dash-patente-emoji{ animation:gPatBob 3.2s ease-in-out infinite, gPatGlow 2.8s ease-in-out infinite; will-change:transform; }
