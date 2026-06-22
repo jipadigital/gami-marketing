@@ -1,4 +1,4 @@
-<!-- v27.96 - DESAFIOS: BUGFIX card 'Desafio Ativo' nao aparecia (lia localStorage gami_desafios_v1 nunca gravado; criacao salva no Supabase desafios_admin) - agora _rkRenderDesafioAtivo le do Supabase (async). Card bonito+animado (gradiente roxo, trofeu pulsando, chip de pontos shimmer dourado, countdown 'termina em X dias', alvo). Aba Desafios com mesmo visual + botoes Editar (modal pre-preenchido, PATCH) e Encerrar (admin). Modal serve criar(POST)/editar(PATCH). _desafiosCache p/ editar sem refetch. Respeita reduced-motion - 22/06/2026 -->
+<!-- v27.97 - TAREFAS RECORRENTES isolamento + limpeza Marketing. BUG: recorrentes ficavam em chave global gami_tf_recorrentes e eram geradas SEM pessoa_id, entao a recorrente Marketing 10h do Cleyton aparecia pra qualquer um que logasse no aparelho (ex Jheniffer). FIX: template nasce com pessoa_id; gerarTarefasRecorrentesDoDia so gera pra propria pessoa (legado sem dono so pro pe016) e carimba pessoa_id; guard de geracao por pessoa. LIMPEZA unica (1x/aparelho): remove templates Marketing e, nas listas, tira as do pe016 (feitas ou nao) e das demais so as nao-feitas (feitas das meninas ficam gravadas) - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -41209,6 +41209,7 @@ function tfSalvarModal(){
       cat: cat,
       obs: obs,
       recorrencia: recorrencia,
+      pessoa_id: (typeof getUsuarioLogado==='function' && getUsuarioLogado()) ? getUsuarioLogado().id : null,
       criadoEm: new Date().toISOString(),
       ativa: true
     });
@@ -41832,6 +41833,47 @@ function salvarTarefaRecorrente(t){
   saveTarefasRecorrentes(arr);
 }
 
+/* 🆕 v27.97: LIMPEZA ÚNICA — tarefas "Marketing" que vazaram via recorrente global.
+   Regra: remove templates recorrentes "Marketing"; nas listas, tira as suas (pe016,
+   feitas ou não) e, das demais pessoas, só o que NÃO está feito. O que as meninas
+   já concluíram (feito:true) fica gravado. Roda 1x por aparelho. */
+(function(){
+  try {
+    var TOKEN = 'gami_limpeza_mkt_10h_2026_06';
+    if(localStorage.getItem(TOKEN)) return;
+    var reMkt = /marketing/i;
+    var PREF = 'gami_tf_v3_';
+    // 1) Remove templates recorrentes "Marketing" (a origem do vazamento)
+    try {
+      var recs = JSON.parse(localStorage.getItem('gami_tf_recorrentes')||'[]');
+      if(Array.isArray(recs)){
+        var recsLimpo = recs.filter(function(t){ return !(t && reMkt.test(t.texto||'')); });
+        if(recsLimpo.length !== recs.length) localStorage.setItem('gami_tf_recorrentes', JSON.stringify(recsLimpo));
+      }
+    } catch(e){}
+    // 2) Varre TODOS os buckets de tarefas (gami_tf_v3_<pid>_...)
+    for(var i = localStorage.length - 1; i >= 0; i--){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf(PREF) !== 0) continue;
+      var resto = k.slice(PREF.length);
+      var pid = resto.replace(/_(d_.*|s_.*|m_.*|projetos|geral)$/, ''); // dono pelo nome da chave
+      var lista;
+      try { lista = JSON.parse(localStorage.getItem(k)||'[]'); } catch(e){ continue; }
+      if(!Array.isArray(lista)) continue;
+      var novo = lista.filter(function(t){
+        if(!t || !reMkt.test(t.texto||'')) return true;   // não é Marketing → mantém
+        if(pid === 'pe016') return false;                 // Cleyton → remove (feito ou não)
+        if(t.feito === true) return true;                 // menina, já feita → mantém (gravado)
+        return false;                                     // menina, não feita → remove (vazada)
+      });
+      if(novo.length !== lista.length){
+        try { localStorage.setItem(k, JSON.stringify(novo)); } catch(e){}
+      }
+    }
+    localStorage.setItem(TOKEN, '1');
+  } catch(e){ console.warn('[limpeza mkt]', e && e.message); }
+})();
+
 function deveAparecerHoje(recorrencia){
   if(!recorrencia) return false;
   var hoje = new Date();
@@ -41843,18 +41885,28 @@ function deveAparecerHoje(recorrencia){
 
 /* Roda toda vez que o site carrega: cria as tarefas do dia a partir dos templates recorrentes */
 function gerarTarefasRecorrentesDoDia(){
+  // 🆕 v27.97: pessoa-scoped. Sem login não gera (evita órfãs que vazam).
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var uid = (u && u.id) ? u.id : null;
+  if(!uid) return;
   var hoje = new Date();
   var hojeStr = hoje.toISOString().split('T')[0];
-  var jaGeradoKey = 'gami_tf_recorrentes_geradas_'+hojeStr;
+  var jaGeradoKey = 'gami_tf_recorrentes_geradas_'+hojeStr+'_'+uid; // guard por pessoa
   // Se já gerou hoje, pula
   if(localStorage.getItem(jaGeradoKey)) return;
-  
-  var templates = getTarefasRecorrentes().filter(function(t){ return t.ativa !== false; });
+
+  var templates = getTarefasRecorrentes().filter(function(t){
+    if(t.ativa === false) return false;
+    // Só gera recorrentes DA PRÓPRIA pessoa. Legado sem pessoa_id: só pro
+    // super_admin (pe016) — nunca vaza pras demais (era a causa do bug).
+    if(t.pessoa_id) return t.pessoa_id === uid;
+    return uid === 'pe016';
+  });
   if(!templates.length){ localStorage.setItem(jaGeradoKey, '1'); return; }
-  
+
   var diarias = getTarefas('diario');
   var addedCount = 0;
-  
+
   templates.forEach(function(tpl){
     if(!deveAparecerHoje(tpl.recorrencia)) return;
     // Evita duplicar — checa se já tem uma com mesmo template hoje
@@ -41871,11 +41923,12 @@ function gerarTarefasRecorrentesDoDia(){
       obs: tpl.obs || '',
       feito: false,
       criadoEm: new Date().toISOString(),
-      recorrenteId: tpl.id   // marca a origem
+      recorrenteId: tpl.id,   // marca a origem
+      pessoa_id: uid          // 🆕 carrega o dono → isolamento correto
     });
     addedCount++;
   });
-  
+
   if(addedCount > 0){
     saveTarefas('diario', null, diarias);
   }
