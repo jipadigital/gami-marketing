@@ -1,4 +1,4 @@
-<!-- v27.87 - Ranking do dashboard ANIMADO (so animacao, sem clique): top3 entra escalonado com medalha pop (gRkMedal) + brilho ouro pulsante no 1o (gRkGold), linhas do resto entram escalonadas (gRkIn) com barra proporcional preenchendo do zero (gRkBar), numeros sobem em count-up pt-BR (_rkAnimarNumeros) no top3/resto/totais. Respeita prefers-reduced-motion - 21/06/2026 -->
+<!-- v27.89 - Tarefas: pontos so no prazo (anti-gaming): hookTarefaConcluida agora NAO pontua se prazo < hoje (atrasada limpa mas da 0 ponto); tfToggle avisa via toast quando conclui fora do prazo. Card NOVO no dashboard: Tarefas atrasadas (fora do Modo Foco, so aparece se houver) com dias de atraso, concluir 1 a 1 e botao Concluir todas (sem pontuar); _tfMarcarFeitaCrossBucket marca feita em qualquer bucket/dia + sync best-effort sem ponto; renderAtrasadas no initDashboard. Compromisso segue como evento (nao pontua como tarefa) - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -2625,7 +2625,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div style="font-size:24px">🎯</div>
     <div style="flex:1">
       <div class="mf-title">Modo Foco ativado</div>
-      <div class="mf-sub" id="mf-banner-sub">Mostrando apenas Compromissos, Stickies e Recados.</div>
+      <div class="mf-sub" id="mf-banner-sub">Só o essencial pra você focar no que importa agora.</div>
     </div>
     <button onclick="toggleModoFoco()">✕ Sair do modo foco</button>
   </div>
@@ -2695,6 +2695,11 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   </div>
 
   <!-- ====== 🎯 MISSÃO DO DIA (sincronizado com Tarefas) ====== -->
+  <!-- ====== MF: RELÓGIO + DATA (só modo foco) ====== -->
+  <div class="card dash-section mf-only" data-mf-keep="true" style="margin-bottom:14px;text-align:center;padding:22px 16px;background:linear-gradient(180deg,rgba(15,52,96,.05),transparent)">
+    <div id="mf-relogio"></div>
+  </div>
+
   <div id="dash-foco-bloco" data-mf-keep="true" style="margin-bottom:14px;display:none">
     <div style="padding:18px 22px;background:#FFF8F0;border:1px solid var(--border);border-left:4px solid #F57F17;border-radius:14px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(11,37,66,0.04)">
       <div style="position:absolute;top:-18px;right:-10px;font-size:90px;opacity:.04;pointer-events:none">🎯</div>
@@ -2787,6 +2792,16 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dia-ia-resultado" style="display:none;border-top:1px solid var(--border);padding:14px 16px;background:linear-gradient(180deg,rgba(26,184,240,.04) 0%,rgba(26,184,240,0) 100%)"></div>
   </div>
 
+  <!-- ====== ⚠️ TAREFAS ATRASADAS (dashboard, fora do Modo Foco) ====== -->
+  <div id="dash-atrasadas-card" class="card dash-section" style="margin-bottom:14px;display:none;border-left:3px solid #C62828">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="card-title" style="margin:0;color:#C62828">⚠️ Tarefas atrasadas</div>
+      <button onclick="dashConcluirAtrasadas()" style="padding:6px 12px;border:1px solid #C62828;border-radius:7px;background:transparent;color:#C62828;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">✓ Concluir todas (sem pontuar)</button>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Concluir aqui limpa a pendência, mas não dá pontos — pontos só pra tarefas feitas no prazo.</div>
+    <div id="dash-atrasadas"></div>
+  </div>
+
   <!-- ====== 5b. STICKIES PESSOAIS (só visível no modo foco) ====== -->
   <div class="card dash-section mf-only" data-mf-keep="true" style="margin-bottom:14px;background:linear-gradient(180deg,#FFFEF7 0%,#FFFCEC 100%)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -2796,11 +2811,36 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div id="dash-stickies" class="dash-stickies-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px"></div>
   </div>
 
+  <!-- ====== MF: POMODORO (só modo foco) ====== -->
+  <div class="card dash-section mf-only" data-mf-keep="true" style="margin-bottom:14px;text-align:center">
+    <div class="card-title" style="margin:0 0 12px 0">⏱️ Cronômetro Pomodoro</div>
+    <div id="mf-pomo"></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:10px">25 min de foco · 5 min de pausa</div>
+  </div>
+
+  <!-- ====== MF: 3 PRIORIDADES DO DIA (só modo foco) ====== -->
+  <div class="card dash-section mf-only" data-mf-keep="true" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="card-title" style="margin:0">🎯 3 prioridades de hoje</div>
+      <span style="font-size:10px;color:var(--text3);font-style:italic">renova a cada dia</span>
+    </div>
+    <div id="mf-prio"></div>
+  </div>
+
+  <!-- ====== MF: MINHAS TAREFAS DE HOJE (só modo foco) ====== -->
+  <div class="card dash-section mf-only" data-mf-keep="true" style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="card-title" style="margin:0">✅ Minhas tarefas de hoje</div>
+      <span style="font-size:10px;color:var(--text3);font-style:italic">suas tarefas diárias</span>
+    </div>
+    <div id="mf-tarefas-hoje"></div>
+  </div>
+
   <!-- ====== CARD DIREÇÃO GÂMI (mensagem da Diretoria + Cleyton + Gerência) ====== -->
   <div id="dash-direcao" style="margin:14px 0"></div>
 
-  <!-- ====== 6. MURAL DE RECADOS ====== -->
-  <div class="card dash-section" data-mf-keep="true" style="margin-bottom:14px">
+  <!-- ====== 6. MURAL DE RECADOS (fora do Modo Foco) ====== -->
+  <div class="card dash-section" style="margin-bottom:14px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div class="card-title" style="margin:0">📌 Mural de recados</div>
       <span style="font-size:10px;color:var(--text3);font-style:italic">Compartilhe agradecimentos, ideias e parabéns com o time</span>
@@ -32924,6 +32964,7 @@ function initDashboard(){
   try { if(typeof gerarTarefasRecorrentesDoDia === 'function') gerarTarefasRecorrentesDoDia(); } catch(e){}
   // Novos blocos do dashboard v2
   try { renderMinhaAgenda(); } catch(e){ console.warn('renderMinhaAgenda:', e); }
+  try { renderAtrasadas(); } catch(e){ console.warn('renderAtrasadas:', e); }
   try { renderReconhecimento(); } catch(e){ console.warn('renderReconhecimento:', e); }
   try { renderAniversariantesMes(); } catch(e){ console.warn('renderAniversariantesMes:', e); }
   // Ranking de cidades — async, com retry automático
@@ -33214,9 +33255,24 @@ async function atualizarClimaCidades(){
 }
 
 /* ===== Stickies pessoais (3 post-its amarelos) ===== */
-function _stickiesKey(){ return 'gami_stickies_'+(window.location.hostname||'gami'); }
+function _stickiesKey(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  return 'gami_stickies_' + (u && u.id ? u.id : (window.location.hostname||'gami'));
+}
+function _stickiesKeyLegado(){ return 'gami_stickies_'+(window.location.hostname||'gami'); }
 function getStickies(){
-  try { var s = JSON.parse(localStorage.getItem(_stickiesKey())||'null'); if(Array.isArray(s) && s.length===3) return s; }catch(e){}
+  try {
+    var s = JSON.parse(localStorage.getItem(_stickiesKey())||'null');
+    if(Array.isArray(s) && s.length===3) return s;
+    // migração única: herda as notas antigas (por aparelho) pra chave da pessoa
+    if(_stickiesKey() !== _stickiesKeyLegado()){
+      var leg = JSON.parse(localStorage.getItem(_stickiesKeyLegado())||'null');
+      if(Array.isArray(leg) && leg.length===3 && leg.some(function(x){ return (x||'').trim(); })){
+        localStorage.setItem(_stickiesKey(), JSON.stringify(leg));
+        return leg;
+      }
+    }
+  }catch(e){}
   return ['','',''];
 }
 function saveStickies(arr){
@@ -35295,6 +35351,231 @@ function toggleModoFoco(){
   if(_modoFoco){
     try { document.getElementById('main-content').scrollTop = 0; } catch(e){}
   }
+
+  // 🆕 v27.88: widgets do modo foco (relógio, pomodoro, prioridades, tarefas de hoje)
+  try { mfFocoWidgets(_modoFoco); } catch(e){ console.warn('mfFocoWidgets:', e); }
+}
+
+/* ============================================================== */
+/* MODO FOCO — widgets (v27.88)                                    */
+/* relógio + data, pomodoro, 3 prioridades, tarefas de hoje        */
+/* ============================================================== */
+var _mfRelogioIv = null, _mfPomoIv = null;
+function _mfPid(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  return (u && u.id) ? u.id : (window.location.hostname||'gami');
+}
+function _mfHojeStr(){ return new Date().toISOString().split('T')[0]; }
+
+/* --- Relógio + data --- */
+function mfRenderRelogio(){
+  var host = document.getElementById('mf-relogio');
+  if(!host) return;
+  var d = new Date();
+  var hh = String(d.getHours()).padStart(2,'0');
+  var mm = String(d.getMinutes()).padStart(2,'0');
+  var ss = String(d.getSeconds()).padStart(2,'0');
+  var dias=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+  var meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  host.innerHTML = '<div style="font-family:Syne,sans-serif;font-size:48px;font-weight:800;letter-spacing:1px;line-height:1;color:var(--text)">'+hh+':'+mm+'<span style="font-size:22px;color:var(--text3);font-weight:700"> '+ss+'</span></div>'
+    + '<div style="font-size:13px;color:var(--text2);font-weight:600;margin-top:6px;text-transform:capitalize">'+dias[d.getDay()]+', '+d.getDate()+' de '+meses[d.getMonth()]+'</div>';
+}
+
+/* --- Pomodoro (25/5) --- */
+var _mfPomo = { fase:'foco', restante:25*60, rodando:false };
+function _mfPomoFmt(s){ var m=Math.floor(s/60), x=s%60; return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0'); }
+function mfRenderPomodoro(){
+  var host = document.getElementById('mf-pomo');
+  if(!host) return;
+  var ehFoco = _mfPomo.fase==='foco';
+  var cor = ehFoco ? '#F57F17' : '#0E7AB8';
+  var label = ehFoco ? '🍅 Foco' : '☕ Pausa';
+  host.innerHTML = ''
+    + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:'+cor+';margin-bottom:4px">'+label+'</div>'
+    + '<div id="mf-pomo-display" style="font-family:Syne,sans-serif;font-size:46px;font-weight:800;line-height:1;color:'+cor+'">'+_mfPomoFmt(_mfPomo.restante)+'</div>'
+    + '<div style="display:flex;gap:8px;justify-content:center;margin-top:12px">'
+      + '<button onclick="mfPomoStartPause()" style="padding:8px 18px;border:none;border-radius:8px;background:'+cor+';color:white;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">'+(_mfPomo.rodando?'⏸ Pausar':'▶ Iniciar')+'</button>'
+      + '<button onclick="mfPomoReset()" style="padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺ Zerar</button>'
+    + '</div>';
+}
+function mfPomoTick(){
+  if(!_mfPomo.rodando) return;
+  _mfPomo.restante--;
+  if(_mfPomo.restante < 0){
+    _mfPomo.fase = (_mfPomo.fase==='foco') ? 'pausa' : 'foco';
+    _mfPomo.restante = (_mfPomo.fase==='foco') ? 25*60 : 5*60;
+    try { if(typeof toast==='function') toast(_mfPomo.fase==='foco' ? '🍅 Hora de focar!' : '☕ Pausa de 5 minutos', 'info'); }catch(e){}
+    try { _mfBeep(); }catch(e){}
+    mfRenderPomodoro();
+    return;
+  }
+  var disp = document.getElementById('mf-pomo-display');
+  if(disp) disp.textContent = _mfPomoFmt(_mfPomo.restante);
+}
+function mfPomoStartPause(){ _mfPomo.rodando = !_mfPomo.rodando; mfRenderPomodoro(); }
+function mfPomoReset(){ _mfPomo.rodando=false; _mfPomo.fase='foco'; _mfPomo.restante=25*60; mfRenderPomodoro(); }
+function _mfBeep(){
+  try{
+    var AC = window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    var ctx = new AC(), o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination); o.type='sine'; o.frequency.value=660;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.55);
+    o.start(); o.stop(ctx.currentTime+0.6);
+  }catch(e){}
+}
+
+/* --- 3 prioridades do dia (por pessoa, renova a cada dia) --- */
+function _mfPrioKey(){ return 'gami_prio_'+_mfPid(); }
+function mfGetPrio(){
+  try{
+    var o = JSON.parse(localStorage.getItem(_mfPrioKey())||'null');
+    if(o && o.data===_mfHojeStr() && Array.isArray(o.itens) && o.itens.length===3) return o;
+  }catch(e){}
+  return { data:_mfHojeStr(), itens:[{t:'',ok:false},{t:'',ok:false},{t:'',ok:false}] };
+}
+function mfSavePrio(o){ try{ localStorage.setItem(_mfPrioKey(), JSON.stringify(o)); }catch(e){} }
+function mfRenderPrio(){
+  var host = document.getElementById('mf-prio');
+  if(!host) return;
+  var o = mfGetPrio();
+  host.innerHTML = o.itens.map(function(it, i){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.05)">'
+      + '<button onclick="mfPrioToggle('+i+')" style="width:22px;height:22px;flex-shrink:0;border-radius:6px;border:2px solid '+(it.ok?'#2E7D32':'#cbd5e1')+';background:'+(it.ok?'#2E7D32':'transparent')+';color:white;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">'+(it.ok?'✓':'')+'</button>'
+      + '<input value="'+(it.t||'').replace(/"/g,'&quot;')+'" oninput="mfPrioInput('+i+',this.value)" placeholder="Prioridade '+(i+1)+'..." style="flex:1;border:none;background:transparent;font-size:14px;font-weight:600;color:var(--text);outline:none;'+(it.ok?'text-decoration:line-through;opacity:.55':'')+'">'
+    + '</div>';
+  }).join('');
+}
+function mfPrioInput(i, v){ var o=mfGetPrio(); o.itens[i].t=v; mfSavePrio(o); }
+function mfPrioToggle(i){ var o=mfGetPrio(); o.itens[i].ok=!o.itens[i].ok; mfSavePrio(o); mfRenderPrio(); }
+
+/* --- Minhas tarefas de hoje (reflete as diárias, reusa tfToggle) --- */
+function mfRenderTarefasHoje(){
+  var host = document.getElementById('mf-tarefas-hoje');
+  if(!host) return;
+  var lista = [];
+  try{ lista = (typeof getTarefas==='function') ? (getTarefas('diario')||[]) : []; }catch(e){}
+  if(!lista.length){
+    host.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px;text-align:center">Nenhuma tarefa diária pra hoje. Crie na aba <b>Tarefas</b>.</div>';
+    return;
+  }
+  lista = lista.slice().sort(function(a,b){ return (a.feito?1:0)-(b.feito?1:0); });
+  var feitas = lista.filter(function(t){ return t.feito; }).length;
+  host.innerHTML = '<div style="font-size:10px;color:var(--text3);font-weight:600;margin-bottom:6px">'+feitas+'/'+lista.length+' concluídas</div>'
+    + lista.map(function(t){
+      var txt = (t.texto||'').replace(/</g,'&lt;');
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.05)">'
+        + '<button onclick="mfTarefaToggle(\''+t.id+'\')" style="width:22px;height:22px;flex-shrink:0;border-radius:6px;border:2px solid '+(t.feito?'#2E7D32':'#cbd5e1')+';background:'+(t.feito?'#2E7D32':'transparent')+';color:white;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">'+(t.feito?'✓':'')+'</button>'
+        + '<span style="flex:1;font-size:14px;font-weight:500;color:var(--text);'+(t.feito?'text-decoration:line-through;opacity:.5':'')+'">'+txt+'</span>'
+      + '</div>';
+    }).join('');
+}
+function mfTarefaToggle(id){
+  try{ if(typeof tfToggle==='function') tfToggle('diario', id); }catch(e){}
+  mfRenderTarefasHoje();
+}
+
+/* --- Dispatcher: liga/desliga widgets ao entrar/sair do foco --- */
+function mfFocoWidgets(ativo){
+  if(ativo){
+    mfRenderRelogio(); mfRenderPomodoro(); mfRenderPrio(); mfRenderTarefasHoje();
+    if(_mfRelogioIv) clearInterval(_mfRelogioIv);
+    _mfRelogioIv = setInterval(mfRenderRelogio, 1000);
+    if(_mfPomoIv) clearInterval(_mfPomoIv);
+    _mfPomoIv = setInterval(mfPomoTick, 1000);
+  } else {
+    if(_mfRelogioIv){ clearInterval(_mfRelogioIv); _mfRelogioIv=null; }
+    if(_mfPomoIv){ clearInterval(_mfPomoIv); _mfPomoIv=null; }
+  }
+}
+
+/* ============================================================== */
+/* DASHBOARD — TAREFAS ATRASADAS (v27.89)                          */
+/* Pendência mora aqui (fora do Foco). Concluir = limpa, sem pontos */
+/* ============================================================== */
+function _tfAtrasadasMinhas(){
+  var hojeStr = new Date().toISOString().slice(0,10);
+  var todas = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
+  return todas.filter(function(t){
+    return t && !t.feito && !t.concluida && t.prazo && t.prazo < hojeStr && !t.fixa;
+  });
+}
+// Marca uma tarefa como feita na chave/dia em que ela estiver (qualquer bucket), SEM pontos
+function _tfMarcarFeitaCrossBucket(id){
+  var pid = (typeof _tfPessoaId === 'function') ? _tfPessoaId() : null;
+  if(!pid || pid === 'anon') return false;
+  var prefixMeu = TF_KEY_PREFIX + pid + '_';
+  var nowIso = new Date().toISOString();
+  try {
+    for(var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf(prefixMeu) !== 0) continue;
+      var arr;
+      try { arr = JSON.parse(localStorage.getItem(k) || '[]'); } catch(e){ continue; }
+      if(!Array.isArray(arr)) continue;
+      var changed = false;
+      for(var j = 0; j < arr.length; j++){
+        if(arr[j] && arr[j].id === id && arr[j].pessoa_id === pid && !arr[j].feito){
+          arr[j].feito = true; arr[j].feitaEm = nowIso; changed = true;
+        }
+      }
+      if(changed){ localStorage.setItem(k, JSON.stringify(arr)); return true; }
+    }
+  } catch(e){}
+  return false;
+}
+function _tfSyncConcluidaSemPonto(t){
+  try {
+    if(t && t.texto && t.pessoa_id && typeof tfSupaSalvar === 'function'){
+      var clone = Object.assign({}, t, { feito:true, feitaEm:new Date().toISOString() });
+      tfSupaSalvar(clone, 'diario');
+    } else if(typeof supaUpsert === 'function'){
+      supaUpsert('tarefas', { id:t.id, feito:true, concluido_em:new Date().toISOString() });
+    }
+  } catch(e){}
+}
+function renderAtrasadas(){
+  var card = document.getElementById('dash-atrasadas-card');
+  var host = document.getElementById('dash-atrasadas');
+  if(!host) return;
+  var atrasadas = _tfAtrasadasMinhas();
+  if(!atrasadas.length){ if(card) card.style.display='none'; host.innerHTML=''; return; }
+  if(card) card.style.display='';
+  atrasadas.sort(function(a,b){ return a.prazo < b.prazo ? -1 : 1; }); // mais antiga primeiro
+  var hoje0 = new Date(new Date().toISOString().slice(0,10)+'T00:00:00').getTime();
+  host.innerHTML = atrasadas.map(function(t){
+    var dias = 0; try { dias = Math.floor((hoje0 - new Date(t.prazo+'T00:00:00').getTime())/86400000); } catch(e){}
+    var txt = (t.texto || t.titulo || '(sem título)').replace(/</g,'&lt;');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.05)">'
+      + '<button onclick="dashConcluirUmaAtrasada(\''+t.id+'\')" title="Concluir (sem pontos)" style="width:22px;height:22px;flex-shrink:0;border-radius:6px;border:2px solid #cbd5e1;background:transparent;cursor:pointer;font-size:12px;padding:0"></button>'
+      + '<span style="flex:1;font-size:13px;font-weight:500;color:var(--text)">'+txt+'</span>'
+      + '<span style="font-size:11px;font-weight:700;color:#C62828;white-space:nowrap">'+dias+'d</span>'
+    + '</div>';
+  }).join('');
+}
+function dashConcluirUmaAtrasada(id){
+  var t = _tfAtrasadasMinhas().find(function(x){ return x.id === id; });
+  if(_tfMarcarFeitaCrossBucket(id)){
+    if(t) _tfSyncConcluidaSemPonto(t);
+    try { if(typeof toast==='function') toast('Concluída (sem pontos)', 'info'); } catch(e){}
+  }
+  renderAtrasadas();
+  if(typeof renderMinhaAgenda === 'function'){ try { renderMinhaAgenda(); } catch(e){} }
+  if(typeof tfRenderDiario === 'function'){ try { tfRenderDiario(); } catch(e){} }
+}
+function dashConcluirAtrasadas(){
+  var atrasadas = _tfAtrasadasMinhas();
+  if(!atrasadas.length){ try { if(typeof toast==='function') toast('Nenhuma tarefa atrasada', 'info'); } catch(e){} return; }
+  if(!confirm('Concluir '+atrasadas.length+' tarefa'+(atrasadas.length>1?'s':'')+' atrasada'+(atrasadas.length>1?'s':'')+' SEM pontuar?\n\nIsso limpa a pendência, mas não soma pontos (pontos só pra tarefas feitas no prazo).')) return;
+  var n = 0;
+  atrasadas.forEach(function(t){
+    if(_tfMarcarFeitaCrossBucket(t.id)){ n++; _tfSyncConcluidaSemPonto(t); }
+  });
+  try { if(typeof toast==='function') toast(n+' atrasada'+(n>1?'s':'')+' concluída'+(n>1?'s':'')+' (sem pontos)', 'success'); } catch(e){}
+  renderAtrasadas();
+  if(typeof renderMinhaAgenda === 'function'){ try { renderMinhaAgenda(); } catch(e){} }
+  if(typeof tfRenderDiario === 'function'){ try { tfRenderDiario(); } catch(e){} }
 }
 
 // --- CONTADOR REGRESSIVO ---
@@ -39301,7 +39582,10 @@ function tfToggle(tipo, id, sufixo){
   }
   // 🆕 Pontua a conclusão da tarefa (só quando MARCA como feita, não ao reabrir)
   if(tarefaTocada && tarefaTocada.feito && typeof hookTarefaConcluida === 'function'){
+    var _hojeStrTk = new Date().toISOString().slice(0,10);
+    var _atrasadaTk = tarefaTocada.prazo && tarefaTocada.prazo < _hojeStrTk;
     try { hookTarefaConcluida(tarefaTocada); } catch(e){}
+    if(_atrasadaTk && typeof toast === 'function'){ try { toast('Concluída fora do prazo — sem pontos', 'info'); } catch(e){} }
   }
 
   if(tipo==='diario') tfRenderDiario();
@@ -43082,7 +43366,12 @@ function hookNavAba(nomeAba){
 async function hookTarefaConcluida(tarefa){
   var user = getUsuarioLogado();
   if(!user || !user.id) return;
-  await atribuirPontos(user.id, 'tarefa_concluida', { descricao: 'Tarefa: '+(tarefa.titulo||tarefa.text||'').slice(0,50) });
+  // 🆕 v27.89: só pontua se concluída NO PRAZO (ou sem prazo). Atrasada limpa a pendência mas NÃO pontua.
+  try {
+    var hojeStr = new Date().toISOString().slice(0,10);
+    if(tarefa && tarefa.prazo && tarefa.prazo < hojeStr) return; // atrasada → 0 ponto
+  } catch(e){}
+  await atribuirPontos(user.id, 'tarefa_concluida', { descricao: 'Tarefa: '+(tarefa.titulo||tarefa.text||tarefa.texto||'').slice(0,50) });
 }
 async function hookAnotacao(){
   var user = getUsuarioLogado();
