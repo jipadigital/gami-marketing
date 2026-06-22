@@ -1,4 +1,4 @@
-<!-- v27.90 - Mascote motoboy AZUL Gami no tf-progresso-card (so na aba Tarefas): 30 niveis, 200 XP/nivel calculado do XP cru (level=floor(xp/200)+1, cap 30, atualiza gami_level). Boneco SVG se monta por aquisicao (Capacete>Camisa>Bag>Bicicleta>Moto>...>Lenda da Rua dourado+turbo+brilho), idle balancando + roda girando (gmascBob/gmascWheel), level-up com pop+confete. Linha faltam X XP para adquirir [proximo item]. Respeita reduced-motion. _MASCOTE_AQUIS/_mascoteSVG/_mascoteProxAquisicao - 22/06/2026 -->
+<!-- v27.92 - Reset unico (token) de streak + caches locais de pontos: IIFE _gamiResetPontosStreak limpa gami_streak_data, gami_streak_*, gami_xp_*, gami_level_*, gami_pontos_pessoa_*, gami_mascote_lvl_*, gami_pontos_cache 1x por aparelho (token reset-pontos-streak-2026-06). Ranking (pontos_log no Supabase) zerado por SQL DELETE a parte. NAO mexe em badges. v27.91: perfis teste escondidos de ranking/mural/aniversariantes - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11233,7 +11233,14 @@ function _ehRankingTeste(row){
   if(row._impersonacao === true) return true;
   if(_ehIdTeste(row.pessoa_id) || _ehIdTeste(row.id) || _ehIdTeste(row.email)) return true;
   var nome = String(row.nome || row.nome_pessoa || row.pessoa_nome || '');
-  return /\(teste\)/i.test(nome);
+  return /\bteste\b/i.test(nome); // 🆕 v27.91: pega "Teste manual", "Teste", etc — não só "(teste)"
+}
+// 🆕 v27.91: perfil de teste (esconde de displays públicos: ranking, mural, aniversariantes)
+function _pessoaEhTeste(p){
+  if(!p) return false;
+  if(p._impersonacao === true) return true;
+  if(typeof _ehIdTeste === 'function' && (_ehIdTeste(p.id) || _ehIdTeste(p.email))) return true;
+  return /\bteste\b/i.test(String(p.nome || ''));
 }
 
 async function atribuirPontos(pessoaId, tipoAcao, opcoes){
@@ -33303,6 +33310,24 @@ function getStreakData(){
 function saveStreakData(d){
   try { localStorage.setItem(_streakKey(), JSON.stringify(d)); }catch(e){}
 }
+// 🆕 v27.92: RESET único de pontos(cache local) + streak. Roda 1x por aparelho
+// (guardado por token). Os pontos do RANKING ficam no Supabase (pontos_log) e
+// são zerados por SQL à parte; aqui zeramos só o que é local (streak não tem
+// fonte no servidor, então este é o único jeito de zerar pra toda a frota).
+(function _gamiResetPontosStreak(){
+  var TOKEN = 'reset-pontos-streak-2026-06';
+  try {
+    if(localStorage.getItem('gami_reset_token') === TOKEN) return;
+    Object.keys(localStorage).forEach(function(k){
+      if(k === 'gami_pontos_cache' || k === 'gami_streak_data'
+         || /^gami_(xp|level|pontos_pessoa|mascote_lvl|streak)_/.test(k)){
+        localStorage.removeItem(k);
+      }
+    });
+    localStorage.setItem('gami_reset_token', TOKEN);
+    console.log('[Gâmi] Reset de pontos (cache) + streak aplicado neste aparelho:', TOKEN);
+  } catch(e){}
+})();
 function _atualizaStreakSeNecessario(){
   // Critério: se o usuário marcou pelo menos 1 tarefa como feita HOJE,
   // o dia conta no streak. Se ontem teve atividade e hoje também, soma.
@@ -33356,6 +33381,7 @@ function renderMuralVivo(){
   var ct = document.getElementById('dash-mural-count');
   if(!host) return;
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  pessoas = pessoas.filter(function(p){ return !(typeof _pessoaEhTeste==='function' && _pessoaEhTeste(p)); });
   if(ct) ct.textContent = '· '+pessoas.length+' pessoas';
   if(!pessoas.length){
     host.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:8px">Nenhum colaborador cadastrado.</div>';
@@ -34344,6 +34370,7 @@ function renderAniversariantesMes(){
   if(mesLabel) mesLabel.textContent = nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1);
   
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  pessoas = pessoas.filter(function(p){ return !(typeof _pessoaEhTeste==='function' && _pessoaEhTeste(p)); });
   var aniversariantes = pessoas.filter(function(p){
     if(!p.nascimento) return false;
     var partes = p.nascimento.split('-');
@@ -43400,7 +43427,7 @@ async function sincronizarPontosPessoa(pessoaId){
     localStorage.setItem('gami_pontos_pessoa_' + pessoaId, JSON.stringify(payload));
     // XP do card do perfil = total acumulado (mantém consistência)
     localStorage.setItem('gami_xp_' + pessoaId, String(total));
-    var lvl = Math.max(1, Math.floor(total / 100) + 1);
+    var lvl = Math.min(30, Math.max(1, Math.floor(total / 200) + 1)); // 🆕 v27.91: 200/nível, cap 30 (igual mascote)
     localStorage.setItem('gami_level_' + pessoaId, String(lvl));
     // Re-renderiza displays que dependem disso (se estiverem na tela)
     try { if(typeof renderPontuacaoGami === 'function') renderPontuacaoGami(); } catch(e){}
