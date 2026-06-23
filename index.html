@@ -1,4 +1,4 @@
-<!-- v30.0 - FIX registrar venda (HTTP 404 PGRST202). O app mandava 12 params pro RPC estoque_registrar_venda mas a funcao no Supabase tem menos (sem p_forma_pagamento/p_nominal_comprovante) entao nenhuma assinatura batia. Removidos esses 2 params do envio - a forma de pagamento e o nominal JA estao concatenados em p_observacao, entao nada se perde, e a chamada volta a casar com a funcao existente. Sem mexer no banco - 23/06/2026 -->
+<!-- v30.2 - SEGURANCA passo 1: troca de PIN agora via RPC trocar_pin (valida o PIN atual NO SERVIDOR) em vez de PATCH direto no pin_hash. Permite bloquear escrita direta na coluna (anti-takeover). Acompanha SQL seguranca_passo1 (RPC + fecha INSERT usuarios_login + tranca leitura dos logs) e passo2 (revoke pin_hash, rodar apos testar) - 23/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11931,15 +11931,20 @@ async function trocarPIN(pessoaId, pinAtual, pinNovo){
     // Hash do PIN novo
     var hashNovo = await hashPIN(pinNovo);
     
-    var upd = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + pessoaId, {
-      method: 'PATCH',
+    // 🆕 v30.2: troca de PIN agora passa por uma RPC validada NO SERVIDOR (trocar_pin),
+    // que só altera o pin_hash se quem chamou souber o PIN atual. Isso permite bloquear
+    // a escrita direta na coluna pin_hash (fecha o takeover de conta).
+    var hashAtualEnv = (usuario.pin_hash && usuario.pin_hash !== 'gami2026_init') ? await hashPIN(pinAtual) : null;
+    var upd = await fetch(SUPA_URL + '/rest/v1/rpc/trocar_pin', {
+      method: 'POST',
       headers: {
         'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
-        'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ pin_hash: hashNovo, pin_trocado: true, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ p_pessoa_id: pessoaId, p_hash_atual: hashAtualEnv, p_hash_novo: hashNovo })
     });
-    if(!upd.ok) return { sucesso: false, erro: 'Falha ao salvar' };
+    var updJson = null; try { updJson = await upd.json(); } catch(e){}
+    if(!upd.ok || !updJson || updJson.ok !== true) return { sucesso: false, erro: (updJson && updJson.erro) || 'Falha ao salvar' };
     
     // Atualiza usuário logado
     var atual = getUsuarioLogado();
@@ -26175,6 +26180,13 @@ function renderCidadesGrid(){
       renderCalendarioDemanda(_calDemandaDiasAtual || 30);
     }
   }, 300);
+
+  // 🆕 v30.1: move o "Resumo do Dia · Rede" pra DEPOIS dos cards das cidades.
+  try {
+    var _rede = document.getElementById('cid-ia-rede');
+    var _lista = document.getElementById('cidades-lista');
+    if(_rede && _lista && _lista.lastElementChild !== _rede){ _lista.appendChild(_rede); }
+  } catch(e){}
 }
 
 /* ╔════════════════════════════════════════════════════╗
