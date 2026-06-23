@@ -1,4 +1,4 @@
-<!-- v29.8 - FIX CRITICO tarefas sumindo (Jheniffer). Causa: tfSincronizarDoSupabase SOBRESCREVIA o localStorage com as tarefas do servidor. Se tfSupaSalvar falhava (envio ao servidor), a tarefa ficava so local e o proximo sync apagava ela. Agora o sync MESCLA: preserva tarefas locais do proprio usuario que o servidor ainda nao tem (pendentes) e RE-ENVIA pro servidor. Estanca a perda de dados. Falta achar PORQUE tfSupaSalvar falha (console) - 23/06/2026 -->
+<!-- v29.9 - FIX toast falso Nao consegui salvar (audit_log). O log de auditoria (secundario, grava por REST direto e esbarra em RLS) falhava e mostrava toast vermelho, fazendo parecer que a TAREFA nao salvou - mas a tarefa salva por outro caminho (Netlify _syncEscrever). Agora _supaWriteError silencia o toast pra audit_log/acessos_log (so console/telemetria). Tarefa salva normal sem alarme falso. Combinado com v29.8 (merge anti-perda) - 23/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -37036,7 +37036,11 @@ function _supaWriteError(contexto, erro, opcoes){
   opcoes = opcoes || {};
   var msg = (erro && erro.message) ? erro.message : String(erro || 'desconhecido');
   console.error('[GRAVAÇÃO FALHOU] ' + contexto + ': ' + msg);
-  if(!opcoes.silencioso && typeof toast === 'function'){
+  // 🆕 v29.9: logs de auditoria/acesso são SECUNDÁRIOS (a tarefa/dado real já salvou
+  // por outro caminho). A falha deles não pode alarmar o usuário com "não consegui
+  // salvar" — só registra no console/telemetria.
+  var ehLogSecundario = (contexto === 'audit_log' || contexto === 'acessos_log');
+  if(!opcoes.silencioso && !ehLogSecundario && typeof toast === 'function'){
     toast('Não consegui salvar (' + contexto + '). Tenta de novo.', 'error');
   }
   // Telemetria local pra auditoria (últimas 50 falhas)
