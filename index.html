@@ -1,4 +1,4 @@
-<!-- v28.0 - SISTEMA INDIVIDUAL (tarefas+pontos+streak), a prova de vazamento. (1) GUARD DE CACHE POR DONO: gami_cache_owner duravel; ao logar usuario diferente no aparelho, _gamiLimparCachePessoal apaga TODO cache pessoal do anterior (buckets de tarefa, xp, level, streak, prio, foco, mascote + globais gami_streak_data/gami_pontos_cache). Preserva config e templates de recorrentes. (2) STREAK individual + Supabase (tabela streaks pessoa_id PK, dados jsonb): _streakKey por pessoa, saveStreakData faz push, login faz _streakPull (cross-device). (3) PONTOS: ranking ja vem do pontos_log no Supabase; cache global apagado na troca; caches por pessoa ja sao pid-scoped. Tarefas ja usam RPC tarefas_minhas (server-side, impossivel vazar) - 22/06/2026 -->
+<!-- v28.3 - RELATORIOS (IA) refeitos: o conteudo de cupom/voucher/brinde/pacote de marketing e a citacao de Loggi vinham dos PROMPTS de IA (exemplo 'voucher de R$5' ensinava a IA) + conhecimento da propria IA. Adicionada REGRA OBRIGATORIA nos 3 prompts (executivo semanal, coach semanal x2, mensal): NUNCA citar concorrentes (Loggi/iFood/Rappi/99/Uber), Gami NAO oferece cupom/voucher/desconto/cashback/brinde nem pacote de marketing na plataforma (destaque horario de pico/banner/posicao paga); sugerir so o que a Gami faz (visita, relacionamento, reconhecimento, post no Insta da cidade, apoio operacional, prospeccao, motoboy). Exemplo do voucher trocado por acao real. Tabela de concorrentes (vendas) mantida - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1814,7 +1814,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   diretoria: {
-    abas: ['dashboard','calendario','tarefas','marketing','inbox','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual'],
+    abas: ['dashboard','calendario','tarefas','marketing','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1834,7 +1834,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: false
   },
   gestor: {
-    abas: ['dashboard','calendario','tarefas','inbox','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -11519,7 +11519,7 @@ function setUsuarioLogado(pessoa){
 // Preserva config do app (gami_cache_owner, gami_admin, tokens) e os templates de recorrentes.
 function _gamiLimparCachePessoal(idNovo){
   try {
-    var rePid = /^gami_(tf_v3|streak_data|pontos_pessoa|mascote_lvl|meu_foco|stickies|level|streak|prio|xp)_(.+?)(?:_|$)/;
+    var rePid = /^gami_(tf_v3|streak_data|pontos_pessoa|mascote_lvl|meu_foco|stickies|cal_notas|calendario|level|streak|prio|xp)_(.+?)(?:_|$)/;
     var globaisPessoais = { 'gami_streak_data':1, 'gami_pontos_cache':1, 'gami_meu_foco_feito':1 };
     var remover = [];
     for(var i=0;i<localStorage.length;i++){
@@ -23111,6 +23111,7 @@ async function diagnosticoSemanalCidades(forceNew){
     +'Gere um RELATÓRIO EXECUTIVO da semana '+range.label+' pra diretoria (Rafhael Nóbrega, Tainara Nóbrega, João Duarte). '
     +'NÃO mencione marketing, campanhas, posts ou redes sociais — esses dados não estão disponíveis ainda. '
     +'Foque em OPERAÇÃO e FINANCEIRO: corridas, receita, motoboys, empresas, cancelamentos, crescimento, concentração de risco.\n\n'
+    +'REGRAS OBRIGATÓRIAS (NUNCA quebrar): NUNCA cite marcas concorrentes (Loggi, iFood, Rappi, 99, Uber, etc.). A Gâmi NÃO oferece cupom, voucher, desconto, cashback nem brinde, e NÃO vende pacote de marketing na plataforma (destaque em horário de pico, banner, posição paga) — NUNCA sugira nada disso.\n\n'
     +'TOTAIS CONSOLIDADOS da semana:\n'
     +'- Total de corridas: '+totalCorridas+'\n'
     +'- Receita estimada total: R$ '+totalReceita.toFixed(2)+ (crescReceitaGeral !== null ? ' ('+(crescReceitaGeral>=0?'+':'')+crescReceitaGeral+'% vs semana anterior)' : '')+'\n'
@@ -23886,7 +23887,8 @@ async function gerarPlanoSemanaCidade(cidadeId, forceNew){
       +'• Variação: '+cresc+' volume · '+crescRec+' receita\n'
       +'• '+dormentes+' empresas cadastradas que NÃO pediram nos últimos 30 dias (POTENCIAL ENORME)\n'
       +'• Pico de demanda: '+horariosStr+'\n'
-      +'• Por dia da semana: '+diaStr+'\n\n';
+      +'• Por dia da semana: '+diaStr+'\n\n'
+      +'REGRAS OBRIGATÓRIAS (NUNCA quebrar): NUNCA cite marcas concorrentes (Loggi, iFood, Rappi, 99, Uber, etc.), nem como exemplo ou comparação. A Gâmi NÃO oferece cupom, voucher, desconto, cashback nem brinde ao cliente final — NUNCA sugira isso. A Gâmi NÃO vende pacote de marketing na plataforma (destaque em horário de pico, banner, posição paga) — NUNCA sugira isso. Sugira só o que a Gâmi faz de verdade: visita presencial, relacionamento, reconhecimento (cartão/plaqueta da Gâmi, post no Instagram da cidade celebrando o parceiro), apoio operacional, prospecção de bairros, reconhecimento de motoboy, campanha de campo e treinar a equipe do parceiro a usar melhor a plataforma.\n\n';
     
     // PROMPT 1: Reconhecimento + Visitas + Campanhas
     var promptVisitas = contexto
@@ -23896,7 +23898,7 @@ async function gerarPlanoSemanaCidade(cidadeId, forceNew){
       +'Gere EXATAMENTE estas 4 seções (sem markdown, separadas por linha em branco):\n\n'
       +'COMO ESTÁ A SEMANA\n• 2-3 frases sobre o ritmo da cidade (saudável/crescendo/atenção)\n• Mencione números-chave\n\n'
       +'VISITAS DE RECONHECIMENTO (PRIORIDADE)\n• Liste 6-8 empresas TOP da semana pra o gestor visitar pessoalmente\n• Pra cada uma: NOME, bairro, motivo (são nossos parceiros estratégicos)\n• Sugira um GESTO concreto: cartão de agradecimento, brinde, foto/post celebrando parceria, visita pra entender necessidades\n• Ex: "Visitar BURGER KING (Boa Vista) — top 1 com 230 pedidos/semana. Levar plaqueta de Cliente Destaque e fazer foto com o gerente pra postar no Instagram da cidade"\n\n'
-      +'EMPRESAS PRA ACELERAR (CRESCENDO)\n• Pegue 3-4 empresas que estão crescendo\n• Pra cada uma: ação pra acelerar ainda mais (oferecer condição especial, parceria de divulgação, treinamento pra equipe deles)\n• Ex: "FORNERIA 1121 cresceu 80% — propor parceria de campanha de fim de semana, com voucher de R$5 nas próximas 100 entregas"\n\n'
+      +'EMPRESAS PRA ACELERAR (CRESCENDO)\n• Pegue 3-4 empresas que estão crescendo\n• Pra cada uma: ação pra acelerar ainda mais (parceria de divulgação no Instagram da cidade, post de homenagem ao parceiro, treinar a equipe deles a usar melhor a plataforma, ampliar horários/bairros atendidos)\n• Ex: "FORNERIA 1121 cresceu 80% — combinar um post de homenagem no Instagram da cidade e uma visita pra mapear como crescer junto (mais horários, mais bairros)"\n\n'
       +'CAMPANHA DA SEMANA (CRIATIVA)\n• 2-3 ideias CONCRETAS de ação de campo essa semana\n• Pode ser: blitz em um bairro específico, evento na empresa parceira, post de homenagem ao motoboy do mês, panfleto pra hot-spots, ação solidária em ponto de apoio\n• Cada ideia: o que fazer, onde, com quem, resultado esperado\n\n'
       +'Tom prático, executivo, criativo. NOMES reais. Português Brasil.';
     
@@ -24277,6 +24279,7 @@ async function relatorioMensalCidade(cidadeId, forceNew){
   
   var prompt = 'Consultor sênior Gâmi Delivery. Gere RELATÓRIO MENSAL de '+c.nome+'/'+c.uf+' ('+range.label+') pra diretoria e gestor '+(c.gestor||'')+'. '
     +'NÃO mencione marketing/posts/redes sociais — não disponível. Foco operação, receita, motoboys, empresas, riscos.\n\n'
+    +'REGRAS OBRIGATÓRIAS (NUNCA quebrar): NUNCA cite marcas concorrentes (Loggi, iFood, Rappi, 99, Uber, etc.). A Gâmi NÃO oferece cupom, voucher, desconto, cashback nem brinde, e NÃO vende pacote de marketing na plataforma (destaque/banner/posição paga) — NUNCA sugira nada disso. Nas ações, sugira só o que a Gâmi faz: visita, relacionamento, reconhecimento (plaqueta/post no Instagram da cidade), apoio operacional, prospecção e reconhecimento de motoboy.\n\n'
     +'DADOS DE '+range.label+':\n'
     +'• Corridas: '+m.corridasMes+' ('+crescCorrTxt+' vs '+m.corridasMesAnt+' mês anterior)\n'
     +'• Finalizadas '+m.finalizadas+' | Canceladas '+m.canceladas+' | Conclusão '+(m.taxaConclusao !== null ? m.taxaConclusao+'%' : '?')+'\n'
@@ -32963,6 +32966,10 @@ function _gamiMotoboyCorrer(){
 
 // 🎊 Confetti ao concluir Missão do Dia
 function _gamiConfetti(){
+  // 🆕 v28.1: não solta confete na tela de login (sem usuário logado).
+  // Era a causa do confete cair antes de entrar (gatilho de aniversário roda no
+  // pré-render sem trava de login).
+  try { if(!(typeof getUsuarioLogado==='function' && getUsuarioLogado())) return; } catch(e){ return; }
   var cores = ['#FF8C42','#F57F17','#E24B4A','#1AB8F0','#8FBE57','#D4AF37','#8B5CF6','#FFD93D'];
   var pieces = 80;
   for(var i=0; i<pieces; i++){
@@ -44627,22 +44634,23 @@ var CULTURE_VALORES_DETALHE = [
 function renderCultureValorSemana(){
   var host = document.getElementById('culture-valor-semana');
   if(!host) return;
-  // Calcula valor da semana baseado no número da semana do ano
+  // 🆕 v28.2: VALOR DO DIA — muda todo dia (dia do ano % nº de valores).
+  // Dias seguidos são sempre diferentes; o ciclo dos 8 valores se repete ao longo do ano.
   var hoje = new Date();
   var inicio = new Date(hoje.getFullYear(), 0, 1);
-  var diff = (hoje - inicio) / 86400000;
-  var semana = Math.floor(diff / 7);
-  var idx = semana % CULTURE_VALORES_DETALHE.length;
+  var diaDoAno = Math.floor((hoje - inicio) / 86400000);
+  var idx = diaDoAno % CULTURE_VALORES_DETALHE.length;
   var v = CULTURE_VALORES_DETALHE[idx];
   var proxIdx = (idx + 1) % CULTURE_VALORES_DETALHE.length;
   var prox = CULTURE_VALORES_DETALHE[proxIdx];
-  
+  var dataLabel = hoje.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' });
+
   host.innerHTML = '<div class="culture-valor-semana-wrap" style="background:linear-gradient(135deg,'+v.corBg+','+v.corBg2+');border:1px solid '+v.cor+'40;border-left:4px solid '+v.cor+';border-radius:12px;padding:18px 20px;position:relative;overflow:hidden">'
     + '<div style="position:absolute;top:-25px;right:-15px;font-size:120px;opacity:.07">'+v.icone+'</div>'
     + '<div style="position:relative">'
       + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">'
-        + '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:'+v.cor+';text-transform:uppercase">🎯 Valor da semana</div>'
-        + '<div style="font-size:9px;color:'+v.cor+';opacity:.7;font-weight:600;background:white;padding:2px 7px;border-radius:8px;border:1px solid '+v.cor+'33">Semana '+(semana+1)+'/52</div>'
+        + '<div style="font-size:10px;font-weight:800;letter-spacing:1.5px;color:'+v.cor+';text-transform:uppercase">🎯 Valor do dia</div>'
+        + '<div style="font-size:9px;color:'+v.cor+';opacity:.7;font-weight:600;background:white;padding:2px 7px;border-radius:8px;border:1px solid '+v.cor+'33">Hoje · '+dataLabel+'</div>'
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:14px;margin-bottom:12px">'
         + '<div style="font-size:48px;flex-shrink:0">'+v.icone+'</div>'
@@ -44656,8 +44664,8 @@ function renderCultureValorSemana(){
         + '<div style="font-size:12px;color:#374151;line-height:1.55">'+v.exemplo+'</div>'
       + '</div>'
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:'+v.cor+';opacity:.8;font-weight:600">'
-        + '<div>💡 Toda segunda muda</div>'
-        + '<div>Próximo: '+prox.icone+' '+prox.nome+' →</div>'
+        + '<div>💡 Muda todo dia</div>'
+        + '<div>Amanhã: '+prox.icone+' '+prox.nome+' →</div>'
       + '</div>'
     + '</div>'
   + '</div>';
@@ -44672,12 +44680,12 @@ function renderCultureHeaderSub(){
   // Valor da semana atual
   var hoje = new Date();
   var inicio = new Date(hoje.getFullYear(), 0, 1);
-  var semana = Math.floor((hoje - inicio) / 86400000 / 7);
-  var v = CULTURE_VALORES_DETALHE[semana % CULTURE_VALORES_DETALHE.length];
+  var diaDoAno = Math.floor((hoje - inicio) / 86400000);
+  var v = CULTURE_VALORES_DETALHE[diaDoAno % CULTURE_VALORES_DETALHE.length];
   
   var partes = ['O jeito Gâmi'];
   partes.push('<strong style="color:#FFD93D">'+assinaturas.length+' assinaram</strong>');
-  partes.push('Valor da semana: <strong style="color:'+v.cor+'">'+v.icone+' '+v.nome+'</strong>');
+  partes.push('Valor do dia: <strong style="color:'+v.cor+'">'+v.icone+' '+v.nome+'</strong>');
   el.innerHTML = partes.join(' · ');
 }
 
@@ -54401,6 +54409,8 @@ function cidImprimirRelatorioAuto(id){
   };
   // Confete
   window.gamiConfete = function(opts){
+    // 🆕 v28.1: nada de confete sem usuário logado (tela de login)
+    try { if(!(typeof getUsuarioLogado==='function' && getUsuarioLogado())) return; } catch(e){ return; }
     opts = opts||{}; if(reduz()) return;
     var n = opts.n||80, cores = opts.cores||['#EF9F27','#2E7D32','#1AB8F0','#EC4899','#FFD54F','#9333EA'];
     var ox = (opts.x!=null)?opts.x:window.innerWidth/2;
