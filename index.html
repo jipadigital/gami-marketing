@@ -1,4 +1,4 @@
-<!-- v29.9 - FIX toast falso Nao consegui salvar (audit_log). O log de auditoria (secundario, grava por REST direto e esbarra em RLS) falhava e mostrava toast vermelho, fazendo parecer que a TAREFA nao salvou - mas a tarefa salva por outro caminho (Netlify _syncEscrever). Agora _supaWriteError silencia o toast pra audit_log/acessos_log (so console/telemetria). Tarefa salva normal sem alarme falso. Combinado com v29.8 (merge anti-perda) - 23/06/2026 -->
+<!-- v30.0 - FIX registrar venda (HTTP 404 PGRST202). O app mandava 12 params pro RPC estoque_registrar_venda mas a funcao no Supabase tem menos (sem p_forma_pagamento/p_nominal_comprovante) entao nenhuma assinatura batia. Removidos esses 2 params do envio - a forma de pagamento e o nominal JA estao concatenados em p_observacao, entao nada se perde, e a chamada volta a casar com a funcao existente. Sem mexer no banco - 23/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -48996,9 +48996,11 @@ async function estConfirmarVenda(){
       (pagamento ? '\n💳 Pagamento: ' + pagamento : '') +
       (nominal ? '\n📋 Nominal: ' + nominal : ''),
     p_usuario_id: EST_SESSAO.pessoa_id,
-    p_usuario_nome: EST_SESSAO.nome,
-    p_forma_pagamento: pagamento || null,
-    p_nominal_comprovante: nominal || null
+    p_usuario_nome: EST_SESSAO.nome
+    // 🆕 v30.0: REMOVIDOS p_forma_pagamento e p_nominal_comprovante. A funcao
+    // estoque_registrar_venda no Supabase nao tem esses parametros (dava 404 PGRST202).
+    // A forma de pagamento e o nominal JA vao dentro de p_observacao (acima), entao
+    // nada se perde. Assim a chamada casa com a funcao existente.
   };
   
   // 🆕 v27.00: TODOS os campos obrigatórios + foco no primeiro vazio
