@@ -1,4 +1,4 @@
-<!-- v30.2 - SEGURANCA passo 1: troca de PIN agora via RPC trocar_pin (valida o PIN atual NO SERVIDOR) em vez de PATCH direto no pin_hash. Permite bloquear escrita direta na coluna (anti-takeover). Acompanha SQL seguranca_passo1 (RPC + fecha INSERT usuarios_login + tranca leitura dos logs) e passo2 (revoke pin_hash, rodar apos testar) - 23/06/2026 -->
+<!-- v30.4 - Ranking/Perfil Gami: no extrato Ultimas pontuacoes, o NOME real da tarefa (descricao) agora aparece so pra super_admin. Os outros veem rotulo generico (Tarefa concluida, ou Conquista se for badge). Privacidade das tarefas individuais - 23/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1216,7 +1216,7 @@ async function _carregarNotificacoesSupa(){
     
     // 🆕 v26.87: SIMPLIFICADO — uma única query com select=* (mais resiliente a schemas)
     var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-      + '&select=*&limit=30';
+      + '&select=*&order=criado_em.desc&limit=30';
     
     var r = await fetch(url, {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
@@ -1384,7 +1384,7 @@ function coletarNotificacoes(){
         }).join('\n');
         var extraD = delegadas.length > 3 ? '\n+ ' + (delegadas.length-3) + ' outras' : '';
         notifs.push({
-          id:'task-delegadas-'+hojeStr+'-'+delegadas.length,
+          id:'task-delegadas-'+hojeStr,
           icon:'📥', titulo:delegadas.length+' tarefa'+(delegadas.length>1?'s':'')+' delegada'+(delegadas.length>1?'s':'')+' pra você',
           sub: detalhesD + extraD, linkAba:'tarefas', ts:Date.now()
         });
@@ -43639,6 +43639,10 @@ async function abrirPerfilGami(pessoaId){
   var totalCarreira = await obterPontosTotaisPessoa(pessoaId);
   var patente = obterPatente(totalCarreira);
   var extrato = await obterExtratoPessoa(pessoaId);
+  // 🆕 v30.4: nome real das tarefas no extrato só pra super_admin. Os outros veem
+  // rótulo genérico (privacidade das tarefas individuais de cada pessoa).
+  var _ehSuperPerfil = false;
+  try { _ehSuperPerfil = (typeof detectarNivelPermissao === 'function') && detectarNivelPermissao((typeof getUsuarioLogado==='function'?getUsuarioLogado():null)) === 'super_admin'; } catch(e){}
   var badges = [];
   try {
     var url = SUPA_URL + '/rest/v1/badges_desbloqueadas?pessoa_id=eq.'+pessoaId+'&select=*';
@@ -43663,7 +43667,7 @@ async function abrirPerfilGami(pessoaId){
     + (badges.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap">'+badges.map(function(b){ var info = BADGES_CATALOGO[b.badge_id]||{emoji:'🎖️',nome:b.badge_id}; return '<div style="padding:6px 10px;background:var(--gami-blue-l);border-radius:8px;font-size:11px">'+info.emoji+' '+info.nome+'</div>'; }).join('')+'</div>' : '<div style="font-size:11px;color:var(--text3)">Nenhuma badge ainda.</div>')
     + '</div>'
     + '<div><div style="font-size:12px;font-weight:700;margin-bottom:6px">📋 Últimas pontuações</div><div style="max-height:240px;overflow:auto">'
-    + (extrato.length ? extrato.slice(0,20).map(function(p){ return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px"><div style="width:50px;color:var(--text3);font-size:10px">'+(p.data_acao||'').slice(5)+'</div><div style="flex:1">'+(p.descricao||p.tipo_acao)+'</div><div style="font-weight:700;color:#1D9E75">+'+p.pontos+'</div></div>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:10px;text-align:center">Sem pontuações ainda.</div>')
+    + (extrato.length ? extrato.slice(0,20).map(function(p){ var _desc = _ehSuperPerfil ? (p.descricao||p.tipo_acao) : ((p.categoria==='conquista' || p.origem==='badge' || String(p.descricao||'').indexOf('Badge')===0) ? '🏅 Conquista' : '✅ Tarefa concluída'); return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px"><div style="width:50px;color:var(--text3);font-size:10px">'+(p.data_acao||'').slice(5)+'</div><div style="flex:1">'+_desc+'</div><div style="font-weight:700;color:#1D9E75">+'+p.pontos+'</div></div>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:10px;text-align:center">Sem pontuações ainda.</div>')
     + '</div></div>'
     + '</div></div>';
   var antigo = document.getElementById('modal-perfil-gami');
@@ -54229,7 +54233,7 @@ function _notifIniciar(){
   if(!u || !u.id) return;
   
   fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-    + '&select=id&limit=50', {
+    + '&select=id&order=criado_em.desc&limit=50', {
     headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
   }).then(function(r){ return r.ok ? r.json() : []; })
     .then(function(arr){
