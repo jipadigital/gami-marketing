@@ -1,4 +1,4 @@
-<!-- v29.6 - FIX dropdown IA Cidade (de vez). A v29.5 colocou z-index no wrap, mas ele e filho do .page-header e os cards de baixo sao irmaos do header (z-index do wrap nao competia com eles). Agora o .page-header de Cidades tem position:relative/z-index:1000, levantando o header inteiro (com o dropdown) acima dos cards. .page-header nao tem overflow:hidden (nao corta) - 23/06/2026 -->
+<!-- v29.8 - FIX CRITICO tarefas sumindo (Jheniffer). Causa: tfSincronizarDoSupabase SOBRESCREVIA o localStorage com as tarefas do servidor. Se tfSupaSalvar falhava (envio ao servidor), a tarefa ficava so local e o proximo sync apagava ela. Agora o sync MESCLA: preserva tarefas locais do proprio usuario que o servidor ainda nao tem (pendentes) e RE-ENVIA pro servidor. Estanca a perda de dados. Falta achar PORQUE tfSupaSalvar falha (console) - 23/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -26130,7 +26130,7 @@ function renderCidadesGrid(){
         ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:8px;border-radius:7px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:700;border:1px solid #C2DC91">💬 WhatsApp</a>` : `<span style="display:flex;align-items:center;justify-content:center;font-size:10px;padding:8px;border-radius:7px;background:var(--surface2);color:var(--text3);border:1px dashed var(--border)">— sem WhatsApp</span>`}
         <div style="position:relative" onclick="event.stopPropagation()">
           <button onclick="event.stopPropagation();cidIaMenuToggle('${c.id}',this)" data-cid-ia-btn="${c.id}" style="display:flex;align-items:center;justify-content:center;gap:5px;width:100%;font-size:11px;padding:8px;border:none;border-radius:7px;background:linear-gradient(135deg,#8B5CF6,#A78BFA);color:white;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 1px 3px rgba(139,92,246,.3)" title="Opções de IA pra esta cidade">🤖 IA Cidade ▾</button>
-          <div data-cid-ia-menu="${c.id}" style="display:none;position:absolute;top:38px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 24px rgba(11,37,66,.15);min-width:200px;z-index:20;padding:5px;flex-direction:column">
+          <div data-cid-ia-menu="${c.id}" style="display:none;position:absolute;bottom:42px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 24px rgba(11,37,66,.2);min-width:200px;z-index:1000;padding:5px;flex-direction:column">
             <button onclick="event.stopPropagation();diagnosticoIACidade('${c.id}');cidIaMenuFechar('${c.id}')" style="padding:9px 12px;border:none;background:transparent;font-size:12px;font-weight:500;color:var(--text);cursor:pointer;font-family:inherit;text-align:left;border-radius:6px;display:flex;align-items:center;gap:8px">
               <span style="font-size:14px">🔍</span> Diagnóstico semanal
             </button>
@@ -41844,7 +41844,10 @@ async function tfSincronizarDoSupabase(){
     
     window._tfSupaCache = tarefas;
     
-    // 🆕 v26.94: Atualiza cache local (cada tarefa volta pra sua chave dedicada)
+    // 🆕 v29.8: MESCLA (NÃO sobrescreve). Antes o sync jogava fora as tarefas locais
+    // que ainda não tinham subido pro servidor (ex.: tfSupaSalvar falhou em silêncio)
+    // → a tarefa SUMIA no próximo login. Agora preserva as locais-pendentes do próprio
+    // usuário e re-tenta subir pro servidor.
     try {
       var porChave = {};
       tarefas.forEach(function(t){
@@ -41853,9 +41856,27 @@ async function tfSincronizarDoSupabase(){
         if(!porChave[k]) porChave[k] = [];
         porChave[k].push(t);
       });
+      var pendentesReupload = [];
       Object.keys(porChave).forEach(function(k){
-        try { localStorage.setItem(k, JSON.stringify(porChave[k])); } catch(e){}
+        try {
+          var existentes = [];
+          try { existentes = JSON.parse(localStorage.getItem(k) || '[]'); } catch(e){}
+          if(!Array.isArray(existentes)) existentes = [];
+          var idsServ = {}; porChave[k].forEach(function(t){ if(t && t.id) idsServ[t.id] = true; });
+          // tarefas locais DESTE usuário que o servidor NÃO tem = pendentes (preserva!)
+          var locaisPendentes = existentes.filter(function(t){
+            return t && t.id && !idsServ[t.id] && (t.pessoa_id || uid) === uid;
+          });
+          var merged = porChave[k].concat(locaisPendentes);
+          localStorage.setItem(k, JSON.stringify(merged));
+          locaisPendentes.forEach(function(t){ pendentesReupload.push(t); });
+        } catch(e){}
       });
+      // Re-tenta subir as pendentes (sem travar o sync)
+      pendentesReupload.forEach(function(t){
+        try { if(typeof tfSupaSalvar === 'function') tfSupaSalvar(t, t.tipo || 'diario', t.bucket || null); } catch(e){}
+      });
+      if(pendentesReupload.length) console.log('[Tarefas] ' + pendentesReupload.length + ' tarefa(s) local preservada(s) e reenviada(s) ao servidor');
     } catch(e){ console.warn('[Tarefas] sync cache:', e); }
     
     // Marca as delegadas não vistas como vistas
