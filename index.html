@@ -1,4 +1,4 @@
-<!-- v27.97 - TAREFAS RECORRENTES isolamento + limpeza Marketing. BUG: recorrentes ficavam em chave global gami_tf_recorrentes e eram geradas SEM pessoa_id, entao a recorrente Marketing 10h do Cleyton aparecia pra qualquer um que logasse no aparelho (ex Jheniffer). FIX: template nasce com pessoa_id; gerarTarefasRecorrentesDoDia so gera pra propria pessoa (legado sem dono so pro pe016) e carimba pessoa_id; guard de geracao por pessoa. LIMPEZA unica (1x/aparelho): remove templates Marketing e, nas listas, tira as do pe016 (feitas ou nao) e das demais so as nao-feitas (feitas das meninas ficam gravadas) - 22/06/2026 -->
+<!-- v28.0 - SISTEMA INDIVIDUAL (tarefas+pontos+streak), a prova de vazamento. (1) GUARD DE CACHE POR DONO: gami_cache_owner duravel; ao logar usuario diferente no aparelho, _gamiLimparCachePessoal apaga TODO cache pessoal do anterior (buckets de tarefa, xp, level, streak, prio, foco, mascote + globais gami_streak_data/gami_pontos_cache). Preserva config e templates de recorrentes. (2) STREAK individual + Supabase (tabela streaks pessoa_id PK, dados jsonb): _streakKey por pessoa, saveStreakData faz push, login faz _streakPull (cross-device). (3) PONTOS: ranking ja vem do pontos_log no Supabase; cache global apagado na troca; caches por pessoa ja sao pid-scoped. Tarefas ja usam RPC tarefas_minhas (server-side, impossivel vazar) - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11485,28 +11485,87 @@ function _getUsuarioLogadoReal(){
 
 function setUsuarioLogado(pessoa){
   if(pessoa){
-    // 🆕 v26.95: detecta troca de usuário e limpa tarefas do anterior
+    var idNovo = pessoa.id || pessoa.pessoa_id;
+    // 🆕 v28.0: GUARD DE CACHE POR DONO. 'gami_cache_owner' é durável (sobrevive ao
+    // logout), então mesmo que B entre depois de A sair, detectamos a troca e apagamos
+    // TODO o cache pessoal do anterior. Vazamento entre usuários fica impossível.
     try {
-      var anterior = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null');
-      var idAnterior = anterior && (anterior.id || anterior.pessoa_id);
-      var idNovo = pessoa.id || pessoa.pessoa_id;
-      if(idAnterior && idAnterior !== idNovo){
-        console.log('[Login] Troca de usuário detectada: '+idAnterior+' → '+idNovo);
+      var donoCache = localStorage.getItem('gami_cache_owner');
+      if(donoCache && idNovo && donoCache !== idNovo){
+        _gamiLimparCachePessoal(idNovo);
       }
+      if(idNovo) localStorage.setItem('gami_cache_owner', idNovo);
     } catch(e){}
-    
+
     localStorage.setItem('gami_usuario_logado', JSON.stringify(pessoa));
     localStorage.setItem('gami_ultima_atividade', Date.now().toString());
-    
-    // 🆕 v26.95: dispara limpeza + migração logo após o login (defer 50ms pra setUsuarioLogado completar)
+
     setTimeout(function(){
       try { if(typeof _tfLimparTarefasOutrosUsuarios === 'function') _tfLimparTarefasOutrosUsuarios(); } catch(e){}
       try { if(typeof tfMigrarV2ParaV3 === 'function') tfMigrarV2ParaV3(); } catch(e){}
+      try { if(typeof _streakPull === 'function') _streakPull(idNovo); } catch(e){} // 🆕 streak do servidor
     }, 50);
   } else {
+    // No logout NÃO removemos 'gami_cache_owner' (ele guarda o último dono pra
+    // detectar troca no próximo login).
     localStorage.removeItem('gami_usuario_logado');
     localStorage.removeItem('gami_ultima_atividade');
   }
+}
+
+// 🆕 v28.0: apaga todo cache pessoal que NÃO é do novo dono (chaves com pid de outra
+// pessoa + chaves globais pessoais). A fonte da verdade fica no Supabase, que recarrega
+// filtrado por pessoa_id (tarefas via RPC tarefas_minhas; streak via _streakPull).
+// Preserva config do app (gami_cache_owner, gami_admin, tokens) e os templates de recorrentes.
+function _gamiLimparCachePessoal(idNovo){
+  try {
+    var rePid = /^gami_(tf_v3|streak_data|pontos_pessoa|mascote_lvl|meu_foco|stickies|level|streak|prio|xp)_(.+?)(?:_|$)/;
+    var globaisPessoais = { 'gami_streak_data':1, 'gami_pontos_cache':1, 'gami_meu_foco_feito':1 };
+    var remover = [];
+    for(var i=0;i<localStorage.length;i++){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf('gami_') !== 0) continue;
+      if(globaisPessoais[k]){ remover.push(k); continue; }
+      if(k.indexOf('gami_tf_recorrentes_geradas_') === 0){
+        if(k.indexOf('_'+idNovo) === -1) remover.push(k); // guard de geração de outro dia/pessoa
+        continue;
+      }
+      var m = rePid.exec(k);
+      if(m && m[2] && m[2] !== idNovo) remover.push(k);
+    }
+    for(var j=0;j<remover.length;j++){ try{ localStorage.removeItem(remover[j]); }catch(e){} }
+    console.log('[Cache] Troca de usuário: '+remover.length+' chave(s) pessoais do anterior removidas.');
+  } catch(e){ console.warn('[Cache] limpeza falhou:', e && e.message); }
+}
+
+// 🆕 v28.0: STREAK no Supabase (tabela streaks: pessoa_id PK, dados jsonb) → individual
+// e cross-device, não mais presa ao aparelho. Best-effort: se a tabela não existir ou
+// estiver offline, segue funcionando só local.
+async function _streakPull(uid){
+  if(!uid || typeof SUPA_URL === 'undefined') return;
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/streaks?pessoa_id=eq.' + encodeURIComponent(uid) + '&select=dados&limit=1',
+      { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+    if(r.ok){
+      var arr = await r.json();
+      if(arr && arr[0] && arr[0].dados){
+        try { localStorage.setItem('gami_streak_data_' + uid, JSON.stringify(arr[0].dados)); } catch(e){}
+        try { if(typeof renderFocoDoDia === 'function') renderFocoDoDia(); } catch(e){}
+      }
+    }
+  } catch(e){ /* offline/sem tabela → mantém local */ }
+}
+async function _streakPush(d){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var uid = u && (u.id || u.pessoa_id);
+  if(!uid || typeof SUPA_URL === 'undefined') return;
+  try {
+    await fetch(SUPA_URL + '/rest/v1/streaks', {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ pessoa_id: uid, dados: d, atualizado_em: new Date().toISOString() })
+    });
+  } catch(e){ /* best-effort */ }
 }
 
 function tocarAtividade(){
@@ -33299,12 +33358,18 @@ function atualizarStickie(idx, valor){
 }
 
 /* ===== Streak de produtividade ===== */
-function _streakKey(){ return 'gami_streak_data'; }
+function _streakKey(){
+  // 🆕 v28.0: por pessoa (era global 'gami_streak_data', que misturava por aparelho)
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var uid = (u && (u.id||u.pessoa_id)) ? (u.id||u.pessoa_id) : 'anon';
+  return 'gami_streak_data_' + uid;
+}
 function getStreakData(){
   try { return JSON.parse(localStorage.getItem(_streakKey())||'{}'); }catch(e){ return {}; }
 }
 function saveStreakData(d){
   try { localStorage.setItem(_streakKey(), JSON.stringify(d)); }catch(e){}
+  try { if(typeof _streakPush === 'function') _streakPush(d); }catch(e){} // 🆕 v28.0: Supabase
 }
 // 🆕 v27.92: RESET único de pontos(cache local) + streak. Roda 1x por aparelho
 // (guardado por token). Os pontos do RANKING ficam no Supabase (pontos_log) e
@@ -41874,6 +41939,42 @@ function salvarTarefaRecorrente(t){
   } catch(e){ console.warn('[limpeza mkt]', e && e.message); }
 })();
 
+/* 🆕 v27.98: LIMPEZA das tarefas recorrentes que VAZARAM (sem dono / de outro dono).
+   Para cada lista: mantém não-recorrentes, mantém já concluídas (gravado) e mantém
+   só as recorrentes cujo TEMPLATE pertence à própria pessoa do bucket. Remove o resto
+   (órfãs, de outro dono ou de template apagado). Roda 1x por aparelho. */
+(function(){
+  try {
+    var TOKEN = 'gami_limpeza_recorrentes_orfas_2026_06';
+    if(localStorage.getItem(TOKEN)) return;
+    var PREF = 'gami_tf_v3_';
+    // mapa template.id -> dono (pessoa_id ou null)
+    var owner = {};
+    try {
+      var recs = JSON.parse(localStorage.getItem('gami_tf_recorrentes')||'[]');
+      if(Array.isArray(recs)) recs.forEach(function(t){ if(t && t.id) owner[t.id] = t.pessoa_id || null; });
+    } catch(e){}
+    for(var i = localStorage.length - 1; i >= 0; i--){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf(PREF) !== 0) continue;
+      var resto = k.slice(PREF.length);
+      var pid = resto.replace(/_(d_.*|s_.*|m_.*|projetos|geral)$/, '');
+      var lista;
+      try { lista = JSON.parse(localStorage.getItem(k)||'[]'); } catch(e){ continue; }
+      if(!Array.isArray(lista)) continue;
+      var novo = lista.filter(function(t){
+        if(!t || !t.recorrenteId) return true;     // não-recorrente → mantém
+        if(t.feito === true) return true;          // já feita → mantém (gravado)
+        return owner[t.recorrenteId] === pid;      // mantém só se o template é DESTA pessoa
+      });
+      if(novo.length !== lista.length){
+        try { localStorage.setItem(k, JSON.stringify(novo)); } catch(e){}
+      }
+    }
+    localStorage.setItem(TOKEN, '1');
+  } catch(e){ console.warn('[limpeza recorrentes]', e && e.message); }
+})();
+
 function deveAparecerHoje(recorrencia){
   if(!recorrencia) return false;
   var hoje = new Date();
@@ -41897,10 +41998,11 @@ function gerarTarefasRecorrentesDoDia(){
 
   var templates = getTarefasRecorrentes().filter(function(t){
     if(t.ativa === false) return false;
-    // Só gera recorrentes DA PRÓPRIA pessoa. Legado sem pessoa_id: só pro
-    // super_admin (pe016) — nunca vaza pras demais (era a causa do bug).
-    if(t.pessoa_id) return t.pessoa_id === uid;
-    return uid === 'pe016';
+    // 🆕 v27.98: ESTRITO — só gera recorrente COM dono e da própria pessoa.
+    // Legado SEM pessoa_id NÃO gera pra ninguém. Era a fonte do vazamento:
+    // ia pro bucket de quem logasse e o saveTarefas carimbava como dele.
+    // (Recrie suas recorrentes 1x pra nascerem com dono.)
+    return !!t.pessoa_id && t.pessoa_id === uid;
   });
   if(!templates.length){ localStorage.setItem(jaGeradoKey, '1'); return; }
 
@@ -49020,8 +49122,11 @@ async function _getPontoGestoresIds(){
     );
     if(r.ok){
       var lista = await r.json();
-      _PONTO_GESTORES_IDS = lista.map(function(p){ return { id: p.id, nome: p.nome }; });
-      return _PONTO_GESTORES_IDS;
+      var mapeado = lista.map(function(p){ return { id: p.id, nome: p.nome }; });
+      // 🆕 v27.99: só cacheia se ACHOU alguém. Antes, se a busca voltasse vazia (ex:
+      // Supabase lento), cacheava [] e nunca mais tentava → Leomara ficava sem aviso.
+      if(mapeado.length){ _PONTO_GESTORES_IDS = mapeado; }
+      return mapeado;
     }
   } catch(e){ console.warn('[Ponto-Notif] erro buscar gestores:', e); }
   return [];
@@ -49029,48 +49134,37 @@ async function _getPontoGestoresIds(){
 
 async function _notificarGestoresDoPonto(resp, params){
   if(typeof criarNotificacao !== 'function') return;
-  
+
   var gestores = await _getPontoGestoresIds();
   if(!gestores || !gestores.length) return;
-  
-  // Nome da pessoa que bateu
+
   var pessoaNome = (MP_PESSOA && MP_PESSOA.nome) ? MP_PESSOA.nome : 'Alguém';
-  
-  // Tipo da batida em português
-  var tipoLabel = {
-    entrada1: 'Entrada',
-    saida1:   'Saída pro almoço',
-    entrada2: 'Volta do almoço',
-    saida2:   'Saída'
-  }[resp.tipo] || 'Ponto';
-  
-  // Hora bate
+  var primeiroNome = pessoaNome.split(' ')[0];
+
+  // Tipo da batida COM emoji (reusa MP_TIPO_LABEL: 🌅 Entrada / 🍽️ Saída pro almoço / ↩️ Volta / 🌆 Saída)
+  var tipoFull = (typeof MP_TIPO_LABEL === 'object' && MP_TIPO_LABEL && MP_TIPO_LABEL[resp.tipo]) ? MP_TIPO_LABEL[resp.tipo] : '📍 Ponto';
+
   var hora = resp.hora || '';
-  
-  // Detecta atraso/justificativa pra deixar título mais útil
+
+  // Contexto da justificativa (quando houver) — vira uma tag legível
   var justif = (params && params.p_justificativa) ? String(params.p_justificativa) : '';
   var temJustif = justif.length > 0;
   var isAtraso  = justif.indexOf('atraso') !== -1 || justif.indexOf('trânsito') !== -1 || /^\d/.test(justif);
   var isLiberacaoTemporaria = justif.indexOf('[LIBERAÇÃO TEMPORÁRIA]') === 0;
   var isIP = justif.indexOf('[IP ESCRITÓRIO') === 0;
-  
-  var emoji = '🟢';
-  if(isLiberacaoTemporaria) emoji = '🆓';
-  else if(isAtraso) emoji = '🟡';
-  else if(isIP) emoji = '📡';
-  else if(temJustif) emoji = '📝';
-  
-  // 🆕 v27.11: Antes a Leomara recebia TODA batida (entrada/almoço/volta/saída ×
-  // ~9-34 pessoas = ~136 notificações/dia) — chato demais e ela acabaria mutando tudo.
-  // Agora só notifica o que exige atenção dela: ATRASO (🟡), LIBERAÇÃO TEMPORÁRIA (🆓)
-  // ou JUSTIFICATIVA manual (📝). Batida normal (🟢) e IP rotineiro de escritório (📡)
-  // NÃO geram notificação. (Pra voltar a notificar tudo, é só remover este return.)
-  var vale_notificar = isAtraso || (temJustif && !isIP);
-  if(!vale_notificar) return;
-  
-  var titulo = emoji + ' ' + pessoaNome + ' bateu ' + tipoLabel;
-  var mensagem = 'às ' + hora + (temJustif ? ' · ' + justif.slice(0, 100) : '');
-  
+
+  var tag = '';
+  if(isLiberacaoTemporaria) tag = '🆓 Liberação temporária';
+  else if(isAtraso) tag = '🟡 Atraso';
+  else if(isIP) tag = '📡 IP escritório';
+  else if(temJustif) tag = '📝 Justificativa';
+
+  // 🆕 v27.99: notifica TODA batida (entrada/almoço/volta/saída). Cada aviso traz
+  // tipo + nome + hora e, quando houver, a tag de contexto. (Pra voltar a notificar
+  // só exceções, é só restaurar o return de vale_notificar.)
+  var titulo = tipoFull + ' · ' + primeiroNome;
+  var mensagem = 'às ' + hora + (tag ? ' · ' + tag : '') + (temJustif ? ' — ' + justif.slice(0, 120) : '');
+
   // Cria notificação pra cada gestor configurado
   for(var i=0; i<gestores.length; i++){
     try {
