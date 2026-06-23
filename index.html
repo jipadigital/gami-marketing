@@ -1,4 +1,4 @@
-<!-- v29.3 - PONTO: cadastrado IP da 4a internet do escritorio (192.144.64.164 + faixa 192.144.64.*) em ESCRITORIO_IPS_AUTORIZADOS/FAIXAS. Agora as meninas batem ponto pela rede do escritorio nessa conexao, sem depender de GPS. Enforcement no local mantido (v29.2) - 23/06/2026 -->
+<!-- v29.4 - Pessoas hero: DUAS FILEIRAS de fotinhas. Fileira 1 (verde) Online agora (last_seen 10min, dot verde); Fileira 2 (ambar) Online nas ultimas 24h (sem dot). _pm_renderizarHeroOnline virou generica (opts hostId/emptyMsg/dotColor/showDot); _pmCarregarOnline24h agora retorna IDs (nao count) pra renderizar avatares. Sub mostra contagem 24h - 23/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -6444,8 +6444,14 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         </div>
         <div id="pm-online-sub" style="font-size:11px;color:#065F46;opacity:.7;font-style:italic;text-align:right">últimas 24h</div>
       </div>
-      <!-- Avatares dos online -->
-      <div id="pessoas-online-avatares" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;min-height:42px;align-items:center">
+      <!-- Fileira 1: online AGORA -->
+      <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:#065F46;text-transform:uppercase;margin-bottom:5px;opacity:.85">💚 Online agora</div>
+      <div id="pessoas-online-avatares" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;min-height:42px;align-items:center">
+        <div style="color:#065F46;font-size:12px;font-style:italic;opacity:.7">Carregando avatares...</div>
+      </div>
+      <!-- Fileira 2: últimas 24h -->
+      <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:#065F46;text-transform:uppercase;margin-bottom:5px;opacity:.85">🕐 Online nas últimas 24h</div>
+      <div id="pessoas-online-avatares-24h" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;min-height:42px;align-items:center">
         <div style="color:#065F46;font-size:12px;font-style:italic;opacity:.7">Carregando avatares...</div>
       </div>
       <!-- Frase Gâmi integrada -->
@@ -13445,8 +13451,8 @@ async function _pmCarregarOnline24h(){
     if(!r.ok) return 0;
     var arr = await r.json();
     var u = {}; arr.forEach(function(x){ if(x.pessoa_id) u[x.pessoa_id]=true; });
-    return Object.keys(u).length;
-  } catch(e){ return 0; }
+    return Object.keys(u);
+  } catch(e){ return []; }
 }
 
 // 🆕 v28.7: atividade recente de TODAS as pessoas (via pontos_log). Pula o próprio
@@ -13505,36 +13511,40 @@ async function _pm_carregarPessoasOnline(){
 }
 
 // 🆕 Renderiza avatares dos online no Hero
-function _pm_renderizarHeroOnline(idsOnline){
-  var host = document.getElementById('pessoas-online-avatares');
+function _pm_renderizarHeroOnline(idsOnline, opts){
+  opts = opts || {};
+  var hostId = opts.hostId || 'pessoas-online-avatares';
+  var emptyMsg = opts.emptyMsg || 'Ninguém online agora';
+  var dotColor = opts.dotColor || '#5A9E36';
+  var showDot = (opts.showDot !== false);
+  var host = document.getElementById(hostId);
   if(!host) return;
-  
+
   if(!idsOnline || idsOnline.length === 0){
-    host.innerHTML = '<div style="color:#3B6D11;font-size:12px;font-style:italic;opacity:.7">Ninguém online agora</div>';
+    host.innerHTML = '<div style="color:#3B6D11;font-size:12px;font-style:italic;opacity:.7">' + emptyMsg + '</div>';
     return;
   }
-  
+
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
   var pessoasOnline = pessoas.filter(function(p){ return idsOnline.indexOf(p.id) >= 0; });
-  
+
   // Limita a 20 avatares + "+N mais"
   var mostrar = pessoasOnline.slice(0, 20);
   var restante = pessoasOnline.length - mostrar.length;
-  
+
   var html = mostrar.map(function(p){
     var ac = (typeof avColor === 'function') ? avColor(p.nome) : {bg:'#E0E0E0',color:'#333'};
     var ini = (typeof initials === 'function') ? initials(p.nome) : (p.nome||'?').slice(0,2).toUpperCase();
-    var primeiroNome = (p.nome||'').split(' ')[0];
     return '<div title="' + (p.nome||'').replace(/"/g,'') + '" style="position:relative;width:36px;height:36px;border-radius:50%;background:' + ac.bg + ';color:' + ac.color + ';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;cursor:default;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden">'
       + (p.foto ? '<img src="' + p.foto + '" style="width:100%;height:100%;object-fit:cover"/>' : ini)
-      + '<div style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;background:#5A9E36;border:2px solid white;border-radius:50%"></div>'
+      + (showDot ? '<div style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;background:' + dotColor + ';border:2px solid white;border-radius:50%"></div>' : '')
     + '</div>';
   }).join('');
-  
+
   if(restante > 0){
     html += '<div style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:white;color:#3B6D11;font-size:11px;font-weight:700;border:2px solid #C2DC91">+' + restante + '</div>';
   }
-  
+
   host.innerHTML = html;
 }
 
@@ -14768,9 +14778,11 @@ function renderPessoas(){
   }).catch(function(){
     var el = document.getElementById('pm-online'); if(el) el.textContent = '—';
   });
-  _pmCarregarOnline24h().then(function(n){
+  _pmCarregarOnline24h().then(function(ids24){
+    ids24 = ids24 || [];
     var sub = document.getElementById('pm-online-sub');
-    if(sub) sub.textContent = '🕐 ' + n + ' nas últimas 24h';
+    if(sub) sub.textContent = '🕐 ' + ids24.length + ' nas últimas 24h';
+    _pm_renderizarHeroOnline(ids24, { hostId:'pessoas-online-avatares-24h', emptyMsg:'Ninguém ativo nas últimas 24h', dotColor:'#D97706', showDot:false });
   }).catch(function(){});
   
   // 🆕 Renderiza Aniversariantes card + Atividade Recente + Header resumo + Top 3 + Mapa Presença
