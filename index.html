@@ -1,4 +1,4 @@
-<!-- v28.4 - FIX modal Editar Pessoa indo pro canto. openPessoaModal agora garante que o overlay #modal-pessoa fica DIRETO no <body> (re-append se tiver drifted pra dentro de container com transform, que ancorava o position:fixed e jogava o modal pro canto) + limpa estilo inline antigo + reseta className modal-overlay. CSS de centralizacao ja estava correto (fixed/inset0/flex/center) - 22/06/2026 -->
+<!-- v28.5 - FIX DEFINITIVO modal Editar Pessoa colado no topo. O print mostrou o overlay cobrindo a tela (fundo escuro) mas o conteudo no topo = display:flex/centralizacao da CLASSE nao estava pegando (estilo inline antigo/cache de regra). Agora openPessoaModal forca a centralizacao por inline (overlay.style.cssText position:fixed/inset0/display:flex/align+justify center/z1000) e o fechar usa fecharModalPessoa() que limpa o inline (display:none). 3 pontos de fechar (x, Cancelar, salvar) atualizados - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -14929,6 +14929,11 @@ function renderPessoas(){
 }
 
 // ---- MODAL PESSOA ----
+// 🆕 v28.5: fechar limpa o inline display (o open seta display:flex inline)
+function fecharModalPessoa(){
+  var o = document.getElementById('modal-pessoa');
+  if(o){ o.classList.remove('open'); o.style.display = 'none'; }
+}
 function openPessoaModal(id){
   const pessoas = getPessoas();
   const p = id ? pessoas.find(x=>x.id===id) : null;
@@ -14971,18 +14976,17 @@ function openPessoaModal(id){
     overlay.id = 'modal-pessoa';
     document.body.appendChild(overlay);
   }
-  // 🆕 v28.4: garante o overlay DIRETO no <body> e centralizado. Se ele tiver sido
-  // criado/movido pra dentro de um container com transform/position, o position:fixed
-  // se ancorava nesse container e o modal ia pro canto em vez do meio.
+  // 🆕 v28.5: força a centralização por estilo inline. O display:flex via classe não
+  // estava pegando em alguns casos (estilo inline antigo/cache de regra) e o modal
+  // colava no topo. Inline vence qualquer conflito. Fundo/tema continuam pela classe.
   if(overlay.parentElement !== document.body) document.body.appendChild(overlay);
-  overlay.removeAttribute('style'); // limpa estilo inline antigo que desalinhava
-  overlay.className = 'modal-overlay';
-  overlay.classList.add('open');
+  overlay.className = 'modal-overlay open';
+  overlay.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1000;padding:14px';
   overlay.innerHTML = `
   <div class="modal" style="width:560px">
     <div class="modal-head">
       <div class="modal-title">${isNew ? 'Adicionar pessoa' : 'Editar pessoa'}</div>
-      <button class="modal-close" onclick="document.getElementById('modal-pessoa').classList.remove('open')">×</button>
+      <button class="modal-close" onclick="fecharModalPessoa()">×</button>
     </div>
     <div class="form-grid">
 
@@ -15197,7 +15201,7 @@ function openPessoaModal(id){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button onclick="document.getElementById('modal-pessoa').classList.remove('open')" class="btn btn-ghost" style="flex:1">Cancelar</button>
+      <button onclick="fecharModalPessoa()" class="btn btn-ghost" style="flex:1">Cancelar</button>
       <button onclick="salvarPessoa('${d.id}')" class="btn btn-primary" style="flex:1">${isNew ? 'Adicionar' : 'Salvar alterações'}</button>
     </div>
   </div>`;
@@ -15280,7 +15284,7 @@ function salvarPessoa(existingId){
     pessoas.push(novo);
   }
   savePessoas(pessoas);
-  document.getElementById('modal-pessoa').classList.remove('open');
+  fecharModalPessoa();
   renderPessoas();
 }
 
