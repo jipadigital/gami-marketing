@@ -1,4 +1,4 @@
-<!-- v28.5 - FIX DEFINITIVO modal Editar Pessoa colado no topo. O print mostrou o overlay cobrindo a tela (fundo escuro) mas o conteudo no topo = display:flex/centralizacao da CLASSE nao estava pegando (estilo inline antigo/cache de regra). Agora openPessoaModal forca a centralizacao por inline (overlay.style.cssText position:fixed/inset0/display:flex/align+justify center/z1000) e o fechar usa fecharModalPessoa() que limpa o inline (display:none). 3 pontos de fechar (x, Cancelar, salvar) atualizados - 22/06/2026 -->
+<!-- v28.7 - ONLINE 2 VISOES + ATIVIDADE CROSS-PESSOA. (1) Heartbeat presenca: _pmIniciarHeartbeat (no setUsuarioLogado) faz PATCH usuarios_login.last_seen=now a cada 60s com app visivel. (2) Hero: numero grande = ONLINE AGORA (_pmCarregarOnlineAgora, last_seen>=now-10min); subtitulo = ULTIMAS 24h reais (_pmCarregarOnline24h, or ultimo_login/last_seen >= now-24h). Removido overwrite antigo da meia-noite. (3) BUG atividade recente: so mostrava o logado (helper strict). Agora renderPessoasAtividade pinta local e mescla _pmCarregarAtividadeServidor (pontos_log de TODOS, pula o proprio). PRECISA: alter table usuarios_login add column last_seen timestamptz - 22/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -542,6 +542,9 @@ body[data-sem-valores="true"] .gami-valor-inline::after{
 /* MODAL */
 .modal-overlay{position:fixed;inset:0;background:rgba(11,37,66,.55);display:flex;align-items:center;justify-content:center;z-index:200;display:none;padding:14px}
 .modal-overlay.open{display:flex}
+/* 🆕 v28.6: ancora a CAIXA do modal de pessoa direto na viewport — centraliza
+   independente do overlay (resolve o modal indo pro canto/topo). */
+#modal-pessoa .modal{position:fixed!important;top:50%!important;left:50%!important;transform:translate(-50%,-50%)!important;margin:0!important}
 
 /* 🆕 v26.64: Esconde valores monetários do estoque pra quem não tem permissão */
 body.gami-no-valor .gami-valor { 
@@ -11504,6 +11507,7 @@ function setUsuarioLogado(pessoa){
       try { if(typeof _tfLimparTarefasOutrosUsuarios === 'function') _tfLimparTarefasOutrosUsuarios(); } catch(e){}
       try { if(typeof tfMigrarV2ParaV3 === 'function') tfMigrarV2ParaV3(); } catch(e){}
       try { if(typeof _streakPull === 'function') _streakPull(idNovo); } catch(e){} // 🆕 streak do servidor
+      try { if(typeof _pmIniciarHeartbeat === 'function') _pmIniciarHeartbeat(); } catch(e){} // 🆕 v28.7 presença
     }, 50);
   } else {
     // No logout NÃO removemos 'gami_cache_owner' (ele guarda o último dono pra
@@ -13401,6 +13405,70 @@ function _pm_contarTarefasConcluidasHoje(){
   return contador;
 }
 
+// 🆕 v28.7: HEARTBEAT de presença — grava last_seen enquanto o app está aberto
+async function _pmHeartbeat(){
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u || !u.id) return;
+    await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(u.id), {
+      method: 'PATCH',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ last_seen: new Date().toISOString() })
+    });
+  } catch(e){}
+}
+function _pmIniciarHeartbeat(){
+  if(window._pmHbTimer) return;
+  try { _pmHeartbeat(); } catch(e){}
+  window._pmHbTimer = setInterval(function(){
+    if(document.visibilityState === 'visible'){ try { _pmHeartbeat(); } catch(e){} }
+  }, 60000);
+}
+
+// 🆕 v28.7: ONLINE AGORA = last_seen nos últimos 10 min (presença real)
+async function _pmCarregarOnlineAgora(){
+  try {
+    var lim = new Date(Date.now() - 10*60*1000).toISOString();
+    var r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?last_seen=gte.'+lim+'&select=pessoa_id', { headers: supaHeaders() });
+    if(!r.ok) return [];
+    var arr = await r.json();
+    var u = {}; arr.forEach(function(x){ if(x.pessoa_id) u[x.pessoa_id]=true; });
+    return Object.keys(u);
+  } catch(e){ return []; }
+}
+// 🆕 v28.7: ÚLTIMAS 24h (rolling) = logou OU ativo nas últimas 24h
+async function _pmCarregarOnline24h(){
+  try {
+    var lim = new Date(Date.now() - 24*60*60*1000).toISOString();
+    var r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?or=(ultimo_login.gte.'+lim+',last_seen.gte.'+lim+')&select=pessoa_id', { headers: supaHeaders() });
+    if(!r.ok) return 0;
+    var arr = await r.json();
+    var u = {}; arr.forEach(function(x){ if(x.pessoa_id) u[x.pessoa_id]=true; });
+    return Object.keys(u).length;
+  } catch(e){ return 0; }
+}
+
+// 🆕 v28.7: atividade recente de TODAS as pessoas (via pontos_log). Pula o próprio
+// usuário (já mostrado pelos eventos locais) pra não duplicar.
+async function _pmCarregarAtividadeServidor(){
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/pontos_log?select=pessoa_id,pessoa_nome,descricao,categoria,data_acao&order=data_acao.desc&limit=20', { headers: supaHeaders() });
+    if(!r.ok) return [];
+    var arr = await r.json();
+    var meuId = ((typeof getUsuarioLogado==='function' && getUsuarioLogado()) || {}).id;
+    return arr.filter(function(x){ return x.pessoa_id && x.pessoa_id !== meuId; }).map(function(x){
+      var nome = (x.pessoa_nome||'').split(' ')[0] || 'Alguém';
+      var ic = (x.categoria === 'conquista') ? '🏅' : '✅';
+      return {
+        icone: ic,
+        texto: '<strong>'+nome+'</strong> '+(x.descricao || 'concluiu uma atividade'),
+        tempo: x.data_acao ? _pm_tempoRelativo(x.data_acao) : 'recente',
+        ts: x.data_acao ? new Date(x.data_acao).getTime() : Date.now()
+      };
+    });
+  } catch(e){ return []; }
+}
+
 // Conta usuários únicos com login nas últimas 24h
 async function _pm_carregarOnlineHoje(){
   try {
@@ -13441,7 +13509,7 @@ function _pm_renderizarHeroOnline(idsOnline){
   if(!host) return;
   
   if(!idsOnline || idsOnline.length === 0){
-    host.innerHTML = '<div style="color:#3B6D11;font-size:12px;font-style:italic;opacity:.7">Ninguém online nas últimas 24h</div>';
+    host.innerHTML = '<div style="color:#3B6D11;font-size:12px;font-style:italic;opacity:.7">Ninguém online agora</div>';
     return;
   }
   
@@ -13525,18 +13593,13 @@ function renderPessoasBdaysCard(){
 }
 
 // 🆕 Renderiza Atividade Recente
-function renderPessoasAtividade(forcado){
-  var host = document.getElementById('pessoas-atividade-conteudo');
+function _pm_pintarAtividade(host, eventos){
   if(!host) return;
-  
-  var eventos = _pm_coletarEventosRecentes();
-  
-  if(!eventos.length){
+  if(!eventos || !eventos.length){
     host.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="font-size:24px;opacity:.3">📋</div><div style="font-size:12px;color:#155E75;opacity:.7">Sem atividade recente</div></div>';
     return;
   }
-  
-  var html = eventos.slice(0, 6).map(function(ev){
+  host.innerHTML = eventos.slice(0, 6).map(function(ev){
     return '<div class="pessoa-ativ-item" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(103,232,249,.4)">'
       + '<div style="font-size:14px;flex-shrink:0;width:22px;text-align:center">' + ev.icone + '</div>'
       + '<div style="flex:1;min-width:0">'
@@ -13545,9 +13608,23 @@ function renderPessoasAtividade(forcado){
       + '</div>'
     + '</div>';
   }).join('');
-  
-  host.innerHTML = html;
-  
+}
+
+function renderPessoasAtividade(forcado){
+  var host = document.getElementById('pessoas-atividade-conteudo');
+  if(!host) return;
+
+  var eventos = _pm_coletarEventosRecentes();
+  _pm_pintarAtividade(host, eventos); // pinta já com os eventos locais (rápido)
+
+  // 🆕 v28.7: busca atividade de TODAS as pessoas (pontos_log) e mescla
+  _pmCarregarAtividadeServidor().then(function(servidor){
+    if(!servidor || !servidor.length) return;
+    var todos = eventos.concat(servidor);
+    todos.sort(function(a,b){ return b.ts - a.ts; });
+    _pm_pintarAtividade(host, todos);
+  }).catch(function(){});
+
   // 🆕 Inicia polling AO VIVO (30s) se ainda não estiver
   if(!window._pessoasAtividadePoll){
     window._pessoasAtividadePoll = setInterval(function(){
@@ -14679,17 +14756,21 @@ function renderPessoas(){
   const busca = (document.getElementById('pessoas-busca')||{}).value||'';
   
   // 🆕 v26.55: Carrega lista de pessoas ONLINE (não só count) e renderiza avatares
-  _pm_carregarPessoasOnline().then(function(onlineIds){
-    window._pessoasOnlineIds = onlineIds || [];
+  // 🆕 v28.7: 2 visões reais — ONLINE AGORA (last_seen <=10min) no número grande +
+  // ÚLTIMAS 24h no subtítulo.
+  _pmCarregarOnlineAgora().then(function(idsAgora){
+    window._pessoasOnlineIds = idsAgora || [];
     var el = document.getElementById('pm-online');
     if(el) el.textContent = window._pessoasOnlineIds.length;
-    // Renderiza avatares no hero
     _pm_renderizarHeroOnline(window._pessoasOnlineIds);
-    // Re-renderiza lista pra adicionar dot online
     setTimeout(function(){ _pm_aplicarDotOnlineNaLista(); }, 50);
   }).catch(function(){
     var el = document.getElementById('pm-online'); if(el) el.textContent = '—';
   });
+  _pmCarregarOnline24h().then(function(n){
+    var sub = document.getElementById('pm-online-sub');
+    if(sub) sub.textContent = '🕐 ' + n + ' nas últimas 24h';
+  }).catch(function(){});
   
   // 🆕 Renderiza Aniversariantes card + Atividade Recente + Header resumo + Top 3 + Mapa Presença
   setTimeout(function(){
@@ -14706,13 +14787,8 @@ function renderPessoas(){
   
   // ====== 6 CARDS DO TOPO (v23.69b) ======
   
-  // 1. 🟢 Online hoje (async - carrega depois)
-  _pm_carregarOnlineHoje().then(function(n){
-    var el = document.getElementById('pm-online');
-    if(el) el.textContent = n;
-  }).catch(function(){
-    var el = document.getElementById('pm-online'); if(el) el.textContent = '—';
-  });
+  // 1. 🟢 Online agora — já preenchido por _pmCarregarOnlineAgora() acima (v28.7).
+  //    (removido o overwrite antigo que jogava a contagem da meia-noite no número.)
   
   // 2. ✅ Tarefas concluídas hoje
   var concluidas = _pm_contarTarefasConcluidasHoje();
