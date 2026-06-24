@@ -1,4 +1,4 @@
-<!-- v30.7 - Ponto: faixa do Souuni ampliada para 177.152. (cobre 177.152.x.x inteiro), no lugar das faixas /24 .116 e .117. O provedor rotaciona blocos, entao isso para de bloquear a cada troca. Mais permissivo - 24/06/2026 -->
+<!-- v30.8 - Sidebar: unificadas as DUAS toggleSidebar divergentes numa funcao robusta unica (checa null, icone e overlay corretos, nao quebra). Segunda def virou ponteiro pra primeira. Add guard de resize pra overlay nao prender no desktop. Corrige barra lateral que nao abria/ficava inconsistente - 24/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -32295,26 +32295,28 @@ function gerarInsightIA(){
 
 // ===== SIDEBAR TOGGLE =====
 function toggleSidebar(){
-  const sb  = document.querySelector('.sidebar');
-  const ov  = document.getElementById('sidebar-overlay');
-  const ico = document.getElementById('tog-ico');
-  const isMobile = window.innerWidth <= 768;
+  try {
+    var sb  = document.querySelector('.sidebar');
+    if(!sb) return;
+    var ov  = document.getElementById('sidebar-overlay');
+    var ico = document.getElementById('tog-ico');
+    var isMobile = window.innerWidth <= 768;
 
-  sb.classList.toggle('collapsed');
-  const isCollapsed = sb.classList.contains('collapsed');
+    sb.classList.toggle('collapsed');
+    var isCollapsed = sb.classList.contains('collapsed');
 
-  if(isMobile){
-    ov.classList.toggle('visible', !isCollapsed);
-  }
+    // overlay só no mobile, e some quando recolhe
+    if(ov) ov.classList.toggle('visible', isMobile && !isCollapsed);
 
-  // Change icon: hamburger ↔ arrow
-  if(isCollapsed){
-    ico.innerHTML = '<path d="M9 18l6-6-6-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
-  } else {
-    ico.innerHTML = '<path d="M3 12h18M3 6h18M3 18h18" stroke="white" stroke-width="2" stroke-linecap="round"/>';
-  }
+    // ícone: seta (recolhido) ↔ hambúrguer (aberto)
+    if(ico){
+      ico.innerHTML = isCollapsed
+        ? '<path d="M9 18l6-6-6-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        : '<path d="M3 12h18M3 6h18M3 18h18" stroke="white" stroke-width="2" stroke-linecap="round"/>';
+    }
 
-  try{ localStorage.setItem('gami_sb_collapsed', isCollapsed?'1':'0'); }catch(e){}
+    try{ localStorage.setItem('gami_sb_collapsed', isCollapsed?'1':'0'); }catch(e){}
+  } catch(e){ console.warn('toggleSidebar:', e); }
 }
 
 // Restore sidebar state on load
@@ -44346,16 +44348,18 @@ var _legacy_nav_disabled = function(el, page){
 };
 } catch(__e){ /* silent */ }
 
-// Sidebar toggle
-window.toggleSidebar = function(){
-  var sb = document.querySelector('.sidebar');
-  var ov = document.getElementById('sidebar-overlay');
-  if(!sb) return;
-  sb.classList.toggle('collapsed');
-  var c = sb.classList.contains('collapsed');
-  if(window.innerWidth <= 768 && ov) ov.classList.toggle('visible', !c);
-  try{ localStorage.setItem('gami_sb_collapsed', c?'1':'0'); }catch(e){}
-};
+// Sidebar toggle: usa a função robusta única (toggleSidebar) pra não ter 2 implementações divergentes.
+window.toggleSidebar = toggleSidebar;
+
+// Guard: ao voltar pra largura desktop, garante que o overlay mobile não fique preso bloqueando.
+window.addEventListener('resize', function(){
+  try {
+    if(window.innerWidth > 768){
+      var ov = document.getElementById('sidebar-overlay');
+      if(ov) ov.classList.remove('visible');
+    }
+  } catch(e){}
+});
 
 // Kick off
 if(document.readyState === 'loading'){
