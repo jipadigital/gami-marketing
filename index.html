@@ -1,4 +1,4 @@
-<!-- v30.9 - FIX notificacoes 400: a coluna da tabela e criada_em (nao criado_em). Corrigido order nas 2 queries (painel + seeding) e a normalizacao interna. Isso parava de carregar notificacoes e pausava as buscas. Resolve tambem o caso da Leo - 24/06/2026 -->
+<!-- v31.0 - PWA: app instalado (standalone) agora atualiza NA HORA ao abrir (reg.update + skipWaiting + reload so em atualizacao, nunca na 1a instalacao). Antes so atualizava apos 15min ocioso, entao o app das meninas ficava em codigo velho e os bugs corrigidos persistiam. Isso deve resolver a sidebar e levar todas as correcoes pro app - 24/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -46571,6 +46571,25 @@ function recarregarPortal(){
     navigator.serviceWorker.register('/service-worker.js')
       .then(function(reg){
         console.log('[PWA] SW registrado');
+
+        // 🆕 v31.0: APP INSTALADO (standalone) atualiza NA HORA ao abrir.
+        // Sem isso, o app fica preso em codigo velho do cache (no navegador o
+        // Ctrl+Shift+R fura, no app nao) e os bugs ja corrigidos continuam.
+        // Como roda no momento de abrir o app, nao ha trabalho aberto: seguro.
+        try {
+          var _isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator.standalone === true);
+          if(_isStandalone){
+            reg.update().catch(function(){});
+            // So recarrega em ATUALIZACAO (ja existe um SW controlando), nunca na 1a instalacao
+            if(navigator.serviceWorker.controller){
+              var _swReloaded = false;
+              navigator.serviceWorker.addEventListener('controllerchange', function(){
+                if(_swReloaded) return; _swReloaded = true; location.reload();
+              });
+              if(reg.waiting){ reg.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+            }
+          }
+        } catch(e){ console.warn('[PWA] update-on-launch:', e); }
         
         // ============================================================
         // 🎯 AUTO-UPDATE seguro
