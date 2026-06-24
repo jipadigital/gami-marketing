@@ -1,4 +1,4 @@
-<!-- v31.0 - PWA: app instalado (standalone) agora atualiza NA HORA ao abrir (reg.update + skipWaiting + reload so em atualizacao, nunca na 1a instalacao). Antes so atualizava apos 15min ocioso, entao o app das meninas ficava em codigo velho e os bugs corrigidos persistiam. Isso deve resolver a sidebar e levar todas as correcoes pro app - 24/06/2026 -->
+<!-- v31.1 - Sidebar mobile/app: trava anti-toque-duplo no toggleSidebar (em telas de toque o evento disparava 2x e a barra abria+fechava no mesmo toque, parecia que nao abria). + touch-action:manipulation e z-index 1000 no botao. SW e network-first (nao era cache) - 24/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -144,7 +144,7 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(26,184,240,.3)}50%{box-shadow:0 0 0 6px rgba(26,184,240,.0)}}
 
 /* ===== RESPONSIVE / MOBILE ===== */
-#sidebar-toggle{display:none}
+#sidebar-toggle{display:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 #sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99}
 
 @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
@@ -168,7 +168,7 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
   .main{width:100%;min-width:0}
   #sidebar-toggle{
     display:flex;align-items:center;justify-content:center;
-    position:fixed;top:14px;left:14px;z-index:101;
+    position:fixed;top:14px;left:14px;z-index:1000;
     width:40px;height:40px;border-radius:10px;
     background:var(--orange);border:none;cursor:pointer;
     box-shadow:0 2px 8px rgba(26,184,240,.4);
@@ -32297,6 +32297,13 @@ function gerarInsightIA(){
 // ===== SIDEBAR TOGGLE =====
 function toggleSidebar(){
   try {
+    // 🆕 v31.1: trava anti-toque-duplo. Em telas de toque, um toque pode disparar
+    // o evento 2x (touch + click) e a barra abria e fechava no mesmo toque
+    // ("não abre"). Ignora chamadas a menos de 350ms uma da outra.
+    var _agora = Date.now();
+    if(window._sbToggleLock && (_agora - window._sbToggleLock) < 350) return;
+    window._sbToggleLock = _agora;
+
     var sb  = document.querySelector('.sidebar');
     if(!sb) return;
     var ov  = document.getElementById('sidebar-overlay');
