@@ -1,4 +1,4 @@
-<!-- v30.8 - Sidebar: unificadas as DUAS toggleSidebar divergentes numa funcao robusta unica (checa null, icone e overlay corretos, nao quebra). Segunda def virou ponteiro pra primeira. Add guard de resize pra overlay nao prender no desktop. Corrige barra lateral que nao abria/ficava inconsistente - 24/06/2026 -->
+<!-- v30.9 - FIX notificacoes 400: a coluna da tabela e criada_em (nao criado_em). Corrigido order nas 2 queries (painel + seeding) e a normalizacao interna. Isso parava de carregar notificacoes e pausava as buscas. Resolve tambem o caso da Leo - 24/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -1216,7 +1216,7 @@ async function _carregarNotificacoesSupa(){
     
     // 🆕 v26.87: SIMPLIFICADO — uma única query com select=* (mais resiliente a schemas)
     var url = SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-      + '&select=*&order=criado_em.desc&limit=30';
+      + '&select=*&order=criada_em.desc&limit=30';
     
     var r = await fetch(url, {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY },
@@ -1235,6 +1235,7 @@ async function _carregarNotificacoesSupa(){
     
     // Normaliza: garantir que cada item tenha sempre .criado_em (interno) 
     data.forEach(function(s){
+      if(!s.criado_em && s.criada_em) s.criado_em = s.criada_em;
       if(!s.criado_em && s.created_at) s.criado_em = s.created_at;
     });
     
@@ -54236,7 +54237,7 @@ function _notifIniciar(){
   if(!u || !u.id) return;
   
   fetch(SUPA_URL + '/rest/v1/notificacoes?para_pessoa_id=eq.' + encodeURIComponent(u.id) 
-    + '&select=id&order=criado_em.desc&limit=50', {
+    + '&select=id&order=criada_em.desc&limit=50', {
     headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
   }).then(function(r){ return r.ok ? r.json() : []; })
     .then(function(arr){
