@@ -12095,21 +12095,9 @@ function fazerLogout(){
   
   // Limpa token de sessão localmente
   try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
-  
-  // Invalida token no servidor (best-effort, não bloqueia logout)
-  if(userId){
-    try {
-      fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + userId, {
-        method: 'PATCH',
-        headers: {
-          'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
-          'Content-Type': 'application/json', 'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({ token_atual: null, token_expira_em: null })
-      }).catch(function(){});
-    } catch(e){}
-  }
-  
+  // 🔒 Fase 1c: não grava mais token_atual no banco com a anon key (a coluna fica protegida).
+  // O token é sobrescrito no próximo login (server-side) — não precisa limpar aqui.
+
   setUsuarioLogado(null);
   // Limpa caches relacionados
   try { localStorage.removeItem('gami_pontos_cache'); } catch(e){}
