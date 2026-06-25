@@ -11352,7 +11352,7 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
     origem: opcoes.origem || 'auto',
     atribuido_por: opcoes.atribuido_por || null,
     referencia_id: opcoes.referencia_id || null,
-    data_acao: new Date().toISOString().split('T')[0]
+    data_acao: (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().split('T')[0] // data LOCAL (mês conta no dia certo)
   };
   
   // Salva no Supabase (P0.1: era gated por `supaInsert` — função que NUNCA
@@ -11375,7 +11375,7 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
 
 /* Verifica se pessoa já fez essa ação hoje */
 async function pontosFezHoje(pessoaId, tipoAcao){
-  var hoje = new Date().toISOString().split('T')[0];
+  var hoje = (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().split('T')[0];
   try {
     var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
       + '&tipo_acao=eq.' + tipoAcao 
@@ -43049,8 +43049,8 @@ async function renderRankingIndividual(){
       + '<div style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:800;color:var(--text2);text-align:center">'+pos+'º</div>'
       + avatar
       + '<div style="min-width:0">'
-        + '<div style="font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (eVoce ? '🎯 ' : '') + (r.pessoa_nome||'—') + (eVoce ? ' (você)' : '') + '</div>'
-        + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (pessoa.cargo||'') + (pessoa.cidade ? ' · '+pessoa.cidade : '') + '</div>'
+        + '<div style="font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (eVoce ? '🎯 ' : '') + tfEsc(r.pessoa_nome||'—') + (eVoce ? ' (você)' : '') + '</div>'
+        + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + tfEsc(pessoa.cargo||'') + (pessoa.cidade ? ' · '+tfEsc(pessoa.cidade) : '') + '</div>'
       + '</div>'
       + '<div style="text-align:center;font-size:11px;font-weight:700"><span class="'+setaClass+'">'+seta+'</span></div>'
       + sparkline
@@ -43068,7 +43068,7 @@ async function renderRankingIndividual(){
     var meuFoto = meuPessoa.foto_url || meuPessoa.foto;
     var meuIni = (meuR.pessoa_nome || '?').charAt(0).toUpperCase();
     var meuAvatar = meuFoto 
-      ? '<img src="'+meuFoto+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">'
+      ? '<img src="'+tfEsc(meuFoto)+'" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border)">'
       : '<div style="width:36px;height:36px;border-radius:50%;background:var(--gami-blue-l, #E6F6FE);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--gami-blue-d, #0E7AB8)">'+meuIni+'</div>';
     var meuMudanca = _rkCalcularMudancaPos(meuId);
     var meuSpark = _rkSparklineSVG(meuId, meuR.total_pontos);
@@ -43078,8 +43078,8 @@ async function renderRankingIndividual(){
         + '<div style="font-family:\'Syne\',sans-serif;font-size:14px;font-weight:800;color:var(--text2);text-align:center">'+(minhaPos+1)+'º</div>'
         + meuAvatar
         + '<div style="min-width:0">'
-          + '<div style="font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🎯 ' + (meuR.pessoa_nome||'—') + ' (você)</div>'
-          + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (meuPessoa.cargo||'') + (meuPessoa.cidade ? ' · '+meuPessoa.cidade : '') + '</div>'
+          + '<div style="font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🎯 ' + tfEsc(meuR.pessoa_nome||'—') + ' (você)</div>'
+          + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + tfEsc(meuPessoa.cargo||'') + (meuPessoa.cidade ? ' · '+tfEsc(meuPessoa.cidade) : '') + '</div>'
         + '</div>'
         + '<div style="text-align:center;font-size:11px;font-weight:700"><span class="'+meuMudanca.classe+'">'+meuMudanca.seta+'</span></div>'
         + meuSpark
@@ -43154,7 +43154,7 @@ function _rkRenderHeroVoce(ranking){
     ) : '')
     + (proxRank ? (
       '<div style="font-size:11.5px;color:var(--text2);background:rgba(255,255,255,.5);padding:8px 10px;border-radius:7px;border-left:3px solid #1AB8F0">'
-        + '💡 <strong>+'+ptsParaSubir+' pts</strong> pra subir pro '+(posTopo-1)+'º lugar ('+(proxRank.pessoa_nome||'?')+')'
+        + '💡 <strong>+'+ptsParaSubir+' pts</strong> pra subir pro '+(posTopo-1)+'º lugar ('+tfEsc(proxRank.pessoa_nome||'?')+')'
       + '</div>'
     ) : (
       posTopo === 1 ? '<div style="font-size:11.5px;color:#5A9E36;font-weight:700;background:#EAF7DD;padding:8px 10px;border-radius:7px;border-left:3px solid #5A9E36">🏆 Você está no TOPO! Continue assim!</div>' : ''
@@ -43189,12 +43189,12 @@ function _rkRenderPodio(ranking){
     var medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : '🥉';
     var crown = pos === 1 ? '<div style="margin-bottom:-8px"><span class="rk-crown">👑</span></div>' : '';
     var ava = foto 
-      ? '<div class="rk-podio-avatar"><img src="'+foto+'" style="width:100%;height:100%;object-fit:cover"/></div>'
+      ? '<div class="rk-podio-avatar"><img src="'+tfEsc(foto)+'" style="width:100%;height:100%;object-fit:cover"/></div>'
       : '<div class="rk-podio-avatar">'+ini+'</div>';
     return '<div class="rk-podio-pos rk-podio-pos-'+pos+'" onclick="abrirPerfilGami(\''+r.pessoa_id+'\')" style="cursor:pointer">'
       + crown
       + ava
-      + '<div style="font-size:11.5px;font-weight:800;color:var(--text);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.pessoa_nome||'—')+'</div>'
+      + '<div style="font-size:11.5px;font-weight:800;color:var(--text);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tfEsc(r.pessoa_nome||'—')+'</div>'
       + '<div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:800;color:#0E7AB8">'+r.total_pontos+'</div>'
       + '<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">pontos</div>'
       + '<div class="rk-podio-base"><span class="rk-medal-anim" style="font-size:20px;margin-right:4px">'+medal+'</span>'+pos+'º</div>'
@@ -43262,15 +43262,15 @@ async function _rkRenderDesafioAtivo(){
           + '<span class="g-des-trophy" style="font-size:26px">🏆</span>'
           + '<div>'
             + '<div style="font-size:10px;font-weight:800;letter-spacing:1px;opacity:.85">DESAFIO ATIVO</div>'
-            + '<div style="font-family:\'Syne\',sans-serif;font-size:17px;font-weight:800;line-height:1.15">' + (ativo.titulo || 'Desafio Gâmi') + '</div>'
+            + '<div style="font-family:\'Syne\',sans-serif;font-size:17px;font-weight:800;line-height:1.15">' + tfEsc(ativo.titulo || 'Desafio Gâmi') + '</div>'
           + '</div>'
         + '</div>'
         + '<span class="g-des-reward" style="padding:5px 11px;border-radius:20px;color:#5B3A00;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.18)">+' + (ativo.pontos_recompensa || 0) + ' pts</span>'
       + '</div>'
-      + (ativo.descricao ? '<div style="font-size:12px;opacity:.93;margin-top:9px;line-height:1.4">' + ativo.descricao + '</div>' : '')
+      + (ativo.descricao ? '<div style="font-size:12px;opacity:.93;margin-top:9px;line-height:1.4">' + tfEsc(ativo.descricao) + '</div>' : '')
       + '<div style="display:flex;align-items:center;gap:8px;margin-top:13px;flex-wrap:wrap">'
         + (diasTxt ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700">⏳ ' + diasTxt + '</span>' : '')
-        + '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700;text-transform:capitalize">🎯 ' + (ativo.tipo_alvo || 'todos') + '</span>'
+        + '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700;text-transform:capitalize">🎯 ' + tfEsc(ativo.tipo_alvo || 'todos') + '</span>'
         + '<button onclick="setRankTab(\'desafios\')" style="margin-left:auto;padding:7px 15px;border:none;border-radius:8px;background:#fff;color:#A21CAF;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit">Participar →</button>'
       + '</div>'
     + '</div>'
@@ -43297,6 +43297,7 @@ function _rkCalcularMudancaPos(pessoaId){
 
 // Sparkline 7d (mock baseado em hash + pontos atuais)
 function _rkSparklineSVG(pessoaId, ptsAtuais, gigante){
+  return ''; // 🔧 A "tendência 7 dias" era INVENTADA (hash do id) — removida até existir histórico diário real (igual ao _rkCalcularMudancaPos neutralizado)
   var h = 0;
   var idStr = String(pessoaId || 'x');
   for(var i=0; i<idStr.length; i++){ h = ((h<<5)-h) + idStr.charCodeAt(i); h |= 0; }
@@ -43391,7 +43392,7 @@ async function renderRankingPorCargo(){
       + top5.map(function(p,i){
         return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px">'
           + '<span style="font-weight:700;color:var(--text3);width:18px">'+(i+1)+'º</span>'
-          + '<span style="flex:1">'+p.nome+'</span>'
+          + '<span style="flex:1">'+tfEsc(p.nome)+'</span>'
           + '<span style="font-weight:700;color:var(--gami-blue-d)">'+p.pontos+'</span>'
           + '</div>';
       }).join('')
@@ -43474,7 +43475,7 @@ async function renderMaisReconhecidos(){
     el.innerHTML = arr.map(function(p,i){
       return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">'
         + '<span style="font-weight:700;color:var(--text3);width:20px">'+(i+1)+'º</span>'
-        + '<span style="flex:1">'+p.nome+'</span>'
+        + '<span style="flex:1">'+tfEsc(p.nome)+'</span>'
         + '<span style="font-weight:700;color:#E24B4A">💛 '+p.count+'</span>'
         + '</div>';
     }).join('');
@@ -43497,7 +43498,7 @@ async function renderHallFama(){
     el.innerHTML = dados.map(function(v){
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
         + '<div style="width:60px;font-size:11px;font-weight:700;color:var(--text3)">'+v.periodo+'</div>'
-        + '<div style="flex:1"><div style="font-size:12px;font-weight:600">'+(v.pessoa_nome||v.cidade||'—')+'</div><div style="font-size:10px;color:var(--text3)">'+v.categoria+'</div></div>'
+        + '<div style="flex:1"><div style="font-size:12px;font-weight:600">'+tfEsc(v.pessoa_nome||v.cidade||'—')+'</div><div style="font-size:10px;color:var(--text3)">'+tfEsc(v.categoria||'')+'</div></div>'
         + '<div style="font-size:13px;font-weight:700;color:var(--gami-blue-d)">'+(v.pontos||'—')+'</div>'
         + '</div>';
     }).join('');
@@ -43549,14 +43550,14 @@ async function renderDesafios(){
             + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">'
               + '<div style="display:flex;align-items:center;gap:9px">'
                 + '<span class="g-des-trophy" style="font-size:24px">🏆</span>'
-                + '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;line-height:1.15">'+d.titulo+'</div>'
+                + '<div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;line-height:1.15">'+tfEsc(d.titulo)+'</div>'
               + '</div>'
               + '<span class="g-des-reward" style="padding:5px 11px;border-radius:20px;color:#5B3A00;font-size:12px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.18)">+'+d.pontos_recompensa+' pts</span>'
             + '</div>'
-            + (d.descricao ? '<div style="font-size:12px;opacity:.93;margin-top:9px;line-height:1.4">'+d.descricao+'</div>' : '')
+            + (d.descricao ? '<div style="font-size:12px;opacity:.93;margin-top:9px;line-height:1.4">'+tfEsc(d.descricao)+'</div>' : '')
             + '<div style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">'
               + (diasTxt ? '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700">⏳ '+diasTxt+'</span>' : '')
-              + '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700;text-transform:capitalize">🎯 '+d.tipo_alvo+'</span>'
+              + '<span style="padding:4px 10px;border-radius:20px;background:rgba(255,255,255,.18);font-size:11px;font-weight:700;text-transform:capitalize">🎯 '+tfEsc(d.tipo_alvo||'')+'</span>'
               + (admin ? '<button onclick="desafioEditar(\''+d.id+'\')" style="margin-left:auto;padding:6px 12px;border:none;border-radius:8px;background:rgba(255,255,255,.92);color:#7C3AED;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">✏️ Editar</button>'
                        + '<button onclick="desafioEncerrar(\''+d.id+'\')" style="padding:6px 12px;border:1px solid rgba(255,255,255,.6);border-radius:8px;background:transparent;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Encerrar</button>' : '')
             + '</div>'
@@ -43566,7 +43567,7 @@ async function renderDesafios(){
     }
     if(elEnc){
       elEnc.innerHTML = encerrados.length 
-        ? encerrados.slice(0,5).map(function(d){ return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><strong>'+d.titulo+'</strong> · <span style="color:var(--text3)">'+d.data_inicio+' → '+d.data_fim+'</span></div>'; }).join('')
+        ? encerrados.slice(0,5).map(function(d){ return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px"><strong>'+tfEsc(d.titulo)+'</strong> · <span style="color:var(--text3)">'+d.data_inicio+' → '+d.data_fim+'</span></div>'; }).join('')
         : '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Nenhum desafio encerrado ainda.</div>';
     }
   } catch(e){
@@ -43942,6 +43943,10 @@ async function admSalvarPontos(){
   if(!pessoaId || !acao || isNaN(pts)){
     if(fb) fb.innerHTML = '<span style="color:#E24B4A">⚠️ Preencha pessoa, ação e pontos</span>';
     return;
+  }
+  if(pts <= 0){
+    // O sistema é "só positivo" (sem penalidade) — exige confirmação explícita pra zerar/subtrair
+    if(!confirm('Pontos = '+pts+' (zero ou negativo vai subtrair/zerar). O ranking é "só positivo". Confirma mesmo assim?')) return;
   }
   var ok = await atribuirPontos(pessoaId, acao, { pontos: pts, descricao: motivo, origem: 'manual', atribuido_por: 'cleyton_admin' });
   if(ok){
