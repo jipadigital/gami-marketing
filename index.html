@@ -3605,7 +3605,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <textarea id="ia-objetivo" class="inp" style="min-height:60px;font-size:12px;resize:vertical" placeholder="Ex: aumentar captação de motoboys em Recife, melhorar tempo de resposta no inbox, organizar planilha de comissões..."></textarea>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="iaGerarSugestoes()" class="btn btn-primary" style="flex:1;min-width:140px;font-size:12px">✨ Gerar sugestões</button>
+        <button id="ia-btn-gerar" onclick="iaGerarComIA()" class="btn btn-primary" style="flex:1;min-width:140px;font-size:12px">🤖 Gerar sugestões com IA</button>
       </div>
     </div>
 
@@ -8712,7 +8712,7 @@ function renderCalHero(){
     if(elFrase) elFrase.textContent = '"' + FRASES_CALENDARIO[idx] + '"';
 
     // Tarefas hoje
-    var hojeKey = hoje.toISOString().split('T')[0];
+    var hojeKey = (typeof _dataLocalStr==='function') ? _dataLocalStr(hoje) : hoje.toISOString().split('T')[0];
     var tarefasHoje = 0;
     try {
       if(typeof getTarefas === 'function'){
@@ -8896,6 +8896,22 @@ function renderCalendar(){
       }
     } catch(e){}
 
+    // Compromissos do usuário (gami_cal) neste dia — antes só apareciam na Agenda
+    try {
+      var _uCal = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+      var _meuIdCal = _uCal ? _uCal.id : null;
+      var _evs = JSON.parse(localStorage.getItem('gami_cal')||'[]');
+      if(Array.isArray(_evs) && _meuIdCal){
+        _evs.filter(function(e){
+          if(!e || e.data !== key) return false;
+          if(e.tipo === 'aniversario') return false; // aniversários já vêm do bdayMap
+          return e.pessoa_id === _meuIdCal;          // só os meus
+        }).slice(0,2).forEach(function(e){
+          itensTexto.push({tipo:'event', texto:'📌 '+tfEsc(String(e.titulo||e.nome||'Compromisso').slice(0,18))});
+        });
+      }
+    } catch(e){}
+
     // Anotação (mostra primeira linha truncada + contador se >1)
     try {
       var notasDia = (typeof getNotasCalendario === 'function') ? getNotasCalendario(key) : [];
@@ -8923,9 +8939,9 @@ function renderCalendar(){
       itensHtml += '<div class="cal-day-items">';
       itensTexto.slice(0, maxItens).forEach(function(it){
         if(it.tipo === 'more'){
-          itensHtml += '<div class="cal-day-more">'+it.texto+'</div>';
+          itensHtml += '<div class="cal-day-more">'+tfEsc(it.texto)+'</div>';
         } else {
-          itensHtml += '<div class="cal-day-item '+it.tipo+(it.done?' done':'')+'" title="'+(it.texto||'').replace(/"/g,'&quot;')+'">'+it.texto+'</div>';
+          itensHtml += '<div class="cal-day-item '+it.tipo+(it.done?' done':'')+'" title="'+(it.texto||'').replace(/"/g,'&quot;')+'">'+tfEsc(it.texto)+'</div>';
         }
       });
       if(itensTexto.length > maxItens){
@@ -8963,7 +8979,7 @@ function renderCalendar(){
     var _gridVisivel = grid && grid.offsetParent !== null;
     var _logado = (typeof getUsuarioLogado==='function') && getUsuarioLogado();
     if(_logado && _gridVisivel && isCurrentMonth && bdayMap[today.getDate()] && bdayMap[today.getDate()].length && typeof gamiConfete==='function'){
-      var _ckBday = 'gami_cal_bday_confete_'+today.toISOString().slice(0,10);
+      var _ckBday = 'gami_cal_bday_confete_'+((typeof _dataLocalStr==='function')?_dataLocalStr(today):today.toISOString().slice(0,10));
       if(!sessionStorage.getItem(_ckBday)){
         sessionStorage.setItem(_ckBday, '1');
         setTimeout(function(){ gamiConfete({ n: 70 }); }, 250);
@@ -9120,9 +9136,9 @@ function _calCarregarDadosDoDia(dia){
     if(typeof getPessoas === 'function'){
       var pessoas = getPessoas() || [];
       var bdays = pessoas.filter(function(p){
-        if(!p || !p.aniversario) return false;
+        if(!p || !(p.nascimento||p.aniversario)) return false;
         try {
-          var b = new Date(p.aniversario);
+          var b = new Date((p.nascimento||p.aniversario)+'T00:00:00');
           return b.getDate() === dia.getDate() && b.getMonth() === dia.getMonth();
         } catch(e){ return false; }
       });
@@ -9131,7 +9147,7 @@ function _calCarregarDadosDoDia(dia){
         bdays.forEach(function(p){
           var idade = '';
           try {
-            var b = new Date(p.aniversario);
+            var b = new Date((p.nascimento||p.aniversario)+'T00:00:00');
             idade = ' (' + (dia.getFullYear() - b.getFullYear()) + ' anos)';
           } catch(e){}
           html += '<div class="cal-painel-item"><div style="font-size:14px">🎂</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;font-weight:600">' + (p.nome || 'Alguém') + idade + '</div></div>';
@@ -9270,9 +9286,9 @@ function _calRenderProximosDias(n){
     if(typeof getPessoas === 'function'){
       var pessoas = getPessoas() || [];
       var bdays = pessoas.filter(function(p){
-        if(!p || !p.aniversario) return false;
+        if(!p || !(p.nascimento||p.aniversario)) return false;
         try {
-          var b = new Date(p.aniversario);
+          var b = new Date((p.nascimento||p.aniversario)+'T00:00:00');
           return b.getDate() === d.getDate() && b.getMonth() === d.getMonth();
         } catch(e){ return false; }
       });
@@ -9331,7 +9347,7 @@ function _calMostrarTooltip(diaEl, dia){
   if(dados.count === 0) return;
   
   // Resumo conciso
-  var dStr = dia.toISOString().split('T')[0];
+  var dStr = (typeof _dataLocalStr==='function') ? _dataLocalStr(dia) : dia.toISOString().split('T')[0];
   // 🆕 v26.95: lê SÓ as tarefas da pessoa logada (não vaza entre users)
   var tarefas = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
   var qtdTar = tarefas.filter(function(t){ return t && t.data === dStr && !t.concluida && !t.feito; }).length;
@@ -9343,8 +9359,8 @@ function _calMostrarTooltip(diaEl, dia){
   
   if(typeof getPessoas === 'function'){
     var bdays = (getPessoas()||[]).filter(function(p){
-      if(!p || !p.aniversario) return false;
-      try { var b = new Date(p.aniversario); return b.getDate()===dia.getDate() && b.getMonth()===dia.getMonth(); } catch(e){ return false; }
+      if(!p || !(p.nascimento||p.aniversario)) return false;
+      try { var b = new Date((p.nascimento||p.aniversario)+'T00:00:00'); return b.getDate()===dia.getDate() && b.getMonth()===dia.getMonth(); } catch(e){ return false; }
     });
     bdays.forEach(function(p){ linhas.push('🎂 ' + p.nome.split(' ')[0]); });
   }
@@ -9385,8 +9401,8 @@ function _calCheckAniversarioHoje(){
     if(typeof getPessoas !== 'function') return;
     var hoje = new Date();
     var bdays = (getPessoas()||[]).filter(function(p){
-      if(!p || !p.aniversario) return false;
-      try { var b = new Date(p.aniversario); return b.getDate()===hoje.getDate() && b.getMonth()===hoje.getMonth(); } catch(e){ return false; }
+      if(!p || !(p.nascimento||p.aniversario)) return false;
+      try { var b = new Date((p.nascimento||p.aniversario)+'T00:00:00'); return b.getDate()===hoje.getDate() && b.getMonth()===hoje.getMonth(); } catch(e){ return false; }
     });
     if(bdays.length){
       setTimeout(_calConfettiAniversario, 600);
@@ -9887,7 +9903,7 @@ function renderCalLista(){
       if(t.fixa){
         html += '<div class="flt-task" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#F8F2FC;border:1.5px solid #D0BCE6;border-left:3px solid #6A1B9A">'
           +'<div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px">'+(t.icone||'🙏')+'</div>'
-          +'<span style="flex:1;font-size:13px;color:var(--text);font-weight:500;line-height:1.3">'+t.texto+'</span>'
+          +'<span style="flex:1;font-size:13px;color:var(--text);font-weight:500;line-height:1.3">'+tfEsc(t.texto)+'</span>'
           +'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:#F3E5F5;color:#6A1B9A;font-weight:600;flex-shrink:0">Cultura Gâmi</span>'
         +'</div>';
         return;
@@ -9898,7 +9914,7 @@ function renderCalLista(){
         + '<div onclick="'+onClickToggle+'" style="width:20px;height:20px;border-radius:5px;border:2px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
         + (t.feito?'<svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5L4 7.5L11 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')
         + '</div>'
-        + '<span style="flex:1;font-size:13px;color:var(--text);'+(t.feito?'text-decoration:line-through':'')+';line-height:1.3">'+t.texto+'</span>'
+        + '<span style="flex:1;font-size:13px;color:var(--text);'+(t.feito?'text-decoration:line-through':'')+';line-height:1.3">'+tfEsc(t.texto)+'</span>'
         + '<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:'+corPrio+'22;color:'+corPrio+';font-weight:600;flex-shrink:0">'+(t.prio||'media')+'</span>'
       + '</div>';
     });
@@ -10136,7 +10152,7 @@ function selectDay(d, m, y){
   var tarefasDoDia = [];
   try {
     if(typeof getTarefas === 'function'){
-      var hojeKey = (new Date()).toISOString().split('T')[0];
+      var hojeKey = (typeof tfHojeLocal==='function') ? tfHojeLocal() : (new Date()).toISOString().split('T')[0];
       var diariasAll = getTarefas('diario');
       // Tarefas diárias com prazo == este dia OU se este dia é hoje, todas as diárias
       diariasAll.forEach(function(t){
@@ -10170,7 +10186,7 @@ function selectDay(d, m, y){
       if(t.fixa){
         html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;background:#F8F2FC;border-left:3px solid #6A1B9A;margin-bottom:3px">'
           +'<div style="width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">'+(t.icone||'🙏')+'</div>'
-          +'<span style="flex:1;font-size:11px;color:var(--text);font-weight:500">'+t.texto+'</span>'
+          +'<span style="flex:1;font-size:11px;color:var(--text);font-weight:500">'+tfEsc(t.texto)+'</span>'
           +'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:#F3E5F5;color:#6A1B9A;font-weight:600">Cultura Gâmi</span>'
         +'</div>';
         return;
@@ -10180,7 +10196,7 @@ function selectDay(d, m, y){
         +'<div onclick="calToggleTarefa(\''+t.id+'\','+d+','+m+','+y+')" style="width:15px;height:15px;border-radius:4px;border:1.5px solid '+(t.feito?'var(--green)':corPrio)+';background:'+(t.feito?'var(--green)':'transparent')+';display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0">'
         +(t.feito?'<svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>':'')
         +'</div>'
-        +'<span style="flex:1;font-size:11px;color:var(--text);text-decoration:'+(t.feito?'line-through':'none')+'">'+t.texto+'</span>'
+        +'<span style="flex:1;font-size:11px;color:var(--text);text-decoration:'+(t.feito?'line-through':'none')+'">'+tfEsc(t.texto)+'</span>'
         +'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:'+corPrio+'22;color:'+corPrio+';font-weight:600">'+(t.prio||'media')+'</span>'
         +'</div>';
     });
@@ -11535,6 +11551,7 @@ function setUsuarioLogado(pessoa){
     // 🔒 Puxa Foco do Dia + Recorrentes DESTE usuário (sync dedicado, isolado, cross-device)
     try { if(idNovo && typeof _focoPull==='function') _focoPull(idNovo); } catch(e){}
     try { if(idNovo && typeof _recorrentesPull==='function') _recorrentesPull(idNovo); } catch(e){}
+    try { if(idNovo && typeof _projetosPull==='function') _projetosPull(idNovo); } catch(e){}
 
     localStorage.setItem('gami_usuario_logado', JSON.stringify(pessoa));
     localStorage.setItem('gami_ultima_atividade', Date.now().toString());
@@ -38025,6 +38042,8 @@ function _dataLocalStr(d){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function tfHojeLocal(){ return _dataLocalStr(new Date()); }
+// Escape de HTML pra interpolar texto de tarefa/projeto/delegação em innerHTML (anti-XSS armazenado)
+function tfEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
 function tfKey(tipo, sufixo){
   // 🆕 v26.94: TODA chave agora começa com pessoa_id — isola completamente entre usuários
@@ -38334,6 +38353,31 @@ function saveTarefas(tipo, sufixo, lista){
   });
   var merged = outros.concat(lista);
   try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(merged)); }catch(e){}
+  // 🔒 Projetos não vão pra tabela `tarefas` → sem sync dedicado, somem ao logar em outro device.
+  if(tipo === 'projetos' && typeof _projetosPush === 'function') _projetosPush();
+}
+
+/* 🔒 SYNC DEDICADO de PROJETOS por pessoa_id (cross-device, isolado, fora do mirror).
+   Chave 'projetos_<uid>' não começa com 'gami_'. Mesmo padrão de foco/recorrentes. */
+async function _projetosPush(){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id || typeof syncConfig!=='function' || typeof SUPA_URL==='undefined') return;
+    var arr = (typeof getTarefas==='function') ? getTarefas('projetos') : [];
+    syncConfig('projetos_'+u.id, Array.isArray(arr)?arr:[]);
+  } catch(e){ console.warn('[Projetos] push:', e && e.message); }
+}
+async function _projetosPull(uid){
+  try {
+    if(!uid){ var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; uid=u&&u.id; }
+    if(!uid || typeof loadConfigFromSupa!=='function' || typeof SUPA_URL==='undefined') return;
+    var srv = await loadConfigFromSupa('projetos_'+uid);
+    if(srv == null) return;
+    var arr = (typeof srv==='string') ? JSON.parse(srv) : srv;
+    if(!Array.isArray(arr)) return;
+    try { localStorage.setItem('gami_tf_v3_'+uid+'_projetos', JSON.stringify(arr)); } catch(e){}
+    if(typeof tfRenderProjetos==='function') try { tfRenderProjetos(); } catch(e){}
+  } catch(e){ console.warn('[Projetos] pull:', e && e.message); }
 }
 
 function tfDataHoje(){
@@ -38759,8 +38803,14 @@ async function iaGerarComIA(){
   var cargo = (document.getElementById('ia-cargo')||{}).value || '';
   var area = (document.getElementById('ia-area')||{}).value || '';
   var objetivo = (document.getElementById('ia-objetivo')||{}).value || '';
-  var btn = document.getElementById('ia-btn-real');
+  if(!cargo && !area && !objetivo){
+    if(typeof toast === 'function') toast('Preencha pelo menos uma informação acima', 'warn');
+    return;
+  }
+  var btn = document.getElementById('ia-btn-gerar') || document.getElementById('ia-btn-real');
   if(btn){ btn.disabled = true; btn.innerHTML = '🤖 Gerando...'; }
+  var elLoad = document.getElementById('ia-resultado');
+  if(elLoad){ elLoad.innerHTML = '<div class="card" style="padding:24px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">🤖</div><div style="font-size:12px">Gerando sugestões com a IA do Claude…</div></div>'; }
 
   // Monta prompt rico com contexto
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
@@ -38844,7 +38894,7 @@ async function iaGerarComIA(){
           return '<div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid #8B5CF633;border-left:3px solid '+cor+';border-radius:8px;background:white">'
             +'<span style="font-size:16px;flex-shrink:0">'+emoji+'</span>'
             +'<div style="flex:1;min-width:0">'
-              +'<div style="font-size:12px;font-weight:500;color:var(--text)">'+s.t+'</div>'
+              +'<div style="font-size:12px;font-weight:500;color:var(--text)">'+tfEsc(s.t)+'</div>'
               +'<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap">'
                 +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+cor+'22;color:'+cor+';font-weight:600">'+s.prio+'</span>'
                 +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:var(--border);color:var(--text2)">'+s.cat+'</span>'
@@ -38867,13 +38917,13 @@ async function iaGerarComIA(){
       +(msg.indexOf('400')>=0 || msg.indexOf('insufficient')>=0 ? 'Os créditos da Anthropic API podem estar esgotados — me avise pra você recarregar.' : 'Erro de conexão. Tente novamente.')
       +'<br><span style="color:var(--text3);font-size:10px">As sugestões locais acima continuam funcionando normalmente.</span>'
     +'</div>';
-    if(el){
-      // Mantém as sugestões locais + adiciona aviso
-      el.insertAdjacentHTML('beforeend', aviso);
-    }
-    if(typeof toast === 'function') toast('Falha ao gerar com IA — use as sugestões locais', 'warn');
+    // Fallback: renderiza as sugestões LOCAIS (templates) e anexa o aviso
+    try { if(typeof iaGerarSugestoes === 'function') iaGerarSugestoes(); } catch(e){}
+    el = document.getElementById('ia-resultado');
+    if(el){ el.insertAdjacentHTML('beforeend', aviso); }
+    if(typeof toast === 'function') toast('IA indisponível — mostrando sugestões locais', 'warn');
   } finally {
-    if(btn){ btn.disabled = false; btn.innerHTML = '🤖 Mais ideias com IA'; }
+    if(btn){ btn.disabled = false; btn.innerHTML = (btn.id === 'ia-btn-gerar') ? '🤖 Gerar sugestões com IA' : '🤖 Mais ideias com IA'; }
   }
 }
 
@@ -39158,13 +39208,14 @@ function renderDelegadasPorMim(){
     });
   } catch(e){}
 
-  var hojeStr = new Date().toISOString().split('T')[0];
-  // Calcula status de cada
+  var hojeStr = tfHojeLocal();
+  // Calcula status de cada (o prazo vem como data_limite nas linhas do Supabase)
   todas = todas.map(function(t){
+    var _prazo = t.prazo || t.data_limite;
     var status = 'pendente';
     if(t.feito) status = 'feita';
-    else if(t.prazo && t.prazo < hojeStr) status = 'atrasada';
-    else if(t.prazo === hojeStr) status = 'hoje';
+    else if(_prazo && _prazo < hojeStr) status = 'atrasada';
+    else if(_prazo === hojeStr) status = 'hoje';
     return Object.assign({}, t, { _status: status });
   });
 
@@ -39218,8 +39269,9 @@ function renderDelegadasPorMim(){
     var bgStatus = { atrasada:'#FFF5F5', hoje:'#FFF8EE', pendente:'#F0F8FF', feita:'#F4F9EE' }[t._status];
     var lblStatus = { atrasada:'⚠️ Atrasada', hoje:'📅 Pra hoje', pendente:'⏳ Pendente', feita:'✅ Feita' }[t._status];
     var prazoFmt = '';
-    if(t.prazo){
-      try { var pz = t.prazo.split('-'); prazoFmt = pz[2]+'/'+pz[1]; } catch(e){ prazoFmt = t.prazo; }
+    var _prazoD = t.prazo || t.data_limite;
+    if(_prazoD){
+      try { var pz = _prazoD.split('-'); prazoFmt = pz[2]+'/'+pz[1]; } catch(e){ prazoFmt = _prazoD; }
     }
     // 🆕 v26.99: Checkbox clicável (marca como feita pelo delegante)
     var corCheck = t.feito ? '#1D9E75' : corStatus;
@@ -39242,9 +39294,9 @@ function renderDelegadasPorMim(){
       + checkHtml
       + _avatarHTML(p)
       +'<div style="flex:1;min-width:0">'
-        +'<div style="'+textoStyle+'">'+(t.texto||'')+'</div>'
-        +'<div style="font-size:11px;color:var(--text2)">📨 Para <strong>'+(p.nome||t.pessoa_id).split(' ').slice(0,2).join(' ')+'</strong>'+(prazoFmt?' · ⏰ '+prazoFmt:'')+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+'</div>'
-        +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px">"'+t.mensagem_delegacao+'"</div>':'')
+        +'<div style="'+textoStyle+'">'+tfEsc(t.texto||'')+'</div>'
+        +'<div style="font-size:11px;color:var(--text2)">📨 Para <strong>'+tfEsc((p.nome||t.pessoa_id||'').split(' ').slice(0,2).join(' '))+'</strong>'+(prazoFmt?' · ⏰ '+prazoFmt:'')+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+'</div>'
+        +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px">"'+tfEsc(t.mensagem_delegacao)+'"</div>':'')
       +'</div>'
       +'<span style="font-size:10px;padding:4px 8px;border-radius:6px;background:'+corStatus+';color:white;font-weight:600;flex-shrink:0">'+lblStatus+'</span>'
     +'</div>';
@@ -39657,7 +39709,7 @@ function tfRenderDiario(){
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #D0BCE6;border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px">'
         +'<div style="width:20px;height:20px;border-radius:50%;background:linear-gradient(135deg,#8B5CF6,#A78BFA);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px">'+(t.icone||'🙏')+'</div>'
         +'<div style="flex:1;min-width:0">'
-        +'<div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</div>'
+        +'<div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tfEsc(t.texto)+'</div>'
         +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">'
           +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#F3E5F5;color:#6A1B9A;font-weight:600">Cultura Gâmi</span>'
         +'</div></div>'
@@ -39671,9 +39723,9 @@ function tfRenderDiario(){
       return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #1AB8F033;border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
         +'<div onclick="'+onClickCheckProj+'" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':borderCor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
         +'<div style="flex:1;min-width:0">'
-        +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</div>'
+        +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tfEsc(t.texto)+'</div>'
         +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:center">'
-          +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#1AB8F022;color:#0E7AB8;font-weight:600;display:inline-flex;align-items:center;gap:3px">🚀 '+(t.projeto_nome||'Projeto')+'</span>'
+          +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#1AB8F022;color:#0E7AB8;font-weight:600;display:inline-flex;align-items:center;gap:3px">🚀 '+tfEsc(t.projeto_nome||'Projeto')+'</span>'
         +'</div></div>'
         +'<button onclick="tarefaAba(\'projetos\')" title="Ver projeto" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:11px;color:var(--text3);flex-shrink:0">→</button>'
       +'</div>';
@@ -39701,9 +39753,9 @@ function tfRenderDiario(){
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid '+(vencida?'#E24B4A55':'var(--border)')+';border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
       +'<div onclick="tfToggle(\'diario\',\''+t.id+'\')" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':borderCor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.texto+'</div>'
-      +(t.delegada_por_nome?'<div style="font-size:10px;color:#8B5CF6;font-weight:600;margin-top:2px">📥 Delegada por '+t.delegada_por_nome+(t.delegada_em?' · '+new Date(t.delegada_em).toLocaleDateString('pt-BR')+' '+new Date(t.delegada_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'')+'</div>':'')
-      +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text2);font-style:italic;margin-top:2px">"'+t.mensagem_delegacao+'"</div>':'')
+      +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tfEsc(t.texto)+'</div>'
+      +(t.delegada_por_nome?'<div style="font-size:10px;color:#8B5CF6;font-weight:600;margin-top:2px">📥 Delegada por '+tfEsc(t.delegada_por_nome)+(t.delegada_em?' · '+new Date(t.delegada_em).toLocaleDateString('pt-BR')+' '+new Date(t.delegada_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'')+'</div>':'')
+      +(t.mensagem_delegacao?'<div style="font-size:10px;color:var(--text2);font-style:italic;margin-top:2px">"'+tfEsc(t.mensagem_delegacao)+'"</div>':'')
       +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap">'
       +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:'+p.bg+';color:'+p.cor+'">'+t.prio+'</span>'
       +(t.cat?'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:'+catCor+'22;color:'+catCor+'">'+t.cat+'</span>':'')
@@ -40814,8 +40866,8 @@ function tfRenderSemana(){
     return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-left:3px solid '+cor+';border-radius:8px;background:'+(t.feito?'var(--surface2)':'var(--surface)')+';margin-bottom:5px;'+(t.feito?'opacity:.6':'')+'">'
       +'<div onclick="tfToggle(\'semana\',\''+t.id+'\',\''+item.diaKey+'\')" style="width:18px;height:18px;border-radius:5px;border:2px solid '+(t.feito?'#1D9E75':cor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:10px">✓</span>':'')+'</div>'
       +'<span style="font-size:10px;padding:1px 7px;border-radius:5px;background:var(--surface2);color:var(--text3);flex-shrink:0">'+item.diaLabel+'</span>'
-      +'<span style="flex:1;font-size:12px;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">' +t.texto+'</span>'
-      +(t.cat?'<span style="font-size:10px;padding:1px 7px;border-radius:5px;background:var(--surface2);color:var(--text3)">'+t.cat+'</span>':'')
+      +'<span style="flex:1;font-size:12px;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">' +tfEsc(t.texto)+'</span>'
+      +(t.cat?'<span style="font-size:10px;padding:1px 7px;border-radius:5px;background:var(--surface2);color:var(--text3)">'+tfEsc(t.cat)+'</span>':'')
       +'<button onclick="tfExcluir(\'semana\',\''+t.id+'\',\''+item.diaKey+'\')" style="width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:11px;color:var(--text3)">×</button>'
       +'</div>';
   }).join('');
@@ -40832,6 +40884,7 @@ function tfDiaSemana(key){
 // ---- MÊS ----
 function tfMesKey(offset){
   var d=new Date();
+  d.setDate(1); // 🔧 evita overflow (ex.: 31/jan +1 mês pulava pra março)
   d.setMonth(d.getMonth()+offset);
   return d.getFullYear()+'_'+String(d.getMonth()+1).padStart(2,'0');
 }
@@ -40886,7 +40939,7 @@ function tfRenderMes(){
       var atrasada=!t.feito&&t.prazo&&new Date(t.prazo)<hoje;
       html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid '+(atrasada?'#E24B4A':'var(--border)')+';border-left:3px solid '+p.dot+';border-radius:8px;background:'+(t.feito?'var(--surface2)':'var(--surface)')+';margin-bottom:5px;'+(t.feito?'opacity:.6':'')+'">';
       html+='<div onclick="tfToggle(\'mes\',\''+t.id+'\',\''+key+'\')" style="width:18px;height:18px;border-radius:5px;border:2px solid '+(t.feito?'#1D9E75':p.dot)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:10px">✓</span>':'')+'</div>';
-      html+='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">' +t.texto+'</div>';
+      html+='<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">' +tfEsc(t.texto)+'</div>';
       html+='<div style="display:flex;gap:4px;margin-top:2px">';
       html+='<span style="font-size:10px;padding:1px 6px;border-radius:5px;background:'+p.bg+';color:'+p.cor+'">'+t.prio+'</span>';
       if(t.cat) html+='<span style="font-size:10px;padding:1px 6px;border-radius:5px;background:var(--surface2);color:var(--text3)">'+t.cat+'</span>';
@@ -40940,12 +40993,12 @@ function tfRenderProjetos(){
     var pct=total>0?Math.round((feitas/total)*100):0;
     var cor=pct===100?'#1D9E75':pct>50?'#EF9F27':'var(--orange)';
     // Calcula se está atrasado
-    var atrasado = p.prazo && p.prazo < new Date().toISOString().split('T')[0] && p.status !== 'concluido';
+    var atrasado = p.prazo && p.prazo < tfHojeLocal() && p.status !== 'concluido';
     return '<div onclick="tfAbrirDetalheProjeto(\''+p.id+'\')" style="border:1px solid var(--border);border-left:4px solid '+sm.borda+';border-radius:10px;padding:14px;background:var(--surface);transition:transform .15s,box-shadow .15s;cursor:pointer" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.08)\'" onmouseout="this.style.transform=\'translateY(0)\';this.style.boxShadow=\'none\'">'
       +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">'
         +'<div style="flex:1;min-width:0">'
-          +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:16px">🚀</span><div style="font-size:14px;font-weight:700;color:var(--text)">'+(p.nome||'Sem nome')+'</div></div>'
-          +(p.descricao?'<div style="font-size:11px;color:var(--text3);line-height:1.4">'+p.descricao+'</div>':'')
+          +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:16px">🚀</span><div style="font-size:14px;font-weight:700;color:var(--text)">'+tfEsc(p.nome||'Sem nome')+'</div></div>'
+          +(p.descricao?'<div style="font-size:11px;color:var(--text3);line-height:1.4">'+tfEsc(p.descricao)+'</div>':'')
         +'</div>'
         +'<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:'+sm.bg+';color:'+sm.cor+';flex-shrink:0;font-weight:600">'+sm.emoji+' '+sm.label+'</span>'
       +'</div>'
@@ -41013,7 +41066,7 @@ function _renderModalDetalheProjeto(){
         +'</div>'
       +'</div>'
       +'<div style="margin-bottom:12px"><div class="field-label">Descrição rápida</div>'
-        +'<input id="proj-edit-desc" value="'+((p.descricao||'').replace(/"/g,'&quot;'))+'" onchange="_salvarCampoProjeto(\'descricao\', this.value)" placeholder="Resumo do projeto em uma linha" class="inp">'
+        +'<input id="proj-edit-desc" value="'+tfEsc(p.descricao||'')+'" onchange="_salvarCampoProjeto(\'descricao\', this.value)" placeholder="Resumo do projeto em uma linha" class="inp">'
       +'</div>'
       +'<div><div class="field-label" style="display:flex;align-items:center;justify-content:space-between">'
           +'<span>📄 Anotações do projeto</span>'
@@ -41044,11 +41097,11 @@ function _renderModalDetalheProjeto(){
             if(t.prazo){
               try { var pz = t.prazo.split('-'); prazoFmt = pz[2]+'/'+pz[1]; } catch(e){}
             }
-            var atrasada = !t.feito && t.prazo && t.prazo < new Date().toISOString().split('T')[0];
+            var atrasada = !t.feito && t.prazo && t.prazo < tfHojeLocal();
             return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid '+(atrasada?'#E24B4A55':'var(--border)')+';border-left:3px solid '+(t.feito?'#1D9E75':pp.cor)+';border-radius:8px;background:'+(t.feito?'var(--surface2)':atrasada?'#FFF5F5':'var(--surface)')+';'+(t.feito?'opacity:.65':'')+'">'
               +'<div onclick="tfToggleProjTarefa(\''+p.id+'\',\''+t.id+'\');setTimeout(_renderModalDetalheProjeto,30)" style="width:18px;height:18px;border-radius:5px;border:2px solid '+(t.feito?'#1D9E75':pp.cor)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:11px">✓</span>':'')+'</div>'
               +'<div style="flex:1;min-width:0">'
-                +'<div style="font-size:12px;font-weight:500;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">'+t.texto+'</div>'
+                +'<div style="font-size:12px;font-weight:500;'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+'">'+tfEsc(t.texto)+'</div>'
                 +'<div style="display:flex;gap:4px;margin-top:3px;flex-wrap:wrap;align-items:center">'
                   +'<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:'+pp.cor+'22;color:'+pp.cor+';font-weight:600">'+pp.lbl+'</span>'
                   +(prazoFmt?'<span style="font-size:9px;color:'+(atrasada?'#E24B4A':'var(--text3)')+';font-weight:'+(atrasada?'700':'500')+'">⏰ '+prazoFmt+(t.hora_limite?' '+String(t.hora_limite).slice(0,5):'')+(atrasada?' (atrasada)':'')+'</span>':'')
@@ -41061,7 +41114,7 @@ function _renderModalDetalheProjeto(){
       );
   }
 
-  var atrasado = p.prazo && p.prazo < new Date().toISOString().split('T')[0] && p.status !== 'concluido';
+  var atrasado = p.prazo && p.prazo < tfHojeLocal() && p.status !== 'concluido';
 
   ov.innerHTML = '<div class="modal-box" style="max-width:680px;max-height:90vh;overflow-y:auto">'
     // Header
@@ -41069,7 +41122,7 @@ function _renderModalDetalheProjeto(){
       +'<div style="flex:1">'
         +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
           +'<span style="font-size:24px">🚀</span>'
-          +'<input id="proj-edit-nome" value="'+((p.nome||'').replace(/"/g,'&quot;'))+'" onchange="_salvarCampoProjeto(\'nome\', this.value)" style="font-size:18px;font-weight:800;color:var(--text);background:transparent;border:none;font-family:\'Syne\',sans-serif;padding:0;outline:none;flex:1;min-width:0;border-bottom:1px dashed transparent" onfocus="this.style.borderBottomColor=\'var(--border)\'" onblur="this.style.borderBottomColor=\'transparent\'">'
+          +'<input id="proj-edit-nome" value="'+tfEsc(p.nome||'')+'" onchange="_salvarCampoProjeto(\'nome\', this.value)" style="font-size:18px;font-weight:800;color:var(--text);background:transparent;border:none;font-family:\'Syne\',sans-serif;padding:0;outline:none;flex:1;min-width:0;border-bottom:1px dashed transparent" onfocus="this.style.borderBottomColor=\'var(--border)\'" onblur="this.style.borderBottomColor=\'transparent\'">'
         +'</div>'
         +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
           +'<span style="font-size:10px;padding:3px 9px;border-radius:6px;background:'+sm.bg+';color:'+sm.cor+';font-weight:600">'+sm.emoji+' '+sm.label+'</span>'
@@ -42379,6 +42432,36 @@ async function _recorrentesPull(uid){
   } catch(e){ console.warn('[limpeza recorrentes]', e && e.message); }
 })();
 
+/* 🆕 v30.x: LIMPEZA v2 — remove do MEU bucket as tarefas geradas por recorrente de OUTRA
+   pessoa (recorrenteId que não é dos meus templates), INCLUSIVE as marcadas como feitas
+   (a limpeza anterior poupava as feitas, então sobravam tarefas de outros como "minhas"). */
+(function(){
+  try {
+    var TOKEN = 'gami_limpeza_recorrentes_alheias_v2_2026_06';
+    if(localStorage.getItem(TOKEN)) return;
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    var uid = u && u.id; if(!uid) return; // precisa estar logado pra saber meus templates
+    var meusRec = {};
+    try { (getTarefasRecorrentes()||[]).forEach(function(t){ if(t && t.id) meusRec[t.id] = true; }); } catch(e){}
+    var PREF = 'gami_tf_v3_' + uid + '_';
+    var removidas = 0;
+    for(var i = localStorage.length - 1; i >= 0; i--){
+      var k = localStorage.key(i);
+      if(!k || k.indexOf(PREF) !== 0) continue;
+      var lista; try { lista = JSON.parse(localStorage.getItem(k)||'[]'); } catch(e){ continue; }
+      if(!Array.isArray(lista)) continue;
+      var novo = lista.filter(function(t){
+        if(!t || !t.recorrenteId) return true;     // não-recorrente → mantém
+        if(meusRec[t.recorrenteId]) return true;   // template é MEU → mantém
+        removidas++; return false;                 // recorrente de OUTRO (vazada) → remove (mesmo feita)
+      });
+      if(novo.length !== lista.length){ try { localStorage.setItem(k, JSON.stringify(novo)); } catch(e){} }
+    }
+    localStorage.setItem(TOKEN, '1');
+    if(removidas) console.log('[limpeza recorrentes v2] '+removidas+' tarefa(s) recorrente(s) de outras pessoas removidas do seu bucket.');
+  } catch(e){ console.warn('[limpeza recorrentes v2]', e && e.message); }
+})();
+
 function deveAparecerHoje(recorrencia){
   if(!recorrencia) return false;
   var hoje = new Date();
@@ -42459,7 +42542,7 @@ function renderTarefasRecorrentes(){
     var corPrio = t.prio === 'alta' ? '#E24B4A' : t.prio === 'media' ? '#EF9F27' : '#1D9E75';
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-left:3px solid '+corPrio+';border-radius:8px;margin-bottom:5px;background:var(--surface);'+(t.ativa===false?'opacity:.5;':'')+'">'
       + '<div style="flex:1;min-width:0">'
-      + '<div style="font-size:12px;font-weight:600;color:var(--text)">'+t.texto+'</div>'
+      + '<div style="font-size:12px;font-weight:600;color:var(--text)">'+tfEsc(t.texto)+'</div>'
       + '<div style="display:flex;gap:8px;margin-top:3px;flex-wrap:wrap">'
       + '<span style="font-size:10px;color:var(--gami-blue);font-weight:600">'+freqTxt+'</span>'
       + '<span style="font-size:10px;color:var(--text3)">· '+(t.cat||'Outro')+'</span>'
