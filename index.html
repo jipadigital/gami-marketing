@@ -46048,12 +46048,16 @@ function _recadosMapDoSupa(r){
 async function _recadosCarregarSupa(){
   try {
     if(typeof SUPA_URL === 'undefined') return;
-    var r = await fetch(SUPA_URL + '/rest/v1/recados?select=*&order=created_at.desc&limit=30', { headers: supaHeaders(), cache:'no-store' });
+    // 🕒 Só os recados dos últimos 2 dias (os mais antigos somem)
+    var corteISO = new Date(Date.now() - 2*24*60*60*1000).toISOString();
+    var r = await fetch(SUPA_URL + '/rest/v1/recados?select=*&created_at=gte.' + encodeURIComponent(corteISO) + '&order=created_at.desc&limit=30', { headers: supaHeaders(), cache:'no-store' });
     if(!r.ok) return; // tabela ainda não criada / offline → mantém cache local
     var arr = await r.json();
     if(!Array.isArray(arr)) return;
     saveRecados(arr.map(_recadosMapDoSupa)); // atualiza o cache que renderRecados lê
     if(typeof renderRecados === 'function') renderRecados();
+    // Limpeza best-effort: apaga da tabela os recados com mais de 2 dias
+    try { fetch(SUPA_URL + '/rest/v1/recados?created_at=lt.' + encodeURIComponent(corteISO), { method:'DELETE', headers: Object.assign({}, supaHeaders(), { 'Prefer':'return=minimal' }) }).catch(function(){}); } catch(e){}
   } catch(e){ console.warn('[Recados] carregar:', e && e.message); }
 }
 async function _recadosSalvarSupa(recado){
@@ -46225,6 +46229,12 @@ function renderRecados(){
   var host = document.getElementById('dash-recados');
   if(!host) return;
   var recados = getRecados();
+  // 🕒 Recados somem após 2 dias
+  var _corteRec = Date.now() - 2*24*60*60*1000;
+  recados = recados.filter(function(r){
+    var t = r && r.data ? new Date(r.data).getTime() : Date.now();
+    return !isNaN(t) ? t >= _corteRec : true;
+  });
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var meuNome = u ? u.nome : 'Anônimo';
   var minhaFoto = u ? (u.foto_url || u.foto || '') : '';
