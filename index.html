@@ -5959,7 +5959,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <div style="font-size:10px;color:var(--text3);margin-top:3px">Valor de custo ou referência. Vai virar valor padrão do item.</div>
       </div>
       
-      <button onclick="estConfirmarEntrada()" class="btn btn-primary" style="width:100%;padding:12px">✅ Adicionar ao estoque</button>
+      <button id="est-btn-entrada" onclick="estConfirmarEntrada()" class="btn btn-primary" style="width:100%;padding:12px">✅ Adicionar ao estoque</button>
     </div>
   </div>
 
@@ -6034,7 +6034,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <textarea id="est-vd-obs" rows="2" placeholder="Detalhes da venda, prazo de entrega, número de parcelas, etc." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:13px;font-family:inherit;resize:vertical"></textarea>
       </div>
       
-      <button onclick="estConfirmarVenda()" class="btn btn-primary" style="width:100%;padding:12px">💰 Registrar Venda</button>
+      <button id="est-btn-venda" onclick="estConfirmarVenda()" class="btn btn-primary" style="width:100%;padding:12px">💰 Registrar Venda</button>
     </div>
   </div>
 
@@ -6056,8 +6056,10 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
               <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cliente</th>
               <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Item</th>
               <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Cidade</th>
+              <th style="text-align:left;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Vendedor</th>
               <th style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Qtd</th>
               <th class="gami-valor" style="text-align:right;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Valor</th>
+              <th style="text-align:center;padding:10px 12px;font-weight:700;color:var(--text2);font-size:11px">Ações</th>
             </tr>
           </thead>
           <tbody id="est-hist-body">
@@ -48679,10 +48681,16 @@ function estPopularSeletores(){
   });
 }
 
+function estVitrineBuscar(nome){
+  estIrParaTab('estoque');
+  var b = document.getElementById('est-busca-estoque'); if(b) b.value = nome || '';
+  if(typeof estRenderTabela === 'function') estRenderTabela();
+}
 function estPreencherDatasPadrao(){
   var hoje = new Date();
-  var hojeStr = hoje.toISOString().slice(0,10);
-  var ini = new Date(hoje.getTime() - 7*86400000).toISOString().slice(0,10);
+  var _dl = (typeof _dataLocalStr==='function') ? _dataLocalStr : function(d){ return d.toISOString().slice(0,10); };
+  var hojeStr = _dl(hoje);
+  var ini = _dl(new Date(hoje.getTime() - 7*86400000));
   
   var vdData = document.getElementById('est-vd-data');
   if(vdData && !vdData.value) vdData.value = hojeStr;
@@ -48801,19 +48809,19 @@ function estRenderVitrine(){
       
       var btnEditar = '<button onclick="event.stopPropagation();estEditarItem(' + v.item_id + ')" style="position:absolute;top:8px;left:8px;width:30px;height:30px;border:none;background:rgba(255,255,255,0.95);color:#0E7AB8;font-size:14px;border-radius:6px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.15)" title="Editar item">✏️</button>';
       
-      var tamHtml = v.tamanho ? ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + v.tamanho + '</span>' : '';
+      var tamHtml = v.tamanho ? ' <span style="font-size:10px;color:var(--text3);font-weight:500">· ' + tfEsc(v.tamanho) + '</span>' : '';
       
-      var descHtml = v.descricao 
-        ? '<div style="font-size:10.5px;color:var(--text3);line-height:1.35;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + v.descricao + '</div>'
+      var descHtml = v.descricao
+        ? '<div style="font-size:10.5px;color:var(--text3);line-height:1.35;margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + tfEsc(v.descricao) + '</div>'
         : '';
-      
+
       return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:transform .15s, box-shadow .15s;cursor:pointer;position:relative" '
         + 'onmouseover="this.style.transform=\'translateY(-3px)\';this.style.boxShadow=\'0 8px 24px rgba(0,0,0,0.08)\'" '
         + 'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'" '
-        + 'onclick="estIrParaTab(\'estoque\');document.getElementById(\'est-busca-estoque\').value=\'' + v.nome.replace(/'/g, "\\'") + '\';estRenderTabela();">'
+        + 'data-nome="' + tfEsc(v.nome) + '" onclick="estVitrineBuscar(this.getAttribute(\'data-nome\'))">'
           + '<div style="position:relative">' + fotoHtml + tag + btnEditar + '</div>'
           + '<div style="padding:10px 12px">'
-            + '<div style="font-size:12.5px;font-weight:700;color:var(--text);line-height:1.2">' + v.nome + tamHtml + '</div>'
+            + '<div style="font-size:12.5px;font-weight:700;color:var(--text);line-height:1.2">' + tfEsc(v.nome) + tamHtml + '</div>'
             + descHtml
             + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'
               + '<div>'
@@ -48885,11 +48893,11 @@ async function estRenderDashboard(){
       ul.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma venda registrada ainda.</div>';
     } else {
       ul.innerHTML = vendas.map(function(v){
-        var tam = v.item_tamanho ? ' (' + v.item_tamanho + ')' : '';
+        var tam = v.item_tamanho ? ' (' + tfEsc(v.item_tamanho) + ')' : '';
         return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);align-items:center;gap:10px">'
           + '<div style="flex:1;min-width:0">'
-            + '<div style="font-size:12px;font-weight:600;color:var(--text)">' + (v.cliente_nome||'—') + '</div>'
-            + '<div style="font-size:10px;color:var(--text3)">' + (v.item_nome||'') + tam + ' · ' + _estLoc(v.cidade) + '</div>'
+            + '<div style="font-size:12px;font-weight:600;color:var(--text)">' + tfEsc(v.cliente_nome||'—') + '</div>'
+            + '<div style="font-size:10px;color:var(--text3)">' + tfEsc(v.item_nome||'') + tam + ' · ' + _estLoc(v.cidade) + '</div>'
           + '</div>'
           + '<div style="text-align:right">'
             + '<div class="gami-valor" style="font-size:13px;font-weight:700;color:#1D9E75">' + _estFmtBRL(v.valor_total) + '</div>'
@@ -49072,8 +49080,8 @@ function estRenderTabela(){
     
     return '<tr style="border-bottom:1px solid var(--border)">'
       + '<td style="padding:8px 6px;text-align:center"><div style="display:flex;justify-content:center">' + fotoHtml + '</div></td>'
-      + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + l.nome + '</td>'
-      + '<td style="padding:10px 12px;text-align:center;color:var(--text2);font-size:11px">' + (l.tamanho || '—') + '</td>'
+      + '<td style="padding:10px 12px;color:var(--text);font-weight:600">' + tfEsc(l.nome) + '</td>'
+      + '<td style="padding:10px 12px;text-align:center;color:var(--text2);font-size:11px">' + tfEsc(l.tamanho || '—') + '</td>'
       + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700;font-size:14px">' + l.saldo + '</td>'
       + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:var(--text2);font-size:11px">' + _estFmtBRL(l.valor) + '</td>'
       + '<td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 10px;border-radius:12px;background:' + st.bg + ';color:' + st.cor + ';font-size:10px;font-weight:700">' + st.lbl + '</span></td>'
@@ -49088,8 +49096,8 @@ function estPopularItensSelect(){
   if(!sel) return;
   sel.innerHTML = '<option value="">— escolha um item existente —</option>'
     + EST_ITENS.map(function(i){
-      var t = i.tamanho ? ' (' + i.tamanho + ')' : '';
-      return '<option value="' + i.id + '">' + i.nome + t + '</option>';
+      var t = i.tamanho ? ' (' + tfEsc(i.tamanho) + ')' : '';
+      return '<option value="' + i.id + '">' + tfEsc(i.nome) + t + '</option>';
     }).join('');
 }
 
@@ -49393,7 +49401,7 @@ async function estConfirmarEntrada(){
   var itemId = document.getElementById('est-add-item').value;
   var cidade = document.getElementById('est-add-cidade').value;
   var qtd = parseInt(document.getElementById('est-add-qtd').value);
-  var valor = parseFloat(document.getElementById('est-add-valor').value);
+  var valor = (typeof _estParseValor==='function') ? _estParseValor(document.getElementById('est-add-valor').value) : parseFloat(document.getElementById('est-add-valor').value);
   
   if(!itemId){ alert('Escolha um item ou crie um novo.'); return; }
   if(!cidade){ alert('Escolha a cidade.'); return; }
@@ -49406,6 +49414,10 @@ async function estConfirmarEntrada(){
     return;
   }
   
+  if(EST_VENDA_SUBMIT) return; // reaproveita o lock (não dispara entrada 2x)
+  EST_VENDA_SUBMIT = true;
+  var _btnE = document.getElementById('est-btn-entrada');
+  if(_btnE){ _btnE.disabled = true; _btnE.textContent = '⏳ Adicionando...'; }
   try {
     var r = await _estRPC('estoque_registrar_entrada', {
       p_item_id: parseInt(itemId),
@@ -49416,7 +49428,7 @@ async function estConfirmarEntrada(){
       p_usuario_nome: EST_SESSAO.nome,
       p_observacao: null
     });
-    
+
     if(r && r.ok){
       if(typeof toast === 'function') toast('✅ ' + qtd + ' un. adicionadas em ' + _estLoc(cidade), 'success');
       // Limpa form
@@ -49428,10 +49440,13 @@ async function estConfirmarEntrada(){
       await estCarregarTudo();
       estIrParaTab('estoque');
     } else {
-      alert('Erro: ' + JSON.stringify(r));
+      alert('Erro: ' + ((r && (r.erro||r.error||r.message)) || JSON.stringify(r)));
     }
   } catch(e){
     alert('Erro ao registrar entrada: ' + e.message);
+  } finally {
+    EST_VENDA_SUBMIT = false;
+    if(_btnE){ _btnE.disabled = false; _btnE.textContent = '✅ Adicionar ao estoque'; }
   }
 }
 
@@ -49463,12 +49478,28 @@ function estCarregarItensVenda(){
     sel.innerHTML = '<option value="">— sem itens com saldo em ' + _estLoc(cidade) + ' —</option>';
     return;
   }
+  // 🔵 Opção "TAMANHO ÚNICO" por modelo (vende sem saber o tamanho → baixa do tamanho do modelo com mais saldo na cidade)
+  var porModelo = {};
+  disponiveis.forEach(function(s){
+    var k = s.nome || '';
+    if(!porModelo[k]) porModelo[k] = { nome:k, total:0, valor:s.valor_unitario };
+    porModelo[k].total += (parseInt(s.saldo)||0);
+  });
+  var unicoOpts = Object.keys(porModelo).map(function(k){
+    var pm = porModelo[k];
+    return '<option value="unico:' + encodeURIComponent(pm.nome) + '" data-saldo="' + pm.total + '" data-valor="' + pm.valor + '">'
+      + '🔵 ' + tfEsc(pm.nome) + ' — TAMANHO ÚNICO · saldo total: ' + pm.total + '</option>';
+  }).join('');
+
   sel.innerHTML = '<option value="">— escolha —</option>'
+    + '<optgroup label="Não sei o tamanho">' + unicoOpts + '</optgroup>'
+    + '<optgroup label="Por tamanho">'
     + disponiveis.map(function(s){
-      var t = s.tamanho ? ' (' + s.tamanho + ')' : '';
+      var t = s.tamanho ? ' (' + tfEsc(s.tamanho) + ')' : '';
       return '<option value="' + s.item_id + '" data-saldo="' + s.saldo + '" data-valor="' + s.valor_unitario + '">'
-        + s.nome + t + ' · saldo: ' + s.saldo + '</option>';
-    }).join('');
+        + tfEsc(s.nome) + t + ' · saldo: ' + s.saldo + '</option>';
+    }).join('')
+    + '</optgroup>';
 }
 
 function estPreencherValorVenda(){
@@ -49480,6 +49511,13 @@ function estPreencherValorVenda(){
   document.getElementById('est-vd-valor').value = (valorUnit * qtd).toFixed(2);
 }
 
+var EST_VENDA_SUBMIT = false;
+// Aceita valor com vírgula (pt-BR "1.234,56") ou ponto ("1234.56" do toFixed) sem virar número errado
+function _estParseValor(s){
+  s = String(s==null?'':s).trim();
+  if(s.indexOf(',') >= 0){ s = s.replace(/\./g,'').replace(',','.'); }
+  return parseFloat(s);
+}
 async function estConfirmarVenda(){
   var obsValor = document.getElementById('est-vd-obs').value.trim();
   var pagamento = document.getElementById('est-vd-pagamento').value;
@@ -49501,17 +49539,36 @@ async function estConfirmarVenda(){
     }
   }
   
+  // 🔵 Resolve "Tamanho Único": baixa do tamanho desse modelo com MAIS saldo na cidade
+  var _itemRaw = (document.getElementById('est-vd-item')||{}).value || '';
+  var _cidadeSel = (document.getElementById('est-vd-cidade')||{}).value || '';
+  var _qtdSel = parseInt((document.getElementById('est-vd-qtd')||{}).value);
+  var _itemIdFinal, _obsUnico = '';
+  if(_itemRaw.indexOf('unico:') === 0){
+    var _modelo = decodeURIComponent(_itemRaw.slice(6));
+    var _cands = (EST_SALDOS||[]).filter(function(s){ return s.nome===_modelo && s.cidade===_cidadeSel && (parseInt(s.saldo)||0) > 0; });
+    _cands.sort(function(a,b){ return (parseInt(b.saldo)||0) - (parseInt(a.saldo)||0); });
+    if(!_cands.length){ return _estErroCampo('est-vd-item', 'Sem saldo de "'+_modelo+'" em '+_estLoc(_cidadeSel)+'.'); }
+    if(_qtdSel > (parseInt(_cands[0].saldo)||0)){
+      return _estErroCampo('est-vd-qtd', 'No "Tamanho Único" a baixa é de UM tamanho só (o de maior saldo: '+(_cands[0].tamanho||'?')+' com '+_cands[0].saldo+' un). Diminua a quantidade ou registre por tamanho.');
+    }
+    _itemIdFinal = _cands[0].item_id;
+    _obsUnico = '\n📏 Tamanho não informado — baixado de ' + (_cands[0].tamanho || 'único');
+  } else {
+    _itemIdFinal = parseInt(_itemRaw);
+  }
+
   var dados = {
-    p_item_id: parseInt(document.getElementById('est-vd-item').value),
+    p_item_id: _itemIdFinal,
     p_cidade: document.getElementById('est-vd-cidade').value,
     p_quantidade: parseInt(document.getElementById('est-vd-qtd').value),
-    p_valor_total: parseFloat(document.getElementById('est-vd-valor').value),
+    p_valor_total: _estParseValor(document.getElementById('est-vd-valor').value),
     p_cliente_nome: document.getElementById('est-vd-cliente').value.trim(),
     p_cliente_telefone: document.getElementById('est-vd-telefone').value.trim(),
     p_data: document.getElementById('est-vd-data').value,
-    p_observacao: obsValor + 
+    p_observacao: obsValor +
       (pagamento ? '\n💳 Pagamento: ' + pagamento : '') +
-      (nominal ? '\n📋 Nominal: ' + nominal : ''),
+      (nominal ? '\n📋 Nominal: ' + nominal : '') + _obsUnico,
     p_usuario_id: EST_SESSAO.pessoa_id,
     p_usuario_nome: EST_SESSAO.nome
     // 🆕 v30.0: REMOVIDOS p_forma_pagamento e p_nominal_comprovante. A funcao
@@ -49543,6 +49600,21 @@ async function estConfirmarVenda(){
     return;
   }
   
+  // 🔒 Não deixa vender mais do que tem no estoque (saldo vem no data-saldo do <option>)
+  try {
+    var _selV = document.getElementById('est-vd-item');
+    var _optV = _selV && _selV.options[_selV.selectedIndex];
+    var _saldoDisp = _optV ? parseInt(_optV.dataset.saldo) : NaN;
+    if(!isNaN(_saldoDisp) && dados.p_quantidade > _saldoDisp){
+      return _estErroCampo('est-vd-qtd', 'Quantidade ('+dados.p_quantidade+') maior que o saldo disponível ('+_saldoDisp+').');
+    }
+  } catch(e){}
+
+  // 🔒 Anti-duplo-clique (não registra a venda 2x)
+  if(EST_VENDA_SUBMIT) return;
+  EST_VENDA_SUBMIT = true;
+  var _btnV = document.getElementById('est-btn-venda');
+  if(_btnV){ _btnV.disabled = true; _btnV.textContent = '⏳ Registrando...'; }
   try {
     var r = await _estRPC('estoque_registrar_venda', dados);
     if(r && r.ok){
@@ -49554,10 +49626,13 @@ async function estConfirmarVenda(){
       await estCarregarTudo();
       estIrParaTab('historico');
     } else {
-      alert('Erro: ' + JSON.stringify(r));
+      alert('Erro ao registrar: ' + ((r && (r.erro||r.error||r.message)) || JSON.stringify(r)));
     }
   } catch(e){
     alert('Erro ao registrar venda: ' + e.message);
+  } finally {
+    EST_VENDA_SUBMIT = false;
+    if(_btnV){ _btnV.disabled = false; _btnV.textContent = '💰 Registrar Venda'; }
   }
 }
 
@@ -49570,33 +49645,104 @@ async function estCarregarHistorico(){
       p_busca: busca || null
     });
     vendas = vendas || [];
-    
+    window.EST_HIST_VENDAS = vendas; // pra editar pelo índice
+
     var totalFilt = vendas.reduce(function(a, v){ return a + (parseFloat(v.valor_total)||0); }, 0);
     document.getElementById('est-hist-count').textContent = vendas.length + ' vendas registradas';
     document.getElementById('est-hist-total').textContent = _estFmtBRL(totalFilt);
-    
+
     var tbody = document.getElementById('est-hist-body');
     if(!vendas.length){
-      tbody.innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhuma venda encontrada.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text3)">📭 Nenhuma venda encontrada.</td></tr>';
       return;
     }
-    
-    tbody.innerHTML = vendas.map(function(v){
+
+    tbody.innerHTML = vendas.map(function(v, idx){
       var tam = v.item_tamanho ? ' (' + v.item_tamanho + ')' : '';
       return '<tr style="border-bottom:1px solid var(--border)">'
         + '<td style="padding:10px 12px;color:var(--text);font-size:11px">' + _estFmtData(v.data) + '</td>'
         + '<td style="padding:10px 12px;color:var(--text)">'
-          + '<div style="font-weight:600">' + (v.cliente_nome||'—') + '</div>'
-          + (v.cliente_telefone ? '<div style="font-size:10px;color:var(--text3)">' + v.cliente_telefone + '</div>' : '')
+          + '<div style="font-weight:600">' + tfEsc(v.cliente_nome||'—') + '</div>'
+          + (v.cliente_telefone ? '<div style="font-size:10px;color:var(--text3)">' + tfEsc(v.cliente_telefone) + '</div>' : '')
         + '</td>'
-        + '<td style="padding:10px 12px;color:var(--text)">' + (v.item_nome||'') + tam + '</td>'
+        + '<td style="padding:10px 12px;color:var(--text)">' + tfEsc(v.item_nome||'') + tam + '</td>'
         + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + _estLoc(v.cidade) + '</td>'
+        + '<td style="padding:10px 12px;color:var(--text2);font-size:11px">' + tfEsc(v.usuario_nome||v.vendedor||v.usuario||'—') + '</td>'
         + '<td style="padding:10px 12px;text-align:right;color:var(--text);font-weight:700">' + v.quantidade + '</td>'
         + '<td class="gami-valor" style="padding:10px 12px;text-align:right;color:#1D9E75;font-weight:700">' + _estFmtBRL(v.valor_total) + '</td>'
+        + '<td style="padding:10px 12px;text-align:center">' + (v.id ? '<button onclick="estAbrirEditarVenda('+idx+')" title="Editar venda" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);cursor:pointer;font-size:12px">✏️</button>' : '') + '</td>'
       + '</tr>';
     }).join('');
   } catch(e){
-    document.getElementById('est-hist-body').innerHTML = '<tr><td colspan="6" style="padding:30px;text-align:center;color:#A32D2D">Erro: ' + e.message + '</td></tr>';
+    document.getElementById('est-hist-body').innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:#A32D2D">Erro: ' + e.message + '</td></tr>';
+  }
+}
+
+// Abre modal de edição de uma venda (corrige data/cliente/tamanho/qtd/valor)
+function estAbrirEditarVenda(idx){
+  var v = (window.EST_HIST_VENDAS||[])[idx];
+  if(!v){ alert('Venda não encontrada.'); return; }
+  if(!v.id){ alert('Não dá pra editar esta venda (sem id). Avise o suporte.'); return; }
+  var ex = document.getElementById('est-edit-venda-modal'); if(ex) ex.remove();
+
+  function fld(lbl, inp){ return '<div style="margin-bottom:10px"><label style="display:block;font-size:11px;font-weight:600;color:var(--text2);margin-bottom:3px">'+lbl+'</label>'+inp+'</div>'; }
+  var opts = (EST_ITENS||[]).filter(function(i){ return i.ativo !== false; }).map(function(i){
+    var lbl = i.nome + (i.tamanho ? ' ('+i.tamanho+')' : '');
+    return '<option value="'+i.id+'"'+(String(i.id)===String(v.item_id)?' selected':'')+'>'+tfEsc(lbl)+'</option>';
+  }).join('');
+
+  var m = document.createElement('div');
+  m.id = 'est-edit-venda-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px';
+  m.innerHTML = '<div style="background:var(--surface);border-radius:14px;max-width:440px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow:auto">'
+    + '<div style="font-size:16px;font-weight:800;margin-bottom:14px">✏️ Editar venda</div>'
+    + fld('Data', '<input id="ev-data" type="date" class="inp" style="width:100%" value="'+tfEsc(String(v.data||'').slice(0,10))+'">')
+    + fld('Cliente', '<input id="ev-cliente" class="inp" style="width:100%" value="'+tfEsc(v.cliente_nome||'')+'">')
+    + fld('Telefone', '<input id="ev-tel" class="inp" style="width:100%" value="'+tfEsc(v.cliente_telefone||'')+'">')
+    + fld('Item / Tamanho', '<select id="ev-item" class="inp" style="width:100%">'+opts+'</select>')
+    + fld('Quantidade', '<input id="ev-qtd" type="number" min="1" class="inp" style="width:100%" value="'+(v.quantidade||1)+'">')
+    + fld('Valor total (R$)', '<input id="ev-valor" class="inp" style="width:100%" value="'+tfEsc(String(v.valor_total||''))+'">')
+    + '<div style="display:flex;gap:8px;margin-top:14px">'
+      + '<button class="btn btn-ghost" style="flex:1" onclick="document.getElementById(\'est-edit-venda-modal\').remove()">Cancelar</button>'
+      + '<button id="ev-salvar" class="btn btn-primary" style="flex:1.4" onclick="estSalvarEdicaoVenda('+v.id+')">💾 Salvar</button>'
+    + '</div>'
+  + '</div>';
+  document.body.appendChild(m);
+}
+
+async function estSalvarEdicaoVenda(id){
+  var btn = document.getElementById('ev-salvar');
+  var cliente = (document.getElementById('ev-cliente')||{}).value.trim();
+  var qtd = parseInt((document.getElementById('ev-qtd')||{}).value);
+  var valor = _estParseValor((document.getElementById('ev-valor')||{}).value);
+  if(!cliente){ alert('Informe o nome do cliente.'); return; }
+  if(!qtd || qtd <= 0){ alert('Quantidade deve ser > 0.'); return; }
+  if(isNaN(valor) || valor < 0){ alert('Valor inválido.'); return; }
+
+  // estoque_mov NÃO tem updated_at — não enviar
+  var patch = {
+    data: (document.getElementById('ev-data')||{}).value || null,
+    cliente_nome: cliente,
+    cliente_telefone: (document.getElementById('ev-tel')||{}).value.trim() || null,
+    item_id: parseInt((document.getElementById('ev-item')||{}).value),
+    quantidade: qtd,
+    valor_total: valor
+  };
+  if(btn){ btn.disabled = true; btn.textContent = '💾 Salvando...'; }
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/estoque_mov?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: Object.assign({}, _estSupaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+      body: JSON.stringify(patch)
+    });
+    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
+    var mm = document.getElementById('est-edit-venda-modal'); if(mm) mm.remove();
+    if(typeof toast === 'function') toast('✅ Venda atualizada!', 'success');
+    await estCarregarTudo();      // recomputa saldos (qtd/item podem ter mudado)
+    await estCarregarHistorico(); // atualiza a lista
+  } catch(e){
+    alert('Erro ao salvar: ' + e.message);
+    if(btn){ btn.disabled = false; btn.textContent = '💾 Salvar'; }
   }
 }
 
@@ -49616,7 +49762,7 @@ async function estCarregarRelatorioAgrupado(){
     if(d.por_modelo && d.por_modelo.length){
       elM.innerHTML = d.por_modelo.map(function(r){
         return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">'
-          + '<span style="color:var(--text);font-weight:600">' + r.modelo + '</span>'
+          + '<span style="color:var(--text);font-weight:600">' + tfEsc(r.modelo) + '</span>'
           + '<span><strong style="color:#1AB8F0">' + r.quantidade + ' un</strong> <span class="gami-valor" style="color:#1D9E75;font-weight:600">' + _estFmtBRL(r.valor) + '</span></span>'
         + '</div>';
       }).join('');
@@ -49629,7 +49775,7 @@ async function estCarregarRelatorioAgrupado(){
     if(d.por_tamanho && d.por_tamanho.length){
       elT.innerHTML = d.por_tamanho.map(function(r){
         return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">'
-          + '<span style="color:var(--text);font-weight:600">' + r.tamanho + '</span>'
+          + '<span style="color:var(--text);font-weight:600">' + tfEsc(r.tamanho) + '</span>'
           + '<span><strong style="color:#1AB8F0">' + r.quantidade + ' un</strong> <span class="gami-valor" style="color:#1D9E75;font-weight:600">' + _estFmtBRL(r.valor) + '</span></span>'
         + '</div>';
       }).join('');
