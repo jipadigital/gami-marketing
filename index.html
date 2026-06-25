@@ -33704,34 +33704,47 @@ function _migrarAgendaAntiga(){
 }
 _migrarAgendaAntiga();
 
+// 🔒 Agenda manual agora é POR USUÁRIO (antes 'gami_agenda_manuais_v2' global vazava no PC compartilhado).
+function _agendaManuaisKey(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  return 'gami_agenda_manuais_v2_' + (u && u.id ? u.id : 'anon');
+}
+function _agendaLerTodos(){
+  try {
+    var k = _agendaManuaisKey();
+    var raw = localStorage.getItem(k);
+    if(raw == null){
+      // Migração 1x: blob GLOBAL legado → usuário atual; apaga o global (não vaza pros próximos)
+      var legado = localStorage.getItem(_AGENDA_KEY);
+      if(legado != null){
+        try { localStorage.setItem(k, legado); } catch(e){}
+        try { localStorage.removeItem(_AGENDA_KEY); } catch(e){}
+        raw = legado;
+      }
+    }
+    var arr = JSON.parse(raw || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch(e){ return []; }
+}
+function _agendaHojeStr(){ return (typeof _dataLocalStr==='function') ? _dataLocalStr() : new Date().toISOString().split('T')[0]; }
+
 function getAgendaItensManuais(filtroData){
   // filtroData: 'hoje' (default), 'todos', ou string YYYY-MM-DD específica
   try {
-    var todos = JSON.parse(localStorage.getItem(_AGENDA_KEY)||'[]');
-    if(!Array.isArray(todos)) todos = [];
-    
+    var todos = _agendaLerTodos();
     if(filtroData === 'todos') return todos;
-    
-    var alvo;
-    if(filtroData && /^\d{4}-\d{2}-\d{2}$/.test(filtroData)){
-      alvo = filtroData;
-    } else {
-      alvo = new Date().toISOString().split('T')[0];
-    }
-    
+
+    var alvo = (filtroData && /^\d{4}-\d{2}-\d{2}$/.test(filtroData)) ? filtroData : _agendaHojeStr();
     // Compatibilidade: items SEM data são considerados de hoje
-    return todos.filter(function(i){ 
-      return (i.data || new Date().toISOString().split('T')[0]) === alvo;
-    });
+    return todos.filter(function(i){ return (i.data || _agendaHojeStr()) === alvo; });
   } catch(e){ return []; }
 }
 
 function getAgendaItensAtrasados(){
   // Compromissos de dias passados que ainda estão NÃO feitos
   try {
-    var todos = JSON.parse(localStorage.getItem(_AGENDA_KEY)||'[]');
-    if(!Array.isArray(todos)) return [];
-    var hojeStr = new Date().toISOString().split('T')[0];
+    var todos = _agendaLerTodos();
+    var hojeStr = _agendaHojeStr();
     return todos.filter(function(i){
       if(i.feito) return false;
       var d = i.data;
@@ -33744,36 +33757,24 @@ function getAgendaItensAtrasados(){
 function saveAgendaItensManuais(arr, filtroData){
   // Salva uma lista filtrada (de UMA data). Mantém outras datas intactas.
   try {
-    var todos = JSON.parse(localStorage.getItem(_AGENDA_KEY)||'[]');
-    if(!Array.isArray(todos)) todos = [];
-    
+    var todos = _agendaLerTodos();
+
     if(filtroData === 'todos'){
-      localStorage.setItem(_AGENDA_KEY, JSON.stringify(arr));
+      localStorage.setItem(_agendaManuaisKey(), JSON.stringify(arr));
       return;
     }
-    
-    var alvo;
-    if(filtroData && /^\d{4}-\d{2}-\d{2}$/.test(filtroData)){
-      alvo = filtroData;
-    } else {
-      alvo = new Date().toISOString().split('T')[0];
-    }
-    
-    var outros = todos.filter(function(i){
-      return (i.data || new Date().toISOString().split('T')[0]) !== alvo;
-    });
-    var novosArr = (arr || []).map(function(i){
-      if(!i.data) i.data = alvo;
-      return i;
-    });
-    localStorage.setItem(_AGENDA_KEY, JSON.stringify(outros.concat(novosArr)));
+
+    var alvo = (filtroData && /^\d{4}-\d{2}-\d{2}$/.test(filtroData)) ? filtroData : _agendaHojeStr();
+    var outros = todos.filter(function(i){ return (i.data || _agendaHojeStr()) !== alvo; });
+    var novosArr = (arr || []).map(function(i){ if(!i.data) i.data = alvo; return i; });
+    localStorage.setItem(_agendaManuaisKey(), JSON.stringify(outros.concat(novosArr)));
   } catch(e){}
 }
 
 /* Coleta tudo de tarefas + posts + calendário + manuais */
 function coletarItensAgendaHoje(){
   var hoje = new Date(); hoje.setHours(0,0,0,0);
-  var hojeStr = hoje.toISOString().split('T')[0];
+  var hojeStr = (typeof tfHojeLocal==='function') ? tfHojeLocal() : hoje.toISOString().split('T')[0];
   var itens = [];
   
   // 1. TAREFAS DO DIA (sistema v2 — gami_tf_v2_diario)
@@ -35501,9 +35502,10 @@ function renderRecadosNoDash(){
       return;
     }
     host.innerHTML = recados.slice(-10).reverse().map(function(r){
+      var _esc = (typeof _escapeHtml==='function') ? _escapeHtml : function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
       return '<div style="padding:8px 10px;background:#FFF9C4;border-left:3px solid #FBC02D;border-radius:6px;margin-bottom:5px;font-size:11px;color:#333">'
-        + '<div>'+r.texto+'</div>'
-        + '<div style="font-size:9px;color:#888;margin-top:3px">— '+(r.autor||'Anônimo')+'</div>'
+        + '<div>'+_esc(r.texto)+'</div>'
+        + '<div style="font-size:9px;color:#888;margin-top:3px">— '+_esc(r.autor||'Anônimo')+'</div>'
         + '</div>';
     }).join('');
   } catch(e){}
@@ -37417,7 +37419,7 @@ var GAMI_CLOUD_BLACKLIST = [
   'gami_badges_backfill*',
   'gami_migracao_*',
   'gami_tf_migrado_*',
-  'gami_agenda_migrado_*',
+  'gami_agenda_*',               // agenda manual por usuário + flags de migração (per-user/device)
   'gami_limpeza_*'
 ];
 
@@ -39531,7 +39533,7 @@ function tfIniciarDiario(){
   // Setup de tabs/categorias conforme permissão
   try { if(typeof tfSetupAbasConformePermissao === 'function') tfSetupAbasConformePermissao(); } catch(e){}
   // Load foco (🆕 v26.68: chave individual por usuário)
-  var foco=localStorage.getItem(_meuKey('gami_meu_foco_', new Date().toISOString().split('T')[0]))||'';
+  var foco=localStorage.getItem(_meuKey('gami_meu_foco_', tfHojeLocal()))||'';
   var fi=document.getElementById('tf-foco-input'); if(fi) fi.value=foco;
   tfRenderDiario();
   tfAtualizarMetricas();
@@ -40183,7 +40185,7 @@ async function _focoPush(){
   try {
     var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
     if(!u || !u.id || typeof syncConfig!=='function' || typeof SUPA_URL==='undefined') return;
-    var uid = u.id, hoje = new Date().toISOString().split('T')[0];
+    var uid = u.id, hoje = tfHojeLocal();
     var k = _focoLocalKeys(uid, hoje);
     var foco='', feito=false;
     try { foco = localStorage.getItem(k.foco) || ''; } catch(e){}
@@ -40224,7 +40226,7 @@ function tfSalvarFoco(){
   // Versão silenciosa (chamada por outras funções)
   var val=(document.getElementById('tf-foco-input')||{}).value||'';
   // 🆕 v26.68: chave individual por usuário
-  localStorage.setItem(_meuKey('gami_meu_foco_', new Date().toISOString().split('T')[0]), val);
+  localStorage.setItem(_meuKey('gami_meu_foco_', tfHojeLocal()), val);
   if(typeof _focoPush==='function') _focoPush(); // sync dedicado por pessoa_id
 }
 
@@ -40241,7 +40243,7 @@ function tfFocoMarcarDirty(){
 
 function tfSalvarFocoBtn(){
   var val=(document.getElementById('tf-foco-input')||{}).value||'';
-  var hoje = new Date().toISOString().split('T')[0];
+  var hoje = tfHojeLocal();
   // 🆕 v26.68: chave individual por usuário
   localStorage.setItem(_meuKey('gami_meu_foco_', hoje), val);
   
@@ -40271,7 +40273,7 @@ function tfSalvarFocoBtn(){
 
 // 🎯 Marca o foco do dia como concluído
 function dashMarcarFocoFeito(){
-  var hoje = new Date().toISOString().split('T')[0];
+  var hoje = tfHojeLocal();
   // 🆕 v26.68: chave individual por usuário
   var key = _meuKey('gami_meu_foco_feito_', hoje);
   var jaFeito = false; // 🆕 v27.95: trava anti-farming
@@ -40297,7 +40299,7 @@ function dashMarcarFocoFeito(){
 
 // 🎯 Desfaz a marcação de concluído
 function dashDesfazerFocoFeito(){
-  var hoje = new Date().toISOString().split('T')[0];
+  var hoje = tfHojeLocal();
   // 🆕 v26.68: chave individual por usuário
   var key = _meuKey('gami_meu_foco_feito_', hoje);
   try { localStorage.removeItem(key); } catch(e){}
@@ -40306,7 +40308,7 @@ function dashDesfazerFocoFeito(){
 }
 
 function renderFocoDoDia(){
-  var hoje = new Date().toISOString().split('T')[0];
+  var hoje = tfHojeLocal();
   var foco = '';
   // 🆕 v26.68: chave individual por usuário
   try { foco = localStorage.getItem(_meuKey('gami_meu_foco_', hoje)) || ''; } catch(e){}
@@ -40325,7 +40327,7 @@ function renderFocoDoDia(){
       vazio.style.display = 'none';
       
       // Verifica se já foi marcado como concluído hoje (🆕 v26.68: por usuário)
-      var feitaKey = _meuKey('gami_meu_foco_feito_', new Date().toISOString().split('T')[0]);
+      var feitaKey = _meuKey('gami_meu_foco_feito_', tfHojeLocal());
       var feita = false;
       try { feita = !!localStorage.getItem(feitaKey); } catch(e){}
       
@@ -45915,9 +45917,11 @@ function getPulseHoje(){
 }
 /* Chave: voto do usuario logado pro dia atual */
 function _pulseMeuVotoKey(){
-  var d = new Date();
+  // 🔧 Usa data LOCAL (igual a pulseKey dos totais). Antes era UTC → à noite a chave de "já votei"
+  // virava pro dia seguinte enquanto os totais ainda eram de hoje, liberando voto duplo.
   var uid = (typeof getUsuarioLogado === 'function' && getUsuarioLogado()) ? getUsuarioLogado().id : 'anon';
-  return 'gami_pulse_voto_'+uid+'_'+d.toISOString().slice(0,10);
+  var dia = (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().slice(0,10);
+  return 'gami_pulse_voto_'+uid+'_'+dia;
 }
 function _pulseMeuVoto(){
   try{ return localStorage.getItem(_pulseMeuVotoKey()); }catch(e){ return null; }
