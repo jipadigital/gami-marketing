@@ -1138,45 +1138,38 @@ function _notifLidas(){
 function _notifSalvarLidas(map){
   try{ localStorage.setItem(_notifKey(), JSON.stringify(map)); }catch(e){}
 }
+// PATCH lida=true no Supabase com 1 retry — evita que a notif volte como não-lida no reload/badge da sidebar
+function _patchNotifLidaSupa(realId, _tentativa){
+  try {
+    return fetch(SUPA_URL + '/rest/v1/notificacoes?id=eq.' + encodeURIComponent(realId), {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ lida: true })
+    }).then(function(r){
+      if(!r.ok && !_tentativa){ return _patchNotifLidaSupa(realId, 1); } // 1 retry em falha
+      return r;
+    }).catch(function(){
+      if(!_tentativa){ return _patchNotifLidaSupa(realId, 1); }
+    });
+  } catch(e){}
+}
 function marcarNotifLida(id){
   var m = _notifLidas(); m[id] = Date.now(); _notifSalvarLidas(m);
   // Se for notificação do Supabase (prefixo 'supa-'), marca como lida lá tb
-  if(id && id.indexOf('supa-') === 0){
-    var realId = id.substring(5);
-    try {
-      fetch(SUPA_URL + '/rest/v1/notificacoes?id=eq.' + encodeURIComponent(realId), {
-        method: 'PATCH',
-        headers: {
-          'apikey': SUPA_KEY,
-          'Authorization': 'Bearer ' + SUPA_KEY,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ lida: true })
-      }).catch(function(){});
-    } catch(e){}
-  }
+  if(id && id.indexOf('supa-') === 0){ _patchNotifLidaSupa(id.substring(5)); }
   renderNotificacoes();
 }
 function marcarTodasNotifLidas(){
-  var notifs = _ultimasNotifsRender || coletarNotificacoes();
+  // _ultimasNotifsRender pode ser [] (truthy) antes do 1º render — nesse caso coleta na hora
+  var notifs = (_ultimasNotifsRender && _ultimasNotifsRender.length) ? _ultimasNotifsRender : coletarNotificacoes();
   var m = _notifLidas();
-  notifs.forEach(function(n){ 
+  notifs.forEach(function(n){
     m[n.id] = Date.now();
-    // Marca lida no Supabase tb
-    if(n.id && n.id.indexOf('supa-') === 0){
-      var realId = n.id.substring(5);
-      try {
-        fetch(SUPA_URL + '/rest/v1/notificacoes?id=eq.' + encodeURIComponent(realId), {
-          method: 'PATCH',
-          headers: {
-            'apikey': SUPA_KEY,
-            'Authorization': 'Bearer ' + SUPA_KEY,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ lida: true })
-        }).catch(function(){});
-      } catch(e){}
-    }
+    if(n.id && n.id.indexOf('supa-') === 0){ _patchNotifLidaSupa(n.id.substring(5)); }
   });
   _notifSalvarLidas(m);
   renderNotificacoes();
@@ -1289,6 +1282,7 @@ function _notifCatAtiva(cat){ return _notifCatsGet()[cat] !== false; } // defaul
 function _notifCatSet(cat,val){ var c=_notifCatsGet(); c[cat]=!!val; try{ localStorage.setItem('gami_notif_cats', JSON.stringify(c)); }catch(e){} }
 function _notifCatDe(n){
   if(!n) return '';
+  if(n._supa) return ''; // notificação REAL do Supabase: sempre mostra, nunca filtra por categoria
   if(n.linkAba==='tarefas') return 'tarefas';
   var ic = n.icon||'';
   if(ic==='🔴'||ic==='📥'||ic==='📋'||ic==='📢') return 'tarefas';
@@ -1327,6 +1321,7 @@ function coletarNotificacoes(){
         sub: s.mensagem || '',
         linkAba: _linkAbaNotif(s.link),
         ts: ts,
+        _supa: true,
         _supaLida: !!s.lida
       });
     });
@@ -1341,7 +1336,7 @@ function coletarNotificacoes(){
       var todasTarefas = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
       
       // Filtra: não concluídas, com prazo atrasado
-      var hojeStr = hoje.toISOString().slice(0,10);
+      var hojeStr = (typeof _dataLocalStr==='function') ? _dataLocalStr(hoje) : hoje.toISOString().slice(0,10);
       var atrasadas = todasTarefas.filter(function(t){
         if(!t) return false;
         if(t.feito || t.concluida) return false;  // ✅ feita = NÃO atrasada
@@ -2071,18 +2066,45 @@ function getTarefasEquipe(){
 }
 
 function saveTarefasEquipe(arr){
-  try { 
+  try {
+    // setItem em chave gami_* já é espelhado pro Supabase pelo Cloud Mirror (tabela
+    // configuracoes, chave 'gami_tarefas_equipe_v1') e puxado no boot de todos os dispositivos.
+    // (Antes havia um syncConfig('tarefas_equipe') extra que gravava numa chave que NINGUÉM lia.)
     localStorage.setItem(GAMI_TF_EQUIPE_KEY, JSON.stringify(arr));
-    // Sincroniza com Supabase via syncConfig (chave entra na tabela configuracoes)
-    if(typeof syncConfig === 'function'){
-      syncConfig('tarefas_equipe', arr).catch(function(){});
-    }
   } catch(e){}
+}
+
+// Puxa as tarefas de equipe FRESCAS do Supabase e mescla com as locais, preservando as
+// conclusões individuais que ainda não subiram (união de concluida_por). Assim o colaborador
+// vê a tarefa nova do admin ao abrir a aba, sem precisar recarregar o app inteiro.
+async function _tfRefreshEquipe(){
+  try {
+    if(typeof loadConfigFromSupa !== 'function') return;
+    var v = await loadConfigFromSupa('gami_tarefas_equipe_v1');
+    if(v == null) return;
+    var remoto = (typeof v === 'string') ? JSON.parse(v) : v;
+    if(!Array.isArray(remoto)) return;
+    var byId = {};
+    remoto.forEach(function(t){ if(t && t.id) byId[t.id] = Object.assign({}, t, { concluida_por: (t.concluida_por||[]).slice() }); });
+    // Preserva conclusões/tarefas locais ainda não propagadas
+    getTarefasEquipe().forEach(function(t){
+      if(!t || !t.id) return;
+      if(byId[t.id]){
+        var set = {};
+        (byId[t.id].concluida_por||[]).concat(t.concluida_por||[]).forEach(function(id){ set[id] = true; });
+        byId[t.id].concluida_por = Object.keys(set);
+      } else {
+        byId[t.id] = t; // tarefa local que o servidor ainda não tem
+      }
+    });
+    saveTarefasEquipe(Object.keys(byId).map(function(k){ return byId[k]; }));
+    if(typeof tfRenderDiario === 'function') tfRenderDiario();
+  } catch(e){ console.warn('[Tarefas equipe] refresh:', e); }
 }
 
 // Retorna as tarefas de equipe que valem pra um dia específico
 function getTarefasEquipeDoDia(dataObj){
-  var dataStr = dataObj.toISOString().slice(0,10);
+  var dataStr = (typeof _dataLocalStr==='function') ? _dataLocalStr(dataObj) : dataObj.toISOString().slice(0,10);
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var meuId = u ? u.id : null;
   
@@ -11287,15 +11309,18 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
   
   // Pontos (pode ser sobrescrito por opcoes.pontos)
   var pontos = opcoes.pontos != null ? opcoes.pontos : catalogo.pontos;
-  
+
+  // Atribuição MANUAL (admin) ignora os limites diário/semanal — admin tem autoridade pra ajustar
+  var _ehManual = opcoes.origem === 'manual' || !!opcoes.atribuido_por;
+
   // Verifica limite diário (se existir)
-  if(catalogo.limite_dia){
+  if(catalogo.limite_dia && !_ehManual){
     var jaFezHoje = await pontosFezHoje(pessoaId, tipoAcao);
     if(jaFezHoje) return false; // já bateu limite diário
   }
-  
+
   // Verifica limite semanal (se existir)
-  if(catalogo.limite_semana){
+  if(catalogo.limite_semana && !_ehManual){
     var jaFezSemana = await pontosFezSemana(pessoaId, tipoAcao);
     if(jaFezSemana) return false;
   }
@@ -11409,33 +11434,33 @@ async function obterPontosTotaisPessoa(pessoaId){
 /* Busca ranking mensal — usa VIEW do Supabase */
 async function obterRankingMensal(){
   try {
-    var url = SUPA_URL + '/rest/v1/ranking_mensal?select=*&order=total_pontos.desc&limit=50';
+    var url = SUPA_URL + '/rest/v1/ranking_mensal?select=*&order=total_pontos.desc,pessoa_nome.asc&limit=50';
     var r = await fetch(url, {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
-    if(r.ok) return (await r.json() || []).filter(function(x){ return !_ehRankingTeste(x); });
+    if(r.ok) return (await r.json() || []).filter(function(x){ return !_ehRankingTeste(x); }).map(function(x){ x.total_pontos = Number(x.total_pontos)||0; return x; });
   } catch(e){}
   return [];
 }
 
 async function obterRankingTrimestral(){
   try {
-    var url = SUPA_URL + '/rest/v1/ranking_trimestral?select=*&order=total_pontos.desc&limit=50';
+    var url = SUPA_URL + '/rest/v1/ranking_trimestral?select=*&order=total_pontos.desc,pessoa_nome.asc&limit=50';
     var r = await fetch(url, {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
-    if(r.ok) return (await r.json() || []).filter(function(x){ return !_ehRankingTeste(x); });
+    if(r.ok) return (await r.json() || []).filter(function(x){ return !_ehRankingTeste(x); }).map(function(x){ x.total_pontos = Number(x.total_pontos)||0; return x; });
   } catch(e){}
   return [];
 }
 
 async function obterRankingHistorico(){
   try {
-    var url = SUPA_URL + '/rest/v1/ranking_historico?select=*&order=total_pontos.desc&limit=50';
+    var url = SUPA_URL + '/rest/v1/ranking_historico?select=*&order=total_pontos.desc,pessoa_nome.asc&limit=50';
     var r = await fetch(url, {
       headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
     });
-    if(r.ok) return (await r.json() || []).filter(function(x){ return !_ehRankingTeste(x); });
+    if(r.ok) return (await r.json() || []).filter(function(x){ return !_ehRankingTeste(x); }).map(function(x){ x.total_pontos = Number(x.total_pontos)||0; return x; });
   } catch(e){}
   return [];
 }
@@ -11500,12 +11525,16 @@ function setUsuarioLogado(pessoa){
     // logout), então mesmo que B entre depois de A sair, detectamos a troca e apagamos
     // TODO o cache pessoal do anterior. Vazamento entre usuários fica impossível.
     try {
-      var donoCache = localStorage.getItem('gami_cache_owner');
-      if(donoCache && idNovo && donoCache !== idNovo){
-        _gamiLimparCachePessoal(idNovo);
-      }
+      // 🔒 Roda SEMPRE (não só na troca de dono): é idempotente — só apaga chaves pessoais
+      // cujo uid embutido ≠ usuário atual. Assim também limpa dados que já vazaram pelo
+      // mirror ANTES da correção da blacklist, mesmo que o mesmo usuário logue de novo.
+      if(idNovo){ _gamiLimparCachePessoal(idNovo); }
       if(idNovo) localStorage.setItem('gami_cache_owner', idNovo);
     } catch(e){}
+
+    // 🔒 Puxa Foco do Dia + Recorrentes DESTE usuário (sync dedicado, isolado, cross-device)
+    try { if(idNovo && typeof _focoPull==='function') _focoPull(idNovo); } catch(e){}
+    try { if(idNovo && typeof _recorrentesPull==='function') _recorrentesPull(idNovo); } catch(e){}
 
     localStorage.setItem('gami_usuario_logado', JSON.stringify(pessoa));
     localStorage.setItem('gami_ultima_atividade', Date.now().toString());
@@ -11589,15 +11618,19 @@ function tocarAtividade(){
 function isAdminPontos(){
   return localStorage.getItem('gami_admin') === '1';
 }
-function ativarModoAdmin(){
+// Hash SHA-256 da senha admin (o texto puro NÃO fica mais no source).
+// Para trocar a senha: rode no console  await hashPIN('NOVA_SENHA')  e cole o resultado aqui.
+var ADMIN_SENHA_HASH = '0f29a7ff6f9d3deb0d9adeba6974690ed801127cd6952aab1517f517d57d2558';
+async function ativarModoAdmin(){
   var senha = prompt('Senha admin:');
-  if(senha === '@Jipa123') {
+  if(!senha) return false;
+  var hash = await hashPIN(senha);
+  if(hash === ADMIN_SENHA_HASH) {
     localStorage.setItem('gami_admin', '1');
     alert('✅ Modo admin ativado!');
     return true;
-  } else if(senha){
-    alert('❌ Senha incorreta');
   }
+  alert('❌ Senha incorreta');
   return false;
 }
 function desativarModoAdmin(){
@@ -34012,6 +34045,7 @@ function salvarQuickTask(){
     
     // Também salva no calendário pra aparecer lá
     try {
+      var uCal = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
       var eventos = JSON.parse(localStorage.getItem('gami_cal')||'[]');
       eventos.push({
         id: 'evt_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
@@ -34019,7 +34053,8 @@ function salvarQuickTask(){
         data: data,
         hora: hora,
         tipo: 'compromisso',
-        origem: 'agenda'
+        origem: 'agenda',
+        pessoa_id: (uCal && uCal.id) ? uCal.id : null  // 🔒 sem isso o compromisso não aparecia nem pro dono e poluía o pote comum
       });
       localStorage.setItem('gami_cal', JSON.stringify(eventos));
     } catch(e){ console.warn('cal save:', e); }
@@ -36906,7 +36941,7 @@ async function blogIniciarMassa(){
     if(pb)pb.style.width=Math.round(((i+1)/temas.length)*100)+'%';
     if(ps)ps.textContent='Gerando: "'+t.tema.slice(0,50)+'..."';
     var itemId='bmi'+i;
-    if(rd)rd.insertAdjacentHTML('beforeend','<div id="'+itemId+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);margin-bottom:5px;font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.tema+'</span></div>');
+    if(rd)rd.insertAdjacentHTML('beforeend','<div id="'+itemId+'" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);margin-bottom:5px;font-size:12px"><div style="width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--orange);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escapeHtml(t.tema)+'</span></div>');
     try{
       var prompt='Escreva artigo para gamidelivery.com.br. Tema: '+t.tema+'. Cidade: '+(t.cidade||'geral')+'. Tamanho: '+(tams[tam]||'1000 palavras')+'. Inicie com ---\nTÍTULO: [título]\nSLUG: [slug]\n---\nEscreva em markdown com H2 e H3.';
       var conteudo=await blogChamarIA(prompt);
@@ -36914,8 +36949,8 @@ async function blogIniciarMassa(){
       var post=blogSalvarPost(conteudo||t.tema,t.tema,t.cat,t.cidade,t.kw,statusFinal);
       gerados++;
       var itemEl=document.getElementById(itemId);
-      if(itemEl)itemEl.innerHTML='<span style="font-size:14px">✅</span><span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+post.titulo+'</span><span style="font-size:10px;padding:2px 8px;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:600">'+statusFinal+'</span>';
-    }catch(err){var itemEl2=document.getElementById(itemId);if(itemEl2)itemEl2.innerHTML='<span>❌</span><span style="flex:1;font-size:12px;color:var(--text3)">'+t.tema+'</span>';}
+      if(itemEl)itemEl.innerHTML='<span style="font-size:14px">✅</span><span style="flex:1;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escapeHtml(post.titulo)+'</span><span style="font-size:10px;padding:2px 8px;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:600">'+statusFinal+'</span>';
+    }catch(err){var itemEl2=document.getElementById(itemId);if(itemEl2)itemEl2.innerHTML='<span>❌</span><span style="flex:1;font-size:12px;color:var(--text3)">'+_escapeHtml(t.tema)+'</span>';}
     if(i<temas.length-1&&_blogMassaAtiva)await new Promise(function(r){setTimeout(r,2000);});
   }
   _blogMassaAtiva=false;
@@ -37163,7 +37198,19 @@ async function syncPessoas(){
     var existentes = await supaSelect('pessoas','select=id');
     var idsLocais = new Set(pessoasNormalizadas.map(function(x){ return x.id; }));
     var idsParaApagar = (existentes||[]).filter(function(x){ return !idsLocais.has(x.id); }).map(function(x){ return x.id; });
-    
+
+    // 🛡️ GUARD anti-perda-de-dados: nunca apaga o servidor a partir de um localStorage
+    // vazio ou suspeitosamente reduzido (ex.: cache não carregou, navegador limpo).
+    var totalServidor = (existentes||[]).length;
+    var bloquearLimpeza =
+      pessoasNormalizadas.length === 0 ||                              // local vazio
+      (totalServidor > 0 && idsParaApagar.length > totalServidor*0.5 && idsParaApagar.length >= 3); // apagaria >50%
+    if(bloquearLimpeza){
+      console.warn('[syncPessoas] Limpeza ABORTADA (guard): apagaria '+idsParaApagar.length+'/'+totalServidor+
+        ' pessoas a partir de '+pessoasNormalizadas.length+' locais. Sincronização parcial (apenas upsert).');
+      idsParaApagar = [];
+    }
+
     // Passo 2: apaga do Supabase os que não estão no localStorage
     for(var i=0; i<idsParaApagar.length; i++){
       try {
@@ -37298,11 +37345,52 @@ var GAMI_CLOUD_BLACKLIST = [
   // ===== PREFIXOS (* no final = "qualquer chave começando com") =====
   'gami_onboarding_completo*',   // tour por usuário
   'gami_lida_*',                 // marcações por dispositivo
-  'gami_notif_*'                 // 🆕 v27.40: prefs E leituras de notificação são por dispositivo (não compartilhar)
+  'gami_notif_*',                // 🆕 v27.40: prefs E leituras de notificação são por dispositivo (não compartilhar)
+
+  // ===== 🔒 v30.x: ANTI-VAZAMENTO ENTRE LOGINS =====
+  // A tabela `configuracoes` é COMPARTILHADA. Tudo abaixo é per-usuário, sensível ou
+  // estado-por-dispositivo — NÃO pode subir/descer pelo mirror, senão vaza de um login pro outro.
+  // (Dados que precisam de cross-device já têm sync próprio chaveado por pessoa_id: tarefas via
+  //  RPC tarefas_minhas, pontos via pontos_log, streaks via tabela streaks, etc.)
+  // --- Segurança (tokens / privilégio) ---
+  'gami_sessao_token',
+  'gami_reset_token',
+  'gami_admin',
+  'gami_cache_owner',
+  'gami_write_falhas',
+  // --- Dados pessoais (têm sync dedicado por pessoa_id) ---
+  'gami_tf_v3_*',                // tarefas (sync próprio via Supabase RPC)
+  'gami_meu_foco_*',             // foco do dia + foco_feito
+  'gami_meu_meta_*',             // meta do mês por usuário
+  'gami_tf_notas_*',             // notas pessoais do dia
+  'gami_tf_recorrentes*',        // tarefas recorrentes do usuário (agora namespaceadas por uid + sync próprio)
+  'gami_delegacoes_pendentes',   // fila local de delegações
+  'gami_pontos_cache',
+  'gami_pontos_pessoa_*',
+  'gami_xp_*',
+  'gami_level_*',
+  'gami_streak_*',
+  'gami_mascote_lvl_*',
+  'gami_cidade_anotacoes_*',     // anotação por cidade+pessoa (sync próprio)
+  'gami_compromisso_*',          // compromisso por pessoa
+  'gami_cal*',                   // calendário: per-user (gami_cal_<uid>) tem sync próprio (calendario_pessoal);
+                                 // pega também os globais legados gami_cal e gami_calendar_events (vazavam)
+  // --- Estado/flags por dispositivo (read-state, migrações, "rodar 1x") ---
+  'gami_manual_lido_*',
+  'gami_lembrete_*',
+  'gami_rel_mensal_gerado_*',
+  'gami_badges_backfill*',
+  'gami_migracao_*',
+  'gami_tf_migrado_*',
+  'gami_agenda_migrado_*',
+  'gami_limpeza_*'
 ];
 
 // Helper: checa se chave bate com blacklist (exato OU prefixo)
 function _gamiBlacklistMatch(key){
+  // 🔒 Namespace 'anon'/'guest' = dado salvo SEM usuário logado (race de boot). Nunca
+  // sincroniza, senão o conteúdo sem-dono de um vaza pro de qualquer outro.
+  if(typeof key === 'string' && /(_anon|_guest)(_|$)/.test(key)) return true;
   for(var i = 0; i < GAMI_CLOUD_BLACKLIST.length; i++){
     var pattern = GAMI_CLOUD_BLACKLIST[i];
     if(pattern.endsWith('*')){
@@ -37896,6 +37984,13 @@ function _tfLerTarefasDoDiaTodos(yyyy_mm_dd_normalizado){
   return todas;
 }
 
+// 📅 Data LOCAL em 'YYYY-MM-DD' — evita o bug do toISOString() (UTC) que vira +1 dia à noite no fuso BR
+function _dataLocalStr(d){
+  d = d || new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function tfHojeLocal(){ return _dataLocalStr(new Date()); }
+
 function tfKey(tipo, sufixo){
   // 🆕 v26.94: TODA chave agora começa com pessoa_id — isola completamente entre usuários
   var pid = _tfPessoaId();
@@ -38183,8 +38278,9 @@ function saveTarefas(tipo, sufixo, lista){
   
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   if(!u){
-    // Sem usuário logado: salva direto (não deveria acontecer)
-    try{ localStorage.setItem(tfKey(tipo,sufixo), JSON.stringify(lista)); }catch(e){}
+    // 🔒 Sem usuário logado: NÃO persiste (evita gravar no namespace 'anon', que vazaria
+    // entre logins). Tarefa sem dono é descartada — só salva com sessão ativa.
+    console.warn('[Tarefas] saveTarefas ignorado: nenhum usuário logado.');
     return;
   }
   
@@ -38235,6 +38331,8 @@ function initTarefas(){
     });
   }
   tarefaAba('diario');
+  // 🆕 Puxa tarefas de EQUIPE frescas do servidor (vê tarefa nova do admin sem recarregar)
+  try { if(typeof _tfRefreshEquipe === 'function') _tfRefreshEquipe(); } catch(e){}
   // 🆕 Pulse do card de Foco (mesmo do Dashboard, sincronizado)
   try { if(typeof renderPulse === 'function') renderPulse(); } catch(e){}
 }
@@ -39460,7 +39558,7 @@ function tfRenderDiario(){
   try { if(typeof tfRenderConquistasReais==='function') tfRenderConquistasReais(); } catch(e){}
 
   var el=document.getElementById('tf-diario-list'); if(!el) return;
-  var hojeStr = new Date().toISOString().split('T')[0];
+  var hojeStr = tfHojeLocal();
 
   // === FILTROS COMPLETOS (busca + cat + prio + status) ===
   var fBusca = (_tfFiltrosState && _tfFiltrosState.busca || '').toLowerCase().trim();
@@ -39510,8 +39608,6 @@ function tfRenderDiario(){
     filtradas.filter(function(t){return t.feito;})
   );
 
-  var hojeStr = new Date().toISOString().split('T')[0];
-
   el.innerHTML=sorted.map(function(t,i){
     var p=prios[t.prio]||prios.media;
     var catCor=cats[t.cat]||cats.Outro;
@@ -39545,6 +39641,26 @@ function tfRenderDiario(){
           +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#1AB8F022;color:#0E7AB8;font-weight:600;display:inline-flex;align-items:center;gap:3px">🚀 '+(t.projeto_nome||'Projeto')+'</span>'
         +'</div></div>'
         +'<button onclick="tarefaAba(\'projetos\')" title="Ver projeto" style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;font-size:11px;color:var(--text3);flex-shrink:0">→</button>'
+      +'</div>';
+    }
+    // 🆕 Tarefas de EQUIPE (admin → todos). Conclusão é INDIVIDUAL: usa concluirTarefaEquipe,
+    // NÃO tfToggle (a tarefa não vive na chave 'diario'). Sem editar/excluir (só o admin gere).
+    if(t._ehEquipe){
+      var prioEq = ({ urgente:{bg:'#FCE6E6',cor:'#A32D2D',lbl:'🔥 Urgente'}, importante:{bg:'#FFF3E0',cor:'#854F0B',lbl:'⭐ Importante'}, normal:{bg:'#EAF3FB',cor:'#0E7AB8',lbl:'📋 Normal'} })[t.prioridade] || {bg:'#EAF3FB',cor:'#0E7AB8',lbl:'📋 Normal'};
+      var bordaEq = t.feito ? '#1D9E75' : '#FF7B3C';
+      var bgEq = t.feito ? '#F4F9EE' : '#FFF6F0';
+      var txtEq = (typeof _escapeHtml==='function') ? _escapeHtml(t.titulo||t.texto) : (t.titulo||t.texto);
+      var detEq = t.detalhes ? ((typeof _escapeHtml==='function') ? _escapeHtml(t.detalhes) : t.detalhes) : '';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #FF7B3C33;border-left:3px solid '+bordaEq+';border-radius:9px;background:'+bgEq+';margin-bottom:6px;'+( t.feito?'opacity:.7':'')+'">'
+        +'<div onclick="concluirTarefaEquipe(\''+t.id+'\','+(!t.feito)+')" style="width:20px;height:20px;border-radius:6px;border:2px solid '+(t.feito?'#1D9E75':bordaEq)+';background:'+(t.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(t.feito?'<span style="color:white;font-size:12px">✓</span>':'')+'</div>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:13px;font-weight:'+(t.feito?'400':'500')+';'+(t.feito?'text-decoration:line-through;color:var(--text3)':'')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+txtEq+'</div>'
+        +(detEq?'<div style="font-size:10px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+detEq+'</div>':'')
+        +'<div style="display:flex;gap:5px;margin-top:3px;flex-wrap:wrap;align-items:center">'
+          +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:#FF7B3C22;color:#C2410C;font-weight:600">📢 Equipe</span>'
+          +'<span style="font-size:10px;padding:1px 7px;border-radius:6px;background:'+prioEq.bg+';color:'+prioEq.cor+';font-weight:600">'+prioEq.lbl+'</span>'
+          +(t.hora?'<span style="font-size:10px;color:var(--text3)">🕐 '+String(t.hora).slice(0,5)+'</span>':'')
+        +'</div></div>'
       +'</div>';
     }
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid '+(vencida?'#E24B4A55':'var(--border)')+';border-left:3px solid '+borderCor+';border-radius:9px;background:'+bgCard+';margin-bottom:6px;'+( t.feito?'opacity:.6':'')+'">'
@@ -39599,7 +39715,7 @@ function tfAtualizarMetricas(){
   var mmv=document.getElementById('tf-m-mes'); if(mmv) mmv.textContent=mF+'/'+mTarefas.length;
 
   // Atrasadas (novo card - substituiu "Projetos")
-  var hojeStr = new Date().toISOString().split('T')[0];
+  var hojeStr = tfHojeLocal();
   var atras = hoje.filter(function(t){ return !t.feito && t.prazo && t.prazo < hojeStr; }).length;
   var atrasV = document.getElementById('tf-m-atrasadas'); 
   if(atrasV){ 
@@ -39886,6 +40002,7 @@ function tfToggle(tipo, id, sufixo){
 function tfExcluir(tipo, id, sufixo){
   var lista=getTarefas(tipo,sufixo).filter(function(t){return t.id!==id;});
   saveTarefas(tipo,sufixo,lista);
+  if(typeof tfSupaApagar==='function') tfSupaApagar(id); // remove do Supabase senão volta como zumbi
   if(tipo==='diario') tfRenderDiario();
   if(tipo==='semana') tfRenderSemana();
   if(tipo==='mes') tfRenderMes();
@@ -40011,10 +40128,61 @@ function tfAdicionarRapido(){
 
 function tfLimparConcluidas(){
   if(!confirm('Remover todas as tarefas concluídas de hoje?')) return;
-  var lista=getTarefas('diario').filter(function(t){return !t.feito;});
+  var todas=getTarefas('diario');
+  var removidas=todas.filter(function(t){return t.feito;});
+  var lista=todas.filter(function(t){return !t.feito;});
   saveTarefas('diario',null,lista);
+  if(typeof tfSupaApagar==='function'){ removidas.forEach(function(t){ tfSupaApagar(t.id); }); } // não deixar zumbi
   tfRenderDiario();
   tfAtualizarMetricas();
+}
+
+/* 🔒 SYNC DEDICADO DO FOCO DO DIA — por pessoa_id, isolado e cross-device.
+   Guarda em configuracoes sob a chave 'foco_<uid>' (um mapa {data:{foco,feito}}).
+   Como 'foco_<uid>' NÃO começa com 'gami_', o Cloud Mirror nunca a espelha/baixa pra
+   outros — então sincroniza entre os aparelhos DO MESMO usuário, sem vazar pros demais. */
+function _focoLocalKeys(uid, data){
+  return { foco: 'gami_meu_foco_'+uid+'_'+data, feito: 'gami_meu_foco_feito_'+uid+'_'+data };
+}
+async function _focoPush(){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id || typeof syncConfig!=='function' || typeof SUPA_URL==='undefined') return;
+    var uid = u.id, hoje = new Date().toISOString().split('T')[0];
+    var k = _focoLocalKeys(uid, hoje);
+    var foco='', feito=false;
+    try { foco = localStorage.getItem(k.foco) || ''; } catch(e){}
+    try { feito = localStorage.getItem(k.feito) === '1'; } catch(e){}
+    // Mescla com o servidor pra não perder os outros dias
+    var mapa = {};
+    try { var srv = await loadConfigFromSupa('foco_'+uid); if(srv) mapa = (typeof srv==='string') ? JSON.parse(srv) : srv; } catch(e){}
+    if(typeof mapa !== 'object' || !mapa) mapa = {};
+    mapa[hoje] = { foco: foco, feito: feito };
+    // Poda: mantém só os últimos 45 dias
+    var datas = Object.keys(mapa).sort();
+    if(datas.length > 45) datas.slice(0, datas.length-45).forEach(function(d){ delete mapa[d]; });
+    syncConfig('foco_'+uid, mapa);
+  } catch(e){ console.warn('[Foco] push:', e && e.message); }
+}
+async function _focoPull(uid){
+  try {
+    if(!uid){ var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null; uid = u && u.id; }
+    if(!uid || typeof loadConfigFromSupa!=='function' || typeof SUPA_URL==='undefined') return;
+    var srv = await loadConfigFromSupa('foco_'+uid);
+    if(!srv) return;
+    var mapa = (typeof srv==='string') ? JSON.parse(srv) : srv;
+    if(typeof mapa !== 'object' || !mapa) return;
+    Object.keys(mapa).forEach(function(data){
+      var e = mapa[data] || {};
+      var k = _focoLocalKeys(uid, data);
+      // Texto do foco: NÃO sobrescreve edição local não-vazia (protege o que a pessoa digitou)
+      var cur=''; try { cur = localStorage.getItem(k.foco) || ''; } catch(_){}
+      if(cur==='' && e.foco){ try { localStorage.setItem(k.foco, e.foco); } catch(_){} }
+      // Concluído: servidor reflete conclusão/desfazer entre dispositivos (last-write no login)
+      try { if(e.feito) localStorage.setItem(k.feito, '1'); else localStorage.removeItem(k.feito); } catch(_){}
+    });
+    if(typeof renderFocoDoDia==='function') renderFocoDoDia();
+  } catch(e){ console.warn('[Foco] pull:', e && e.message); }
 }
 
 function tfSalvarFoco(){
@@ -40022,6 +40190,7 @@ function tfSalvarFoco(){
   var val=(document.getElementById('tf-foco-input')||{}).value||'';
   // 🆕 v26.68: chave individual por usuário
   localStorage.setItem(_meuKey('gami_meu_foco_', new Date().toISOString().split('T')[0]), val);
+  if(typeof _focoPush==='function') _focoPush(); // sync dedicado por pessoa_id
 }
 
 function tfFocoMarcarDirty(){
@@ -40057,6 +40226,7 @@ function tfSalvarFocoBtn(){
   
   // Atualiza o bloco do Dashboard E o banner do Modo Foco
   if(typeof renderFocoDoDia === 'function') renderFocoDoDia();
+  if(typeof _focoPush==='function') _focoPush(); // sync dedicado por pessoa_id
 }
 
 /* ============================================================== */
@@ -40075,7 +40245,8 @@ function dashMarcarFocoFeito(){
   
   // Re-renderiza pra mostrar o estado "missão cumprida"
   if(typeof renderFocoDoDia === 'function') renderFocoDoDia();
-  
+  if(typeof _focoPush==='function') _focoPush(); // sync dedicado por pessoa_id
+
   // Dá pontos pela ação — só na 1ª vez do dia
   if(!jaFeito){
     try {
@@ -40096,6 +40267,7 @@ function dashDesfazerFocoFeito(){
   var key = _meuKey('gami_meu_foco_feito_', hoje);
   try { localStorage.removeItem(key); } catch(e){}
   if(typeof renderFocoDoDia === 'function') renderFocoDoDia();
+  if(typeof _focoPush==='function') _focoPush(); // sync dedicado por pessoa_id (propaga o "desfazer")
 }
 
 function renderFocoDoDia(){
@@ -40523,7 +40695,8 @@ function tfAplicarSugestaoTarefa(btn){
 
 function tfSalvarNotas(){
   var val=(document.getElementById('tf-notas-input')||{}).value||'';
-  localStorage.setItem('gami_tf_notas_'+new Date().toISOString().split('T')[0], val);
+  // 🔒 namespace por usuário (antes 'gami_tf_notas_<data>' sem uid vazava entre logins)
+  localStorage.setItem(_meuKey('gami_tf_notas_', new Date().toISOString().split('T')[0]), val);
   var btn=event&&event.target; if(btn){var orig=btn.textContent;btn.textContent='✓ Salvo!';btn.style.color='#1D9E75';setTimeout(function(){btn.textContent=orig;btn.style.color='';},1500);}
 }
 
@@ -42037,16 +42210,61 @@ async function verAuditTab(qual){
    =================================================================== */
 
 /* ============== TAREFAS RECORRENTES ============== */
+// 🔒 Recorrentes agora são POR USUÁRIO (antes 'gami_tf_recorrentes' global vazava p/ todos).
+function _tfRecorrentesKey(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  return 'gami_tf_recorrentes_' + (u && u.id ? u.id : 'anon');
+}
 function getTarefasRecorrentes(){
-  try { return JSON.parse(localStorage.getItem('gami_tf_recorrentes')||'[]'); } catch(e){ return []; }
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    var uid = u && u.id;
+    var k = _tfRecorrentesKey();
+    var raw = localStorage.getItem(k);
+    if(raw == null && uid){
+      // Migração 1x: do blob GLOBAL legado, extrai SÓ os templates DESTA pessoa (por pessoa_id).
+      // Templates sem dono / de outro dono ficam de fora (eram exatamente o vazamento).
+      try {
+        var legado = JSON.parse(localStorage.getItem('gami_tf_recorrentes') || '[]');
+        var meus = Array.isArray(legado) ? legado.filter(function(t){ return t && t.pessoa_id === uid; }) : [];
+        localStorage.setItem(k, JSON.stringify(meus));
+        raw = JSON.stringify(meus);
+      } catch(e){}
+    }
+    return JSON.parse(raw || '[]');
+  } catch(e){ return []; }
 }
 function saveTarefasRecorrentes(arr){
-  try { localStorage.setItem('gami_tf_recorrentes', JSON.stringify(arr)); } catch(e){}
+  try { localStorage.setItem(_tfRecorrentesKey(), JSON.stringify(arr)); } catch(e){}
+  if(typeof _recorrentesPush==='function') _recorrentesPush(arr); // sync dedicado por pessoa_id
 }
 function salvarTarefaRecorrente(t){
   var arr = getTarefasRecorrentes();
   arr.push(t);
   saveTarefasRecorrentes(arr);
+}
+
+/* 🔒 SYNC DEDICADO de recorrentes por pessoa_id — cross-device, isolado, fora do mirror
+   (chave 'recorrentes_<uid>' não começa com 'gami_'). Mesmo padrão do Foco do Dia. */
+async function _recorrentesPush(arr){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id || typeof syncConfig!=='function' || typeof SUPA_URL==='undefined') return;
+    if(!Array.isArray(arr)) arr = getTarefasRecorrentes();
+    syncConfig('recorrentes_'+u.id, arr);
+  } catch(e){ console.warn('[Recorrentes] push:', e && e.message); }
+}
+async function _recorrentesPull(uid){
+  try {
+    if(!uid){ var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; uid=u&&u.id; }
+    if(!uid || typeof loadConfigFromSupa!=='function' || typeof SUPA_URL==='undefined') return;
+    var srv = await loadConfigFromSupa('recorrentes_'+uid);
+    if(srv == null) return;
+    var arr = (typeof srv==='string') ? JSON.parse(srv) : srv;
+    if(!Array.isArray(arr)) return;
+    try { localStorage.setItem('gami_tf_recorrentes_'+uid, JSON.stringify(arr)); } catch(e){}
+    if(typeof tfRenderDiario==='function') tfRenderDiario();
+  } catch(e){ console.warn('[Recorrentes] pull:', e && e.message); }
 }
 
 /* 🆕 v27.97: LIMPEZA ÚNICA — tarefas "Marketing" que vazaram via recorrente global.
@@ -43010,21 +43228,28 @@ async function renderRankingPorCargo(){
   var grupos = {
     'Liderança': { cargos: ['Diretor','Diretora','Gerente'], lista: [] },
     'Gestores': { cargos: ['Gestor'], lista: [] },
-    'Operação': { cargos: ['Suporte','Marketing','Prospec'], lista: [] }
+    'Operação': { cargos: ['Suporte','Marketing','Prospec','Comercial','Atendimento','Operação'], lista: [] },
+    'Outros': { cargos: [], lista: [] } // ranqueados que não casam em nenhum grupo — não somem mais
   };
   ranking.forEach(function(r){
     var p = pessoas.find(function(x){ return x.id === r.pessoa_id; });
-    if(!p || !p.cargo) return;
-    Object.keys(grupos).forEach(function(k){
-      if(grupos[k].cargos.some(function(c){ return p.cargo.indexOf(c) >= 0; })){
-        grupos[k].lista.push({ nome: r.pessoa_nome, pontos: r.total_pontos });
-      }
+    // Casa por cargo OU categoria OU função (antes só p.cargo → perdia quem tinha a função em outro campo)
+    var texto = p ? [p.cargo, p.categoria, p.funcao].filter(Boolean).join(' ') : '';
+    var alvo = null;
+    // PRIMEIRO match ganha (mutuamente exclusivo) — antes um "Gerente de Gestores" entrava em 2 grupos.
+    // Ordem importa: Liderança antes de Gestores, então Gerente/Diretor caem em Liderança.
+    Object.keys(grupos).some(function(k){
+      if(grupos[k].cargos.length && grupos[k].cargos.some(function(c){ return texto.indexOf(c) >= 0; })){ alvo = k; return true; }
+      return false;
     });
+    if(!alvo) alvo = 'Outros';
+    grupos[alvo].lista.push({ nome: r.pessoa_nome, pontos: r.total_pontos });
   });
   el.innerHTML = Object.keys(grupos).map(function(k){
     var g = grupos[k];
     var top5 = g.lista.slice(0,5);
     if(!top5.length){
+      if(k === 'Outros') return ''; // não mostra card vazio de "Outros"
       return '<div class="card" style="background:var(--surface2)"><div class="card-title" style="margin-bottom:8px">'+k+'</div><div style="font-size:11px;color:var(--text3);text-align:center;padding:14px">Sem dados ainda</div></div>';
     }
     return '<div class="card" style="background:var(--surface2)">'
@@ -43498,10 +43723,12 @@ function renderRegrasCompleto(){
 /* ============================================================== */
 function toggleAdminPontos(){
   if(!isAdminPontos()){
-    if(ativarModoAdmin()){
-      renderRanking();
-      setTimeout(function(){ abrirPainelAdminPontos(); }, 200);
-    }
+    ativarModoAdmin().then(function(ok){
+      if(ok){
+        renderRanking();
+        setTimeout(function(){ abrirPainelAdminPontos(); }, 200);
+      }
+    });
   } else {
     abrirPainelAdminPontos();
   }
@@ -49769,29 +49996,37 @@ function mpRenderBanner(){
 // 🆕 v26.83: Valida se a pessoa está conectada na rede do escritório (via IP público)
 // Retorna { ip, dentro, ips_config } ou null se não foi possível verificar
 var MP_IP_INFO = null;
+var MP_IP_INFO_TS = 0;
 async function _mpValidarIP(){
   try {
-    if(MP_IP_INFO) return MP_IP_INFO;
-    if(!MP_CONFIG || !MP_CONFIG.ips_autorizados) return null;
-    
-    var ips = MP_CONFIG.ips_autorizados.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-    if(!ips.length) return null;
-    
-    var resp = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-    if(!resp.ok) return null;
-    var data = await resp.json();
-    var meuIP = data.ip;
-    
+    // Cache curto (60s): antes era ETERNO — quem trocava de rede (4G↔Wi-Fi do escritório)
+    // ficava preso no 1º resultado. Agora revalida ao longo da sessão.
+    if(MP_IP_INFO && (Date.now() - MP_IP_INFO_TS) < 60*1000) return MP_IP_INFO;
+
+    // USA o mesmo pipeline do gate real: _obterIPPublico (força IPv4 + fallbacks) e
+    // _ipEhAutorizado (faixas/CIDR). Antes este status usava match EXATO e divergia do
+    // que o botão de bater ponto realmente fazia.
+    var meuIP = (typeof _obterIPPublico === 'function') ? await _obterIPPublico() : null;
+    if(!meuIP) return null;
+
+    var ips = [];
+    try {
+      if(MP_CONFIG && MP_CONFIG.ips_autorizados){
+        ips = MP_CONFIG.ips_autorizados.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      }
+    } catch(e){}
+
     MP_IP_INFO = {
       ip: meuIP,
-      dentro: ips.indexOf(meuIP) >= 0,
+      dentro: (typeof _ipEhAutorizado === 'function') ? _ipEhAutorizado(meuIP) : (ips.indexOf(meuIP) >= 0),
       ips_config: ips
     };
+    MP_IP_INFO_TS = Date.now();
     console.log('[MP] IP atual:', meuIP, '· autorizado?', MP_IP_INFO.dentro);
     return MP_IP_INFO;
-  } catch(e){ 
-    console.warn('[MP] erro ao validar IP:', e); 
-    return null; 
+  } catch(e){
+    console.warn('[MP] erro ao validar IP:', e);
+    return null;
   }
 }
 
@@ -49831,7 +50066,7 @@ function mpPedirGeolocation(){
     if(MP_CONFIG){
       var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
       MP_GEO.distancia = d;
-      MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+      MP_GEO.dentro = _mpDentroDoRaio(d);
       
       if(MP_GEO.dentro){
         statusEl.innerHTML = '📍 <strong style="color:#1D9E75">✓ No escritório</strong> · ' + Math.round(d) + ' m';
@@ -49928,6 +50163,23 @@ async function _mpEnriquecerComSupabase(u){
   } catch(e){ /* silencioso — lista fixa já garantiu */ }
 }
 
+// Decide "dentro do raio" considerando a MARGEM DE ERRO do GPS (coords.accuracy).
+// Sem isso, alguém REALMENTE no escritório com GPS impreciso (fallback Wi-Fi, erro de centenas
+// de metros) era marcado "fora" à toa. A margem é limitada a 120m pra não liberar quem está longe.
+function _mpDentroDoRaio(distancia){
+  var raio = Number((MP_CONFIG && MP_CONFIG.raio_metros) || 150);
+  var precisao = (MP_GEO && Number(MP_GEO.precisao)) || 0;
+  var margem = Math.min(precisao, 120);
+  return (distancia - margem) <= raio;
+}
+// Normaliza diferença de minutos tratando a VIRADA DE MEIA-NOITE. Sem isso, esperado 23:00
+// batido 00:30 dava -1350 ("adiantada") em vez de +30 ("atrasada"). Uma batida nunca está a
+// mais de 12h (720min) do horário esperado, então reancoramos na faixa [-720, +720].
+function _mpNormDiffMin(d){
+  while(d > 720) d -= 1440;
+  while(d < -720) d += 1440;
+  return d;
+}
 function _mpHaversine(lat1, lng1, lat2, lng2){
   var R = 6371000;
   var dLat = (lat2-lat1) * Math.PI / 180;
@@ -50015,7 +50267,7 @@ function mpRenderCardsDia(dados){
         var [eh, em] = esperado.split(':').map(Number);
         var [rh, rm] = realizado.split(':').map(Number);
         var tolerancia = (MP_CONFIG && MP_CONFIG.tolerancia_atraso_min) || 10;
-        var atrasoMin = (rh*60+rm) - (eh*60+em);
+        var atrasoMin = _mpNormDiffMin((rh*60+rm) - (eh*60+em));
         if(atrasoMin > tolerancia){
           corBg = '#FFF8E1'; corBorda = '#EF9F27';
           lbl = '⏰ Atrasada'; lblCor = '#854F0B';
@@ -50208,7 +50460,7 @@ function _mpAtualizarCardConsolidado(dados){
   // Atraso vs esperado
   if(esperado){
     var partsE = esperado.split(':').map(Number);
-    var atrasoMin = (ag.h*60 + ag.m) - (partsE[0]*60 + partsE[1]);
+    var atrasoMin = _mpNormDiffMin((ag.h*60 + ag.m) - (partsE[0]*60 + partsE[1]));
     if(elAtraso){
       if(atrasoMin > 5){
         elAtraso.style.display = '';
@@ -50308,7 +50560,7 @@ function _mpAbrirModalConfirmacao(opts){
     if(opts.esperado){
       var partsE = opts.esperado.split(':').map(Number);
       var partsA = opts.horaAtual.split(':').map(Number);
-      var atrasoMin = (partsA[0]*60 + partsA[1]) - (partsE[0]*60 + partsE[1]);
+      var atrasoMin = _mpNormDiffMin((partsA[0]*60 + partsA[1]) - (partsE[0]*60 + partsE[1]));
       if(atrasoMin > 5){
         atrasoTexto = '<div style="font-size:12px;color:#A32D2D;font-weight:700;margin-top:6px">⏰ '+atrasoMin+' min de atraso (esperado '+opts.esperado+')</div>';
       } else if(atrasoMin < -30){
@@ -50570,10 +50822,13 @@ async function mpBaterPonto(){
   var justifInput = document.getElementById('mp-justificativa');
   var justif = justifInput.value.trim() || null;
   
-  if(MP_GEO.distancia && !MP_GEO.dentro && !justif){
-    justifBox.style.display = 'block';
-    justifInput.focus();
-    alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório.\n\nPreencha uma justificativa antes de bater o ponto.');
+  if(MP_GEO.distancia && !MP_GEO.dentro){
+    // 🔒 POLÍTICA RÍGIDA: fora do raio = NÃO bate. Localização confirmada porém fora do
+    // escritório não dá mais pra justificar e passar — só bate no escritório, na rede do
+    // escritório, ou com liberação temporária do admin (tratada antes, no fluxo).
+    if(btn){ btn.disabled = false; btn.textContent = '🕒 BATER PONTO'; }
+    if(justifBox) justifBox.style.display = 'none';
+    alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório (fora do raio permitido).\n\nO ponto só pode ser batido no escritório ou na rede do escritório. Se precisa bater de fora, peça liberação ao Cleyton.');
     return;
   }
   
@@ -51099,7 +51354,7 @@ function _pgAtrasoMin(esperada, realizada){
   if(!esperada || !realizada) return null;
   var [eh, em] = esperada.split(':').map(Number);
   var [rh, rm] = realizada.split(':').map(Number);
-  return (rh*60+rm) - (eh*60+em);
+  return _mpNormDiffMin((rh*60+rm) - (eh*60+em));
 }
 
 // ============ Abrir aba ============
@@ -52379,8 +52634,10 @@ async function _obterIPPublico(){
     return _ipCache;
   }
   
-  // 3 serviços de fallback
+  // 3 serviços de fallback. api4.ipify FORÇA IPv4 — sem isso, conexões IPv6 (Souuni/4G)
+  // devolvem um IPv6 que NUNCA bate nas faixas IPv4 do escritório, e a pessoa é barrada à toa.
   var servicos = [
+    'https://api4.ipify.org?format=json',
     'https://api.ipify.org?format=json',
     'https://api.my-ip.io/v2/ip.json',
     'https://ipapi.co/json/'
@@ -52407,21 +52664,42 @@ async function _obterIPPublico(){
   return null;
 }
 
+// Casa um IP contra UMA regra. Aceita: IP exato, prefixo com ponto final ("138.97.145.")
+// e CIDR aproximado ("138.97.145.0/24" → prefixo dos primeiros n/8 octetos).
+function _ipMatchRegra(ip, regra){
+  if(!ip || !regra) return false;
+  regra = String(regra).trim();
+  if(!regra) return false;
+  // CIDR: converte pra prefixo de octetos (aprox. na fronteira de octeto)
+  if(regra.indexOf('/') !== -1){
+    var partes = regra.split('/');
+    var bits = parseInt(partes[1], 10);
+    if(isNaN(bits)) return false;
+    var nOct = Math.floor(bits / 8);
+    if(nOct <= 0) return false;
+    var pref = partes[0].split('.').slice(0, nOct).join('.') + '.';
+    return ip.indexOf(pref) === 0;
+  }
+  // Prefixo (termina em ponto) → casa a faixa
+  if(regra.charAt(regra.length-1) === '.') return ip.indexOf(regra) === 0;
+  // IP exato
+  return ip === regra;
+}
 function _ipEhAutorizado(ip){
   if(!ip) return false;
-  // 🆕 Inclui os IPs CADASTRADOS no painel de gestão (MP_CONFIG.ips_autorizados).
-  // Antes só checava os hardcoded — os IPs que você cadastra eram ignorados aqui.
+  // IPs CADASTRADOS no painel de gestão — agora aceitam faixa/CIDR igual aos hardcoded
+  // (antes era só match EXATO, então "IP que muda às vezes" caía fora à toa).
   try {
     if(typeof MP_CONFIG !== 'undefined' && MP_CONFIG && MP_CONFIG.ips_autorizados){
       var cadastrados = MP_CONFIG.ips_autorizados.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-      if(cadastrados.indexOf(ip) !== -1) return true;
+      for(var c=0; c<cadastrados.length; c++){ if(_ipMatchRegra(ip, cadastrados[c])) return true; }
     }
   } catch(e){}
-  // Match exato (hardcoded — fallback do escritório)
+  // Hardcoded — fallback do escritório (exato)
   if(ESCRITORIO_IPS_AUTORIZADOS.indexOf(ip) !== -1) return true;
-  // Match por faixa (ex: "138.97.145." → autoriza 138.97.145.*)
+  // Hardcoded — faixas (ex: "138.97.145." → autoriza 138.97.145.*)
   for(var i=0; i<ESCRITORIO_FAIXAS_AUTORIZADAS.length; i++){
-    if(ip.indexOf(ESCRITORIO_FAIXAS_AUTORIZADAS[i]) === 0) return true;
+    if(_ipMatchRegra(ip, ESCRITORIO_FAIXAS_AUTORIZADAS[i])) return true;
   }
   return false;
 }
@@ -52518,7 +52796,7 @@ function dashPedirGeoPonto(){
       if(MP_CONFIG){
         var d = _mpHaversine(MP_GEO.lat, MP_GEO.lng, MP_CONFIG.latitude, MP_CONFIG.longitude);
         MP_GEO.distancia = d;
-        MP_GEO.dentro = d <= (MP_CONFIG.raio_metros || 150);
+        MP_GEO.dentro = _mpDentroDoRaio(d);
         
         if(statusEl){
           if(MP_GEO.dentro){
@@ -53048,7 +53326,7 @@ function _calcularProximaBatidaEAtraso(){
   var partsE = esperado.split(':').map(Number);
   // 🆕 v26.69: usa horário do FUSO DA CIDADE (corrige bug Rondônia UTC-4 vs PC em Brasília UTC-3)
   var agora = _mpAgoraNoFuso();
-  var atrasoMin = (agora.h*60 + agora.m) - (partsE[0]*60 + partsE[1]);
+  var atrasoMin = _mpNormDiffMin((agora.h*60 + agora.m) - (partsE[0]*60 + partsE[1]));
   var tolerancia = (MP_CONFIG && typeof MP_CONFIG.tolerancia_atraso_min === 'number') ? MP_CONFIG.tolerancia_atraso_min : 5;
   
   return {
@@ -53366,14 +53644,14 @@ async function dashBaterPontoRapido(){
   var justifInput = document.getElementById('dash-ponto-justif');
   var justif = justifInput.value.trim() || null;
   
-  if(MP_GEO && MP_GEO.distancia && !MP_GEO.dentro && !justif){
-    justifBox.style.display = 'block';
-    justifInput.focus();
+  if(MP_GEO && MP_GEO.distancia && !MP_GEO.dentro){
+    // 🔒 POLÍTICA RÍGIDA: fora do raio = NÃO bate (mesma regra do painel Meu Ponto).
+    if(justifBox) justifBox.style.display = 'none';
     if(btn){
       btn.disabled = false;
       btn.innerHTML = originalText;
     }
-    alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório.\n\nPreencha uma justificativa antes de bater o ponto.');
+    alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório (fora do raio permitido).\n\nO ponto só pode ser batido no escritório ou na rede do escritório. Se precisa bater de fora, peça liberação ao Cleyton.');
     return;
   }
   
@@ -54153,9 +54431,20 @@ async function _notifChecar(){
 
 async function _notifAtualizarBadge(){
   try {
-    if(typeof contarNotificacoesNaoLidas !== 'function') return;
-    var qtd = await contarNotificacoesNaoLidas();
-    
+    // 🔧 MESMA fonte/contagem do sino (coletarNotificacoes + ehLida). Antes contava só
+    // Supabase lida=false, ignorando notifs locais (tarefas/aniversário) e leituras locais
+    // → divergia do número do sininho.
+    var qtd = 0;
+    if(typeof coletarNotificacoes === 'function' && typeof _notifLidas === 'function'){
+      if(typeof _carregarNotificacoesSupa === 'function' && (Date.now() - (typeof _supaNotifsLoadedAt!=='undefined'?_supaNotifsLoadedAt:0) > 30000)){
+        try { await _carregarNotificacoesSupa(); } catch(e){}
+      }
+      var lidas = _notifLidas();
+      qtd = coletarNotificacoes().filter(function(n){ return !(lidas[n.id] || n._supaLida); }).length;
+    } else if(typeof contarNotificacoesNaoLidas === 'function'){
+      qtd = await contarNotificacoesNaoLidas();
+    }
+
     // Atualiza badge na sidebar
     var navInbox = document.querySelector('.nav-item[onclick*="inbox"]');
     if(!navInbox) return;
