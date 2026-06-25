@@ -11955,6 +11955,28 @@ function _pinFraco(pin){
 }
 
 async function trocarPIN(pessoaId, pinAtual, pinNovo){
+  // 🔒 Fase 1b RLS: troca de PIN SERVER-SIDE (não lê pin_hash no navegador).
+  // Fallback pro método direto só se a função não estiver disponível.
+  try {
+    var rf = await fetch('/.netlify/functions/trocar-pin', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ pessoa_id: pessoaId, pin_atual: pinAtual, pin_novo: pinNovo })
+    });
+    if(rf.status !== 404){
+      var data = null; try { data = await rf.json(); } catch(e){}
+      if(data && typeof data.sucesso !== 'undefined'){
+        if(data.sucesso){
+          var atual = getUsuarioLogado();
+          if(atual && atual.id === pessoaId){ atual.pin_trocado = true; setUsuarioLogado(atual); }
+        }
+        return data;
+      }
+    }
+  } catch(e){ /* função indisponível → fallback direto */ }
+  return await _trocarPINDireto(pessoaId, pinAtual, pinNovo);
+}
+
+async function _trocarPINDireto(pessoaId, pinAtual, pinNovo){
   // Valida PIN novo
   if(!pinNovo || pinNovo.length < 4 || pinNovo.length > 8){
     return { sucesso: false, erro: 'PIN deve ter 4 a 8 caracteres' };
