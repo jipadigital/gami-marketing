@@ -11739,10 +11739,35 @@ function _alternarMostrarPin(){
 }
 
 async function tentarLogin(identificador, pin){
+  if(!identificador || !pin){ return { sucesso:false, erro:'Preencha usuário e PIN' }; }
+  // 🔒 Fase 1 RLS: login SERVER-SIDE (não expõe pin_hash ao navegador).
+  // Fallback pro método direto SÓ se a função não estiver disponível (ex.: ainda não deployada).
+  try {
+    var rf = await fetch('/.netlify/functions/login', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ identificador: identificador, pin: pin, user_agent: (navigator.userAgent || null) })
+    });
+    if(rf.status !== 404){
+      var data = null; try { data = await rf.json(); } catch(e){}
+      if(data && typeof data.sucesso !== 'undefined'){
+        if(!data.sucesso) return { sucesso:false, erro: data.erro || 'Erro ao entrar' };
+        var uFinal = data.usuario;
+        if(data.sessao_token){ try { localStorage.setItem('gami_sessao_token', data.sessao_token); } catch(e){} }
+        setUsuarioLogado(uFinal);
+        if(typeof hookLoginDiario === 'function'){ try { hookLoginDiario(uFinal.id); } catch(e){} }
+        if(typeof registrarAcesso === 'function'){ try { registrarAcesso(uFinal, true); } catch(e){} }
+        return { sucesso:true, usuario: uFinal };
+      }
+    }
+  } catch(e){ /* função indisponível → cai pro fallback direto */ }
+  return await _tentarLoginDireto(identificador, pin);
+}
+
+async function _tentarLoginDireto(identificador, pin){
   if(!identificador || !pin){
     return { sucesso: false, erro: 'Preencha usuário e PIN' };
   }
-  
+
   var idLower = String(identificador).toLowerCase().trim();
   
   try {
