@@ -17068,7 +17068,7 @@ async function _rlPegarCorridasHoje(slug){
   }
   // Senão, chama Machine direto
   try {
-    var hoje = new Date().toISOString().split('T')[0];
+    var hoje = (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().split('T')[0]; // data LOCAL (à noite UTC virava amanhã)
     var r = await fetch('/.netlify/functions/machine?cidade='+encodeURIComponent(slug)+'&recurso=solicitacao&data_inicio='+hoje+'&data_fim='+hoje);
     if(!r.ok) return [];
     var d = await r.json();
@@ -17099,8 +17099,8 @@ function _rlMesclarEmpresasHoje(historico, corridasHoje){
   });
   
   var hoje = new Date(); hoje.setHours(0,0,0,0);
-  var hojeStr = hoje.toISOString().split('T')[0];
-  
+  var hojeStr = (typeof tfHojeLocal==='function') ? tfHojeLocal() : hoje.toISOString().split('T')[0];
+
   corridasHoje.forEach(function(x){
     var nOrig = (x.nome_passageiro||'').trim(); if(!nOrig) return;
     var nKey = nOrig.toLowerCase();
@@ -27873,7 +27873,7 @@ function _empCardTopEmpresas(titulo, icone, ranking, cor, verFin){
         + 'onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
         + '<span style="font-size:14px;width:24px;text-align:center">'+pos+'</span>'
         + '<div style="flex:1;min-width:0">'
-          + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+e.nome+'</div>'
+          + '<div style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+tfEsc(e.nome)+'</div>'
           + '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+e.pctTotal+'% do total'+(verFin?' · ticket '+fmt(e.ticket):'')+'</div>'
         + '</div>'
         + '<div style="text-align:right">'
@@ -28612,7 +28612,7 @@ function empRenderLista(corridasMes, empresasGeral, hojeStr){
     return '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+m.bg+';color:'+m.cor+';white-space:nowrap;font-weight:600">'+m.lbl+'</span>';
   };
 
-  var optBairros = '<option value="todos">Todos os bairros</option>' + listaBairros.map(function(b){return '<option value="'+b+'"'+(st.bairro===b?' selected':'')+'>'+b+'</option>';}).join('');
+  var optBairros = '<option value="todos">Todos os bairros</option>' + listaBairros.map(function(b){return '<option value="'+tfEsc(b)+'"'+(st.bairro===b?' selected':'')+'>'+tfEsc(b)+'</option>';}).join('');
 
   var html = '<div class="card">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
@@ -29769,7 +29769,7 @@ function mbRenderLista(corridasMes, condutores, hojeStr){
     return '<span style="font-size:9px;padding:2px 7px;border-radius:6px;background:'+m.bg+';color:'+m.cor+';white-space:nowrap;font-weight:600">'+m.lbl+'</span>';
   };
 
-  var optBairros = '<option value="todos">Todos os bairros</option>' + listaBairros.map(function(b){return '<option value="'+b+'"'+(st.bairro===b?' selected':'')+'>'+b+'</option>';}).join('');
+  var optBairros = '<option value="todos">Todos os bairros</option>' + listaBairros.map(function(b){return '<option value="'+tfEsc(b)+'"'+(st.bairro===b?' selected':'')+'>'+tfEsc(b)+'</option>';}).join('');
 
   var html = '<div class="card">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
@@ -29778,7 +29778,7 @@ function mbRenderLista(corridasMes, condutores, hojeStr){
     + '</div>'
     // Linha 1: busca + status
     + '<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;margin-bottom:10px;align-items:center">'
-      + '<input id="mb-lista-busca" type="text" value="'+st.busca+'" placeholder="🔍 Buscar por nome..." '
+      + '<input id="mb-lista-busca" type="text" value="'+tfEsc(st.busca||'')+'" placeholder="🔍 Buscar por nome..." '
         + 'oninput="_mbListaEstado.busca=this.value;_mbListaEstado.pagina=1;mbAtualizarLista()" '
         + 'style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">'
       + '<select onchange="_mbListaEstado.status=this.value;_mbListaEstado.pagina=1;mbAtualizarLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:white">'
@@ -29819,9 +29819,9 @@ function mbRenderLista(corridasMes, condutores, hojeStr){
       var diasLbl = m.diasInativo===999 ? '—' : m.diasInativo+'d';
       var diasCor = m.diasInativo===999 ? 'var(--text3)' : m.diasInativo>=7 ? '#E24B4A' : 'var(--text)';
       html += '<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'
-        + '<td style="padding:7px 4px;cursor:pointer" onclick="mbVerMotoboy(\''+m.id+'\')"><div style="font-weight:600;color:var(--text)">'+m.nome+'</div></td>'
+        + '<td style="padding:7px 4px;cursor:pointer" onclick="mbVerMotoboy(\''+m.id+'\')"><div style="font-weight:600;color:var(--text)">'+tfEsc(m.nome)+'</div></td>'
         + '<td style="padding:7px 4px;text-align:center">'+statusBadge(m.status)+'</td>'
-        + '<td style="padding:7px 4px;text-align:center;color:var(--text2);font-size:10px">'+(m.bairro||'—')+'</td>'
+        + '<td style="padding:7px 4px;text-align:center;color:var(--text2);font-size:10px">'+tfEsc(m.bairro||'—')+'</td>'
         + '<td style="padding:7px 4px;text-align:center;font-weight:600">'+m.corridas+'</td>'
         + '<td style="padding:7px 4px;text-align:center">'+(m.taxa!==null?m.taxa+'%':'—')+'</td>'
         + (verFin ? '<td style="padding:7px 4px;text-align:center">'+(m.ticket>0?fmt(m.ticket):'—')+'</td>' : '')
@@ -32062,7 +32062,7 @@ function renderHistoricoAnotacoes(){
       + '<div style="font-size:11px;font-weight:600;color:var(--text2)">📅 '+s.data.split('-').reverse().join('/')+'</div>'
       + '<span style="font-size:9px;color:var(--text3)">'+s.valor.length+' chars</span>'
       + '</div>'
-      + '<div style="font-size:11px;color:var(--text3);line-height:1.5">'+preview.replace(/\n/g,'<br>')+'</div>'
+      + '<div style="font-size:11px;color:var(--text3);line-height:1.5">'+tfEsc(preview).replace(/\n/g,'<br>')+'</div>'
       + '</div>';
   }).join('');
 }
@@ -42921,8 +42921,8 @@ async function _renderRankingCidadesReal(forceRefresh){
     var nomeGestor = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : '—';
     return '<div style="border:2px solid '+coresMedalha[i]+';border-radius:14px;padding:14px;background:'+coresBg[i]+';text-align:center;position:relative">'
       + '<div style="font-size:34px;line-height:1;margin-bottom:6px">'+medals[i]+'</div>'
-      + '<div style="font-size:16px;font-weight:800;color:#1a1a1a;margin-bottom:2px">'+c.nomeCompleto+'</div>'
-      + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:6px 0 10px 0">'+avatarGestor(c.gestor, 32)+'<span style="font-size:11px;color:#555;font-weight:600">'+nomeGestor+'</span></div>'
+      + '<div style="font-size:16px;font-weight:800;color:#1a1a1a;margin-bottom:2px">'+tfEsc(c.nomeCompleto)+'</div>'
+      + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin:6px 0 10px 0">'+avatarGestor(c.gestor, 32)+'<span style="font-size:11px;color:#555;font-weight:600">'+tfEsc(nomeGestor)+'</span></div>'
       + '<div style="font-size:28px;font-weight:900;color:#1a1a1a;line-height:1">'+c.paradas.toLocaleString('pt-BR')+'</div>'
       + '<div style="font-size:10px;color:#666;margin-top:-2px">📦 entregas (paradas)</div>'
       + '<div style="font-size:11px;color:#444;margin-top:6px">🚖 '+c.corridas.toLocaleString('pt-BR')+' corridas finalizadas · ✅ '+c.pctFin+'%</div>'
@@ -42943,8 +42943,8 @@ async function _renderRankingCidadesReal(forceRefresh){
           + '<div style="font-family:Syne,sans-serif;font-size:14px;font-weight:800;color:#999;width:28px;text-align:center">'+pos+'°</div>'
           + avatarGestor(c.gestor, 28)
           + '<div style="flex:1;min-width:0">'
-            + '<div style="font-size:13px;font-weight:700;color:var(--text)">'+c.nomeCompleto+'</div>'
-            + '<div style="font-size:10px;color:var(--text3)">'+nomeGestor+' · ✅ '+c.pctFin+'%</div>'
+            + '<div style="font-size:13px;font-weight:700;color:var(--text)">'+tfEsc(c.nomeCompleto)+'</div>'
+            + '<div style="font-size:10px;color:var(--text3)">'+tfEsc(nomeGestor)+' · ✅ '+c.pctFin+'%</div>'
           + '</div>'
           + '<div style="text-align:right">'
             + '<div style="font-size:16px;font-weight:800;color:var(--text)">'+c.paradas.toLocaleString('pt-BR')+'</div>'
