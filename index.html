@@ -33241,6 +33241,7 @@ function initDashboard(){
   // Existentes (mantidos)
   try { renderValorCultura(); } catch(e){}
   try { renderRecadosNoDash(); } catch(e){}
+  try { if(typeof _recadosCarregarSupa === 'function') _recadosCarregarSupa(); } catch(e){} // mural do TIME (Supabase)
   try { renderPulse(); } catch(e){}
   // NOVOS BLOCOS DO REDESIGN
   try { renderClimaCidades(); } catch(e){ console.warn('renderClimaCidades:', e); }
@@ -34230,6 +34231,7 @@ async function loadReconhecimentoFromSupa(){
     if(rec && rec.nome){
       // Atualiza localStorage com o que veio do servidor
       try { localStorage.setItem(_reconhecimentoKey(), JSON.stringify(rec)); } catch(e){}
+      try { if(typeof renderReconhecimento === 'function') renderReconhecimento(); } catch(e){} // re-render ao carregar (some o card vazio em aparelho novo)
       return rec;
     }
   } catch(e){ console.warn('loadReconhecimento:', e); }
@@ -34638,7 +34640,7 @@ function renderAniversariantesMes(){
     var partes = p.nascimento.split('-');
     var dia = parseInt(partes[2]);
     var diff = dia - diaHoje;
-    return {nome: p.nome, foto: p.foto||'', cargo: p.cargo||'', cidade: p.cidade||'', dia: dia, diff: diff};
+    return {nome: p.nome, foto: p.foto_url||p.foto||'', cargo: p.cargo||'', cidade: p.cidade||'', dia: dia, diff: diff};
   }).sort(function(a,b){ return a.dia - b.dia; });
   
   if(aniversariantes.length === 0){
@@ -35511,11 +35513,6 @@ function renderRecadosNoDash(){
   } catch(e){}
 }
 
-function renderPulse(){
-  // Wrapper, chama função existente se houver
-  if(typeof initPulse === 'function') { try { initPulse(); } catch(e){} return; }
-  if(typeof renderPulseExisting === 'function') { try { renderPulseExisting(); } catch(e){} return; }
-}
 
 
 
@@ -37420,6 +37417,7 @@ var GAMI_CLOUD_BLACKLIST = [
   'gami_migracao_*',
   'gami_tf_migrado_*',
   'gami_agenda_*',               // agenda manual por usuário + flags de migração (per-user/device)
+  'gami_recados_v1',             // cache de render do mural — fonte da verdade agora é a tabela `recados`
   'gami_limpeza_*'
 ];
 
@@ -45933,6 +45931,12 @@ function _pulseSetMeuVoto(emoji){
   }catch(e){}
 }
 function votarPulse(emoji){
+  // 🔒 Exige login (antes gerava id 'anon_'+random → poluía pulse_votos e furava a trava de 1/dia)
+  var _u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  if(!_u || !_u.id){
+    if(typeof toast === 'function') toast('Faça login para responder o Pulse', 'warn');
+    return;
+  }
   var anterior = _pulseMeuVoto();
   if(anterior){
     // Já votou hoje - bloqueia
@@ -46036,6 +46040,41 @@ function getRecados(){
 }
 function saveRecados(list){ try{ localStorage.setItem('gami_recados_v1', JSON.stringify(list)); }catch(e){} }
 
+/* 📌 MURAL DE RECADOS no Supabase (tabela `recados`) — agora é de TIME, aparece pra todos.
+   localStorage 'gami_recados_v1' vira só cache de render; a fonte da verdade é a tabela. */
+function _recadosMapDoSupa(r){
+  return { id:r.id, texto:r.texto, data:r.data||r.created_at, autor:r.autor, autorId:r.autor_id, autorFoto:r.autor_foto };
+}
+async function _recadosCarregarSupa(){
+  try {
+    if(typeof SUPA_URL === 'undefined') return;
+    var r = await fetch(SUPA_URL + '/rest/v1/recados?select=*&order=created_at.desc&limit=30', { headers: supaHeaders(), cache:'no-store' });
+    if(!r.ok) return; // tabela ainda não criada / offline → mantém cache local
+    var arr = await r.json();
+    if(!Array.isArray(arr)) return;
+    saveRecados(arr.map(_recadosMapDoSupa)); // atualiza o cache que renderRecados lê
+    if(typeof renderRecados === 'function') renderRecados();
+  } catch(e){ console.warn('[Recados] carregar:', e && e.message); }
+}
+async function _recadosSalvarSupa(recado){
+  try {
+    if(typeof SUPA_URL === 'undefined' || !recado) return;
+    await fetch(SUPA_URL + '/rest/v1/recados', {
+      method:'POST',
+      headers: Object.assign({}, supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+      body: JSON.stringify([{ id:recado.id, texto:recado.texto, data:recado.data, autor:recado.autor, autor_id:recado.autorId, autor_foto:recado.autorFoto }])
+    });
+  } catch(e){ console.warn('[Recados] salvar:', e && e.message); }
+}
+async function _recadosApagarSupa(id){
+  try {
+    if(typeof SUPA_URL === 'undefined' || !id) return;
+    await fetch(SUPA_URL + '/rest/v1/recados?id=eq.' + encodeURIComponent(id), {
+      method:'DELETE', headers: Object.assign({}, supaHeaders(), { 'Prefer':'return=minimal' })
+    });
+  } catch(e){ console.warn('[Recados] apagar:', e && e.message); }
+}
+
 function adicionarRecado(){
   // Comportamento antigo de prompt foi substituido por input inline (ver renderRecados).
   // Mantida pra compatibilidade. Foca no campo inline se existir.
@@ -46088,6 +46127,7 @@ function salvarRecadoInline(){
   });
   if(lista.length > 12) lista = lista.slice(0,12);
   saveRecados(lista);
+  if(typeof _recadosSalvarSupa === 'function') _recadosSalvarSupa(lista[0]); // publica pro time inteiro
   input.value = '';
   var counter = document.getElementById('mural-counter');
   if(counter) counter.textContent = '0 / 140';
@@ -46099,6 +46139,7 @@ function salvarRecadoInline(){
 function removerRecado(id){
   if(!confirm('Remover este recado?')) return;
   saveRecados(getRecados().filter(function(r){return r.id!==id;}));
+  if(typeof _recadosApagarSupa === 'function') _recadosApagarSupa(id); // remove pra todos
   renderRecados();
   toast('Recado removido', 'info');
 }
