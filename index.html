@@ -5817,7 +5817,10 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     </div>
     
     <div class="card" style="padding:14px">
-      <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:10px">📋 Últimas vendas</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:700;color:var(--text)">📋 Últimas vendas</div>
+        <button onclick="estIrParaTab('historico')" style="font-size:11px;padding:5px 12px;border:1px solid #1AB8F0;border-radius:7px;background:transparent;color:#0E7AB8;font-weight:600;cursor:pointer;font-family:inherit">Ver todas →</button>
+      </div>
       <div id="est-ultimas-vendas">
         <div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Nenhuma venda registrada ainda.</div>
       </div>
@@ -6045,6 +6048,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
       <input id="est-hist-busca" oninput="estCarregarHistorico()" placeholder="🔍 Buscar por cliente, modelo ou telefone..." style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit"/>
       <div class="gami-valor" style="font-size:11px;color:var(--text3)">Total filtrado: <strong id="est-hist-total" style="color:#1D9E75;font-size:14px">R$ 0,00</strong></div>
+      <button onclick="estExportarVendasPDF()" style="font-size:11px;padding:8px 12px;border:1px solid #1D9E75;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:700;cursor:pointer;font-family:inherit">📄 Exportar PDF</button>
     </div>
     
     <div class="card" style="padding:0;overflow:hidden">
@@ -49752,6 +49756,45 @@ async function estSalvarEdicaoVenda(id){
     alert('Erro ao salvar: ' + e.message);
     if(btn){ btn.disabled = false; btn.textContent = '💾 Salvar'; }
   }
+}
+
+// Exporta a relação de vendas (a lista filtrada do histórico) em PDF via janela de impressão
+function estExportarVendasPDF(){
+  var vendas = window.EST_HIST_VENDAS || [];
+  if(!vendas.length){ alert('Nenhuma venda pra exportar. Ajuste o filtro/busca.'); return; }
+  function _esc(s){ return String(s==null?'':s).replace(/[&<>]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+  var total = vendas.reduce(function(a,v){ return a + (parseFloat(v.valor_total)||0); }, 0);
+  var qtdTotal = vendas.reduce(function(a,v){ return a + (parseInt(v.quantidade)||0); }, 0);
+  var cidadeLbl = EST_CIDADE_SEL ? _estLoc(EST_CIDADE_SEL) : 'Todas as cidades';
+  var busca = (document.getElementById('est-hist-busca')||{}).value || '';
+  var hojeFmt = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  var linhas = vendas.map(function(v){
+    var tam = v.item_tamanho ? ' (' + v.item_tamanho + ')' : '';
+    return '<tr>'
+      + '<td>' + _estFmtData(v.data) + '</td>'
+      + '<td>' + _esc(v.cliente_nome||'—') + (v.cliente_telefone ? '<br><small style="color:#777">'+_esc(v.cliente_telefone)+'</small>' : '') + '</td>'
+      + '<td>' + _esc((v.item_nome||'') + tam) + '</td>'
+      + '<td>' + _esc(_estLoc(v.cidade)) + '</td>'
+      + '<td>' + _esc(v.usuario_nome||v.vendedor||'—') + '</td>'
+      + '<td style="text-align:right">' + (v.quantidade||0) + '</td>'
+      + '<td style="text-align:right">' + _estFmtBRL(v.valor_total) + '</td>'
+    + '</tr>';
+  }).join('');
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>Vendas Gâmi</title>'
+    + '<style>body{font-family:Arial,Helvetica,sans-serif;padding:20px;color:#222}h1{font-size:18px;margin:0 0 4px}.sub{color:#666;font-size:12px;margin-bottom:14px}'
+    + 'table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f2f2f2}'
+    + 'tfoot td{font-weight:bold;background:#f9f9f9}@media print{button{display:none}}</style></head><body>'
+    + '<h1>📦 Relação de Vendas — Gâmi</h1>'
+    + '<div class="sub">' + _esc(cidadeLbl) + (busca ? ' · busca: "'+_esc(busca)+'"' : '') + ' · ' + vendas.length + ' vendas · Gerado em ' + hojeFmt + '</div>'
+    + '<table><thead><tr><th>Data</th><th>Cliente</th><th>Item</th><th>Cidade</th><th>Vendedor</th><th style="text-align:right">Qtd</th><th style="text-align:right">Valor</th></tr></thead>'
+    + '<tbody>' + linhas + '</tbody>'
+    + '<tfoot><tr><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right">' + qtdTotal + '</td><td style="text-align:right">' + _estFmtBRL(total) + '</td></tr></tfoot>'
+    + '</table></body></html>';
+  var w = window.open('', '_blank');
+  if(!w){ alert('Libere os pop-ups deste site pra gerar o PDF.'); return; }
+  w.document.write(html);
+  w.document.close();
+  setTimeout(function(){ try { w.focus(); w.print(); } catch(e){} }, 350);
 }
 
 // ====== RELATÓRIOS ======
