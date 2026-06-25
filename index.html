@@ -48712,8 +48712,92 @@ function estTrocarCidade(){
   EST_CIDADE_SEL = document.getElementById('est-cidade-global').value;
   estCarregarTudo();
 }
-// Clicar num card de "Itens por Cidade" → abre o Histórico já filtrado por essa cidade (nomes + infos das vendas)
-function estVerVendasCidade(cidade){
+// Clicar num card de "Itens por Cidade" → abre modal com a relação de ITENS (saldo) + a relação de VENDAS dessa cidade
+async function estVerVendasCidade(cidade){
+  var ex = document.getElementById('est-cidade-modal'); if(ex) ex.remove();
+  var m = document.createElement('div');
+  m.id = 'est-cidade-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;z-index:99999;padding:24px 16px;overflow:auto';
+  m.onclick = function(e){ if(e.target === m) m.remove(); };
+  m.innerHTML = '<div style="background:var(--surface);border-radius:14px;max-width:780px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1">'
+      + '<div style="font-size:17px;font-weight:800;color:var(--text)">🏙️ ' + _estLoc(cidade) + '</div>'
+      + '<button onclick="document.getElementById(\'est-cidade-modal\').remove()" style="border:none;background:var(--surface2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text2)">✕</button>'
+    + '</div>'
+    + '<div id="est-cidade-modal-body" style="padding:18px 20px;max-height:78vh;overflow:auto">'
+      + '<div style="padding:30px;text-align:center;color:var(--text3)">⏳ Carregando dados de ' + _estLoc(cidade) + '...</div>'
+    + '</div>'
+  + '</div>';
+  document.body.appendChild(m);
+
+  try {
+    var res = await Promise.all([
+      _estRPC('estoque_saldo',  { p_cidade: cidade }),
+      _estRPC('estoque_vendas', { p_cidade: cidade, p_busca: null })
+    ]);
+    var saldos = res[0] || [];
+    // Se a RPC devolver várias cidades (não filtrou), restringe à clicada
+    if(saldos.some(function(s){ return s.cidade && s.cidade !== cidade; })) {
+      saldos = saldos.filter(function(s){ return s.cidade === cidade; });
+    }
+    var vendas = res[1] || [];
+    window.EST_HIST_VENDAS = vendas;   // permite exportar PDF dessa cidade
+    EST_CIDADE_SEL = cidade;           // mantém contexto pra PDF / histórico
+
+    saldos.sort(function(a, b){ return (parseInt(b.saldo)||0) - (parseInt(a.saldo)||0); });
+    var totalPecas  = saldos.reduce(function(a, s){ return a + Math.max(0, parseInt(s.saldo)||0); }, 0);
+    var modelos     = saldos.filter(function(s){ return (parseInt(s.saldo)||0) > 0; }).length;
+    var totalVendas = vendas.reduce(function(a, v){ return a + (parseFloat(v.valor_total)||0); }, 0);
+
+    var itensHtml = saldos.length
+      ? saldos.map(function(s){
+          var sd  = parseInt(s.saldo) || 0;
+          var cor = sd <= 0 ? '#A32D2D' : (sd < 10 ? '#854F0B' : '#1D9E75');
+          var tam = s.tamanho ? ' <span style="color:var(--text3);font-weight:500">(' + tfEsc(s.tamanho) + ')</span>' : '';
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);gap:8px">'
+            + '<div style="font-size:12.5px;color:var(--text);font-weight:600">' + tfEsc(s.nome) + tam + '</div>'
+            + '<div style="font-size:14px;font-weight:700;color:' + cor + ';white-space:nowrap">' + sd + ' un</div>'
+          + '</div>';
+        }).join('')
+      : '<div style="padding:14px;text-align:center;color:var(--text3);font-size:12px">Nenhum item em estoque nesta cidade.</div>';
+
+    var vendasHtml = vendas.length
+      ? vendas.map(function(v){
+          var tam = v.item_tamanho ? ' (' + v.item_tamanho + ')' : '';
+          return '<div style="padding:9px 0;border-bottom:1px solid var(--border)">'
+            + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
+              + '<div style="font-size:12.5px;font-weight:600;color:var(--text)">' + tfEsc(v.cliente_nome||'—') + '</div>'
+              + '<div style="font-size:13px;font-weight:700;color:#1D9E75;white-space:nowrap">' + _estFmtBRL(v.valor_total) + '</div>'
+            + '</div>'
+            + '<div style="font-size:10.5px;color:var(--text3);margin-top:2px">' + tfEsc(v.item_nome||'') + tam + ' · ' + (v.quantidade||0) + ' un · ' + _estFmtData(v.data) + (v.usuario_nome ? ' · por ' + tfEsc(v.usuario_nome) : '') + '</div>'
+          + '</div>';
+        }).join('')
+      : '<div style="padding:14px;text-align:center;color:var(--text3);font-size:12px">Nenhuma venda registrada nesta cidade.</div>';
+
+    var body = document.getElementById('est-cidade-modal-body');
+    if(!body) return; // modal fechado durante o carregamento
+    body.innerHTML =
+       '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">'
+        + '<div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Peças (' + modelos + ' modelos)</div><div style="font-size:20px;font-weight:800;color:#1AB8F0">' + totalPecas.toLocaleString('pt-BR') + '</div></div>'
+        + '<div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Vendas</div><div style="font-size:20px;font-weight:800;color:#1D9E75">' + vendas.length + '</div></div>'
+        + '<div style="flex:1;min-width:120px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:600">Faturamento</div><div style="font-size:20px;font-weight:800;color:#1D9E75">' + _estFmtBRL(totalVendas) + '</div></div>'
+      + '</div>'
+      + '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">'
+        + '<button onclick="estExportarVendasPDF()" style="font-size:11px;padding:8px 12px;border:1px solid #1D9E75;border-radius:8px;background:#EAF3DE;color:#3B6D11;font-weight:700;cursor:pointer;font-family:inherit">📄 Exportar vendas (PDF)</button>'
+        + '<button onclick="document.getElementById(\'est-cidade-modal\').remove();estVerVendasNoHistorico(\'' + cidade + '\')" style="font-size:11px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-weight:600;cursor:pointer;font-family:inherit">Abrir no Histórico ↗</button>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px">'
+        + '<div><div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">📦 Itens em estoque</div>' + itensHtml + '</div>'
+        + '<div><div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">🧾 Vendas (' + vendas.length + ')</div>' + vendasHtml + '</div>'
+      + '</div>';
+  } catch(e){
+    var b = document.getElementById('est-cidade-modal-body');
+    if(b) b.innerHTML = '<div style="padding:24px;text-align:center;color:#A32D2D;font-size:12px">Erro ao carregar: ' + (e.message || e) + '</div>';
+  }
+}
+
+// Atalho: abre o Histórico já filtrado pela cidade (comportamento antigo do card)
+function estVerVendasNoHistorico(cidade){
   var sel = document.getElementById('est-cidade-global');
   if(sel) sel.value = cidade;
   EST_CIDADE_SEL = cidade;
