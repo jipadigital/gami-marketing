@@ -1,4 +1,4 @@
-<!-- v31.2 - Relatorios: adicionada coluna Telefone (com link WhatsApp via _rlTelefoneCell) nos relatorios que faltavam: top_clientes (Top do periodo), pareto_empresas e pareto_motoboys. Agora TODOS os relatorios de cliente/empresa/motoboy mostram telefone. So crescimento_mom e dias_anomalos ficam sem (sao agregados por mes/dia, nao listam cliente) - 24/06/2026 -->
+<!-- v31.4 - Estoque: saldos das pastas carregam TODAS as cidades (so restringe a 1 cidade quem for limitado a uma). Corrige tela Estoque por Cidade mostrando so Cuiaba mesmo com estoque em Maceio/Joao Pessoa/etc. v31.3 - top 10 nao conta mais em tempo real - 30/06/2026 -->
 <!DOCTYPE html>
 <!-- VERSION: 2026-05-05-v3-CLEAN -->
 <html lang="pt-BR">
@@ -11083,7 +11083,10 @@ async function motorBadges(pessoa){
       var rk = await obterRankingMensal();
       if(rk && rk.length){
         if(rk[0] && rk[0].pessoa_id === pessoa.id) await desbloquearBadge(pessoa, 'primeiro_ranking');
-        if(rk.slice(0,10).some(function(x){ return x && x.pessoa_id === pessoa.id; })) await desbloquearBadge(pessoa, 'top10_primeira_vez');
+        // 🔒 v31.3: Top 10 NAO conta mais em tempo real. O bonus do top 10 passa a ser
+        // apurado no FECHAMENTO DO MES (apos 30 dias), so pra quem terminar no ranking e
+        // entregue. A linha abaixo (que dava o badge na hora que entrava no top 10) foi desativada.
+        // if(rk.slice(0,10).some(function(x){ return x && x.pessoa_id === pessoa.id; })) await desbloquearBadge(pessoa, 'top10_primeira_vez');
         // 🦄 Tri-Perfeito: 1º lugar + 30 dias seguidos + Funcionário do Mês, tudo junto
         if(rk[0] && rk[0].pessoa_id === pessoa.id && (maiorStreak||0) >= 30 && _badgeJaTem(pessoa.id, 'funcionario_mes_badge')){
           await desbloquearBadge(pessoa, 'tri_perfeito');
@@ -48281,7 +48284,13 @@ async function estCarregarItens(){
 
 async function estCarregarSaldos(){
   try {
-    EST_SALDOS = await _estRPC('estoque_saldo', { p_cidade: EST_CIDADE_SEL || null });
+    // 🆕 v31.4: a tela de PASTAS mostra TODAS as cidades, entao os saldos precisam vir de
+    // todas. So restringe a UMA cidade quem for de fato limitado a uma (ex: suporte de 1 cidade).
+    // Para admin/multi-cidade carrega tudo (null), senao o filtro global preso numa cidade
+    // fazia a tela de pastas mostrar so aquela cidade com estoque (e as outras zeradas).
+    var _cidPerm = EST_SESSAO && EST_SESSAO.cidades_permitidas;
+    var _cidadeSaldo = (_cidPerm && _cidPerm.length === 1) ? _cidPerm[0] : null;
+    EST_SALDOS = await _estRPC('estoque_saldo', { p_cidade: _cidadeSaldo });
     EST_SALDOS = EST_SALDOS || [];
   } catch(e){ EST_SALDOS = []; console.error('[Estoque] saldos:', e); }
 }
