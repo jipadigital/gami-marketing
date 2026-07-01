@@ -1,3 +1,4 @@
+<!-- v31.6 - Sidebar desktop: barra ficava PRESA colapsada num filete de 60px sem como reabrir (botao de toggle mal posicionado + icone branco invisivel + estado colapsado restaurado no load). Corrigido: desktop sempre abre expandido, botao de toggle fixo/visivel com icone escuro que acompanha o estado - 01/07/2026 -->
 <!-- v31.5 - Tarefas/Compromissos: tarefas concluidas de dias passados reapareciam remarcadas todo dia em "Compromissos de hoje" (tfKey do diario ignorava o bucket e jogava tudo no balde de hoje). Corrigido: respeita o dia original + limpa o balde de hoje na carga - 01/07/2026 -->
 <!-- v31.4 - Estoque: saldos das pastas carregam TODAS as cidades (so restringe a 1 cidade quem for limitado a uma). Corrige tela Estoque por Cidade mostrando so Cuiaba mesmo com estoque em Maceio/Joao Pessoa/etc. v31.3 - Top 10 nao conta badge em tempo real (apurado no fechamento do mes) - 30/06/2026 -->
 <!-- v31.1 - Sidebar mobile/app: trava anti-toque-duplo no toggleSidebar (em telas de toque o evento disparava 2x e a barra abria+fechava no mesmo toque, parecia que nao abria). + touch-action:manipulation e z-index 1000 no botao. SW e network-first (nao era cache) - 24/06/2026 -->
@@ -224,11 +225,14 @@ h1,h2,h3,.syne{font-family:'Syne',sans-serif}
   .sidebar.collapsed .nav-item .nav-dot{margin:0}
   #sidebar-toggle{
     display:flex;align-items:center;justify-content:center;
-    position:absolute;top:50%;right:-12px;transform:translateY(-50%);
-    width:24px;height:24px;border-radius:50%;
+    position:fixed;top:72px;left:206px;transform:translateY(-50%);
+    width:26px;height:26px;border-radius:50%;
     background:var(--surface);border:1px solid var(--border);
-    cursor:pointer;z-index:10;transition:all .2s;
+    box-shadow:0 2px 8px rgba(0,0,0,.18);
+    cursor:pointer;z-index:60;transition:left .25s ease;
   }
+  body.sb-collapsed #sidebar-toggle{ left:46px; }        /* acompanha a barra colapsada (60px) */
+  #sidebar-toggle svg path{ stroke:var(--gami-navy); }   /* ícone escuro (era branco → sumia no fundo claro) */
   .sidebar{position:relative;transition:width .25s ease,min-width .25s ease}
 }
 
@@ -32428,6 +32432,7 @@ function toggleSidebar(){
 
     sb.classList.toggle('collapsed');
     var isCollapsed = sb.classList.contains('collapsed');
+    try{ document.body.classList.toggle('sb-collapsed', isCollapsed); }catch(e){} // 🆕 v31.6: botão fixo do desktop acompanha o estado
 
     // overlay só no mobile, e some quando recolhe
     if(ov) ov.classList.toggle('visible', isMobile && !isCollapsed);
@@ -32445,13 +32450,12 @@ function toggleSidebar(){
 
 // Restore sidebar state on load
 (function(){
-  const saved = localStorage.getItem('gami_sb_collapsed');
   const isMobile = window.innerWidth <= 768;
+  // 🆕 v31.6: no DESKTOP a barra SEMPRE começa ABERTA. Antes ela restaurava o estado
+  // "colapsado" salvo (gami_sb_collapsed) e — como o botão de reabrir ficava fora da tela
+  // e com ícone branco invisível no desktop — a pessoa ficava PRESA no filete de 60px sem
+  // como abrir. Agora só o mobile começa recolhido (reabre pelo hambúrguer no topo).
   if(isMobile){
-    // Mobile: start collapsed (hidden)
-    document.querySelector('.sidebar').classList.add('collapsed');
-    document.getElementById('tog-ico').innerHTML = '<path d="M9 18l6-6-6-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
-  } else if(saved === '1'){
     document.querySelector('.sidebar').classList.add('collapsed');
     document.getElementById('tog-ico').innerHTML = '<path d="M9 18l6-6-6-6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
   }
