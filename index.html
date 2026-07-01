@@ -1,3 +1,4 @@
+<!-- v31.5 - Tarefas/Compromissos: tarefas concluidas de dias passados reapareciam remarcadas todo dia em "Compromissos de hoje" (tfKey do diario ignorava o bucket e jogava tudo no balde de hoje). Corrigido: respeita o dia original + limpa o balde de hoje na carga - 01/07/2026 -->
 <!-- v31.4 - Estoque: saldos das pastas carregam TODAS as cidades (so restringe a 1 cidade quem for limitado a uma). Corrige tela Estoque por Cidade mostrando so Cuiaba mesmo com estoque em Maceio/Joao Pessoa/etc. v31.3 - Top 10 nao conta badge em tempo real (apurado no fechamento do mes) - 30/06/2026 -->
 <!-- v31.1 - Sidebar mobile/app: trava anti-toque-duplo no toggleSidebar (em telas de toque o evento disparava 2x e a barra abria+fechava no mesmo toque, parecia que nao abria). + touch-action:manipulation e z-index 1000 no botao. SW e network-first (nao era cache) - 24/06/2026 -->
 <!DOCTYPE html>
@@ -38081,6 +38082,10 @@ function tfKey(tipo, sufixo){
   var prefix = TF_KEY_PREFIX + pid + '_';
   
   if(tipo==='diario'){
+    // 🆕 v31.5: se vier um sufixo/bucket explícito (ex.: 'd_2026_06_25', vindo do pull do
+    // Supabase), respeita o DIA ORIGINAL. Antes ignorava e jogava TUDO no balde de HOJE →
+    // tarefas concluídas de dias passados reapareciam remarcadas todo dia nos "Compromissos".
+    if(sufixo){ return prefix + (/^d_/.test(sufixo) ? sufixo : ('d_'+sufixo)); }
     var d=new Date(); d.setDate(d.getDate()); // today
     return prefix+'d_'+d.getFullYear()+'_'+String(d.getMonth()+1).padStart(2,'0')+'_'+String(d.getDate()).padStart(2,'0');
   }
@@ -42194,6 +42199,29 @@ async function tfSincronizarDoSupabase(){
         try { if(typeof tfSupaSalvar === 'function') tfSupaSalvar(t, t.tipo || 'diario', t.bucket || null); } catch(e){}
       });
       if(pendentesReupload.length) console.log('[Tarefas] ' + pendentesReupload.length + ' tarefa(s) local preservada(s) e reenviada(s) ao servidor');
+
+      // 🆕 v31.5: LIMPA o balde de HOJE de tarefas que pertencem a OUTROS dias (cura a
+      // poluição do bug anterior). Se o servidor tem a tarefa com bucket != hoje, ela NÃO
+      // é compromisso de hoje → remove do balde local de hoje (não apaga do servidor).
+      try {
+        var _hojeBk = (typeof _tfBucketDe === 'function') ? _tfBucketDe('diario') : null;
+        var _hojeKey = tfKey('diario');
+        var _bkPorId = {};
+        tarefas.forEach(function(t){ if(t && t.id) _bkPorId[t.id] = t.bucket; });
+        var _hojeLst = [];
+        try { _hojeLst = JSON.parse(localStorage.getItem(_hojeKey) || '[]'); } catch(e){}
+        if(Array.isArray(_hojeLst) && _hojeBk){
+          var _limpa = _hojeLst.filter(function(t){
+            if(!t || !t.id) return true;
+            var b = _bkPorId[t.id];
+            return !(b !== undefined && b !== _hojeBk); // remove só as que o servidor tem em OUTRO dia
+          });
+          if(_limpa.length !== _hojeLst.length){
+            localStorage.setItem(_hojeKey, JSON.stringify(_limpa));
+            console.log('[Tarefas] v31.5: ' + (_hojeLst.length - _limpa.length) + ' tarefa(s) de dias passados removida(s) do balde de hoje');
+          }
+        }
+      } catch(e){ console.warn('[Tarefas] limpeza balde hoje:', e); }
     } catch(e){ console.warn('[Tarefas] sync cache:', e); }
     
     // Marca as delegadas não vistas como vistas
