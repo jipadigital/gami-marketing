@@ -86,6 +86,10 @@ exports.handler = async function(event){
         token_recuperacao: null,
         token_recuperacao_exp: null,
         token_atual: null,  // força novo login com PIN novo
+        // 🆕 quem redefiniu o PIN pelo link do email provou ser dono → destrava a conta
+        // (senão a pessoa reseta o PIN mas continua bloqueada pelos 15 min do lockout)
+        bloqueado_ate: null,
+        tentativas_falhas: 0,
         updated_at: new Date().toISOString()
       })
     });

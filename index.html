@@ -1787,10 +1787,11 @@ function detectarNivelPermissao(usuario){
 
 // 🆕 PROSPECÇÃO RESTRITA — emails que veem só algumas cidades, sem valores monetários
 var PROSPECCAO_RESTRITA = {
-  'flaviagomes.gami@gmail.com':  ['maceio'],                             // Ana Flavia
+  'flaviagomes.gami@gmail.com':  ['*'],                                  // Ana Flavia — TODAS as cidades (prospecção geral)
   'ingridycsgami@gmail.com':     ['campo-grande'],                       // Rhayanna
   'micaelle.gami@gmail.com':     ['joao-pessoa', 'recife', 'natal']      // Micaelle
 };
+// '*' na lista de uma pessoa de prospecção = acesso a TODAS as cidades (mantém o nível prospecção)
 
 /* Matriz de permissões — define quem vê o quê */
 var MATRIZ_PERMISSOES = {
@@ -1952,7 +1953,9 @@ function cidadesQueUsuarioAtende(u){
   // 🆕 🎯 PROSPECÇÃO RESTRITA → cidades específicas do mapa
   if(nivel === 'prospeccao'){
     var email = (u.email || '').toLowerCase();
-    return PROSPECCAO_RESTRITA[email] || [];
+    var lst = PROSPECCAO_RESTRITA[email];
+    if(!lst || lst.indexOf('*') >= 0) return null; // '*' (ou sem lista) = TODAS as cidades
+    return lst;
   }
   
   // 👤 Prospecção genérica (cargo "Prospecção") → todas
