@@ -251,7 +251,9 @@ exports.handler = async function(event){
               continue;
             }
             return { statusCode: rC.status||502, headers:cors, body: JSON.stringify({
-              success:false, error:'Machine retornou erro ('+nomeRec+')', detalhe: dataC, status_http: rC.status
+              success:false, error:'Machine retornou erro ('+nomeRec+')', detalhe: dataC, status_http: rC.status,
+              credenciais_origem: credenciaisOrigem, sufixo: sufixo,
+              user_len: (user||'').length, pass_len: (pass||'').length, apikey_len: (apiKey||'').length
             }) };
           }
           break;
