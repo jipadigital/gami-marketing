@@ -1,3 +1,4 @@
+<!-- v31.9 - Tarefas: tarefas CONCLUIDAS de outras pessoas (recorrentes vazadas, id tf_rec_ de template alheio) reapareciam no "Compromissos de hoje" do usuario. O reupload do pull ressuscitava done orfas com bucket=hoje. Agora o reupload descarta toda concluida que o servidor nao tem (some do local no merge) + a limpeza remove concluida orfa do balde de hoje - 02/07/2026 -->
 <!-- v31.8 - Sidebar desktop (fix definitivo): havia um 2o ponto de restauracao (na init do layout, ~L44814) que reaplicava o estado colapsado salvo no desktop, anulando o fix v31.6. Agora TODOS os pontos so colapsam no mobile; desktop sempre expandido - 02/07/2026 -->
 <!-- v31.7 - Relatorios: novo relatorio "Empresas que pararam (60d)" (churn de medio prazo, entre o 30d e o 90d). Requer a RPC empresas_pararam_60d no Supabase (docs/rpc_empresas_pararam_60d.sql) - 01/07/2026 -->
 <!-- v31.6 - Sidebar desktop: barra ficava PRESA colapsada num filete de 60px sem como reabrir (botao de toggle mal posicionado + icone branco invisivel + estado colapsado restaurado no load). Corrigido: desktop sempre abre expandido, botao de toggle fixo/visivel com icone escuro que acompanha o estado - 01/07/2026 -->
@@ -42299,7 +42300,12 @@ async function tfSincronizarDoSupabase(){
           var idsServ = {}; porChave[k].forEach(function(t){ if(t && t.id) idsServ[t.id] = true; });
           // tarefas locais DESTE usuário que o servidor NÃO tem = pendentes (preserva!)
           var locaisPendentes = existentes.filter(function(t){
-            return t && t.id && !idsServ[t.id] && (t.pessoa_id || uid) === uid;
+            if(!(t && t.id && !idsServ[t.id] && (t.pessoa_id || uid) === uid)) return false;
+            // 🆕 v31.9: se a tarefa é CONCLUÍDA e o servidor NÃO a tem, é órfã/vazada (ex.: recorrente
+            // de OUTRA pessoa carimbada aqui, id tf_rec_<tpl-alheio>). NÃO re-sobe — e como não entra
+            // no 'merged', também some do balde local. Era o que ressuscitava 'feitas' no Compromissos.
+            if(t.feito) return false;
+            return true;
           });
           var merged = porChave[k].concat(locaisPendentes);
           localStorage.setItem(k, JSON.stringify(merged));
@@ -42326,7 +42332,9 @@ async function tfSincronizarDoSupabase(){
           var _limpa = _hojeLst.filter(function(t){
             if(!t || !t.id) return true;
             var b = _bkPorId[t.id];
-            return !(b !== undefined && b !== _hojeBk); // remove só as que o servidor tem em OUTRO dia
+            if(b !== undefined && b !== _hojeBk) return false;   // servidor tem em OUTRO dia → não é de hoje
+            if(b === undefined && t.feito) return false;          // 🆕 v31.9: concluída órfã (servidor nem tem) → limpa do balde de hoje
+            return true;
           });
           if(_limpa.length !== _hojeLst.length){
             localStorage.setItem(_hojeKey, JSON.stringify(_limpa));
