@@ -338,6 +338,8 @@ exports.handler = async function(event){
       total: todos.length,
       paginas_lidas: pagina,
       truncado: truncado,
+      credenciais_origem: credenciaisOrigem,
+      user_len: (user||'').length, pass_len: (pass||'').length, apikey_len: (apiKey||'').length,
       filtro_data: (dataInicio||dataFim) ? {inicio:dataInicio, fim:dataFim, aplicado:filtroAplicado} : null,
       atualizado_em: new Date(agora).toISOString(),
       response: todos
