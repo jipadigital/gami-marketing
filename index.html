@@ -1,3 +1,4 @@
+<!-- v31.14 - Relatorios: adicionada coluna Telefone (join machine_empresas por nome) nos relatorios de empresa que nao tinham: Top clientes, Taxa de cancelamento e Pareto empresas. Agora TODOS os relatorios de cliente/empresa mostram telefone (com link WhatsApp). Motoboys nao tem fonte de telefone no banco. Escapado nome (tfEsc) onde faltava - 03/07/2026 -->
 <!-- v31.13 - Permissoes: Micaelle (micaelle.gami) liberada para TODAS as cidades (PROSPECCAO_RESTRITA de [joao-pessoa,recife,natal] para ['*']). Mantem nivel prospeccao (relatorios sem R$), igual Flavia - 03/07/2026 -->
 <!-- v31.12 - Estoque: modal "Editar venda" (Historico) agora permite trocar a CIDADE de onde saiu a camisa (colaboradora errava a cidade). Ao salvar, o saldo se corrige sozinho (cidade errada recupera a unidade, a certa perde) pois estoque_saldo soma por cidade. Respeita cidades_permitidas do usuario - 03/07/2026 -->
 <!-- v31.11 - Inbox Instagram escondido de TODOS: 'inbox' removido das abas do super_admin em MATRIZ_PERMISSOES (era o unico nivel com 'inbox', e aplicarPermissoesVisuais sobrepunha o display:none inline, entao so o Cleyton via). Integracao Meta/IG nao configurada ainda - 02/07/2026 -->
@@ -17782,7 +17783,16 @@ async function _sb_top_clientes(){
     });
     if(rpcResp.ok) lista = await rpcResp.json();
   } catch(e){ console.warn('[Top Clientes] RPC erro:', e.message); }
-  
+
+  // 🆕 v31.14: Telefones das empresas (join por nome com machine_empresas) — pra ter o número no relatório
+  var mapTel = {};
+  try {
+    var rTel = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', {
+      headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+    });
+    if(rTel.ok){ (await rTel.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) mapTel[k]=e.telefone; }); }
+  } catch(e){ console.warn('[Top Clientes] telefones:', e.message); }
+
   // Mescla corridas de HOJE (Machine ao vivo)
   try {
     var corridasHoje = await _rlPegarCorridasHoje(slug);
@@ -17828,16 +17838,18 @@ async function _sb_top_clientes(){
   var podeValor = _rlPodeVerValor();
   var colunas = ['#','Empresa','Corridas','Paradas','✅ Fin','❌ Canc','% do top '+topN];
   if(podeValor){ colunas.push('Faturamento'); colunas.push('Ticket/parada'); }
-  
+  colunas.push('📞 Telefone');
+
   var linhas = top.map(function(e, i){
     var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1)+'º';
     var paradas = parseInt(e.total_paradas||0);
     var pct = totalParadasGeral > 0 ? ((paradas / totalParadasGeral) * 100).toFixed(1) + '%' : '—';
-    var row = [medal, e.nome_passageiro, (parseInt(e.total_corridas)||0), paradas, (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0), pct];
+    var row = [medal, tfEsc(e.nome_passageiro||''), (parseInt(e.total_corridas)||0), paradas, (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0), pct];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
     }
+    row.push(_rlTelefoneCell(mapTel[(e.nome_passageiro||'').toLowerCase().trim()] || ''));
     return row;
   });
   
@@ -18915,7 +18927,13 @@ async function _sb_taxa_cancelamento(){
   var slug = _rlSlug();
   var periodo = _RL.periodo || 30;
   var dados = await _rlSupaRPC('rel_taxa_cancelamento', { p_slug: slug, p_dias: periodo, p_min_pedidos: 5 });
-  
+
+  var mapTel = {};
+  try {
+    var rTel = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', { headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
+    if(rTel.ok){ (await rTel.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) mapTel[k]=e.telefone; }); }
+  } catch(e){}
+
   if(!dados.length){
     return { id:'taxa_cancelamento', icone:'❌', titulo:'Taxa de cancelamento por empresa',
       descricao:'Sem dados', cidade:c, vazio:true, kpis:[] };
@@ -18934,14 +18952,15 @@ async function _sb_taxa_cancelamento(){
     var taxa = parseFloat(e.taxa_cancelamento||0);
     var icone = taxa >= 30 ? '🔴' : taxa >= 15 ? '🟡' : '🟢';
     return [icone+' '+tfEsc(e.nome_passageiro), parseInt(e.total), parseInt(e.paradas||0),
-            parseInt(e.finalizadas||0), parseInt(e.canceladas), taxa.toFixed(1)+'%'];
+            parseInt(e.finalizadas||0), parseInt(e.canceladas), taxa.toFixed(1)+'%',
+            _rlTelefoneCell(mapTel[(e.nome_passageiro||'').toLowerCase().trim()]||'')];
   });
   
   return {
     id:'taxa_cancelamento', icone:'❌',
     titulo:'Taxa de cancelamento por empresa',
     descricao:'⚡ Supabase · Top 30 empresas com maior cancelamento (min 5 pedidos) nos últimos '+periodo+' dias',
-    cidade:c, colunas:['Empresa','Corridas','Paradas','✅ Fin','❌ Canc','Taxa'],
+    cidade:c, colunas:['Empresa','Corridas','Paradas','✅ Fin','❌ Canc','Taxa','📞 Telefone'],
     linhas:linhas, vazio:false,
     kpis:[
       { label:'Taxa geral', valor:taxaGeral+'%', cor: parseFloat(taxaGeral) >= 15 ? '#E24B4A' : '#1D9E75' },
@@ -19250,18 +19269,25 @@ async function _sb_pareto_empresas(){
   
   console.log('[Pareto] '+slug+' · '+qtd80+'/'+lista.length+' empresas geram 80% da receita');
   
+  var mapTel = {};
+  try {
+    var rTel = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', { headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
+    if(rTel.ok){ (await rTel.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) mapTel[k]=e.telefone; }); }
+  } catch(e){}
+
   var podeValor = _rlPodeVerValor();
   var colunas = ['#','Empresa','Corridas','Paradas'];
   if(podeValor) colunas.push('Receita');
-  colunas.push('% individual','% acumulado');
-  
+  colunas.push('% individual','% acumulado','📞 Telefone');
+
   var linhas = lista.map(function(e){
     var icone = e._pctAcum <= 80 ? '🟢' : '⚪';
-    var row = [icone+' '+e._posicao+'º', e.nome_passageiro,
+    var row = [icone+' '+e._posicao+'º', tfEsc(e.nome_passageiro||''),
                (parseInt(e.total_corridas)||0).toLocaleString('pt-BR'),
                (parseInt(e.total_paradas)||0).toLocaleString('pt-BR')];
     if(podeValor) row.push('R$ '+parseFloat(e.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}));
     row.push(e._pctInd.toFixed(2)+'%', e._pctAcum.toFixed(1)+'%');
+    row.push(_rlTelefoneCell(mapTel[(e.nome_passageiro||'').toLowerCase().trim()]||''));
     return row;
   });
   
@@ -19337,7 +19363,7 @@ async function _sb_pareto_motoboys(){
   
   var linhas = lista.map(function(m){
     var icone = m._pctAcum <= 80 ? '🟢' : '⚪';
-    var row = [icone+' '+m._posicao+'º', m.nome_condutor || ('Motoboy '+m.condutor_id),
+    var row = [icone+' '+m._posicao+'º', tfEsc(m.nome_condutor || ('Motoboy '+m.condutor_id)),
                (parseInt(m.total_corridas)||0).toLocaleString('pt-BR'),
                (parseInt(m.total_paradas)||0).toLocaleString('pt-BR')];
     if(podeValor) row.push('R$ '+parseFloat(m.valor_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}));
