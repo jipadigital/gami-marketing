@@ -1,3 +1,4 @@
+<!-- v31.12 - Estoque: modal "Editar venda" (Historico) agora permite trocar a CIDADE de onde saiu a camisa (colaboradora errava a cidade). Ao salvar, o saldo se corrige sozinho (cidade errada recupera a unidade, a certa perde) pois estoque_saldo soma por cidade. Respeita cidades_permitidas do usuario - 03/07/2026 -->
 <!-- v31.11 - Inbox Instagram escondido de TODOS: 'inbox' removido das abas do super_admin em MATRIZ_PERMISSOES (era o unico nivel com 'inbox', e aplicarPermissoesVisuais sobrepunha o display:none inline, entao so o Cleyton via). Integracao Meta/IG nao configurada ainda - 02/07/2026 -->
 <!-- v31.10 - Ponto: adicionada Internet 5 do escritorio de Ji-Parana (177.222.212.140 + faixa /24 177.222.212.) na lista de IPs autorizados. As meninas nao conseguiam bater ponto pq o escritorio trocou de internet e o IP novo nao estava autorizado (e GPS bloqueado no navegador) - 02/07/2026 -->
 <!-- v31.9 - Tarefas: tarefas CONCLUIDAS de outras pessoas (recorrentes vazadas, id tf_rec_ de template alheio) reapareciam no "Compromissos de hoje" do usuario. O reupload do pull ressuscitava done orfas com bucket=hoje. Agora o reupload descarta toda concluida que o servidor nao tem (some do local no merge) + a limpeza remove concluida orfa do balde de hoje - 02/07/2026 -->
@@ -49947,11 +49948,18 @@ function estAbrirEditarVenda(idx){
     return '<option value="'+i.id+'"'+(String(i.id)===String(v.item_id)?' selected':'')+'>'+tfEsc(lbl)+'</option>';
   }).join('');
 
+  // 🆕 Cidade de onde saiu a venda — corrige quando a colaboradora erra a cidade.
+  // Ao salvar, o saldo se corrige sozinho: a cidade errada recupera a unidade e a certa perde.
+  var _cidPerm = (typeof EST_SESSAO !== 'undefined' && EST_SESSAO && EST_SESSAO.cidades_permitidas) || null;
+  var _locsEv = (_cidPerm && _cidPerm.length) ? EST_LOCALIZACOES.filter(function(l){ return _cidPerm.indexOf(l.codigo) >= 0; }) : EST_LOCALIZACOES;
+  var cidOpts = _locsEv.map(function(l){ return '<option value="'+l.codigo+'"'+(String(l.codigo)===String(v.cidade)?' selected':'')+'>'+tfEsc(l.nome)+'</option>'; }).join('');
+
   var m = document.createElement('div');
   m.id = 'est-edit-venda-modal';
   m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px';
   m.innerHTML = '<div style="background:var(--surface);border-radius:14px;max-width:440px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.4);max-height:90vh;overflow:auto">'
     + '<div style="font-size:16px;font-weight:800;margin-bottom:14px">✏️ Editar venda</div>'
+    + fld('🏙️ Cidade (de onde saiu)', '<select id="ev-cidade" class="inp" style="width:100%">'+cidOpts+'</select>')
     + fld('Data', '<input id="ev-data" type="date" class="inp" style="width:100%" value="'+tfEsc(String(v.data||'').slice(0,10))+'">')
     + fld('Cliente', '<input id="ev-cliente" class="inp" style="width:100%" value="'+tfEsc(v.cliente_nome||'')+'">')
     + fld('Telefone', '<input id="ev-tel" class="inp" style="width:100%" value="'+tfEsc(v.cliente_telefone||'')+'">')
@@ -49975,8 +49983,12 @@ async function estSalvarEdicaoVenda(id){
   if(!qtd || qtd <= 0){ alert('Quantidade deve ser > 0.'); return; }
   if(isNaN(valor) || valor < 0){ alert('Valor inválido.'); return; }
 
-  // estoque_mov NÃO tem updated_at — não enviar
+  var _cidadeEv = (document.getElementById('ev-cidade')||{}).value || null;
+  if(!_cidadeEv){ alert('Escolha a cidade da venda.'); return; }
+  // estoque_mov NÃO tem updated_at — não enviar. Mudar 'cidade' re-atribui a baixa:
+  // o saldo é somado por cidade, então a cidade errada recupera a unidade e a certa perde.
   var patch = {
+    cidade: _cidadeEv,
     data: (document.getElementById('ev-data')||{}).value || null,
     cliente_nome: cliente,
     cliente_telefone: (document.getElementById('ev-tel')||{}).value.trim() || null,
