@@ -1,4 +1,4 @@
-<!-- v31.18 - Relatorios: Clientes novos e Empresas em alta mostravam telefone "—" (as RPCs empresas_atividade_real/empresas_periodo_comparado nao retornam telefone). Criado helper _rlTelefonesEmpresas(slug) (join machine_empresas, cache por slug) e aplicado nesses 2. Agora todos os relatorios de empresa mostram o contato - 03/07/2026 -->
+<!-- v31.18 - Relatorios: telefone "—" em Clientes novos/Empresas em alta (RPCs sem telefone) E cobertura ruim em cidades grandes (Campo Grande=3750 empresas, mas o join so pegava as 1000 primeiras - cap do PostgREST). Criado helper _rlTelefonesEmpresas(slug) que PAGINA de 1000 em 1000 (cache por slug) e aplicado em clientes_novos, empresas_alta, top_clientes, taxa_cancelamento e pareto_empresas - 03/07/2026 -->
 <!-- v31.17 - Estoque: Julio Cesar (user 'julio') liberado no estoque de Campo Grande (completa o grupo da CAPA DE BAG JUMA). Chave 'julio' casa via normalizador que remove acento de 'Julio' - 03/07/2026 -->
 <!-- v31.16 - Estoque: liberado acesso ao estoque de Campo Grande (item CAPA DE BAG JUMA) para Jheniffer, Isli e Alice (EST_SUPORTE_PERMISSOES); Bruna ganhou Campo Grande alem das que ja tinha. Julio ainda nao esta cadastrado no sistema - 03/07/2026 -->
 <!-- v31.15 - Permissoes: Cristina Oliveira (cristinaoliveira.gami) adicionada ao PROSPECCAO_RESTRITA com ['*'] = TODAS as cidades. Cargo Prospeccao, nivel prospeccao (relatorios sem R$), igual Flavia/Micaelle - 03/07/2026 -->
@@ -17226,8 +17226,18 @@ async function _rlTelefonesEmpresas(slug){
   if(_rlTelCache[slug]) return _rlTelCache[slug];
   var map = {};
   try {
-    var r = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', { headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
-    if(r.ok){ (await r.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) map[k]=e.telefone; }); }
+    // 🆕 v31.18: PAGINA de 1000 em 1000 — o PostgREST devolve no maximo 1000 por request,
+    // e cidades grandes (ex.: Campo Grande = 3750 empresas) ficavam sem telefone alem das 1000.
+    var offset = 0, pageSize = 1000, guard = 0;
+    while(guard++ < 30){
+      var r = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&order=nome.asc&limit='+pageSize+'&offset='+offset, { headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
+      if(!r.ok) break;
+      var arr = await r.json();
+      if(!Array.isArray(arr) || !arr.length) break;
+      arr.forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) map[k]=e.telefone; });
+      if(arr.length < pageSize) break; // ultima pagina
+      offset += pageSize;
+    }
   } catch(e){ console.warn('[Rel] telefones empresas:', e.message); }
   _rlTelCache[slug] = map;
   return map;
@@ -17807,14 +17817,8 @@ async function _sb_top_clientes(){
     if(rpcResp.ok) lista = await rpcResp.json();
   } catch(e){ console.warn('[Top Clientes] RPC erro:', e.message); }
 
-  // 🆕 v31.14: Telefones das empresas (join por nome com machine_empresas) — pra ter o número no relatório
-  var mapTel = {};
-  try {
-    var rTel = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', {
-      headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
-    });
-    if(rTel.ok){ (await rTel.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) mapTel[k]=e.telefone; }); }
-  } catch(e){ console.warn('[Top Clientes] telefones:', e.message); }
+  // 🆕 v31.18: telefones via helper paginado (cidades grandes tem >1000 empresas; antes so 1000 vinham com telefone)
+  var mapTel = await _rlTelefonesEmpresas(slug);
 
   // Mescla corridas de HOJE (Machine ao vivo)
   try {
@@ -18951,11 +18955,7 @@ async function _sb_taxa_cancelamento(){
   var periodo = _RL.periodo || 30;
   var dados = await _rlSupaRPC('rel_taxa_cancelamento', { p_slug: slug, p_dias: periodo, p_min_pedidos: 5 });
 
-  var mapTel = {};
-  try {
-    var rTel = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', { headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
-    if(rTel.ok){ (await rTel.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) mapTel[k]=e.telefone; }); }
-  } catch(e){}
+  var mapTel = await _rlTelefonesEmpresas(slug); // v31.18: helper paginado (cidades grandes tem >1000 empresas)
 
   if(!dados.length){
     return { id:'taxa_cancelamento', icone:'❌', titulo:'Taxa de cancelamento por empresa',
@@ -19292,11 +19292,7 @@ async function _sb_pareto_empresas(){
   
   console.log('[Pareto] '+slug+' · '+qtd80+'/'+lista.length+' empresas geram 80% da receita');
   
-  var mapTel = {};
-  try {
-    var rTel = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', { headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
-    if(rTel.ok){ (await rTel.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) mapTel[k]=e.telefone; }); }
-  } catch(e){}
+  var mapTel = await _rlTelefonesEmpresas(slug); // v31.18: helper paginado (cidades grandes tem >1000 empresas)
 
   var podeValor = _rlPodeVerValor();
   var colunas = ['#','Empresa','Corridas','Paradas'];
