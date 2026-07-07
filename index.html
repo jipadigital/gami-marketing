@@ -1,3 +1,4 @@
+<!-- v31.18 - Relatorios: Clientes novos e Empresas em alta mostravam telefone "—" (as RPCs empresas_atividade_real/empresas_periodo_comparado nao retornam telefone). Criado helper _rlTelefonesEmpresas(slug) (join machine_empresas, cache por slug) e aplicado nesses 2. Agora todos os relatorios de empresa mostram o contato - 03/07/2026 -->
 <!-- v31.17 - Estoque: Julio Cesar (user 'julio') liberado no estoque de Campo Grande (completa o grupo da CAPA DE BAG JUMA). Chave 'julio' casa via normalizador que remove acento de 'Julio' - 03/07/2026 -->
 <!-- v31.16 - Estoque: liberado acesso ao estoque de Campo Grande (item CAPA DE BAG JUMA) para Jheniffer, Isli e Alice (EST_SUPORTE_PERMISSOES); Bruna ganhou Campo Grande alem das que ja tinha. Julio ainda nao esta cadastrado no sistema - 03/07/2026 -->
 <!-- v31.15 - Permissoes: Cristina Oliveira (cristinaoliveira.gami) adicionada ao PROSPECCAO_RESTRITA com ['*'] = TODAS as cidades. Cargo Prospeccao, nivel prospeccao (relatorios sem R$), igual Flavia/Micaelle - 03/07/2026 -->
@@ -17216,6 +17217,22 @@ function _rlTelefoneCell(telefoneRaw){
     + '<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>';
 }
 
+// 🆕 v31.18: telefones das empresas de UMA cidade (join machine_empresas por nome, cache por slug).
+// Varios relatorios usam RPCs que NAO retornam telefone (empresas_atividade_real,
+// empresas_periodo_comparado) → sem isto o telefone vinha "—". Uso: mapTel[nome.toLowerCase().trim()]
+var _rlTelCache = {};
+async function _rlTelefonesEmpresas(slug){
+  if(!slug) return {};
+  if(_rlTelCache[slug]) return _rlTelCache[slug];
+  var map = {};
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/machine_empresas?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,telefone&limit=10000', { headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY} });
+    if(r.ok){ (await r.json()).forEach(function(e){ var k=(e.nome||'').toLowerCase().trim(); if(k && e.telefone) map[k]=e.telefone; }); }
+  } catch(e){ console.warn('[Rel] telefones empresas:', e.message); }
+  _rlTelCache[slug] = map;
+  return map;
+}
+
 /* ─── 1) EMPRESAS SUMIDAS (Supabase + hoje) ─── */
 async function _sb_empresas_sumidas(){
   var c = _rlGetCidade();
@@ -17660,7 +17677,8 @@ async function _sb_clientes_novos(){
   novos.sort(function(a,b){ return a.primeira_corrida < b.primeira_corrida ? 1 : -1; });
   
   console.log('[Clientes Novos] '+slug+' · '+novos.length+' novos nos últimos '+periodo+' dias');
-  
+
+  var mapTel = await _rlTelefonesEmpresas(slug);
   var podeValor = _rlPodeVerValor();
   // 🆕 v26.96: telefone sempre na lista pro time de prospecção
   var colunas = ['Empresa','1º pedido','Cliente há','Corridas','Paradas','✅ Fin','❌ Canc','📞 Telefone'];
@@ -17672,7 +17690,7 @@ async function _sb_clientes_novos(){
     var row = ['🌟 '+tfEsc(e.nome_passageiro), prim.toLocaleDateString('pt-BR'), dias+' dias',
                (parseInt(e.total_corridas)||0), (parseInt(e.total_paradas)||0),
                (parseInt(e.total_finalizadas)||0), (parseInt(e.total_canceladas)||0),
-               _rlTelefoneCell(e.telefone)];
+               _rlTelefoneCell(e.telefone || mapTel[(e.nome_passageiro||'').toLowerCase().trim()])];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
@@ -17730,7 +17748,8 @@ async function _sb_empresas_alta(){
   emAlta.sort(function(a,b){ return b._crescPct - a._crescPct; });
   
   console.log('[Em Alta] '+slug+' · '+emAlta.length+' empresas crescendo ≥'+altaMin+'%');
-  
+
+  var mapTel = await _rlTelefonesEmpresas(slug);
   var podeValor = _rlPodeVerValor();
   // 🆕 v26.96: telefone pro time
   var colunas = ['Empresa','Último','Corridas','Paradas','Crescimento','📞 Telefone'];
@@ -17740,7 +17759,7 @@ async function _sb_empresas_alta(){
     var c1 = e._crescPct >= 100 ? '🚀' : e._crescPct >= 50 ? '🔥' : '📈';
     var ultFmt = new Date(e.ultima_corrida).toLocaleDateString('pt-BR');
     var variacao = e.count_antigo+' → '+e.count_recente+' corr · '+e.paradas_antigo+' → '+e.paradas_recente+' par';
-    var row = [c1+' '+tfEsc(e.nome_passageiro), ultFmt, variacao, parseInt(e.total_paradas||0), '+'+e._crescPct+'%', _rlTelefoneCell(e.telefone)];
+    var row = [c1+' '+tfEsc(e.nome_passageiro), ultFmt, variacao, parseInt(e.total_paradas||0), '+'+e._crescPct+'%', _rlTelefoneCell(e.telefone || mapTel[(e.nome_passageiro||'').toLowerCase().trim()])];
     if(podeValor){
       row.push('R$ '+parseFloat(e.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(e.ticket_medio_parada||0).toFixed(2));
