@@ -1,3 +1,4 @@
+<!-- v31.22 - Busca das listas completas (empresas e motoboys): campo perdia o foco a cada tecla (no celular fechava o teclado = "saia da tela"; no PC tinha que clicar de novo). Novo _renderPreservandoBusca preserva foco+cursor no re-render - 08/07/2026 -->
 <!-- v31.21 - Cadastro: "Sucesso do Cliente" adicionado como FUNCAO no seletor de cargo (Colaborador > Funcao) + cor propria no mapa CARGO_CORES. Faltava a opcao na tela de Pessoas - 08/07/2026 -->
 <!-- v31.20 - Permissoes: cargo "Suporte Home" tambem resolve pro nivel 'prospeccao' (todas as cidades + relatorios, sem R$), junto com Sucesso do Cliente e Prospeccao - 08/07/2026 -->
 <!-- v31.19 - Permissoes: cargo "Sucesso do Cliente" (e "Prospeccao") agora resolve pro nivel 'prospeccao' em detectarNivelPermissao (todas as cidades + relatorios, SEM valores em R$). Cobre pelo cargo, sem precisar cadastrar email a email no PROSPECCAO_RESTRITA - 08/07/2026 -->
@@ -28690,6 +28691,23 @@ function empRenderEmQueda(corridas45d, empresasGeral, hojeStr){
 }
 var _empListaEstado = {busca:'', status:'todos', bairro:'todos', faixa:'todas', ordem:'pedidos_desc', pagina:1};
 
+/* Substitui innerHTML preservando foco+cursor do campo de busca.
+   Sem isso, cada tecla redesenha o card, destroi o <input> e o foco cai
+   (no celular o teclado fecha = "sai da tela"; no PC tem que clicar de novo). */
+function _renderPreservandoBusca(box, html, inputId){
+  var old = document.getElementById(inputId);
+  var tinhaFoco = old && document.activeElement === old;
+  var caret = tinhaFoco && old.selectionStart != null ? old.selectionStart : null;
+  box.innerHTML = html;
+  if(tinhaFoco){
+    var novo = document.getElementById(inputId);
+    if(novo){
+      novo.focus();
+      try{ var p = (caret==null ? novo.value.length : caret); novo.setSelectionRange(p,p); }catch(e){}
+    }
+  }
+}
+
 function empRenderLista(corridasMes, empresasGeral, hojeStr){
   var box = document.getElementById('emp-lista-box'); if(!box) return;
   var cidadeAtual = window.__cidadeAtual;
@@ -28880,7 +28898,7 @@ function empRenderLista(corridasMes, empresasGeral, hojeStr){
       + '</div>';
   }
   html += '</div>';
-  box.innerHTML = html;
+  _renderPreservandoBusca(box, html, 'emp-lista-busca');
 }
 
 /* Re-renderiza lista usando cache atual da cidade (sem refazer fetch) */
@@ -30028,7 +30046,7 @@ function mbRenderLista(corridasMes, condutores, hojeStr){
       + '</div>';
   }
   html += '</div>';
-  box.innerHTML = html;
+  _renderPreservandoBusca(box, html, 'mb-lista-busca');
 }
 
 /* Re-renderiza lista usando cache atual da cidade (sem refazer fetch) */
