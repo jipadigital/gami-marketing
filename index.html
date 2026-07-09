@@ -1,3 +1,4 @@
+<!-- v31.27 - Mural: @mencao com acento quebrava o nome ("@Claudio" com acento virava "@Cl" + "audio") porque a regex /@(\w+)/ parava no acento. Trocado p/ /@([\wÀ-ÿ]+)/ (mencao e autocomplete). Bonus: texto do recado agora passa por tfEsc antes do highlight (fecha XSS via innerHTML) - 09/07/2026 -->
 <!-- v31.26 - Senha/PIN: limite de caracteres liberado de 8 para 32 em TODOS os fluxos (login, primeiro acesso pa-pin, trocar PIN nas config tp-novo, e "Esqueci meu PIN" reset-pin) + validacoes cliente e servidor (trocar-pin.js, resetar-pin.js) agora 4-32. Reset por email deixou de exigir 4-6 digitos numericos (aceita alfanumerico). Vanessa nao conseguia criar senha maior que 8 - 09/07/2026 -->
 <!-- v31.25 - Reset de PIN pelo painel: botao "Resetar PIN desta pessoa" no modal de Pessoas (so super_admin, so na edicao) chama nova funcao Netlify admin-reset-pin (service key, valida sessao + confirma que quem chama e o super_admin) e volta a pessoa pro gami2026 destravada. Fim do SQL manual pra resetar PIN - 09/07/2026 -->
 <!-- v31.24 - Extrato de pontos: cada colaborador ve o SEU extrato (Meu Extrato de Pontos) na aba Ranking; pontos de todo mundo (ranking geral, top 10, por cargo, podio, historico) ficam so p/ super_admin, diretoria e gerencia via data-perm-ranking-geral. Nova renderMeuExtrato() + gate em aplicarPermissoesVisuais - 09/07/2026 -->
@@ -46621,7 +46622,7 @@ function _muralOnInput(ev){
   // Detecta se cursor esta logo apos um "@" sem espaco depois
   var pos = input.selectionStart;
   var antes = input.value.substring(0, pos);
-  var matchAt = antes.match(/@(\w*)$/);
+  var matchAt = antes.match(/@([\wÀ-ÿ]*)$/);
   if(matchAt){
     _muralMencaoEstado.ativa = true;
     _muralMencaoEstado.inicioAt = pos - matchAt[0].length;
@@ -46738,7 +46739,9 @@ function renderRecados(){
       else quando = dt.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
     }catch(e){}
     var podeRemover = _muralPodeRemover(r);
-    var textoFmt = (r.texto||'').replace(/@(\w+)/g, '<strong style="color:var(--gami-blue);background:rgba(26,184,240,.08);padding:1px 4px;border-radius:4px">@$1</strong>');
+    // tfEsc primeiro (evita XSS no texto do recado), depois destaca @mencoes.
+    // [\wÀ-ÿ] inclui acentos — senao "@Claudio" com acento quebrava ("@Cl" + "audio").
+    var textoFmt = tfEsc(r.texto||'').replace(/@([\wÀ-ÿ]+)/g, '<strong style="color:var(--gami-blue);background:rgba(26,184,240,.08);padding:1px 4px;border-radius:4px">@$1</strong>');
     html += '<div style="background:#FFFEF7;border-left:3px solid #FFD93D;border-radius:8px;padding:10px 12px;margin-bottom:8px">'
       + '<div style="display:flex;align-items:flex-start;gap:10px">'
         + _muralAvatar(r.autor, r.autorFoto, 32)
