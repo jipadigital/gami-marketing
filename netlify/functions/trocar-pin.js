@@ -60,7 +60,7 @@ exports.handler = async function(event){
 
   // Validações do PIN novo (iguais ao cliente)
   if(!pessoaId) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Sessão inválida' }) };
-  if(!pinNovo || pinNovo.length < 4 || pinNovo.length > 8) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'PIN deve ter 4 a 8 caracteres' }) };
+  if(!pinNovo || pinNovo.length < 4 || pinNovo.length > 32) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'A senha deve ter 4 a 32 caracteres' }) };
   if(pinNovo === 'gami2026') return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Escolha um PIN diferente do padrão' }) };
   if(pinFraco(pinNovo)) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'PIN muito fácil de adivinhar. Evite sequências (1234) ou dígitos repetidos (0000).' }) };
 

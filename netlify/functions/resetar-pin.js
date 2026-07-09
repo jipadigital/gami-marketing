@@ -45,8 +45,8 @@ exports.handler = async function(event){
     return { statusCode: 400, headers: cors, body: JSON.stringify({error:'Email, token e PIN são obrigatórios'}) };
   }
   
-  if(pinNovo.length < 4 || pinNovo.length > 6 || !/^\d+$/.test(pinNovo)){
-    return { statusCode: 400, headers: cors, body: JSON.stringify({error:'PIN deve ter 4 a 6 dígitos'}) };
+  if(pinNovo.length < 4 || pinNovo.length > 32){
+    return { statusCode: 400, headers: cors, body: JSON.stringify({error:'A senha deve ter 4 a 32 caracteres'}) };
   }
   
   try {
