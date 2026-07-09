@@ -1,3 +1,4 @@
+<!-- v31.25 - Reset de PIN pelo painel: botao "Resetar PIN desta pessoa" no modal de Pessoas (so super_admin, so na edicao) chama nova funcao Netlify admin-reset-pin (service key, valida sessao + confirma que quem chama e o super_admin) e volta a pessoa pro gami2026 destravada. Fim do SQL manual pra resetar PIN - 09/07/2026 -->
 <!-- v31.24 - Extrato de pontos: cada colaborador ve o SEU extrato (Meu Extrato de Pontos) na aba Ranking; pontos de todo mundo (ranking geral, top 10, por cargo, podio, historico) ficam so p/ super_admin, diretoria e gerencia via data-perm-ranking-geral. Nova renderMeuExtrato() + gate em aplicarPermissoesVisuais - 09/07/2026 -->
 <!-- v31.23 - Login iPhone: campo PIN tinha autocomplete="current-password" e o Safari despejava uma senha salva do Keychain por cima do PIN (ex: "032904Jj.") = 401 sempre. Trocado para autocomplete="off" + data-lpignore/1p-ignore pra impedir autofill de gerenciadores de senha - 08/07/2026 -->
 <!-- v31.22 - Busca das listas completas (empresas e motoboys): campo perdia o foco a cada tecla (no celular fechava o teclado = "saia da tela"; no PC tinha que clicar de novo). Novo _renderPreservandoBusca preserva foco+cursor no re-render - 08/07/2026 -->
@@ -15443,9 +15444,44 @@ function openPessoaModal(id){
       <button onclick="fecharModalPessoa()" class="btn btn-ghost" style="flex:1">Cancelar</button>
       <button onclick="salvarPessoa('${d.id}')" class="btn btn-primary" style="flex:1">${isNew ? 'Adicionar' : 'Salvar alterações'}</button>
     </div>
+    ${(!isNew && (function(){ try{ var _u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; return (typeof detectarNivelPermissao==='function') && detectarNivelPermissao(_u)==='super_admin'; }catch(e){ return false; } })()) ? `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">
+      <button onclick="adminResetarPin('${d.id}')" class="btn btn-ghost" style="width:100%;color:#B45309;border-color:#F0C083;font-size:12px">🔑 Resetar PIN desta pessoa (volta pra gami2026)</button>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;text-align:center">Use quando a pessoa esqueceu o PIN ou travou o login</div>
+    </div>` : ''}
   </div>`;
   // Atualiza visual dos botões de nível pra refletir TODOS os níveis (multi-select)
   setTimeout(function(){ if(typeof _refreshNivelButtons === 'function') _refreshNivelButtons(); }, 30);
+}
+
+/* 🆕 v31.25: reset de PIN pelo super_admin, direto do painel (sem SQL).
+   Chama a função Netlify admin-reset-pin (service key) que valida a sessão
+   e confirma que quem chama é o super_admin antes de resetar. */
+async function adminResetarPin(pessoaId){
+  var pessoas = (typeof getPessoas==='function') ? getPessoas() : [];
+  var p = pessoas.find(function(x){ return x.id===pessoaId; });
+  var nome = p ? p.nome : 'esta pessoa';
+  if(!confirm('Resetar o PIN de '+nome+'?\n\nO PIN volta pra gami2026 e a conta é destravada. A pessoa cria um PIN novo no próximo acesso.')) return;
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var userId = (u && u.id) ? u.id : '';
+  var token = '';
+  try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+  try {
+    var r = await fetch('/.netlify/functions/admin-reset-pin', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-Gami-User':userId, 'X-Gami-Token':token },
+      body: JSON.stringify({ alvo_pessoa_id: pessoaId })
+    });
+    var j = {};
+    try { j = await r.json(); } catch(e){}
+    if(r.ok && j.ok){
+      alert('✅ PIN de '+(j.nome||nome)+' resetado!\n\nLogin: '+(j.email||j.username||'')+'\nPIN: gami2026\n\nAvise a pessoa pra entrar e criar um PIN novo.');
+    } else {
+      alert('❌ Não consegui resetar: '+(j.erro || ('HTTP '+r.status)));
+    }
+  } catch(e){
+    alert('❌ Erro de conexão ao resetar PIN: '+e.message);
+  }
 }
 
 function salvarPessoa(existingId){
