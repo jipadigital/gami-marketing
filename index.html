@@ -1,3 +1,4 @@
+<!-- v31.24 - Extrato de pontos: cada colaborador ve o SEU extrato (Meu Extrato de Pontos) na aba Ranking; pontos de todo mundo (ranking geral, top 10, por cargo, podio, historico) ficam so p/ super_admin, diretoria e gerencia via data-perm-ranking-geral. Nova renderMeuExtrato() + gate em aplicarPermissoesVisuais - 09/07/2026 -->
 <!-- v31.23 - Login iPhone: campo PIN tinha autocomplete="current-password" e o Safari despejava uma senha salva do Keychain por cima do PIN (ex: "032904Jj.") = 401 sempre. Trocado para autocomplete="off" + data-lpignore/1p-ignore pra impedir autofill de gerenciadores de senha - 08/07/2026 -->
 <!-- v31.22 - Busca das listas completas (empresas e motoboys): campo perdia o foco a cada tecla (no celular fechava o teclado = "saia da tela"; no PC tinha que clicar de novo). Novo _renderPreservandoBusca preserva foco+cursor no re-render - 08/07/2026 -->
 <!-- v31.21 - Cadastro: "Sucesso do Cliente" adicionado como FUNCAO no seletor de cargo (Colaborador > Funcao) + cor propria no mapa CARGO_CORES. Faltava a opcao na tela de Pessoas - 08/07/2026 -->
@@ -2320,6 +2321,16 @@ function aplicarPermissoesVisuais(){
   var btnsEquipe = document.querySelectorAll('[data-perm-equipe-tarefa="true"]');
   btnsEquipe.forEach(function(el){
     el.style.display = podeEquipe ? '' : 'none';
+  });
+
+  // 🆕 v31.24: pontos de TODO MUNDO (ranking geral) só p/ super_admin, diretoria e gerencia.
+  // Os demais (colaboradores) veem apenas o próprio extrato de pontos.
+  var podeRankingGeral = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
+  document.querySelectorAll('[data-perm-ranking-geral="true"]').forEach(function(el){
+    el.style.display = podeRankingGeral ? '' : 'none';
+  });
+  document.querySelectorAll('[data-perm-meu-extrato="true"]').forEach(function(el){
+    el.style.display = podeRankingGeral ? 'none' : '';
   });
   
   // Mapeamento aba → texto no sidebar pra esconder itens
@@ -6731,22 +6742,25 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   <div style="display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:14px;overflow-x:auto;padding-bottom:0">
     <button class="rank-tab rank-tab-active" data-rtab="visao" onclick="setRankTab('visao')">📊 Visão Geral</button>
     <button class="rank-tab" data-rtab="conquistas" onclick="setRankTab('conquistas')">🏆 Conquistas</button>
-    <button class="rank-tab" data-rtab="historico" onclick="setRankTab('historico')">📈 Histórico</button>
+    <button class="rank-tab" data-rtab="historico" data-perm-ranking-geral="true" onclick="setRankTab('historico')">📈 Histórico</button>
     <button class="rank-tab" data-rtab="desafios" onclick="setRankTab('desafios')">🎯 Desafios</button>
     <button class="rank-tab" data-rtab="regras" onclick="setRankTab('regras')">💎 Pontos & Regras</button>
   </div>
   
   <!-- =========== VISÃO GERAL =========== -->
   <div id="rank-tab-visao" class="rank-tab-content">
-    
+
+    <!-- 🆕 v31.24: MEU EXTRATO (colaboradores — cada um vê o seu) -->
+    <div id="rank-meu-extrato" data-perm-meu-extrato="true" style="display:none"></div>
+
     <!-- 🆕 HERO VOCÊ -->
-    <div id="rank-hero-voce" style="margin-bottom:14px"></div>
-    
+    <div id="rank-hero-voce" data-perm-ranking-geral="true" style="margin-bottom:14px"></div>
+
     <!-- 🆕 PÓDIO TOP 3 -->
-    <div id="rank-podio-top3" style="margin-bottom:14px"></div>
-    
+    <div id="rank-podio-top3" data-perm-ranking-geral="true" style="margin-bottom:14px"></div>
+
     <!-- 🆕 LISTA TOP 10 (4º-10º + você se fora) -->
-    <div class="card" style="margin-bottom:14px;padding:14px">
+    <div class="card" data-perm-ranking-geral="true" style="margin-bottom:14px;padding:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px">
         <div>
           <div class="card-title" style="margin:0">🎯 Top 10 do mês</div>
@@ -6765,7 +6779,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     <div id="rank-desafio-card" style="margin-bottom:14px"></div>
     
     <!-- RANKING POR CARGO -->
-    <div class="card" style="margin-bottom:14px;padding:14px">
+    <div class="card" data-perm-ranking-geral="true" style="margin-bottom:14px;padding:14px">
       <div class="card-title" style="margin-bottom:10px">📋 Ranking por Cargo (mês atual)</div>
       <div id="rank-por-cargo" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px"></div>
     </div>
@@ -42952,8 +42966,71 @@ function renderRanking(){
 function renderRankingVisaoGeral(){
   // Aba Ranking foca em pontos internos da equipe
   // Ranking de cidades agora vive APENAS no Dashboard
-  renderRankingIndividual();
-  renderRankingPorCargo();
+  // 🆕 v31.24: pontos de todo mundo só p/ super_admin, diretoria e gerencia.
+  // Colaboradores veem apenas o próprio extrato.
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : (window.usuarioLogado||null);
+  var nivel = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : 'colaborador';
+  var podeGeral = (nivel==='super_admin' || nivel==='diretoria' || nivel==='gerencia');
+  if(podeGeral){
+    renderRankingIndividual();
+    renderRankingPorCargo();
+  } else {
+    renderMeuExtrato();
+  }
+  if(typeof aplicarPermissoesVisuais === 'function') aplicarPermissoesVisuais();
+}
+
+/* 🆕 v31.24: extrato de pontos do PRÓPRIO usuário logado (cada um vê o seu).
+   Quem pode ver o ranking geral vê o ranking completo; os demais veem só este bloco. */
+async function renderMeuExtrato(){
+  var box = document.getElementById('rank-meu-extrato');
+  if(!box) return;
+  var _sub = document.getElementById('rank-header-resumo');
+  if(_sub) _sub.textContent = 'Seus pontos e histórico de pontuação';
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : (window.usuarioLogado||null);
+  var pessoaId = u && (u.id || u.pessoa_id);
+  if(!pessoaId){ box.innerHTML = '<div class="card" style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Faça login para ver seu extrato.</div>'; return; }
+  box.innerHTML = '<div class="card" style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Carregando seu extrato...</div>';
+  var extrato = await obterExtratoPessoa(pessoaId);
+  var totalMes = await obterPontosMesPessoa(pessoaId);
+  var totalCarreira = await obterPontosTotaisPessoa(pessoaId);
+  var patente = (typeof obterPatente==='function') ? obterPatente(totalCarreira) : {nome:'',emoji:'',cor:'#ccc'};
+  var badges = [];
+  try {
+    var rb = await fetch(SUPA_URL+'/rest/v1/badges_desbloqueadas?pessoa_id=eq.'+encodeURIComponent(pessoaId)+'&select=*', { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY } });
+    if(rb.ok) badges = await rb.json();
+  } catch(e){}
+  var html = '<div class="card" style="padding:16px;margin-bottom:14px">'
+    + '<div style="font-family:Syne,sans-serif;font-size:16px;font-weight:800;color:var(--text);margin-bottom:12px">💎 Meu Extrato de Pontos</div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
+      + '<div style="flex:1;min-width:90px;text-align:center;padding:10px;background:var(--gami-blue-l);border-radius:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Este mês</div><div style="font-size:22px;font-weight:800;color:var(--gami-blue-d)">'+totalMes+'</div></div>'
+      + '<div style="flex:1;min-width:90px;text-align:center;padding:10px;background:var(--surface2);border-radius:8px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Carreira</div><div style="font-size:22px;font-weight:800">'+totalCarreira+'</div></div>'
+      + '<div style="flex:1;min-width:90px;text-align:center;padding:10px;background:var(--surface2);border-radius:8px;border-left:3px solid '+patente.cor+'"><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Patente</div><div style="font-size:13px;font-weight:700">'+patente.emoji+' '+patente.nome+'</div></div>'
+    + '</div>';
+  if(badges.length){
+    html += '<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;margin-bottom:6px">🎖️ Minhas badges ('+badges.length+')</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">'+badges.map(function(b){ var info=(typeof BADGES_CATALOGO!=='undefined'&&BADGES_CATALOGO[b.badge_id])||{emoji:'🎖️',nome:b.badge_id}; return '<div style="padding:5px 9px;background:var(--gami-blue-l);border-radius:8px;font-size:11px">'+info.emoji+' '+info.nome+'</div>'; }).join('')+'</div></div>';
+  }
+  html += '<div style="font-size:11px;font-weight:700;margin-bottom:6px">📋 Últimas pontuações</div>';
+  if(!extrato.length){
+    html += '<div style="text-align:center;padding:16px;color:var(--text3);font-size:11px">Você ainda não tem pontos registrados.</div>';
+  } else {
+    html += '<div style="max-height:360px;overflow:auto">'
+      + extrato.map(function(p){
+          var pts = Number(p.pontos)||0;
+          var cor = (pts<0) ? '#E24B4A' : (p.origem === 'manual' ? '#1AB8F0' : '#1D9E75');
+          var sinal = pts<0 ? '' : '+';
+          return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:11px">'
+            + '<div style="width:52px;color:var(--text3);font-size:10px">'+String(p.data_acao||'').slice(5)+'</div>'
+            + '<div style="flex:1"><div style="font-weight:600">'+(p.descricao||p.tipo_acao||'—')+'</div>'
+              + '<div style="color:var(--text3);font-size:9px">'+(p.categoria||p.tipo_acao||'')+(p.origem==='manual'?' · manual':'')+'</div></div>'
+            + '<div style="font-weight:800;color:'+cor+'">'+sinal+pts+'</div>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+  }
+  html += '</div>';
+  box.innerHTML = html;
 }
 
 // ============================================================
