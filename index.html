@@ -1765,15 +1765,11 @@ function detectarNivelPermissao(usuario){
   // tranca fora, mesmo se o dado estiver errado.
   if(usuario.email && usuario.email.toLowerCase() === 'jipadigital@gmail.com') return 'super_admin';
   
-  // 🆕 P0.2 — CAMPO CANÔNICO tem prioridade. Quando `nivel_permissao` está
-  // preenchido em `pessoas`, ele manda — acaba a adivinhação por texto livre
-  // do cargo (que jogava gente pra colaborador em silêncio). O bloco abaixo
-  // vira só fallback enquanto a coluna não estiver 100% preenchida.
-  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','financeiro','prospeccao','colaborador','visitante'];
-  var _np = String(usuario.nivel_permissao || '').toLowerCase().trim();
-  if(_np && NIVEIS_VALIDOS.indexOf(_np) !== -1) return _np;
-  
-  // ----- FALLBACK DE MIGRAÇÃO (texto livre do cargo / listas por email) -----
+  // 🆕 LISTAS CURADAS POR EMAIL — prioridade máxima (logo após super_admin).
+  // São concessões explícitas de acesso e devem valer mesmo que a coluna
+  // `nivel_permissao` do cadastro esteja desatualizada. Sem isso o acesso
+  // "piscava": aparecia no load (via lista) e sumia quando o resync trazia o
+  // nivel_permissao antigo do banco — que vencia por estar checado antes.
   // 🆕 CONVIDADOS EXTERNOS — acesso completo (igual diretoria) sem aparecer em Pessoas
   var EMAILS_CONVIDADOS = [
     'iasmin.endringer@dealwise.com.br',  // Iasmin Endringer - Dealwise
@@ -1782,12 +1778,21 @@ function detectarNivelPermissao(usuario){
   if(usuario.email && EMAILS_CONVIDADOS.indexOf(usuario.email.toLowerCase()) !== -1){
     return 'diretoria';
   }
-  
+
   // 🆕 PROSPECÇÃO RESTRITA — vê só cidades específicas, sem valores monetários
   if(usuario.email && PROSPECCAO_RESTRITA[usuario.email.toLowerCase()]){
     return 'prospeccao';
   }
-  
+
+  // 🆕 P0.2 — CAMPO CANÔNICO. Quando `nivel_permissao` está preenchido em
+  // `pessoas`, ele manda — acaba a adivinhação por texto livre do cargo
+  // (que jogava gente pra colaborador em silêncio).
+  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','financeiro','prospeccao','colaborador','visitante'];
+  var _np = String(usuario.nivel_permissao || '').toLowerCase().trim();
+  if(_np && NIVEIS_VALIDOS.indexOf(_np) !== -1) return _np;
+
+  // ----- FALLBACK DE MIGRAÇÃO (texto livre do cargo) -----
+
   var cargo = (usuario.cargo || '').toLowerCase();
   var categoria = (usuario.categoria || '').toLowerCase();
   
