@@ -22718,6 +22718,31 @@ function csvValor(n, sep){
   return sep === ',' ? s : s.replace('.', ',');
 }
 
+/* Responsável (prospecção) por cidade — usado só nas exportações (CSV/PDF).
+   Aceita nome ("Maceió", "São Luís/MA") ou slug ("sao-luis"). Cidades sem
+   responsável definido (só Cuiabá hoje) retornam '' (célula vazia). */
+function _responsavelCidade(cidade){
+  var slug = String(cidade == null ? '' : cidade).toLowerCase()
+    .split('/')[0]                    // "Maceió/AL" -> "Maceió"
+    .normalize('NFD')
+    .replace(/[^a-z0-9]+/g, function(seg){
+      // acentos (combining marks U+0300–U+036F) somem; resto vira hífen
+      var so = seg.replace(/[\s\S]/g, function(ch){
+        var c = ch.charCodeAt(0);
+        return (c >= 0x0300 && c <= 0x036F) ? '' : 'x';
+      });
+      return so ? '-' : '';
+    })
+    .replace(/^-|-$/g,'');
+  var MAPA = {
+    'aracaju':'Flávia', 'maceio':'Flávia', 'sao-luis':'Flávia', 'vitoria':'Flávia',
+    'recife':'Micaelle', 'natal':'Micaelle', 'joao-pessoa':'Micaelle', 'teresina':'Micaelle', 'fortaleza':'Micaelle',
+    'campo-grande':'Cristina'
+    // cuiaba => sem responsável (retorna '')
+  };
+  return MAPA[slug] || '';
+}
+
 function _rlBaixarCSV(){
   var r = _RL.resultadoAtual;
   if(!r){ alert('Nada pra exportar'); return; }
@@ -22729,11 +22754,14 @@ function _rlBaixarCSV(){
     return csvCel(csvLimpar(v), ',');
   }
 
-  var linhas = [r.colunas.map(csvEscape).join(',')];
+  // Coluna Respons\u00e1vel (por cidade) \u2014 s\u00f3 na exporta\u00e7\u00e3o. Relat\u00f3rio \u00e9 de 1 cidade,
+  // ent\u00e3o o nome se repete em todas as linhas.
+  var _resp = r.cidade ? _responsavelCidade(r.cidade.nome) : '';
+  var linhas = [r.colunas.concat(['Respons\u00e1vel']).map(csvEscape).join(',')];
   r.linhas.forEach(function(row){
-    linhas.push(row.map(csvEscape).join(','));
+    linhas.push(row.concat([_resp]).map(csvEscape).join(','));
   });
-  
+
   var csv = '\ufeff' + linhas.join('\n'); // BOM pra Excel reconhecer UTF-8
   var blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
   var url = URL.createObjectURL(blob);
@@ -22756,6 +22784,7 @@ function _rlBaixarPDF(){
   var w = window.open('', '_blank', 'width=900,height=1000');
   if(!w){ alert('Permita popups pra baixar o PDF'); return; }
   
+  var _resp = r.cidade ? _responsavelCidade(r.cidade.nome) : '';
   var tabelaHtml = '';
   if(r.vazio){
     tabelaHtml = '<div style="padding:40px;text-align:center;background:#F9FAFB;border-radius:8px"><div style="font-size:36px;margin-bottom:8px">✨</div><div style="font-size:13px;font-weight:600">Nenhum resultado nos filtros atuais</div></div>';
@@ -22764,11 +22793,12 @@ function _rlBaixarPDF(){
       +'<thead><tr style="background:#F3E8FF;border-bottom:2px solid #8B5CF6">'
       + r.colunas.map(function(col){
         return '<th style="padding:8px 10px;text-align:left;font-size:10px;color:#6A1B9A;font-weight:700;text-transform:uppercase">'+col+'</th>';
-      }).join('') + '</tr></thead><tbody>'
+      }).join('') + '<th style="padding:8px 10px;text-align:left;font-size:10px;color:#6A1B9A;font-weight:700;text-transform:uppercase">Responsável</th></tr></thead><tbody>'
       + r.linhas.map(function(row, idx){
         var bg = idx % 2 === 0 ? '#FFFFFF' : '#FAFAFB';
         return '<tr style="background:'+bg+';border-bottom:1px solid #E5E7EB">'
           + row.map(function(c){ return '<td style="padding:7px 10px">'+(c==null?'—':c)+'</td>'; }).join('')
+          + '<td style="padding:7px 10px">'+_resp+'</td>'
         + '</tr>';
       }).join('') + '</tbody></table>';
   }
@@ -29678,6 +29708,8 @@ function empExportarCSV(){
     'Última atividade', 'Dias inativa'];
   // Remove colunas vazias (financeiro pra nao-gestores)
   if(!verFin){ headers = headers.filter(function(h){return h !== '-';}); }
+  headers.push('Responsável');
+  var _respEmp = _responsavelCidade(c.nome); // 1 cidade por export -> repete nas linhas
 
   var escapeCSV = function(v){
     return csvCel(csvLimpar(v), ',');
@@ -29694,6 +29726,7 @@ function empExportarCSV(){
     }
     row.push(m.ultima ? m.ultima.split('-').reverse().join('/') : '-');
     row.push(m.diasInativo === 999 ? '-' : m.diasInativo);
+    row.push(_respEmp);
     linhas.push(row.map(escapeCSV).join(','));
   });
   var csv = '\uFEFF' + linhas.join('\n'); // BOM pra Excel reconhecer UTF-8
