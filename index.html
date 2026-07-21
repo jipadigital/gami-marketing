@@ -35525,16 +35525,50 @@ async function renderRankingCidades(forceRefresh){
 // Função auxiliar — só renderiza HTML sem buscar dados
 function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
   
+  // Acha a pessoa pelo NOME (pra puxar foto). Aceita nome oficial com apelido,
+  // ex: "Raimundo Neto (GUGA)" casa com o cadastro "Raimundo Neto".
+  function pessoaPorNome(nome){
+    if(!nome) return null;
+    var alvo = slugCidade(nome);
+    var p = pessoas.find(function(x){ return slugCidade(String(x.nome||'')) === alvo; });
+    if(p) return p;
+    var pref = slugCidade(String(nome).split(' ').slice(0,2).join(' '));
+    if(!pref) return null;
+    return pessoas.find(function(x){
+      var s = slugCidade(String(x.nome||''));
+      return s.indexOf(pref) === 0 || pref.indexOf(s) === 0;
+    }) || null;
+  }
+
+  // Nome curto pro card: tira apelido entre parenteses e pula particulas
+  // ("Sidnen da Silva" -> "Sidnen Silva", nao "Sidnen da").
+  function nomeCurtoGestor(g){
+    if(!g) return 'Sem gestor';
+    var nome = String(g.nome || '-').replace(/\s*\([^)]*\)\s*/g, ' ').trim();
+    var ps = nome.split(/\s+/).filter(Boolean);
+    if(ps.length <= 2) return ps.join(' ') || '-';
+    var PART = ['da','de','do','das','dos','e'];
+    var resto = ps.slice(1).filter(function(w){ return PART.indexOf(w.toLowerCase()) === -1; });
+    return resto.length ? ps[0] + ' ' + resto[0] : ps[0];
+  }
+
   function gestorDaCidade(nomeCidade){
-    // OVERRIDE: Campo Grande sempre tem João Duarte como gestor visível no ranking
-    // (mesmo que ele esteja cadastrado como Diretor)
-    if(/campo\s*grande/i.test(nomeCidade)){
-      var jd = pessoas.find(function(p){
-        var n = (p.nome||'').toLowerCase();
-        return n.indexOf('joão duarte') >= 0 || n.indexOf('joao duarte') >= 0;
-      });
-      if(jd) return jd;
+    // FONTE DE VERDADE: o gestor oficial da cidade (mesmo dado do card de Cidades).
+    // Antes procurava em Pessoas "quem e gestor dessa cidade", o que exibia a
+    // pessoa errada quando alguem estava cadastrado em varias cidades.
+    var alvoCidade = slugCidade(String(nomeCidade||'').split('/')[0]);
+    var nomeOficial = '';
+    try {
+      var cids = (typeof getCidadesData === 'function') ? getCidadesData() : [];
+      var cid = cids.find(function(c){ return slugCidade(String(c.nome||'')) === alvoCidade; });
+      if(cid) nomeOficial = cid.gestor || '';
+    } catch(e){}
+    if(nomeOficial){
+      // Casa com Pessoas so pra pegar a foto; sem cadastro, mostra so o nome.
+      return pessoaPorNome(nomeOficial) || { nome: nomeOficial };
     }
+
+    // Fallback (cidade fora da lista oficial): busca em Pessoas por cidade.
     return pessoas.find(function(p){
       var temNivelGestor = (typeof pessoaTemNivel === 'function') && pessoaTemNivel(p, 'Gestor');
       var ehGestor = /Gestor/i.test(p.cargo||'') || (p.categoria||'') === 'Gestor' || temNivelGestor;
@@ -35732,7 +35766,7 @@ function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPes
   
   var _rkReduz = (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   var top3HTML = top3.map(function(c, i){
-    var nomeCurto = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : 'Sem gestor';
+    var nomeCurto = nomeCurtoGestor(c.gestor);
     var _cardAnim = _rkReduz ? '' : (i===0
       ? 'animation:gRkIn .5s ease '+(i*90)+'ms both, gRkGold 2.8s ease-in-out '+(i*90+700)+'ms infinite;'
       : 'animation:gRkIn .5s ease '+(i*90)+'ms both;');
@@ -35763,7 +35797,7 @@ function _renderRankingHTML(host, lista, nomeMes){  var pessoas = (typeof getPes
   var restoHTML = resto.map(function(c, idx){
     var pos = idx + 4;
     var pct = maxPar > 0 ? (c.paradas / maxPar * 100) : 0;
-    var nomeCurto = c.gestor ? (c.gestor.nome || '—').split(' ').slice(0,2).join(' ') : 'Sem gestor';
+    var nomeCurto = nomeCurtoGestor(c.gestor);
     var _rowAnim = _rkReduz ? '' : 'animation:gRkIn .45s ease '+(idx*55+250)+'ms both;';
     var _barStyle = _rkReduz ? ('width:'+pct.toFixed(1)+'%;') : ('width:0;--rk-w:'+pct.toFixed(1)+'%;animation:gRkBar .9s ease '+(idx*55+350)+'ms both;');
 
