@@ -51511,7 +51511,8 @@ async function _mpAtualizarStatusValidacao(){
   // 1) Pessoa tem liberação temporária?
   if(MP_PESSOA && _pessoaLiberadaValidacao(MP_PESSOA)){
     var ate = (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10);
-    el.innerHTML = '🆓 <strong style="color:#1D9E75">Liberação ativa</strong> até ' + ate + ' — pode bater sem GPS/IP.';
+    var _libTxt = _pontoHomeOfficeFixo(MP_PESSOA) ? '(home office)' : ('até ' + ate);
+    el.innerHTML = '🆓 <strong style="color:#1D9E75">Liberação ativa</strong> ' + _libTxt + ' — pode bater sem GPS/IP.';
     MP_VALIDACAO_ATUAL = { metodo: 'LIBERACAO', detalhe: ate };
     var jb = document.getElementById('mp-justificativa-box');
     if(jb) jb.style.display = 'none';
@@ -51721,7 +51722,7 @@ async function mpBaterPonto(){
         p_pessoa_id: MP_PESSOA.id,
         p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
         p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
-        p_justificativa: '[LIBERAÇÃO TEMPORÁRIA] Liberada de validação GPS/IP até ' + (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10) + '.',
+        p_justificativa: _pontoHomeOfficeFixo(MP_PESSOA) ? '[HOME OFFICE] Liberada de validação GPS/IP (home office fixo).' : ('[LIBERAÇÃO TEMPORÁRIA] Liberada de validação GPS/IP até ' + (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10) + '.'),
         p_user_agent: navigator.userAgent.slice(0, 150)
       });
       if(typeof toast === 'function'){
@@ -54154,9 +54155,28 @@ async function dashBaterPontoSemGPS(){
   }
 }
 
-// Verifica se a pessoa está temporariamente liberada de validação GPS/IP
-// (ex: home office, viagem). Definido em pessoas.ponto_sem_validacao_ate
+// 🏠 HOME OFFICE PERMANENTE — isento de GPS/IP no ponto, sem data limite
+// (mesmo estilo das listas fixas de acesso do sistema). Casa por e-mail
+// (preciso) ou por nome. Reversivel: e so tirar da lista aqui.
+var PONTO_HOME_OFFICE_FIXO = [
+  'jheny.andradesilva@gmail.com', // Jheniffer Andrade — suporte remota, bate ponto de casa
+  'jheniffer andrade'             // rede de segurança por nome (caso o login não traga o e-mail)
+];
+function _pontoHomeOfficeFixo(pessoa){
+  if(!pessoa) return false;
+  var email = String(pessoa.email||'').toLowerCase().trim();
+  var nome  = String(pessoa.nome||'').toLowerCase().trim();
+  return PONTO_HOME_OFFICE_FIXO.some(function(a){
+    a = String(a).toLowerCase().trim();
+    return a.indexOf('@') >= 0 ? (email === a) : (nome && nome.indexOf(a) >= 0);
+  });
+}
+
+// Verifica se a pessoa está liberada de validação GPS/IP:
+// 1) home office PERMANENTE (lista fixa acima), ou
+// 2) liberação temporária via pessoas.ponto_sem_validacao_ate (data limite).
 function _pessoaLiberadaValidacao(pessoa){
+  if(_pontoHomeOfficeFixo(pessoa)) return true;
   if(!pessoa || !pessoa.ponto_sem_validacao_ate) return false;
   try {
     var ate = new Date(pessoa.ponto_sem_validacao_ate);
@@ -54551,7 +54571,7 @@ async function dashBaterPontoRapido(){
         p_pessoa_id: MP_PESSOA.id,
         p_latitude: MP_CONFIG ? MP_CONFIG.latitude : null,
         p_longitude: MP_CONFIG ? MP_CONFIG.longitude : null,
-        p_justificativa: '[LIBERAÇÃO TEMPORÁRIA] Liberada de validação GPS/IP até ' + (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10) + '.',
+        p_justificativa: _pontoHomeOfficeFixo(MP_PESSOA) ? '[HOME OFFICE] Liberada de validação GPS/IP (home office fixo).' : ('[LIBERAÇÃO TEMPORÁRIA] Liberada de validação GPS/IP até ' + (MP_PESSOA.ponto_sem_validacao_ate || '').slice(0,10) + '.'),
         p_user_agent: navigator.userAgent.slice(0, 150)
       });
       if(typeof toast === 'function'){
