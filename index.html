@@ -1,3 +1,4 @@
+<!-- v31.29 - (1) Ranking do dashboard: Cuiaba (encerrada 27/07) filtrada em _rankingBuscarSupabase, some do ranking mesmo tendo corridas historicas. (2) Novo relatorio "Onboarding (sem 1o pedido)": clientes cadastrados nos ultimos X dias que ainda NAO pediram = lista do dia pro suporte ativar. Nova RPC clientes_onboarding (rodar docs/rpc_clientes_onboarding.sql no Supabase) - 09/07/2026 -->
 <!-- v31.28 - Cadastro: nova CATEGORIA "Suporte" no seletor de cargo (funcoes: Suporte Home, Suporte Operacional, Suporte Escritorio) + cor propria p/ Suporte Operacional. Suporte Home saiu de Colaborador e foi p/ Suporte. Banco: todos os "Suporte Home" migrados p/ categoria=Suporte (antes ficavam em Colaborador). Karen e Whiny: bate_ponto=false (home office, nao batem mais ponto) - 09/07/2026 -->
 <!-- v31.27 - Mural: @mencao com acento quebrava o nome ("@Claudio" com acento virava "@Cl" + "audio") porque a regex /@(\w+)/ parava no acento. Trocado p/ /@([\wÀ-ÿ]+)/ (mencao e autocomplete). Bonus: texto do recado agora passa por tfEsc antes do highlight (fecha XSS via innerHTML) - 09/07/2026 -->
 <!-- v31.26 - Senha/PIN: limite de caracteres liberado de 8 para 32 em TODOS os fluxos (login, primeiro acesso pa-pin, trocar PIN nas config tp-novo, e "Esqueci meu PIN" reset-pin) + validacoes cliente e servidor (trocar-pin.js, resetar-pin.js) agora 4-32. Reset por email deixou de exigir 4-6 digitos numericos (aceita alfanumerico). Vanessa nao conseguia criar senha maior que 8 - 09/07/2026 -->
@@ -16694,6 +16695,9 @@ var RELATORIOS = {
       { id:'clientes_novos', icone:'🌟', nome:'Clientes novos',
         descricao:'Empresas com primeiro pedido nos últimos X dias',
         temValor:false, fase:1 },
+      { id:'clientes_onboarding', icone:'🤝', nome:'Onboarding (sem 1º pedido)',
+        descricao:'Clientes cadastrados nos últimos X dias que ainda NÃO fizeram nenhum pedido — a lista do dia pra ativar/conversar',
+        temValor:false, fase:1 },
       { id:'top_clientes', icone:'🏆', nome:'Top clientes do período',
         descricao:'Empresas que mais geraram paradas no período',
         temValor:true, fase:1 },
@@ -17983,6 +17987,79 @@ async function _sb_top_clientes(){
 }
 
 /* ─── 4.1) EMPRESAS FANTASMAS (cadastradas mas nunca pediram) ─── */
+/* 🤝 v31.29: Onboarding — clientes cadastrados recentemente que ainda NAO
+   fizeram nenhum pedido. E a lista do dia pra o time de suporte ativar/conversar.
+   Fonte: RPC clientes_onboarding (machine_empresas cadastradas nos ultimos N dias
+   SEM nenhuma corrida em machine_corridas). Atualiza sozinho conforme o sync diario
+   traz novos cadastros. */
+async function _sb_clientes_onboarding(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var diasCad = _RL.onbDiasCad !== undefined ? _RL.onbDiasCad : 30;
+
+  var filtrosHtml = '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+    +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Cadastrados nos últimos:</strong>'
+      +'<select onchange="_RL.onbDiasCad=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+        +'<option value="1"'+(diasCad===1?' selected':'')+'>Hoje/ontem (1 dia)</option>'
+        +'<option value="3"'+(diasCad===3?' selected':'')+'>3 dias</option>'
+        +'<option value="7"'+(diasCad===7?' selected':'')+'>7 dias</option>'
+        +'<option value="14"'+(diasCad===14?' selected':'')+'>14 dias</option>'
+        +'<option value="30"'+(diasCad===30?' selected':'')+'>30 dias</option>'
+      +'</select>'
+    +'</label>'
+  +'</div>';
+
+  if(!slug){
+    return { id:'clientes_onboarding', icone:'🤝', titulo:'Onboarding (sem 1º pedido)',
+      descricao:'⚠️ Selecione uma cidade primeiro.', cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'🤝 A onboardar', valor:0, cor:'#0F6E56' }], filtros:filtrosHtml };
+  }
+
+  var raw = null, erro = null;
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/clientes_onboarding', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias_max_cad: diasCad })
+    });
+    if(rpcResp.ok){ raw = await rpcResp.json(); }
+    else { erro = 'HTTP '+rpcResp.status+': '+(await rpcResp.text()).substring(0,160); }
+  } catch(e){ erro = e.message; }
+
+  if(!Array.isArray(raw)){
+    return { id:'clientes_onboarding', icone:'🤝', titulo:'Onboarding (sem 1º pedido)',
+      descricao:'⚠️ RPC clientes_onboarding não respondeu ('+(erro||'erro')+'). Rode o SQL docs/rpc_clientes_onboarding.sql no Supabase.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'🤝 A onboardar', valor:0, cor:'#0F6E56' }], filtros:filtrosHtml };
+  }
+
+  var colunas = ['Empresa','Bairro','Cadastrado em','Cadastrado há','📞 Telefone'];
+  var linhas = raw.map(function(e){
+    var dc = parseInt(e.dias_cadastrado) || 0;
+    var icone = dc <= 1 ? '🟢' : dc <= 7 ? '🟡' : '🔵';
+    var tel = e.telefone || '';
+    var telLimpo = tel.replace(/\D/g,'');
+    var telCell = (telLimpo && telLimpo.length >= 10)
+      ? '<span style="font-weight:600;color:#1a1a1a">'+tfEsc(tel)+'</span> <a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>'
+      : '<span style="color:#999;font-size:11px">—</span>';
+    var dtFmt = '—';
+    if(e.data_cadastro){ var dt = new Date(e.data_cadastro); if(!isNaN(dt.getTime())) dtFmt = dt.toLocaleDateString('pt-BR'); }
+    var quando = dc <= 0 ? 'hoje' : dc === 1 ? 'ontem' : dc+' dias';
+    return [ icone+' '+tfEsc(e.nome||'?'), tfEsc(e.bairro||'—'), dtFmt, quando, telCell ];
+  });
+
+  return {
+    id:'clientes_onboarding', icone:'🤝', titulo:'Onboarding (sem 1º pedido)',
+    descricao:'⚡ Supabase · Clientes cadastrados nos últimos '+diasCad+' dias que ainda NÃO fizeram nenhum pedido · do mais recente pro mais antigo. Use como a lista do dia pra ativar cada novo cliente.',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: raw.length === 0,
+    kpis:[
+      { label:'🤝 A onboardar', valor:raw.length, cor:'#0F6E56' },
+      { label:'Com telefone', valor:raw.filter(function(e){ return (e.telefone||'').replace(/\D/g,'').length >= 10; }).length, cor:'#1AB8F0' }
+    ],
+    filtros: filtrosHtml
+  };
+}
+
 async function _sb_empresas_fantasmas(){
   var c = _rlGetCidade();
   var slug = _rlSlug();
@@ -19505,6 +19582,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'empresas_queda':     return temSupa ? await _sb_empresas_queda() : _gen_empresas_queda(dados);
     case 'empresas_alta':      return temSupa ? await _sb_empresas_alta() : (window._gen_empresas_alta ? _gen_empresas_alta(dados) : { id:'empresas_alta', icone:'📈', titulo:'Empresas em alta', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] });
     case 'clientes_novos':     return temSupa ? await _sb_clientes_novos() : _gen_clientes_novos(dados);
+    case 'clientes_onboarding': return await _sb_clientes_onboarding();  // sempre tenta — RPC funciona em qualquer cidade sincronizada
     case 'top_clientes':       return temSupa ? await _sb_top_clientes() : _gen_top_clientes(dados);
     case 'empresas_fantasmas': return await _sb_empresas_fantasmas();  // sempre tenta — RPC funciona em qualquer cidade sincronizada
     case 'empresas_pararam_30d': return await _sb_empresas_pararam_30d();
@@ -43272,6 +43350,16 @@ async function _rankingBuscarSupabase(){
     console.log('[Ranking RPC] ✓ retornou', lista && lista.length, 'linhas');
     if(Array.isArray(lista) && lista.length > 0){
       console.log('[Ranking RPC] amostra:', lista[0]);
+    }
+    // 🆕 v31.29: cidades encerradas nao entram no ranking do dashboard. Cuiaba foi
+    // fechada (27/07/2026), mas ainda tem corridas historicas que a RPC devolve —
+    // filtramos aqui pra ela sumir do ranking sem mexer nos dados historicos.
+    var CIDADES_FORA_RANKING = ['cuiaba','cuiabá'];
+    if(Array.isArray(lista)){
+      lista = lista.filter(function(r){
+        var sl = String((r && (r.cidade_slug || r.cidade || r.slug)) || '').toLowerCase().trim();
+        return CIDADES_FORA_RANKING.indexOf(sl) < 0;
+      });
     }
     return Array.isArray(lista) ? lista : null;
   } catch(e){
