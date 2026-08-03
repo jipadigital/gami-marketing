@@ -1,3 +1,4 @@
+<!-- v31.31 - Relatorios: seletor "De/Ate" (intervalo de datas, ex 01/07 a 31/07) no Top motoboys e Top clientes. Novo _RL.modo/dataInicio/dataFim + _rlFiltroData + _rlRpcAtividade escolhe RPC. Backend: 2 RPCs novas por intervalo (rodar docs/rpc_atividade_periodo.sql) que somam paradas_count. Clientes novos e Empresas em alta ficam so em "ultimos N dias" (nao encaixam em intervalo arbitrario) - 09/07/2026 -->
 <!-- v31.30 - Top motoboys: nomes nao apareciam (ex Campo Grande) pq nas corridas nome_condutor vem NULL. Agora _sb_top_motoboys puxa nome+telefone de machine_condutores (id->nome/telefone_celular) e desempata o ranking por finalizadas (a RPC ainda devolve paradas=0 em algumas cidades - somando total_paradas em vez de paradas_count) - 09/07/2026 -->
 <!-- v31.29 - (1) Ranking do dashboard: Cuiaba (encerrada 27/07) filtrada em _rankingBuscarSupabase, some do ranking mesmo tendo corridas historicas. (2) Novo relatorio "Onboarding (sem 1o pedido)": clientes cadastrados nos ultimos X dias que ainda NAO pediram = lista do dia pro suporte ativar. Nova RPC clientes_onboarding (rodar docs/rpc_clientes_onboarding.sql no Supabase) - 09/07/2026 -->
 <!-- v31.28 - Cadastro: nova CATEGORIA "Suporte" no seletor de cargo (funcoes: Suporte Home, Suporte Operacional, Suporte Escritorio) + cor propria p/ Suporte Operacional. Suporte Home saiu de Colaborador e foi p/ Suporte. Banco: todos os "Suporte Home" migrados p/ categoria=Suporte (antes ficavam em Colaborador). Karen e Whiny: bate_ponto=false (home office, nao batem mais ponto) - 09/07/2026 -->
@@ -16676,8 +16677,56 @@ var _RL = {
   topN: 10,
   relatorioAtual: null,
   resultadoAtual: null,
-  vista: 'cidades' // 'cidades' | 'categorias' | 'resultado'
+  vista: 'cidades', // 'cidades' | 'categorias' | 'resultado'
+  // 🆕 v31.31: seletor de intervalo de datas (De/Até) nos relatorios de atividade.
+  modo: 'dias',      // 'dias' (ultimos N) | 'range' (data inicio/fim)
+  dataInicio: null,  // 'YYYY-MM-DD'
+  dataFim: null      // 'YYYY-MM-DD'
 };
+
+/* 🆕 v31.31: controle De/Até reutilizavel — usado nos relatorios que aceitam
+   intervalo (Top motoboys, Top clientes, Clientes novos). */
+function _rlFiltroData(){
+  var ini = _RL.dataInicio || '';
+  var fim = _RL.dataFim || '';
+  var ativo = _RL.modo === 'range' && ini && fim;
+  return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">'
+    + '<strong style="font-size:11px;color:var(--text3)">📅 Ou intervalo de datas:</strong>'
+    + '<input type="date" id="rl-data-ini" value="'+ini+'" style="padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-family:inherit">'
+    + '<span style="font-size:11px;color:var(--text3)">até</span>'
+    + '<input type="date" id="rl-data-fim" value="'+fim+'" style="padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-family:inherit">'
+    + '<button onclick="_rlAplicarIntervalo()" style="padding:4px 10px;border:none;border-radius:5px;background:#1AB8F0;color:#fff;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Aplicar</button>'
+    + (ativo ? '<button onclick="_rlLimparIntervalo()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--text3);font-size:11px;cursor:pointer;font-family:inherit" title="Voltar pro filtro de últimos N dias">✕ intervalo</button>' : '')
+    + '</div>';
+}
+function _rlAplicarIntervalo(){
+  var ini = document.getElementById('rl-data-ini');
+  var fim = document.getElementById('rl-data-fim');
+  if(!ini || !fim || !ini.value || !fim.value){ alert('Escolha as duas datas (de e até).'); return; }
+  if(ini.value > fim.value){ alert('A data inicial não pode ser depois da final.'); return; }
+  _RL.modo = 'range'; _RL.dataInicio = ini.value; _RL.dataFim = fim.value;
+  if(typeof _rlGerarERenderizar === 'function') _rlGerarERenderizar();
+}
+function _rlLimparIntervalo(){
+  _RL.modo = 'dias'; _RL.dataInicio = null; _RL.dataFim = null;
+  if(typeof _rlGerarERenderizar === 'function') _rlGerarERenderizar();
+}
+/* Formata 'YYYY-MM-DD' -> 'DD/MM/YYYY' pra descricao dos relatorios */
+function _rlFmtData(s){ if(!s) return ''; var p = String(s).split('-'); return p.length===3 ? (p[2]+'/'+p[1]+'/'+p[0]) : s; }
+/* Escolhe a RPC certa: _atividade_real (ultimos N dias) ou _atividade_periodo (intervalo).
+   base = 'motoboys' | 'empresas'. */
+function _rlRpcAtividade(base, slug, diasLookback){
+  if(_RL.modo === 'range' && _RL.dataInicio && _RL.dataFim){
+    return { rpc: base+'_atividade_periodo', body:{ p_cidade_slug:slug, p_data_inicio:_RL.dataInicio, p_data_fim:_RL.dataFim }, usaRange:true };
+  }
+  return { rpc: base+'_atividade_real', body:{ p_cidade_slug:slug, p_dias:diasLookback }, usaRange:false };
+}
+/* Rotulo do periodo pra descricao ("de 01/07 a 31/07" ou "ultimos 30 dias") */
+function _rlLabelPeriodo(diasLookback){
+  return (_RL.modo === 'range' && _RL.dataInicio && _RL.dataFim)
+    ? ('de '+_rlFmtData(_RL.dataInicio)+' a '+_rlFmtData(_RL.dataFim))
+    : ('últimos '+diasLookback+' dias');
+}
 
 /* Catálogo de relatórios disponíveis */
 var RELATORIOS = {
@@ -17891,13 +17940,14 @@ async function _sb_top_clientes(){
   var topN = _RL.topN || 10;
   var diasLookback = 30;
   
-  // Usa RPC nova com paradas
+  // Usa RPC nova com paradas — ou a versao por intervalo de datas (De/Até)
   var lista = [];
+  var _rpc = _rlRpcAtividade('empresas', slug, diasLookback);
   try {
-    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_atividade_real', {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/'+_rpc.rpc, {
       method: 'POST',
       headers: {'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
+      body: JSON.stringify(_rpc.body)
     });
     if(rpcResp.ok) lista = await rpcResp.json();
   } catch(e){ console.warn('[Top Clientes] RPC erro:', e.message); }
@@ -17905,8 +17955,8 @@ async function _sb_top_clientes(){
   // 🆕 v31.18: telefones via helper paginado (cidades grandes tem >1000 empresas; antes so 1000 vinham com telefone)
   var mapTel = await _rlTelefonesEmpresas(slug);
 
-  // Mescla corridas de HOJE (Machine ao vivo)
-  try {
+  // Mescla corridas de HOJE (Machine ao vivo) — pulado no modo intervalo (data passada)
+  if(!_rpc.usaRange) try {
     var corridasHoje = await _rlPegarCorridasHoje(slug);
     if(corridasHoje && corridasHoje.length){
       var byKey = {};
@@ -17967,7 +18017,7 @@ async function _sb_top_clientes(){
   
   return {
     id:'top_clientes', icone:'🏆', titulo:'Top '+topN+' clientes do período',
-    descricao:'⚡ Supabase · Empresas que mais geraram paradas (entregas) nos últimos '+diasLookback+' dias',
+    descricao:'⚡ Supabase · Empresas que mais geraram entregas ('+_rlLabelPeriodo(diasLookback)+')',
     cidade:c, colunas:colunas, linhas:linhas, vazio: top.length === 0,
     kpis:[
       { label:'Top '+topN, valor:top.length, cor:'#EF9F27' },
@@ -17984,6 +18034,7 @@ async function _sb_top_clientes(){
         +'</select>'
       +'</label>'
     +'</div>'
+    + _rlFiltroData()
   };
 }
 
@@ -18857,11 +18908,12 @@ async function _sb_top_motoboys(){
   } catch(e){ console.warn('[Top Motoboys] condutores erro:', e.message); }
 
   var lista = [];
+  var _rpc = _rlRpcAtividade('motoboys', slug, diasLookback);
   try {
-    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_atividade_real', {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/'+_rpc.rpc, {
       method:'POST',
       headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
-      body: JSON.stringify({ p_cidade_slug: slug, p_dias: diasLookback })
+      body: JSON.stringify(_rpc.body)
     });
     if(rpcResp.ok) lista = await rpcResp.json();
   } catch(e){ console.warn('[Top Motoboys] RPC erro:', e.message); }
@@ -18902,7 +18954,7 @@ async function _sb_top_motoboys(){
   
   return {
     id:'top_motoboys', icone:'🏆', titulo:'Top '+topN+' motoboys do período',
-    descricao:'⚡ Supabase · Motoboys que mais geraram paradas (entregas) nos últimos '+diasLookback+' dias',
+    descricao:'⚡ Supabase · Motoboys que mais geraram entregas ('+_rlLabelPeriodo(diasLookback)+')',
     cidade:c, colunas:colunas, linhas:linhas, vazio: top.length === 0, podeWhatsApp: true,
     kpis:[
       { label:'Top '+topN, valor:top.length, cor:'#EF9F27' },
@@ -18919,6 +18971,7 @@ async function _sb_top_motoboys(){
         +'</select>'
       +'</label>'
     +'</div>'
+    + _rlFiltroData()
   };
 }
 
