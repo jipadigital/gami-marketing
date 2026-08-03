@@ -1,3 +1,4 @@
+<!-- v31.30 - Top motoboys: nomes nao apareciam (ex Campo Grande) pq nas corridas nome_condutor vem NULL. Agora _sb_top_motoboys puxa nome+telefone de machine_condutores (id->nome/telefone_celular) e desempata o ranking por finalizadas (a RPC ainda devolve paradas=0 em algumas cidades - somando total_paradas em vez de paradas_count) - 09/07/2026 -->
 <!-- v31.29 - (1) Ranking do dashboard: Cuiaba (encerrada 27/07) filtrada em _rankingBuscarSupabase, some do ranking mesmo tendo corridas historicas. (2) Novo relatorio "Onboarding (sem 1o pedido)": clientes cadastrados nos ultimos X dias que ainda NAO pediram = lista do dia pro suporte ativar. Nova RPC clientes_onboarding (rodar docs/rpc_clientes_onboarding.sql no Supabase) - 09/07/2026 -->
 <!-- v31.28 - Cadastro: nova CATEGORIA "Suporte" no seletor de cargo (funcoes: Suporte Home, Suporte Operacional, Suporte Escritorio) + cor propria p/ Suporte Operacional. Suporte Home saiu de Colaborador e foi p/ Suporte. Banco: todos os "Suporte Home" migrados p/ categoria=Suporte (antes ficavam em Colaborador). Karen e Whiny: bate_ponto=false (home office, nao batem mais ponto) - 09/07/2026 -->
 <!-- v31.27 - Mural: @mencao com acento quebrava o nome ("@Claudio" com acento virava "@Cl" + "audio") porque a regex /@(\w+)/ parava no acento. Trocado p/ /@([\wÀ-ÿ]+)/ (mencao e autocomplete). Bonus: texto do recado agora passa por tfEsc antes do highlight (fecha XSS via innerHTML) - 09/07/2026 -->
@@ -18843,7 +18844,18 @@ async function _sb_top_motoboys(){
   var slug = _rlSlug();
   var topN = _RL.topN || 10;
   var diasLookback = 30;
-  
+
+  // 🆕 v31.30: nome + telefone vem de machine_condutores. Nas corridas o
+  // nome_condutor vem NULL em varias cidades (ex: Campo Grande), entao o Top
+  // aparecia sem nome. id do condutor -> { nome, telefone }.
+  var mapCond = {};
+  try {
+    var rCond = await fetch(SUPA_URL+'/rest/v1/machine_condutores?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=id,nome,telefone_celular&limit=10000', {
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
+    });
+    if(rCond.ok){ (await rCond.json()||[]).forEach(function(cn){ if(cn.id) mapCond[String(cn.id)] = { nome: cn.nome||'', telefone: cn.telefone_celular||'' }; }); }
+  } catch(e){ console.warn('[Top Motoboys] condutores erro:', e.message); }
+
   var lista = [];
   try {
     var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/motoboys_atividade_real', {
@@ -18853,9 +18865,13 @@ async function _sb_top_motoboys(){
     });
     if(rpcResp.ok) lista = await rpcResp.json();
   } catch(e){ console.warn('[Top Motoboys] RPC erro:', e.message); }
-  
-  // Ordena por PARADAS
-  lista.sort(function(a,b){ return parseInt(b.total_paradas||0) - parseInt(a.total_paradas||0); });
+
+  // Ordena por PARADAS; desempata por finalizadas (a RPC ainda devolve paradas=0
+  // em algumas cidades — o desempate mantem o Top util enquanto isso).
+  lista.sort(function(a,b){
+    var dp = parseInt(b.total_paradas||0) - parseInt(a.total_paradas||0);
+    return dp !== 0 ? dp : (parseInt(b.total_finalizadas||0) - parseInt(a.total_finalizadas||0));
+  });
   var top = lista.slice(0, topN);
   var totalParadasGeral = top.reduce(function(s,m){return s+parseInt(m.total_paradas||0);},0);
   
@@ -18871,9 +18887,12 @@ async function _sb_top_motoboys(){
     var paradas = parseInt(m.total_paradas||0);
     var pct = totalParadasGeral > 0 ? ((paradas / totalParadasGeral) * 100).toFixed(1) + '%' : '—';
     var ultFmt = new Date(m.ultima_corrida).toLocaleDateString('pt-BR');
-    var row = [medal, m.nome_condutor, (parseInt(m.total_corridas)||0), paradas,
+    var cond = mapCond[String(m.condutor_id)] || {};
+    var nome = cond.nome || (m.nome_condutor||'').trim() || ('Motoboy '+m.condutor_id);
+    var tel = cond.telefone || m.telefone;
+    var row = [medal, tfEsc(nome), (parseInt(m.total_corridas)||0), paradas,
                (parseInt(m.total_finalizadas)||0), (parseInt(m.total_canceladas)||0), pct, ultFmt,
-               _rlTelefoneCell(m.telefone)];
+               _rlTelefoneCell(tel)];
     if(podeValor){
       row.push('R$ '+parseFloat(m.valor_total||0).toFixed(2));
       row.push('R$ '+parseFloat(m.ticket_medio_parada||0).toFixed(2));
