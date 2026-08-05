@@ -1,3 +1,4 @@
+<!-- v31.32 - Cards das cidades: removido o bloco "entregas hoje" (numero + % + sparkline). O dado nunca foi real (mockado por hash / quebrado, mostrava ~-100% em todas as cidades). Removido tambem o loader _cidCarregarMetricas que so alimentava esse bloco. Card mais limpo - 09/07/2026 -->
 <!-- v31.31 - Relatorios: seletor "De/Ate" (intervalo de datas, ex 01/07 a 31/07) no Top motoboys e Top clientes. Novo _RL.modo/dataInicio/dataFim + _rlFiltroData + _rlRpcAtividade escolhe RPC. Backend: 2 RPCs novas por intervalo (rodar docs/rpc_atividade_periodo.sql) que somam paradas_count. Clientes novos e Empresas em alta ficam so em "ultimos N dias" (nao encaixam em intervalo arbitrario) - 09/07/2026 -->
 <!-- v31.30 - Top motoboys: nomes nao apareciam (ex Campo Grande) pq nas corridas nome_condutor vem NULL. Agora _sb_top_motoboys puxa nome+telefone de machine_condutores (id->nome/telefone_celular) e desempata o ranking por finalizadas (a RPC ainda devolve paradas=0 em algumas cidades - somando total_paradas em vez de paradas_count) - 09/07/2026 -->
 <!-- v31.29 - (1) Ranking do dashboard: Cuiaba (encerrada 27/07) filtrada em _rankingBuscarSupabase, some do ranking mesmo tendo corridas historicas. (2) Novo relatorio "Onboarding (sem 1o pedido)": clientes cadastrados nos ultimos X dias que ainda NAO pediram = lista do dia pro suporte ativar. Nova RPC clientes_onboarding (rodar docs/rpc_clientes_onboarding.sql no Supabase) - 09/07/2026 -->
@@ -26671,27 +26672,9 @@ function renderCidadesGrid(){
       </div>
       ${curiosidade ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;line-height:1.4;padding:6px 8px;background:var(--surface2);border-radius:6px;margin-bottom:10px">💡 ${curiosidade}</div>` : ''}
       
-      <!-- 🆕 MÉTRICAS DA CIDADE (renderizadas direto, sem esperar JS) -->
-      <div class="cid-metricas-bloco" style="margin-bottom:10px;padding:10px 12px;background:linear-gradient(135deg,#F8FBFE,#EEF6FC);border:1px solid #D6E8F5;border-radius:9px">
-        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;margin-bottom:6px">
-          <div>
-            <div class="cid-metric-num" style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);line-height:1">${entHoje == null ? '—' : '<span data-countup="'+entHoje+'">0</span>'}</div>
-            <div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px">entregas hoje${entHoje > 0 ? ' <span class="g-live-dot" title="Ativa hoje"></span>' : ''}</div>
-          </div>
-          <div class="cid-metric-pct ${pctClasse}" style="display:${entHoje == null ? 'none' : 'flex'};align-items:center;gap:3px;font-size:11px;font-weight:700">
-            <span class="cid-metric-arrow">${seta}</span>
-            <span class="cid-metric-pct-val">${sinal}${pct}%</span>
-          </div>
-        </div>
-        <!-- Sparkline 7 dias -->
-        <div class="cid-sparkline-wrap" style="height:24px;width:100%;position:relative;margin-top:4px">
-          <svg class="cid-sparkline" viewBox="0 0 100 24" preserveAspectRatio="none" style="width:100%;height:100%;display:block">
-            <path class="cid-sparkline-area" d="${sparkArea}" fill="rgba(26,184,240,.12)" stroke="none"/>
-            <path class="cid-sparkline-line" d="${sparkD}" fill="none" stroke="#1AB8F0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" pathLength="100" style="stroke-dasharray:100;stroke-dashoffset:100;animation:cidSparkDraw 1.2s ease-out forwards;animation-delay:${(idx*55)+200}ms"/>
-          </svg>
-        </div>
-      </div>
-      
+      <!-- v31.32: bloco "entregas hoje" (sparkline + %) removido — dado nunca foi real
+           (mockado/quebrado, mostrava ~-100% em todas). Card mais limpo. -->
+
       <!-- 2 BOTÕES essenciais (IA é dropdown) -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;position:relative">
         ${c.tel ? `<a href="https://wa.me/55${c.tel.replace(/\\D/g,'')}" target="_blank" onclick="event.stopPropagation()" title="WhatsApp do gestor" style="display:flex;align-items:center;justify-content:center;gap:5px;font-size:11px;padding:8px;border-radius:7px;background:#EAF3DE;color:#3B6D11;text-decoration:none;font-weight:700;border:1px solid #C2DC91">💬 WhatsApp</a>` : `<span style="display:flex;align-items:center;justify-content:center;font-size:10px;padding:8px;border-radius:7px;background:var(--surface2);color:var(--text3);border:1px dashed var(--border)">— sem WhatsApp</span>`}
@@ -26714,18 +26697,9 @@ function renderCidadesGrid(){
   }).join('');
   if(typeof gamiCountUpAll === 'function') setTimeout(function(){ gamiCountUpAll(grid); }, 40);
   
-  // 🆕 v27.16: carrega métricas REAIS (série 7d → hoje + sparkline + %) cacheadas
-  // e re-renderiza UMA vez quando chegam (evita loop e "buscar toda hora").
-  if(typeof _cidCarregarMetricas === 'function'){
-    var _jaTinhaMet = !!_CID_METRICAS;
-    _cidCarregarMetricas().then(function(map){
-      if(map && !_jaTinhaMet && !window._cidEntHojeRerender){
-        window._cidEntHojeRerender = true;
-        setTimeout(function(){ window._cidEntHojeRerender = false; renderCidadesGrid(); }, 50);
-      }
-    });
-  }
-  
+  // v31.32: loader de "entregas hoje" removido junto com o bloco (nao alimentava
+  // mais nada). Card das cidades ficou mais limpo, sem fetch nem re-render extra.
+
   // Renderiza headers (stats topo + aniversários) sempre que o grid muda
   if(typeof renderCidadesStatsTopo === 'function') renderCidadesStatsTopo();
   if(typeof renderCidadesAniversarios === 'function') renderCidadesAniversarios();
