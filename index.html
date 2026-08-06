@@ -1,3 +1,4 @@
+<!-- v31.33 - Relatorios: novo botao "Excel" (.xls nativo) ao lado de Copiar/PDF/CSV. Abre direto no Excel com colunas separadas, mantendo acentos (UTF-8) e numeros como numeros - sem a bagunca de virgula/encoding do CSV. Nova _rlBaixarExcel() com limpador proprio (mantem acento, tira HTML) - 09/07/2026 -->
 <!-- v31.32 - Cards das cidades: removido o bloco "entregas hoje" (numero + % + sparkline). O dado nunca foi real (mockado por hash / quebrado, mostrava ~-100% em todas as cidades). Removido tambem o loader _cidCarregarMetricas que so alimentava esse bloco. Card mais limpo - 09/07/2026 -->
 <!-- v31.31 - Relatorios: seletor "De/Ate" (intervalo de datas, ex 01/07 a 31/07) no Top motoboys e Top clientes. Novo _RL.modo/dataInicio/dataFim + _rlFiltroData + _rlRpcAtividade escolhe RPC. Backend: 2 RPCs novas por intervalo (rodar docs/rpc_atividade_periodo.sql) que somam paradas_count. Clientes novos e Empresas em alta ficam so em "ultimos N dias" (nao encaixam em intervalo arbitrario) - 09/07/2026 -->
 <!-- v31.30 - Top motoboys: nomes nao apareciam (ex Campo Grande) pq nas corridas nome_condutor vem NULL. Agora _sb_top_motoboys puxa nome+telefone de machine_condutores (id->nome/telefone_celular) e desempata o ranking por finalizadas (a RPC ainda devolve paradas=0 em algumas cidades - somando total_paradas em vez de paradas_count) - 09/07/2026 -->
@@ -22713,6 +22714,7 @@ function _rlRenderResultado(r){
         +'<button onclick="_rlCopiarLista()" style="font-size:11px;padding:7px 12px;border:1px solid #1AB8F0;border-radius:6px;background:white;color:#0E7AB8;cursor:pointer;font-family:inherit;font-weight:600">📋 Copiar</button>'
         +'<button onclick="_rlBaixarPDF()" style="font-size:11px;padding:7px 12px;border:1px solid #8B5CF6;border-radius:6px;background:#8B5CF6;color:white;cursor:pointer;font-family:inherit;font-weight:600">📄 PDF</button>'
         +'<button onclick="_rlBaixarCSV()" style="font-size:11px;padding:7px 12px;border:1px solid #1D9E75;border-radius:6px;background:white;color:#1D9E75;cursor:pointer;font-family:inherit;font-weight:600">📊 CSV</button>'
+        +'<button onclick="_rlBaixarExcel()" style="font-size:11px;padding:7px 12px;border:1px solid #1D6F42;border-radius:6px;background:#1D6F42;color:white;cursor:pointer;font-family:inherit;font-weight:600">📗 Excel</button>'
       +'</div>'
     +'</div>'
   +'</div>';
@@ -22926,6 +22928,57 @@ function _rlBaixarCSV(){
   URL.revokeObjectURL(url);
   
   if(typeof toast === 'function') toast('CSV baixado!', 'success');
+}
+
+/* 🆕 v31.33: exporta o relatorio como .xls nativo (abre direto no Excel, colunas
+   separadas, sem drama de virgula/encoding do CSV). Mantem acentos (UTF-8) e
+   deixa numeros como numeros (Excel soma). Telefone com (DD) vira texto sozinho. */
+function _rlBaixarExcel(){
+  var r = _RL.resultadoAtual;
+  if(!r){ alert('Nada pra exportar'); return; }
+
+  // Limpador proprio: tira HTML (ex: link do WhatsApp) mas MANTEM acentos/emoji.
+  function xlLimpar(v){
+    return String(v == null ? '' : v)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'")
+      .replace(/\s+/g,' ').trim();
+  }
+  function xlEsc(v){ return xlLimpar(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var cidadeLabel = r.cidade ? (r.cidade.nome+'_'+r.cidade.uf) : 'sem_cidade';
+  var nomeArquivo = r.id+'_'+xlLimpar(cidadeLabel).replace(/[^\w\-]+/g,'_')+'_'+new Date().toISOString().split('T')[0]+'.xls';
+
+  var _resp = r.cidade ? _responsavelCidade(r.cidade.nome) : '';
+  var cols = (r.colunas||[]).concat(['Responsável']);
+  var thead = '<tr>'+cols.map(function(c){ return '<th style="background:#0E7AB8;color:#ffffff;font-weight:bold;border:1px solid #9CB3C9;padding:5px 9px;text-align:left">'+xlEsc(c)+'</th>'; }).join('')+'</tr>';
+  var tbody = '';
+  (r.vazio ? [] : (r.linhas||[])).forEach(function(row){
+    var full = row.concat([_resp]);
+    tbody += '<tr>'+full.map(function(v){ return '<td style="border:1px solid #D6E0EA;padding:4px 9px">'+xlEsc(v)+'</td>'; }).join('')+'</tr>';
+  });
+
+  var abaNome = xlEsc((r.id||'Relatorio')).slice(0,28) || 'Relatorio';
+  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
+    + '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8">'
+    + '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>'+abaNome+'</x:Name>'
+    + '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->'
+    + '</head><body>'
+    + '<table border="1" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:12px">'
+    + '<thead>'+thead+'</thead><tbody>'+tbody+'</tbody></table>'
+    + '</body></html>';
+
+  var blob = new Blob(['﻿'+html], { type:'application/vnd.ms-excel;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  if(typeof toast === 'function') toast('Excel baixado!', 'success');
 }
 
 function _rlBaixarPDF(){
