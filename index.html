@@ -1,3 +1,4 @@
+<!-- v31.37 - Modal "Novo post" (agendamento) sumia: o #ag-modal vive DENTRO de #pg-marketing (uma .page). Aberto de outra pagina (dashboard/Central de Conteudo), a pagina de marketing esta display:none e o modal ficava invisivel. Agora abrirAgendamentoNovo re-parenta o modal pro <body> ao abrir (igual openPessoaModal), ficando global e visivel de qualquer tela - 09/07/2026 -->
 <!-- v31.36 - Removidos os 2 botoes mortos restantes: "+ Manual" (pagina Campanhas) e "+ Nova ideia" (Banco de Ideias) - apontavam pros modais removidos modal-campanha/modal-ideia. Paginas ficam so pra visualizar. Nenhuma referencia a modal-tarefa/post/campanha/ideia restante nos botoes - 09/07/2026 -->
 <!-- v31.35 - Acoes rapidas do dashboard: removidos os botoes mortos "Nova tarefa", "Nova campanha" e "Nova ideia" (apontavam pra modais removidos: modal-tarefa/campanha/ideia). Sobraram Novo post, Aniversariantes e Pedir a IA (todos funcionais) - 09/07/2026 -->
 <!-- v31.34 - Marketing "Novo post" nao abria: os botoes chamavam openModal('modal-post'), mas modal-post foi removido (nao existe) => openModal quebrava em getElementById(null).classList. (1) openModal agora e null-safe (warn em vez de crash). (2) os 2 "Novo post" (Central de Conteudo + acao rapida) apontam pro modal que funciona: abrirAgendamentoNovo(). Obs: acoes rapidas Nova tarefa/campanha/ideia tambem apontam p/ modais removidos - agora so nao fazem nada (sem crash) - 09/07/2026 -->
@@ -47291,7 +47292,14 @@ function abrirAgendamentoNovo(){
   agRenderCidadesChips();
   agRenderMidiaPreview();
   agAtualizarPreview();
-  document.getElementById('ag-modal').classList.add('open');
+  // v31.37: o ag-modal mora dentro de #pg-marketing (uma .page). Aberto de OUTRA
+  // pagina (dashboard, Central de Conteudo), a pagina de marketing esta display:none
+  // e o modal "some". Re-parenta pro body (igual openPessoaModal) pra ficar global.
+  var _agm = document.getElementById('ag-modal');
+  if(_agm){
+    if(_agm.parentElement !== document.body) document.body.appendChild(_agm);
+    _agm.classList.add('open');
+  }
 }
 
 function agRenderCidadesChips(){
