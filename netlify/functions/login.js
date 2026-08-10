@@ -101,7 +101,9 @@ exports.handler = async function(event){
 
     // 3) Sucesso — gera token de sessão e atualiza login
     const sessaoToken = crypto.randomUUID();
-    const sessaoExpira = new Date(Date.now() + 24*60*60*1000).toISOString();
+    // v31.40: token de sessao de 7 dias (era 24h). Evita que o servidor recuse a
+    // escrita do ponto quando o cliente ainda se considera logado, e reduz re-logins.
+    const sessaoExpira = new Date(Date.now() + 7*24*60*60*1000).toISOString();
     try {
       await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(usuario.pessoa_id), {
         method: 'PATCH',

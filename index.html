@@ -1,3 +1,4 @@
+<!-- v31.40 - Ponto/Sessao: as pessoas eram DESLOGADAS apos 1h de inatividade (2 checagens: boot L100 + _getUsuarioLogadoReal). Logavam, o app ficava fechado, e ao voltar pra bater ponto (>1h) estavam deslogadas ("tela congelada, diz que bateu mas nao marca"). Subido pra 24h no cliente + token do servidor (login.js) de 24h -> 7 dias. Agora ficam logadas o dia todo - 09/07/2026 -->
 <!-- v31.39 - Relatorios: emoji/simbolos removidos das listas (colunas + linhas) na TELA e nas EXPORTACOES (Excel/CSV/PDF/Copiar leem o mesmo objeto, limpo no _rlRenderResultado). Mantem acentos e o HTML (badges/link); o 📱 vira o texto "WhatsApp" pro link seguir clicavel. Novo _rlLimparSimbolos/_rlLimparResultado - 09/07/2026 -->
 <!-- v31.38 - Relatorios: novo "Pararam de pedir (5-90 dias)" (id empresas_pararam_intervalo) - empresas por cidade cujo ultimo pedido foi entre X e Y dias atras (janela ajustavel 3..180), lista de reativacao ordenada das que pararam mais recente pras mais antigas. Requer RPC empresas_pararam_intervalo (docs/rpc_empresas_pararam_intervalo.sql) - 09/07/2026 -->
 <!-- v31.37 - Modal "Novo post" (agendamento) sumia: o #ag-modal vive DENTRO de #pg-marketing (uma .page). Aberto de outra pagina (dashboard/Central de Conteudo), a pagina de marketing esta display:none e o modal ficava invisivel. Agora abrirAgendamentoNovo re-parenta o modal pro <body> ao abrir (igual openPessoaModal), ficando global e visivel de qualquer tela - 09/07/2026 -->
@@ -97,7 +98,7 @@
         var u = JSON.parse(raw);
         if(u && u.id && ultimaAt){
           var diff = Date.now() - parseInt(ultimaAt);
-          if(diff < 60 * 60 * 1000) temSessao = true;
+          if(diff < 24 * 60 * 60 * 1000) temSessao = true; // v31.40: 1h -> 24h (era logout cedo demais ao reabrir p/ bater ponto)
         }
       } catch(e){}
     }
@@ -11605,7 +11606,11 @@ function _getUsuarioLogadoReal(){
     var u = JSON.parse(saved);
     var ultimaAtividade = parseInt(localStorage.getItem('gami_ultima_atividade') || '0', 10);
     var agora = Date.now();
-    if(ultimaAtividade && (agora - ultimaAtividade) > 60 * 60 * 1000){
+    // v31.40: era 1h de inatividade — cedo demais. As pessoas logavam, o app
+    // ficava fechado/2o plano, e ao voltar pra bater ponto (>1h depois) estavam
+    // deslogadas ("tela congelada, diz que bateu mas nao marca"). Subido pra 24h,
+    // igual ao token de sessao do servidor (login.js), cobrindo o dia todo.
+    if(ultimaAtividade && (agora - ultimaAtividade) > 24 * 60 * 60 * 1000){
       setUsuarioLogado(null);
       return null;
     }
