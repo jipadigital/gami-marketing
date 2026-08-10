@@ -1,3 +1,4 @@
+<!-- v31.38 - Relatorios: novo "Pararam de pedir (5-90 dias)" (id empresas_pararam_intervalo) - empresas por cidade cujo ultimo pedido foi entre X e Y dias atras (janela ajustavel 3..180), lista de reativacao ordenada das que pararam mais recente pras mais antigas. Requer RPC empresas_pararam_intervalo (docs/rpc_empresas_pararam_intervalo.sql) - 09/07/2026 -->
 <!-- v31.37 - Modal "Novo post" (agendamento) sumia: o #ag-modal vive DENTRO de #pg-marketing (uma .page). Aberto de outra pagina (dashboard/Central de Conteudo), a pagina de marketing esta display:none e o modal ficava invisivel. Agora abrirAgendamentoNovo re-parenta o modal pro <body> ao abrir (igual openPessoaModal), ficando global e visivel de qualquer tela - 09/07/2026 -->
 <!-- v31.36 - Removidos os 2 botoes mortos restantes: "+ Manual" (pagina Campanhas) e "+ Nova ideia" (Banco de Ideias) - apontavam pros modais removidos modal-campanha/modal-ideia. Paginas ficam so pra visualizar. Nenhuma referencia a modal-tarefa/post/campanha/ideia restante nos botoes - 09/07/2026 -->
 <!-- v31.35 - Acoes rapidas do dashboard: removidos os botoes mortos "Nova tarefa", "Nova campanha" e "Nova ideia" (apontavam pra modais removidos: modal-tarefa/campanha/ideia). Sobraram Novo post, Aniversariantes e Pedir a IA (todos funcionais) - 09/07/2026 -->
@@ -16766,6 +16767,9 @@ var RELATORIOS = {
       { id:'empresas_pararam_90d', icone:'🛑', nome:'Empresas que pararam (90d)',
         descricao:'Empresas que TINHAM pedidos antes mas ZERARAM nos últimos 90 dias — churn confirmado',
         temValor:false, fase:1 },
+      { id:'empresas_pararam_intervalo', icone:'⏳', nome:'Pararam de pedir (5–90 dias)',
+        descricao:'Empresas cujo ÚLTIMO pedido foi entre 5 e 90 dias atrás (janela ajustável) — lista de reativação, das que pararam mais recente pras mais antigas',
+        temValor:false, fase:1 },
       { id:'empresas_ativas_periodos', icone:'📋', nome:'Empresas ativas (15/30/45d)',
         descricao:'Todas as empresas que pediram nos últimos 45 dias com contagem por janela e telefone',
         temValor:false, fase:1 }
@@ -18397,6 +18401,82 @@ async function _sb_empresas_pararam_30d(){
   };
 }
 
+/* ⏳ v31.38: EMPRESAS QUE PARARAM DE PEDIR ENTRE X E Y DIAS (default 5–90) — por
+   cidade. Lista de reativacao: ultimo pedido entre p_dias_min e p_dias_max dias atras,
+   e que tinham pelo menos p_min_pedidos pedidos (cliente de verdade, nao one-off). */
+async function _sb_empresas_pararam_intervalo(){
+  var c = _rlGetCidade();
+  var slug = _rlSlug();
+  var diasMin = _RL.pararamMin !== undefined ? _RL.pararamMin : 5;
+  var diasMax = _RL.pararamMax !== undefined ? _RL.pararamMax : 90;
+  var minPedidos = _RL.pararamMinPed !== undefined ? _RL.pararamMinPed : 2;
+
+  var filtrosHtml = '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px">'
+    +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Parou há (mín):</strong>'
+      +'<select onchange="_RL.pararamMin=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+        +[3,5,7,15,30].map(function(d){return '<option value="'+d+'"'+(diasMin===d?' selected':'')+'>'+d+' dias</option>';}).join('')
+      +'</select></label>'
+    +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>até (máx):</strong>'
+      +'<select onchange="_RL.pararamMax=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+        +[30,60,90,120,180].map(function(d){return '<option value="'+d+'"'+(diasMax===d?' selected':'')+'>'+d+' dias</option>';}).join('')
+      +'</select></label>'
+    +'<label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px"><strong>Tinha (mín):</strong>'
+      +'<select onchange="_RL.pararamMinPed=parseInt(this.value);_rlGerarERenderizar()" style="padding:4px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px">'
+        +[1,2,3,5,10].map(function(d){return '<option value="'+d+'"'+(minPedidos===d?' selected':'')+'>'+d+'+ pedidos</option>';}).join('')
+      +'</select></label>'
+    +'</div>';
+
+  if(!slug){
+    return { id:'empresas_pararam_intervalo', icone:'⏳', titulo:'Pararam de pedir (5–90 dias)',
+      descricao:'⚠️ Selecione uma cidade primeiro.', cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'⏳ Pararam', valor:0, cor:'#EF9F27' }], filtros:filtrosHtml };
+  }
+
+  var lista=null, erro=null;
+  try {
+    var rpcResp = await fetch(SUPA_URL+'/rest/v1/rpc/empresas_pararam_intervalo', {
+      method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'},
+      body: JSON.stringify({ p_cidade_slug: slug, p_dias_min: diasMin, p_dias_max: diasMax, p_min_pedidos: minPedidos })
+    });
+    if(rpcResp.ok) lista = await rpcResp.json();
+    else erro = 'HTTP '+rpcResp.status+': '+(await rpcResp.text()).substring(0,160);
+  } catch(e){ erro = e.message; }
+
+  if(!Array.isArray(lista)){
+    return { id:'empresas_pararam_intervalo', icone:'⏳', titulo:'Pararam de pedir ('+diasMin+'–'+diasMax+' dias)',
+      descricao:'⚠️ RPC empresas_pararam_intervalo não respondeu ('+(erro||'erro')+'). Rode docs/rpc_empresas_pararam_intervalo.sql no Supabase.',
+      cidade:c, colunas:[], linhas:[], vazio:true,
+      kpis:[{ label:'⏳ Pararam', valor:0, cor:'#EF9F27' }], filtros:filtrosHtml };
+  }
+
+  var colunas = ['Empresa','Bairro','Último pedido','Sem pedir há','Pedidos','📞 Telefone'];
+  var linhas = lista.map(function(p){
+    var diasSem = parseInt(p.dias_sem_pedir)||0;
+    var icone = diasSem >= 60 ? '🔴' : diasSem >= 30 ? '🟠' : '🟡';
+    var ultFmt = '—';
+    if(p.ultimo_pedido){ var dt=new Date(p.ultimo_pedido); if(!isNaN(dt.getTime())) ultFmt=dt.toLocaleDateString('pt-BR'); }
+    var tel = p.telefone||''; var telLimpo = tel.replace(/\D/g,'');
+    var telCell = (telLimpo && telLimpo.length>=10)
+      ? '<span style="font-weight:600;color:#1a1a1a">'+tfEsc(tel)+'</span> <a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;text-decoration:none;font-weight:700" title="Abrir conversa no WhatsApp">📱</a>'
+      : '<span style="color:#999;font-size:11px">—</span>';
+    var qtd = parseInt(p.qtd_pedidos)||0;
+    var qtdBadge = '<span style="font-size:10px;padding:2px 7px;border-radius:10px;background:#E1F5EE;color:#0F6E56;font-weight:700">'+qtd+' pedidos</span>';
+    return [ icone+' '+tfEsc(p.nome||'?'), tfEsc(p.bairro||'—'), ultFmt, diasSem+' dias', qtdBadge, telCell ];
+  });
+
+  return {
+    id:'empresas_pararam_intervalo', icone:'⏳', titulo:'Pararam de pedir ('+diasMin+'–'+diasMax+' dias)',
+    descricao:'⚡ Supabase · Empresas com '+minPedidos+'+ pedidos cujo ÚLTIMO pedido foi entre '+diasMin+' e '+diasMax+' dias atrás · das que pararam mais recente pras mais antigas (topo = reativação mais fácil)',
+    cidade:c, colunas:colunas, linhas:linhas, vazio: lista.length === 0,
+    kpis:[
+      { label:'⏳ Pararam', valor:lista.length, cor:'#EF9F27' },
+      { label:'Com telefone', valor:lista.filter(function(p){return (p.telefone||'').replace(/\D/g,'').length>=10;}).length, cor:'#1AB8F0' }
+    ],
+    filtros: filtrosHtml
+  };
+}
+
 /* 🆕 v31.7: EMPRESAS QUE PARARAM (60d) — churn de médio prazo (tinham antes, zeraram nos últimos 60d) */
 async function _sb_empresas_pararam_60d(){
   var c = _rlGetCidade();
@@ -19663,6 +19743,7 @@ async function _rlGerarRelatorio(id, dados){
     case 'empresas_pararam_30d': return await _sb_empresas_pararam_30d();
     case 'empresas_pararam_60d': return await _sb_empresas_pararam_60d();
     case 'empresas_pararam_90d': return await _sb_empresas_pararam_90d();
+    case 'empresas_pararam_intervalo': return await _sb_empresas_pararam_intervalo();
     case 'empresas_ativas_periodos': return await _sb_empresas_ativas_periodos();
     case 'motoboys_ausentes':  return temSupa ? await _sb_motoboys_ausentes() : _gen_motoboys_ausentes(dados);
     case 'motoboys_queda':     return temSupa ? await _sb_motoboys_queda() : { id:'motoboys_queda', icone:'📉', titulo:'Motoboys em queda', descricao:'Disponível só com Supabase sincronizado', vazio:true, kpis:[] };
