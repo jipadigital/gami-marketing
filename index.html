@@ -1,3 +1,4 @@
+<!-- v31.39 - Relatorios: emoji/simbolos removidos das listas (colunas + linhas) na TELA e nas EXPORTACOES (Excel/CSV/PDF/Copiar leem o mesmo objeto, limpo no _rlRenderResultado). Mantem acentos e o HTML (badges/link); o 📱 vira o texto "WhatsApp" pro link seguir clicavel. Novo _rlLimparSimbolos/_rlLimparResultado - 09/07/2026 -->
 <!-- v31.38 - Relatorios: novo "Pararam de pedir (5-90 dias)" (id empresas_pararam_intervalo) - empresas por cidade cujo ultimo pedido foi entre X e Y dias atras (janela ajustavel 3..180), lista de reativacao ordenada das que pararam mais recente pras mais antigas. Requer RPC empresas_pararam_intervalo (docs/rpc_empresas_pararam_intervalo.sql) - 09/07/2026 -->
 <!-- v31.37 - Modal "Novo post" (agendamento) sumia: o #ag-modal vive DENTRO de #pg-marketing (uma .page). Aberto de outra pagina (dashboard/Central de Conteudo), a pagina de marketing esta display:none e o modal ficava invisivel. Agora abrirAgendamentoNovo re-parenta o modal pro <body> ao abrir (igual openPessoaModal), ficando global e visivel de qualquer tela - 09/07/2026 -->
 <!-- v31.36 - Removidos os 2 botoes mortos restantes: "+ Manual" (pagina Campanhas) e "+ Nova ideia" (Banco de Ideias) - apontavam pros modais removidos modal-campanha/modal-ideia. Paginas ficam so pra visualizar. Nenhuma referencia a modal-tarefa/post/campanha/ideia restante nos botoes - 09/07/2026 -->
@@ -22773,10 +22774,31 @@ function _gen_ranking_gestores_multi(dadosTodas){
 }
 
 
+/* v31.39: remove emoji e simbolos das celulas dos relatorios (tela + exportacoes
+   leem o MESMO objeto, entao limpar aqui cobre os dois). Mantem acentos (texto PT
+   normal) e o HTML (badges/links). O 📱 do WhatsApp vira o texto "WhatsApp" pra o
+   link continuar clicavel. */
+function _rlLimparSimbolos(v){
+  if(v == null) return v;
+  var s = String(v);
+  s = s.replace(/📱/g, 'WhatsApp');                 // 📱 -> texto (link segue util)
+  s = s.replace(/[\uD83C-\uDBFF][\uDC00-\uDFFF]/g, '');       // emoji astrais (pares surrogate: medalhas, estrelas, ampulheta...)
+  // setas, simbolos tecnicos/misc, dingbats (check/x), seletores de variacao, ZWJ, keycap, TM, info
+  s = s.replace(/[←-⇿⌀-➿⤀-⥿⬀-⯿☀-⛿︀-️‍⃣™ℹ]/g, '');
+  return s.replace(/\s{2,}/g, ' ').replace(/^\s+|\s+$/g, '');
+}
+function _rlLimparResultado(r){
+  if(!r) return r;
+  if(Array.isArray(r.colunas)) r.colunas = r.colunas.map(_rlLimparSimbolos);
+  if(Array.isArray(r.linhas)) r.linhas = r.linhas.map(function(row){ return Array.isArray(row) ? row.map(_rlLimparSimbolos) : _rlLimparSimbolos(row); });
+  return r;
+}
+
 function _rlRenderResultado(r){
   var host = document.getElementById('rl-content');
   if(!host || !r) return;
-  
+  _rlLimparResultado(r); // tira emoji/simbolos de colunas+linhas antes de exibir/exportar
+
   var cidadeLabel = r.cidade ? (r.cidade.nome+'/'+r.cidade.uf) : '—';
   
   var html = '';
