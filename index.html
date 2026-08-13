@@ -1,3 +1,4 @@
+<!-- v31.47 - Desligamento: pessoas desligadas continuavam aparecendo em Pessoas (o cadastro seguia na tabela e sincronizava pros gestores). Novo PESSOAS_DESLIGADAS filtrado no getPessoas (fonte central) - somem de TODAS as telas mesmo com cache antigo, e o syncPessoas apaga do servidor no proximo sync. Camily/Gabriella/Cristina/Luciana. Cadastros de 3 apagados no banco; Camily via SQL (FK do login) - 13/08/2026 -->
 <!-- v31.46 - Ranking por Cargo: removido o grupo "Outros". Quem nao e Lideranca/Gestor agora cai em "Operacao" (default) - Karen (Financeiro), Micaelle e afins aparecem em Operacao em vez de Outros - 13/08/2026 -->
 <!-- v31.45 - Escrita/Sessao: quando o token_atual do usuario esta nulo no servidor, a escrita falhava com "Sessao nao encontrada" mas o cliente NAO mandava pro login (so pegava "expirada"/"invalido"), entao a pessoa ficava presa em "Nao consegui salvar" (caso do Joao Duarte, diretoria). Agora qualquer erro de sessao (inclui "nao encontrada"/"faca login") forca re-login limpo. Fix real - 13/08/2026 -->
 <!-- v31.44 - Desligamento: Camily Barbosa (pe019) e Gabriella da Cruz (pe022) sairam da empresa. Removidas de MP_NOMES_FIXOS (Meu Ponto), nomesEsperados (verificacao suporte) e Camily de EST_SUPORTE_PERMISSOES (estoque). bate_ponto=false no banco. Desativar login + apagar pontos_log via SQL (RLS) - 11/08/2026 -->
@@ -13229,12 +13230,23 @@ if(document.readyState === 'loading'){
 }
 
 
+// v31.47: pessoas desligadas — filtradas do getPessoas (fonte central), entao
+// somem de TODAS as telas (Pessoas, ranking, cidades, meu ponto...) mesmo com cache
+// antigo. Como o syncPessoas le o getPessoas, elas tambem sao APAGADAS do servidor
+// no proximo sync (auto-limpeza) e nunca mais re-adicionadas.
+var PESSOAS_DESLIGADAS = [
+  'pe019',        // Camily Barbosa (11/08/2026)
+  'pe022',        // Gabriella da Cruz (11/08/2026)
+  'pemr5cqx9x',   // Cristina Oliveira (13/08/2026)
+  'pemrc34xh5'    // Luciana Hink Dias (13/08/2026)
+];
 function getPessoas(){
   try{
     var r=localStorage.getItem('gami_pessoas_v2');
-    if(!r||r==='undefined'||r==='null') return JSON.parse(JSON.stringify(PESSOAS_DEFAULT));
-    var parsed=JSON.parse(r);
-    return Array.isArray(parsed)&&parsed.length>0?parsed:JSON.parse(JSON.stringify(PESSOAS_DEFAULT));
+    var lista;
+    if(!r||r==='undefined'||r==='null') lista = JSON.parse(JSON.stringify(PESSOAS_DEFAULT));
+    else { var parsed=JSON.parse(r); lista = (Array.isArray(parsed)&&parsed.length>0)?parsed:JSON.parse(JSON.stringify(PESSOAS_DEFAULT)); }
+    return lista.filter(function(p){ return p && PESSOAS_DESLIGADAS.indexOf(p.id) < 0; });
   }catch(e){ return JSON.parse(JSON.stringify(PESSOAS_DEFAULT)); }
 }
 function savePessoas(list){ 
