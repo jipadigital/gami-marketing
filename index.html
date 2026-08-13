@@ -1,3 +1,4 @@
+<!-- v31.46 - Ranking por Cargo: removido o grupo "Outros". Quem nao e Lideranca/Gestor agora cai em "Operacao" (default) - Karen (Financeiro), Micaelle e afins aparecem em Operacao em vez de Outros - 13/08/2026 -->
 <!-- v31.45 - Escrita/Sessao: quando o token_atual do usuario esta nulo no servidor, a escrita falhava com "Sessao nao encontrada" mas o cliente NAO mandava pro login (so pegava "expirada"/"invalido"), entao a pessoa ficava presa em "Nao consegui salvar" (caso do Joao Duarte, diretoria). Agora qualquer erro de sessao (inclui "nao encontrada"/"faca login") forca re-login limpo. Fix real - 13/08/2026 -->
 <!-- v31.44 - Desligamento: Camily Barbosa (pe019) e Gabriella da Cruz (pe022) sairam da empresa. Removidas de MP_NOMES_FIXOS (Meu Ponto), nomesEsperados (verificacao suporte) e Camily de EST_SUPORTE_PERMISSOES (estoque). bate_ponto=false no banco. Desativar login + apagar pontos_log via SQL (RLS) - 11/08/2026 -->
 <!-- v31.43 - Ponto: liberada a FAIXA AMPLA 177.222. (Internet 5 do escritorio) na lista de IPs autorizados, no lugar dos /24 fixos (.212/.209). O provedor rotaciona de bloco e travava o ponto a cada troca; agora qualquer bloco 177.222.x passa. Mesmo criterio da Souuni (177.152.). Resolve de vez a recorrencia - 11/08/2026 -->
@@ -44126,8 +44127,8 @@ async function renderRankingPorCargo(){
   var grupos = {
     'Liderança': { cargos: ['Diretor','Diretora','Gerente'], lista: [] },
     'Gestores': { cargos: ['Gestor'], lista: [] },
-    'Operação': { cargos: ['Suporte','Marketing','Prospec','Comercial','Atendimento','Operação'], lista: [] },
-    'Outros': { cargos: [], lista: [] } // ranqueados que não casam em nenhum grupo — não somem mais
+    'Operação': { cargos: ['Suporte','Marketing','Prospec','Comercial','Atendimento','Operação'], lista: [] }
+    // v31.46: sem grupo "Outros" — quem nao e Lideranca/Gestor cai em Operacao (default abaixo)
   };
   ranking.forEach(function(r){
     var p = pessoas.find(function(x){ return x.id === r.pessoa_id; });
@@ -44140,7 +44141,7 @@ async function renderRankingPorCargo(){
       if(grupos[k].cargos.length && grupos[k].cargos.some(function(c){ return texto.indexOf(c) >= 0; })){ alvo = k; return true; }
       return false;
     });
-    if(!alvo) alvo = 'Outros';
+    if(!alvo) alvo = 'Operação'; // v31.46: default vira Operacao (Karen, Micaelle, Financeiro etc entram aqui) — acabou o "Outros"
     grupos[alvo].lista.push({ nome: r.pessoa_nome, pontos: r.total_pontos });
   });
   el.innerHTML = Object.keys(grupos).map(function(k){
