@@ -1,3 +1,4 @@
+<!-- v31.45 - Escrita/Sessao: quando o token_atual do usuario esta nulo no servidor, a escrita falhava com "Sessao nao encontrada" mas o cliente NAO mandava pro login (so pegava "expirada"/"invalido"), entao a pessoa ficava presa em "Nao consegui salvar" (caso do Joao Duarte, diretoria). Agora qualquer erro de sessao (inclui "nao encontrada"/"faca login") forca re-login limpo. Fix real - 13/08/2026 -->
 <!-- v31.44 - Desligamento: Camily Barbosa (pe019) e Gabriella da Cruz (pe022) sairam da empresa. Removidas de MP_NOMES_FIXOS (Meu Ponto), nomesEsperados (verificacao suporte) e Camily de EST_SUPORTE_PERMISSOES (estoque). bate_ponto=false no banco. Desativar login + apagar pontos_log via SQL (RLS) - 11/08/2026 -->
 <!-- v31.43 - Ponto: liberada a FAIXA AMPLA 177.222. (Internet 5 do escritorio) na lista de IPs autorizados, no lugar dos /24 fixos (.212/.209). O provedor rotaciona de bloco e travava o ponto a cada troca; agora qualquer bloco 177.222.x passa. Mesmo criterio da Souuni (177.152.). Resolve de vez a recorrencia - 11/08/2026 -->
 <!-- v31.42 - Ponto: escritorio de Ji-Parana com IP novo (177.222.209.100, bloco .209) - as meninas nao batiam ponto (GPS bloqueado + IP nao autorizado). Adicionado 177.222.209.100 + faixa /24 177.222.209. na lista de IPs autorizados. Provedor da Internet 5 rotaciona entre 177.222.212 e 177.222.209 - 11/08/2026 -->
@@ -21435,10 +21436,13 @@ async function _syncEscrever(payload){
     try { var j = JSON.parse(txt); msg = j.error || j.detalhe || txt; }
     catch(e){ msg = txt; }
     
-    // Se sessão expirou, redireciona pro login
-    if(r.status === 401 && (msg.indexOf('expirada') >= 0 || msg.indexOf('inválido') >= 0)){
+    // Se a sessao caiu (expirada, token invalido, OU "sessao nao encontrada" =
+    // token_atual nulo no servidor), redireciona pro login. v31.45: antes so pegava
+    // "expirada"/"invalido" e o erro "Sessao nao encontrada" escapava — a pessoa ficava
+    // presa em "Nao consegui salvar" sem ser mandada pro login (foi o caso do Joao Duarte).
+    if(r.status === 401 && /expirad|inv[aá]lid|n[aã]o encontrada|fa[cç]a login/i.test(msg)){
       try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
-      alert('Sessão expirada. Faça login novamente.');
+      alert('Sua sessão caiu. Faça login novamente pra continuar salvando.');
       if(typeof logout === 'function') logout();
       else location.reload();
     }
