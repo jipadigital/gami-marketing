@@ -1,3 +1,4 @@
+<!-- v31.48 - Desligamento (parte 2): a Camily continuava aparecendo em telas que leem o cache gami_pessoas_v2 DIRETO (nao via getPessoas). Agora o filtro PESSOAS_DESLIGADAS roda tambem no PULL do banco (antes de gravar o cache), entao o cache nunca tem desligado e some de TODAS as telas. Camily fica no banco so pelo historico de ponto - 13/08/2026 -->
 <!-- v31.47 - Desligamento: pessoas desligadas continuavam aparecendo em Pessoas (o cadastro seguia na tabela e sincronizava pros gestores). Novo PESSOAS_DESLIGADAS filtrado no getPessoas (fonte central) - somem de TODAS as telas mesmo com cache antigo, e o syncPessoas apaga do servidor no proximo sync. Camily/Gabriella/Cristina/Luciana. Cadastros de 3 apagados no banco; Camily via SQL (FK do login) - 13/08/2026 -->
 <!-- v31.46 - Ranking por Cargo: removido o grupo "Outros". Quem nao e Lideranca/Gestor agora cai em "Operacao" (default) - Karen (Financeiro), Micaelle e afins aparecem em Operacao em vez de Outros - 13/08/2026 -->
 <!-- v31.45 - Escrita/Sessao: quando o token_atual do usuario esta nulo no servidor, a escrita falhava com "Sessao nao encontrada" mas o cliente NAO mandava pro login (so pegava "expirada"/"invalido"), entao a pessoa ficava presa em "Nao consegui salvar" (caso do Joao Duarte, diretoria). Agora qualquer erro de sessao (inclui "nao encontrada"/"faca login") forca re-login limpo. Fix real - 13/08/2026 -->
@@ -38022,6 +38023,12 @@ async function loadPessoasFromSupa(){
       }
       return p;
     });
+    // v31.48: tira os desligados JA no pull do banco — senao entram no cache e
+    // aparecem nas telas que leem gami_pessoas_v2 direto (ex: Camily, que fica no
+    // banco pelo historico de ponto mas nao pode aparecer no roster).
+    if(typeof PESSOAS_DESLIGADAS !== 'undefined' && Array.isArray(d)){
+      d = d.filter(function(p){ return p && PESSOAS_DESLIGADAS.indexOf(p.id) < 0; });
+    }
     // CRITICAL: NÃO chamar savePessoas() aqui (dispararia sync de volta).
     try{ localStorage.setItem('gami_pessoas_v2',JSON.stringify(d)); }catch(e){}
     return d;
