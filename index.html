@@ -1,3 +1,4 @@
+<!-- v31.50 - Projetos: bug de perda de dados. Projetos so subiam pro servidor ao editar + com sessao valida; quem tinha sessao caida nunca fazia backup e perdia tudo num reset/troca de aparelho (caso Suzislaine). Agora o _projetosPull, ao ver o servidor vazio mas com projetos locais, faz o backup na hora (ao abrir o app). Junto com o fix de sessao (v31.45), projetos passam a ter backup confiavel - 14/08/2026 -->
 <!-- v31.49 - Ponto: Jessica Nayara (pe023) liberada pra bater ponto de casa - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite), igual a Jheniffer. Por e-mail + nome - 14/08/2026 -->
 <!-- v31.48 - Desligamento (parte 2): a Camily continuava aparecendo em telas que leem o cache gami_pessoas_v2 DIRETO (nao via getPessoas). Agora o filtro PESSOAS_DESLIGADAS roda tambem no PULL do banco (antes de gravar o cache), entao o cache nunca tem desligado e some de TODAS as telas. Camily fica no banco so pelo historico de ponto - 13/08/2026 -->
 <!-- v31.47 - Desligamento: pessoas desligadas continuavam aparecendo em Pessoas (o cadastro seguia na tabela e sincronizava pros gestores). Novo PESSOAS_DESLIGADAS filtrado no getPessoas (fonte central) - somem de TODAS as telas mesmo com cache antigo, e o syncPessoas apaga do servidor no proximo sync. Camily/Gabriella/Cristina/Luciana. Cadastros de 3 apagados no banco; Camily via SQL (FK do login) - 13/08/2026 -->
@@ -39071,7 +39072,19 @@ async function _projetosPull(uid){
     if(!uid){ var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; uid=u&&u.id; }
     if(!uid || typeof loadConfigFromSupa!=='function' || typeof SUPA_URL==='undefined') return;
     var srv = await loadConfigFromSupa('projetos_'+uid);
-    if(srv == null) return;
+    if(srv == null){
+      // v31.50: o servidor nao tem backup dos projetos. Se o LOCAL tem, faz o
+      // backup AGORA (antes so subia ao editar + com sessao valida — quem tinha a
+      // sessao caida nunca fazia backup e perdia tudo num reset/troca de aparelho).
+      try {
+        var local = JSON.parse(localStorage.getItem('gami_tf_v3_'+uid+'_projetos') || '[]');
+        if(Array.isArray(local) && local.length && typeof _projetosPush === 'function'){
+          console.log('[Projetos] servidor vazio + '+local.length+' locais → fazendo backup');
+          _projetosPush();
+        }
+      } catch(e){}
+      return;
+    }
     var arr = (typeof srv==='string') ? JSON.parse(srv) : srv;
     if(!Array.isArray(arr)) return;
     try { localStorage.setItem('gami_tf_v3_'+uid+'_projetos', JSON.stringify(arr)); } catch(e){}
