@@ -1,3 +1,4 @@
+<!-- v31.53 - Pontos: acoes IN-APP que nao davam ponto agora dao. Reconhecer colega no mural: +5 (reconheceu_colega) p/ quem reconhece e +15 (foi_reconhecido) p/ quem foi reconhecido (salvarReconhecimento nao chamava atribuirPontos). Assinar Culture Code: +15 na 1a vez (nova acao assinou_culture_code + award em assinarCompromisso). As outras ~55 acoes (devocional, visitas, reunioes, metas...) continuam MANUAIS pelo painel Admin do Ranking (funciona) - 18/08/2026 -->
 <!-- v31.52 - Ranking geral liberado pra TODOS (reverte a v31.24): colaborador agora tambem ve o podio/top/por cargo dos outros, alem dos proprios pontos (no hero "voce" e na linha destacada). Mudanca em renderRankingVisaoGeral (sempre renderiza o geral) + aplicarPermissoesVisuais (podeRankingGeral=true) - 18/08/2026 -->
 <!-- v31.51 - Ranking: card "Top 10 do mes" virou "Top 20 do mes" (lista 4o-20o em vez de 4o-10o) pra aparecer mais gente - ex Vanessa Frank que estava em 11o (46 pts) e ficava fora do corte. "Voce fora do top" agora e >=20. Colaborador continua vendo so o proprio extrato (v31.24 mantida) - 18/08/2026 -->
 <!-- v31.50 - Projetos: bug de perda de dados. Projetos so subiam pro servidor ao editar + com sessao valida; quem tinha sessao caida nunca fazia backup e perdia tudo num reset/troca de aparelho (caso Suzislaine). Agora o _projetosPull, ao ver o servidor vazio mas com projetos locais, faz o backup na hora (ao abrir o app). Junto com o fix de sessao (v31.45), projetos passam a ter backup confiavel - 14/08/2026 -->
@@ -10851,6 +10852,7 @@ var PONTOS_CATALOGO = {
   'reconheceu_colega':    { pontos: 5,   categoria: 'cultura', label: 'Reconheceu um colega' },
   'foi_reconhecido':      { pontos: 15,  categoria: 'cultura', label: 'Foi reconhecido por colega' },
   'comentou_mural_de':    { pontos: 2,   categoria: 'cultura', label: 'Comentou no mural' },
+  'assinou_culture_code': { pontos: 15,  categoria: 'cultura', label: 'Assinou o Culture Code', limite_dia: 1 },
   'recado_positivo':      { pontos: 5,   categoria: 'cultura', label: 'Postou recado positivo' },
   'recebeu_curtida':      { pontos: 1,   categoria: 'cultura', label: 'Recebeu curtida (até 5)' },
   'dica_util':            { pontos: 5,   categoria: 'cultura', label: 'Postou dica útil pra equipe' },
@@ -35045,6 +35047,12 @@ function salvarReconhecimento(){
     if(typeof criarNotificacao==='function' && (!_me || _me.id !== p.id)){
       criarNotificacao(p.id, 'reconhecimento', '🌟 Você foi reconhecido!', texto, 'culture');
     }
+    // 🆕 v31.53: PONTOS — antes reconhecer nao dava ponto nenhum. Agora: quem
+    // reconhece ganha 'reconheceu_colega' (5) e quem foi reconhecido 'foi_reconhecido' (15).
+    if(typeof atribuirPontos==='function'){
+      if(_me && _me.id) atribuirPontos(_me.id, 'reconheceu_colega');
+      if(p && p.id && (!_me || _me.id !== p.id)) atribuirPontos(p.id, 'foi_reconhecido');
+    }
   }catch(e){}
 
   document.getElementById('modal-reconhecimento') && fecharModalReconhecimento();
@@ -45909,7 +45917,14 @@ function assinarCompromisso(force){
   if(existente >= 0) arr[existente] = entry;
   else arr.push(entry);
   _cultureSalvarAssinaturas(arr);
-  
+
+  // 🆕 v31.53: PONTOS — assinar o Culture Code (só na 1ª vez) da +15. Antes nao dava nada.
+  try {
+    if(existente < 0 && u && u.id && typeof atribuirPontos==='function'){
+      atribuirPontos(u.id, 'assinou_culture_code');
+    }
+  } catch(e){}
+
   // Mantém compatibilidade com chave antiga
   try { localStorage.setItem('gami_assinatura_culture', JSON.stringify(entry)); } catch(e){}
   
