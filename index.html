@@ -1,3 +1,4 @@
+<!-- v31.52 - Ranking geral liberado pra TODOS (reverte a v31.24): colaborador agora tambem ve o podio/top/por cargo dos outros, alem dos proprios pontos (no hero "voce" e na linha destacada). Mudanca em renderRankingVisaoGeral (sempre renderiza o geral) + aplicarPermissoesVisuais (podeRankingGeral=true) - 18/08/2026 -->
 <!-- v31.51 - Ranking: card "Top 10 do mes" virou "Top 20 do mes" (lista 4o-20o em vez de 4o-10o) pra aparecer mais gente - ex Vanessa Frank que estava em 11o (46 pts) e ficava fora do corte. "Voce fora do top" agora e >=20. Colaborador continua vendo so o proprio extrato (v31.24 mantida) - 18/08/2026 -->
 <!-- v31.50 - Projetos: bug de perda de dados. Projetos so subiam pro servidor ao editar + com sessao valida; quem tinha sessao caida nunca fazia backup e perdia tudo num reset/troca de aparelho (caso Suzislaine). Agora o _projetosPull, ao ver o servidor vazio mas com projetos locais, faz o backup na hora (ao abrir o app). Junto com o fix de sessao (v31.45), projetos passam a ter backup confiavel - 14/08/2026 -->
 <!-- v31.49 - Ponto: Jessica Nayara (pe023) liberada pra bater ponto de casa - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite), igual a Jheniffer. Por e-mail + nome - 14/08/2026 -->
@@ -2355,9 +2356,10 @@ function aplicarPermissoesVisuais(){
     el.style.display = podeEquipe ? '' : 'none';
   });
 
-  // 🆕 v31.24: pontos de TODO MUNDO (ranking geral) só p/ super_admin, diretoria e gerencia.
-  // Os demais (colaboradores) veem apenas o próprio extrato de pontos.
-  var podeRankingGeral = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia');
+  // v31.52: ranking geral liberado pra TODOS (colaborador tambem ve o dos outros).
+  // O colaborador segue vendo os proprios pontos no hero "voce" e na linha destacada.
+  // (Era so super_admin/diretoria/gerencia na v31.24.)
+  var podeRankingGeral = true;
   document.querySelectorAll('[data-perm-ranking-geral="true"]').forEach(function(el){
     el.style.display = podeRankingGeral ? '' : 'none';
   });
@@ -43443,15 +43445,11 @@ function renderRankingVisaoGeral(){
   // Ranking de cidades agora vive APENAS no Dashboard
   // 🆕 v31.24: pontos de todo mundo só p/ super_admin, diretoria e gerencia.
   // Colaboradores veem apenas o próprio extrato.
-  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : (window.usuarioLogado||null);
-  var nivel = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : 'colaborador';
-  var podeGeral = (nivel==='super_admin' || nivel==='diretoria' || nivel==='gerencia');
-  if(podeGeral){
-    renderRankingIndividual();
-    renderRankingPorCargo();
-  } else {
-    renderMeuExtrato();
-  }
+  // v31.52: TODOS veem o ranking geral (podio + top + por cargo). O colaborador
+  // continua vendo os proprios pontos (no hero "voce" e na linha destacada do top),
+  // mas agora tambem ve o dos outros. (Antes, v31.24, colaborador via so o proprio.)
+  renderRankingIndividual();
+  renderRankingPorCargo();
   if(typeof aplicarPermissoesVisuais === 'function') aplicarPermissoesVisuais();
 }
 
