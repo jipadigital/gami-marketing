@@ -1,3 +1,4 @@
+<!-- v31.54 - Pontos: mais 2 acoes in-app ligadas. Escrever no mural (comentou_mural_de) = +1 (1x/dia) em salvarRecadoInline. Ler o versiculo do dia (versiculo_lido) = +1 (1x/dia) ao exibir no dashboard (era +2/semana, virou +1/dia). Valores ajustados no catalogo - 18/08/2026 -->
 <!-- v31.53 - Pontos: acoes IN-APP que nao davam ponto agora dao. Reconhecer colega no mural: +5 (reconheceu_colega) p/ quem reconhece e +15 (foi_reconhecido) p/ quem foi reconhecido (salvarReconhecimento nao chamava atribuirPontos). Assinar Culture Code: +15 na 1a vez (nova acao assinou_culture_code + award em assinarCompromisso). As outras ~55 acoes (devocional, visitas, reunioes, metas...) continuam MANUAIS pelo painel Admin do Ranking (funciona) - 18/08/2026 -->
 <!-- v31.52 - Ranking geral liberado pra TODOS (reverte a v31.24): colaborador agora tambem ve o podio/top/por cargo dos outros, alem dos proprios pontos (no hero "voce" e na linha destacada). Mudanca em renderRankingVisaoGeral (sempre renderiza o geral) + aplicarPermissoesVisuais (podeRankingGeral=true) - 18/08/2026 -->
 <!-- v31.51 - Ranking: card "Top 10 do mes" virou "Top 20 do mes" (lista 4o-20o em vez de 4o-10o) pra aparecer mais gente - ex Vanessa Frank que estava em 11o (46 pts) e ficava fora do corte. "Voce fora do top" agora e >=20. Colaborador continua vendo so o proprio extrato (v31.24 mantida) - 18/08/2026 -->
@@ -10839,7 +10840,7 @@ var PONTOS_CATALOGO = {
   'tarefa_concluida':     { pontos: 1,  categoria: 'engajamento', label: 'Tarefa concluída' },
   'anotacao_calendario':  { pontos: 1,  categoria: 'engajamento', label: 'Anotação no calendário', limite_dia: 1 },
   'visitou_3_abas':       { pontos: 1,  categoria: 'engajamento', label: 'Visitou 3+ abas no dia', limite_dia: 1 },
-  'versiculo_lido':       { pontos: 2,  categoria: 'engajamento', label: 'Leu versículo da semana', limite_semana: 1 },
+  'versiculo_lido':       { pontos: 1,  categoria: 'engajamento', label: 'Leu o versículo do dia', limite_dia: 1 },
   
   // STREAKS (sequências)
   'streak_login_7':       { pontos: 5,   categoria: 'engajamento', label: '7 dias de login seguidos' },
@@ -10851,7 +10852,7 @@ var PONTOS_CATALOGO = {
   // CULTURA E TIME
   'reconheceu_colega':    { pontos: 5,   categoria: 'cultura', label: 'Reconheceu um colega' },
   'foi_reconhecido':      { pontos: 15,  categoria: 'cultura', label: 'Foi reconhecido por colega' },
-  'comentou_mural_de':    { pontos: 2,   categoria: 'cultura', label: 'Comentou no mural' },
+  'comentou_mural_de':    { pontos: 1,   categoria: 'cultura', label: 'Escreveu no mural', limite_dia: 1 },
   'assinou_culture_code': { pontos: 15,  categoria: 'cultura', label: 'Assinou o Culture Code', limite_dia: 1 },
   'recado_positivo':      { pontos: 5,   categoria: 'cultura', label: 'Postou recado positivo' },
   'recebeu_curtida':      { pontos: 1,   categoria: 'cultura', label: 'Recebeu curtida (até 5)' },
@@ -33379,6 +33380,12 @@ function carregarVersiculo(){
   const v = getItemDoDia(VERSICULOS);
   _versiculoIdx = VERSICULOS.indexOf(v);
   exibirVersiculo(v);
+  // 🆕 v31.54: PONTOS — ler o versículo do dia da +1 (1x/dia, trava no catalogo).
+  // Roda ao exibir o versiculo no dashboard (a pessoa "leu" ao ver).
+  try {
+    var _uv = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(_uv && _uv.id && typeof atribuirPontos==='function') atribuirPontos(_uv.id, 'versiculo_lido');
+  } catch(e){}
 }
 function exibirVersiculo(v){
   const t = document.getElementById('dash-versiculo-texto');
@@ -47047,6 +47054,8 @@ function salvarRecadoInline(){
   if(lista.length > 12) lista = lista.slice(0,12);
   saveRecados(lista);
   if(typeof _recadosSalvarSupa === 'function') _recadosSalvarSupa(lista[0]); // publica pro time inteiro
+  // 🆕 v31.54: PONTOS — escrever no mural da +1 (1x/dia, trava no catalogo).
+  try { if(autorId && typeof atribuirPontos==='function') atribuirPontos(autorId, 'comentou_mural_de'); } catch(e){}
   input.value = '';
   var counter = document.getElementById('mural-counter');
   if(counter) counter.textContent = '0 / 140';
