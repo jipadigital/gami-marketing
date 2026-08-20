@@ -1,3 +1,4 @@
+<!-- v31.56 - Ponto: REGISTRO DE TENTATIVAS FALHAS. Antes so as batidas que davam certo ficavam gravadas (ponto_registros); quando falhava (GPS negado/IP fora/fora do raio) nao sobrava rastro, entao "eu bati e nao registrou" era palavra contra palavra. Agora toda tentativa que falha e gravada (nova tabela ponto_tentativas via RPC ponto_log_tentativa) com hora+motivo+IP, e os gestores veem a lista "Tentativas que FALHARAM neste dia" no editor de ponto (RPC ponto_tentativas_dia). RODAR docs/ponto_tentativas.sql no Supabase - 19/08/2026 -->
 <!-- v31.55 - Ponto: escritorio de Ji-Parana com LINK NOVO (Internet 6, IP 186.226.222.15, bloco 186.226.222.x). A Luiza (Andreia Luiza Damke) batia ponto do escritorio mas caia todo dia na tela "localizacao bloqueada" - GPS bloqueado no navegador + esse IP nao estava autorizado. Adicionado 186.226.222.15 + faixa /24 186.226.222. na lista de IPs do escritorio. Agora valida pela rede sem depender de GPS - 19/08/2026 -->
 <!-- v31.54 - Pontos: mais 2 acoes in-app ligadas. Escrever no mural (comentou_mural_de) = +1 (1x/dia) em salvarRecadoInline. Ler o versiculo do dia (versiculo_lido) = +1 (1x/dia) ao exibir no dashboard (era +2/semana, virou +1/dia). Valores ajustados no catalogo - 18/08/2026 -->
 <!-- v31.53 - Pontos: acoes IN-APP que nao davam ponto agora dao. Reconhecer colega no mural: +5 (reconheceu_colega) p/ quem reconhece e +15 (foi_reconhecido) p/ quem foi reconhecido (salvarReconhecimento nao chamava atribuirPontos). Assinar Culture Code: +15 na 1a vez (nova acao assinou_culture_code + award em assinarCompromisso). As outras ~55 acoes (devocional, visitas, reunioes, metas...) continuam MANUAIS pelo painel Admin do Ranking (funciona) - 18/08/2026 -->
@@ -50885,6 +50886,34 @@ async function _mpRPC(fn, params){
   return resp;
 }
 
+// 🆕 v31.56: registra uma TENTATIVA de bater ponto que FALHOU (GPS negado/IP fora/
+// fora do raio). As batidas que dao certo ja ficam em ponto_registros; aqui gravamos
+// as que NAO passaram, com hora+motivo+IP, pra ter prova de quem tentou e nao conseguiu.
+// NUNCA trava o fluxo do ponto (try/catch mudo; sem await no chamador).
+async function _mpLogTentativa(resultado, detalhe){
+  try {
+    var ip = null;
+    try { ip = await _obterIPPublico(); } catch(e){}
+    var proximo = null;
+    try {
+      if(MP_ULTIMO_DADOS){
+        var regs = {}; (MP_ULTIMO_DADOS.registros||[]).forEach(function(r){ regs[r.tipo] = r; });
+        var seq = ['entrada1','saida1','entrada2','saida2'];
+        for(var i=0;i<seq.length;i++){ if(!regs[seq[i]]){ proximo = seq[i]; break; } }
+      }
+    } catch(e){}
+    await _mpRPC('ponto_log_tentativa', {
+      p_pessoa_id:  MP_PESSOA ? MP_PESSOA.id : null,
+      p_nome:       MP_PESSOA ? MP_PESSOA.nome : null,
+      p_resultado:  resultado,
+      p_tipo:       proximo,
+      p_ip:         ip,
+      p_detalhe:    String(detalhe||'').slice(0,300),
+      p_user_agent: (navigator.userAgent||'').slice(0,200)
+    });
+  } catch(e){ /* silencioso: o log de tentativa nunca pode travar o ponto */ }
+}
+
 // Cache do ID de quem recebe notificações de ponto (Leomara, Thiago, etc)
 var _PONTO_GESTORES_IDS = null;
 
@@ -52185,6 +52214,8 @@ async function mpBaterPonto(){
         btn.textContent = '🕒 BATER PONTO';
       }
       var detalheIp = presenca.ip ? '\n\n🌐 Seu IP atual: ' + presenca.ip + ' (não é da rede do escritório)' : '';
+      // 🆕 v31.56: registra a tentativa falha (GPS indisponivel/negado + IP fora da rede)
+      _mpLogTentativa('falha_gps_ip', 'GPS indisponivel/negado + IP fora da rede' + (presenca.ip ? ' (IP ' + presenca.ip + ')' : ''));
       alert('⏱️ Não conseguimos obter sua localização.' + detalheIp + '\n\nSe você ESTÁ no escritório agora, entre em contato com o Cleyton.');
       return;
     }
@@ -52200,6 +52231,8 @@ async function mpBaterPonto(){
     // escritório, ou com liberação temporária do admin (tratada antes, no fluxo).
     if(btn){ btn.disabled = false; btn.textContent = '🕒 BATER PONTO'; }
     if(justifBox) justifBox.style.display = 'none';
+    // 🆕 v31.56: registra a tentativa falha (GPS ok, mas fora do raio do escritorio)
+    _mpLogTentativa('fora_raio', 'GPS ok mas ' + Math.round(MP_GEO.distancia) + 'm do escritorio (fora do raio)');
     alert('📍 Você está a ' + Math.round(MP_GEO.distancia) + 'm do escritório (fora do raio permitido).\n\nO ponto só pode ser batido no escritório ou na rede do escritório. Se precisa bater de fora, peça liberação ao Cleyton.');
     return;
   }
@@ -52942,10 +52975,53 @@ async function pgEditorCarregar(){
       var existente = lblData.innerHTML;
       lblData.innerHTML = existente + ' · <span style="color:#1AB8F0">' + registros.length + ' batida(s)</span>';
     }
+    // 🆕 v31.56: lista as TENTATIVAS que falharam neste dia (prova de quem tentou e nao passou)
+    try { _pgRenderTentativas(data); } catch(e){ console.warn('[Editor] tentativas:', e); }
   } catch(e){
     grid.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;color:#A32D2D;font-size:12px">Erro: '+e.message+'<br><small>Veja F12 → Console pra detalhes</small></div>';
     console.error('[Editor]', e);
   }
+}
+
+// 🆕 v31.56: renderiza as tentativas de ponto que FALHARAM no dia (GPS negado/IP fora/
+// fora do raio) logo abaixo do grid de batidas. Fonte: RPC ponto_tentativas_dia.
+async function _pgRenderTentativas(data){
+  var grid = document.getElementById('pg-ed-grid');
+  if(!grid) return;
+  var cont = document.getElementById('pg-ed-tentativas');
+  if(!cont){
+    cont = document.createElement('div');
+    cont.id = 'pg-ed-tentativas';
+    cont.style.cssText = 'grid-column:1/-1;margin-top:8px';
+    grid.parentNode.insertBefore(cont, grid.nextSibling);
+  }
+  cont.innerHTML = '';
+  var lista = [];
+  try { lista = await _pgRPC('ponto_tentativas_dia', { p_data: data }); }
+  catch(e){ return; } // RPC ainda nao criada no banco = simplesmente nao mostra nada
+  if(!Array.isArray(lista) || !lista.length) return;
+  var lbl = {
+    falha_gps_ip: '🚫 GPS negado + fora da rede do escritório',
+    fora_raio:    '📍 Fora do raio permitido',
+    erro:         '⚠️ Erro'
+  };
+  var esc = (typeof tfEsc === 'function') ? tfEsc : function(s){ return String(s==null?'':s); };
+  var linhas = lista.map(function(t){
+    var hora = '--:--';
+    try { hora = new Date(t.criado_em).toLocaleTimeString('pt-BR',{ timeZone:'America/Porto_Velho', hour:'2-digit', minute:'2-digit' }); } catch(e){}
+    return '<div style="display:flex;gap:10px;align-items:center;padding:8px 12px;border-top:1px solid var(--border);font-size:12px;flex-wrap:wrap">'
+      + '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:800;color:#A32D2D;min-width:44px">'+hora+'</span>'
+      + '<span style="font-weight:700;min-width:130px">'+esc(t.nome||t.pessoa_id||'?')+'</span>'
+      + '<span style="color:var(--text2)">'+(lbl[t.resultado]||esc(t.resultado))+'</span>'
+      + (t.ip ? '<span style="color:var(--text3);font-size:11px;font-family:\'JetBrains Mono\',monospace;margin-left:auto">IP '+esc(t.ip)+'</span>' : '')
+    + '</div>';
+  }).join('');
+  cont.innerHTML = '<div style="background:var(--surface);border:1px solid #F0C0C0;border-radius:10px;overflow:hidden">'
+    + '<div style="padding:10px 12px;background:#FCE6E6;color:#A32D2D;font-size:12px;font-weight:800">'
+      + '⚠️ Tentativas que FALHARAM neste dia ('+lista.length+') — apertaram BATER PONTO mas não passou (GPS/IP)'
+    + '</div>'
+    + linhas
+  + '</div>';
 }
 
 // Abre modal de adicionar JÁ pré-preenchido com pessoa+tipo+data
