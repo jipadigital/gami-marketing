@@ -1,3 +1,4 @@
+<!-- v31.57 - Ponto\Seguranca: FECHADO o furo de bater de fora pelo IP. As faixas AMPLAS de provedor (177.152. Souuni e 177.222. Internet 5) liberavam a rede INTEIRA do provedor - quem tinha o mesmo provedor EM CASA passava como se fosse o escritorio. Trocadas pelos blocos /24 REAIS do escritorio (177.152.116/.117 e 177.222.209/.212); todos os IPs que o escritorio usou no mes continuam passando, mas casa no mesmo provedor nao passa mais. BONUS: no editor de ponto, cada batida agora mostra ONDE bateu (IP .x.x / GPS / home office) e um ⚠ vermelho quando o IP nao e de bloco conhecido do escritorio - da pra ver de relance quem bateu de fora. Obs: se o provedor do escritorio girar pra um /24 novo, adicionar (a lista de tentativas falhas v31.56 mostra o IP bloqueado) - 20/08/2026 -->
 <!-- v31.56 - Ponto: REGISTRO DE TENTATIVAS FALHAS. Antes so as batidas que davam certo ficavam gravadas (ponto_registros); quando falhava (GPS negado/IP fora/fora do raio) nao sobrava rastro, entao "eu bati e nao registrou" era palavra contra palavra. Agora toda tentativa que falha e gravada (nova tabela ponto_tentativas via RPC ponto_log_tentativa) com hora+motivo+IP, e os gestores veem a lista "Tentativas que FALHARAM neste dia" no editor de ponto (RPC ponto_tentativas_dia). RODAR docs/ponto_tentativas.sql no Supabase - 19/08/2026 -->
 <!-- v31.55 - Ponto: escritorio de Ji-Parana com LINK NOVO (Internet 6, IP 186.226.222.15, bloco 186.226.222.x). A Luiza (Andreia Luiza Damke) batia ponto do escritorio mas caia todo dia na tela "localizacao bloqueada" - GPS bloqueado no navegador + esse IP nao estava autorizado. Adicionado 186.226.222.15 + faixa /24 186.226.222. na lista de IPs do escritorio. Agora valida pela rede sem depender de GPS - 19/08/2026 -->
 <!-- v31.54 - Pontos: mais 2 acoes in-app ligadas. Escrever no mural (comentou_mural_de) = +1 (1x/dia) em salvarRecadoInline. Ler o versiculo do dia (versiculo_lido) = +1 (1x/dia) ao exibir no dashboard (era +2/semana, virou +1/dia). Valores ajustados no catalogo - 18/08/2026 -->
@@ -52941,13 +52942,35 @@ async function pgEditorCarregar(){
           
           var temEditado = b.editado_por ? '<div style="position:absolute;top:-3px;right:-3px;background:#EF9F27;color:white;font-size:8px;font-weight:700;padding:1px 4px;border-radius:3px">✏️</div>' : '';
           var temDup = batidas.length > 1 ? '<div style="font-size:8px;color:#A32D2D;font-weight:700;margin-top:1px;text-align:center">DUPLICADA</div>' : '';
-          
-          return '<div onclick="pgEditarBatida('+b.id+')" '
+
+          // 🆕 v31.57: mostra ONDE a pessoa bateu (IP/GPS) + alerta ⚠ se o IP nao for
+          // de um bloco conhecido do escritorio. Ajuda o gestor a ver batida "de fora".
+          var _mIp = (b.justificativa||'').match(/\[IP ESCRIT[ÓO]RIO\s+([0-9.]+)\]/i);
+          var _ipB = _mIp ? _mIp[1] : null;
+          var _ondeTxt, _ondeCor, _alerta = '';
+          if(_ipB){
+            var _okIp = (typeof _ipEhAutorizado === 'function') ? _ipEhAutorizado(_ipB) : true;
+            _ondeTxt = 'IP .' + _ipB.split('.').slice(2).join('.');
+            _ondeCor = _okIp ? '#0F6D52' : '#A32D2D';
+            if(!_okIp) _alerta = '<div title="IP fora dos blocos do escritório" style="position:absolute;top:-3px;left:-3px;background:#A32D2D;color:#fff;font-size:9px;font-weight:800;padding:1px 4px;border-radius:3px">⚠</div>';
+          } else if(/HOME OFFICE/i.test(b.justificativa||'')){
+            _ondeTxt = 'home office'; _ondeCor = '#1D9E75';
+          } else if(b.dentro_do_raio && (b.latitude || b.longitude)){
+            _ondeTxt = 'GPS' + (b.distancia_metros != null ? ' ' + Math.round(b.distancia_metros) + 'm' : ''); _ondeCor = '#854F0B';
+          } else {
+            _ondeTxt = 'sem IP/GPS'; _ondeCor = '#A32D2D';
+            _alerta = '<div title="sem validação de IP/GPS" style="position:absolute;top:-3px;left:-3px;background:#A32D2D;color:#fff;font-size:9px;font-weight:800;padding:1px 4px;border-radius:3px">⚠</div>';
+          }
+          var _titleFull = String(b.justificativa || '').replace(/"/g,'&quot;');
+
+          return '<div onclick="pgEditarBatida('+b.id+')" title="'+_titleFull+'" '
             + 'style="position:relative;padding:10px 4px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;background:var(--surface2);transition:all .12s;min-height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center" '
             + 'onmouseover="this.style.borderColor=\'#1AB8F0\';this.style.background=\'#EAF6FE\'" '
             + 'onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--surface2)\'">'
             + temEditado
+            + _alerta
             + '<div style="font-size:13px;font-weight:700;color:var(--text);text-align:center;font-family:\'JetBrains Mono\',monospace;line-height:1.2"><span style="color:'+iconCor+'">●</span> '+hora+'</div>'
+            + '<div style="font-size:8px;color:'+_ondeCor+';text-align:center;margin-top:2px;font-family:\'JetBrains Mono\',monospace;line-height:1.1">'+_ondeTxt+'</div>'
             + temDup
           + '</div>';
         }).join('');
@@ -54055,10 +54078,12 @@ var ESCRITORIO_IPS_AUTORIZADOS = [
 ];
 var ESCRITORIO_FAIXAS_AUTORIZADAS = [
   '138.97.145.',        // Faixa /24 Rede Completa (caso IP mude no mesmo bloco)
-  '177.152.',           // Faixa AMPLA Souuni (177.152.x.x) - o provedor rotaciona entre blocos (.116, .117, etc). add v30.7. Mais permissivo: qualquer cliente Souuni nessa faixa passa.
+  '177.152.116.',       // Souuni bloco /24 .116 do escritorio (v31.57: FECHADO - antes era AMPLA '177.152.' = provedor todo, deixava casa no mesmo provedor passar)
+  '177.152.117.',       // Souuni bloco /24 .117 do escritorio
   '138.122.17.',        // Faixa /24 Internet 3 (caso IP mude no mesmo bloco)
   '192.144.64.',        // Faixa /24 Internet 4 (caso IP mude no mesmo bloco) - add v29.3
-  '177.222.',           // Faixa AMPLA Internet 5 (177.222.x.x) - o provedor ROTACIONA entre blocos (.209, .212, etc), entao liberamos toda a faixa pra nao travar o ponto a cada troca. Mesmo criterio da Souuni (177.152.). add v31.43 - 11/08/2026. (Antes eram /24 fixos .212 e .209.)
+  '177.222.209.',       // Internet 5 bloco /24 .209 do escritorio (v31.57: FECHADO - antes era AMPLA '177.222.' = provedor todo)
+  '177.222.212.',       // Internet 5 bloco /24 .212 do escritorio
   '186.226.222.',       // Faixa /24 Internet 6 (link novo) - Escritório Gâmi Ji-Paraná (caso o IP mude no mesmo bloco). add v31.55 - 19/08/2026
 ];
 
