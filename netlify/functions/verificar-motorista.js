@@ -232,6 +232,26 @@ async function infosimplesConsulta(path, params){
 }
 // So confia nos dados quando code === 200 (sucesso). Qualquer outro code = falha.
 function infosimplesOk(j){ return !!(j && j.code === 200 && Array.isArray(j.data)); }
+
+// Candidatos de slug por consulta (a Infosimples nao expoe o slug na pagina publica).
+// code 602 = "servico invalido" e NAO e cobrado, entao da pra testar candidatos de
+// graca ate achar o que existe. O slug correto ainda pode ser fixado por ENV.
+const SLUGS_CNH = ['senatran/validar-cnh', 'senatran/cnh', 'detran/senatran/validar-cnh'];
+const SLUGS_ANTECEDENTES = ['policia-federal/antecedentes-criminais/emitir', 'antecedentes-criminais/policia-federal/emitir', 'antecedentes-criminais/pf/emitir', 'policia-federal/antecedentes-criminais'];
+const SLUGS_MANDADOS = ['cnj/mandados-prisao', 'cnj/mandados-de-prisao', 'conselho-nacional-justica/mandados-de-prisao', 'cnj/bnmp/mandados-prisao'];
+// cache do slug descoberto (persiste em container quente)
+const _slugCache = {};
+async function infosimplesAuto(chave, envSlug, candidatos, params){
+  // ENV fixa tem prioridade; senao usa o cache; senao testa os candidatos.
+  const lista = envSlug ? [envSlug] : (_slugCache[chave] ? [_slugCache[chave]] : candidatos);
+  let ultima = null;
+  for(const s of lista){
+    const j = await infosimplesConsulta(s, params);
+    ultima = j;
+    if(j && j.code !== 602){ _slugCache[chave] = s; return j; } // 602 = servico inexistente
+  }
+  return ultima;
+}
 function mapSituacaoCnh(s){
   s = String(s || '').toLowerCase();
   if(/suspens/.test(s)) return 'suspensa';
@@ -259,9 +279,9 @@ async function consultarAgregador(cpf, nome, extra){
   const revisaoMotivos = [];
 
   // ---- CNH: SENATRAN / Validar CNH (campos exatos da Infosimples) ----
-  if(process.env.AGREGADOR_CNH_PATH){
+  if(process.env.AGREGADOR_CNH_PATH !== 'off'){
     try {
-      const jc = await infosimplesConsulta(process.env.AGREGADOR_CNH_PATH, {
+      const jc = await infosimplesAuto('cnh', process.env.AGREGADOR_CNH_PATH, SLUGS_CNH, {
         cpf: cpf,
         registro: extra.registro || '',
         codigo_seguranca: extra.codigo_seguranca || '',
@@ -289,9 +309,9 @@ async function consultarAgregador(cpf, nome, extra){
   }
 
   // ---- ANTECEDENTES: Policia Federal / SINIC (campo chave: conseguiu_emitir_certidao_negativa) ----
-  if(process.env.AGREGADOR_ANTECEDENTES_PATH){
+  if(process.env.AGREGADOR_ANTECEDENTES_PATH !== 'off'){
     try {
-      const ja = await infosimplesConsulta(process.env.AGREGADOR_ANTECEDENTES_PATH, {
+      const ja = await infosimplesAuto('antecedentes', process.env.AGREGADOR_ANTECEDENTES_PATH, SLUGS_ANTECEDENTES, {
         cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '', nome_pai: extra.nome_pai || '',
         birthdate: extra.nascimento || '', uf_nascimento: extra.uf_nascimento || ''
       });
@@ -316,9 +336,9 @@ async function consultarAgregador(cpf, nome, extra){
   }
 
   // ---- MANDADOS DE PRISAO: CNJ / BNMP (mandado em aberto = restricao grave) ----
-  if(process.env.AGREGADOR_MANDADOS_PATH){
+  if(process.env.AGREGADOR_MANDADOS_PATH !== 'off'){
     try {
-      const jm = await infosimplesConsulta(process.env.AGREGADOR_MANDADOS_PATH, { cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '' });
+      const jm = await infosimplesAuto('mandados', process.env.AGREGADOR_MANDADOS_PATH, SLUGS_MANDADOS, { cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '' });
       if(infosimplesOk(jm)){
         const mandados = jm.data.filter(function(x){ return x && (x.mandado || x.processo || x.tipificacao_penal); });
         out.mandados = mandados.map(function(m){
