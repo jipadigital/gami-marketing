@@ -236,9 +236,10 @@ function infosimplesOk(j){ return !!(j && j.code === 200 && Array.isArray(j.data
 // Candidatos de slug por consulta (a Infosimples nao expoe o slug na pagina publica).
 // code 602 = "servico invalido" e NAO e cobrado, entao da pra testar candidatos de
 // graca ate achar o que existe. O slug correto ainda pode ser fixado por ENV.
-const SLUGS_CNH = ['senatran/validar-cnh', 'senatran/cnh', 'detran/senatran/validar-cnh'];
-const SLUGS_ANTECEDENTES = ['policia-federal/antecedentes-criminais/emitir', 'antecedentes-criminais/policia-federal/emitir', 'antecedentes-criminais/pf/emitir', 'policia-federal/antecedentes-criminais'];
-const SLUGS_MANDADOS = ['cnj/mandados-prisao', 'cnj/mandados-de-prisao', 'conselho-nacional-justica/mandados-de-prisao', 'cnj/bnmp/mandados-prisao'];
+// Slugs OFICIAIS confirmados no catalogo da Infosimples (26/08/2026):
+const SLUGS_CNH = ['senatran/validar-cnh'];               // Restrito (precisa liberar acesso)
+const SLUGS_ANTECEDENTES = ['antecedentes-criminais/pf/emit', 'antecedentes-criminais/pf/val'];
+const SLUGS_MANDADOS = ['cnj/mandados-prisao'];
 // cache do slug descoberto (persiste em container quente)
 const _slugCache = {};
 async function infosimplesAuto(chave, envSlug, candidatos, params){
