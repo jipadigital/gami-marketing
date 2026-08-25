@@ -1,3 +1,4 @@
+<!-- v31.59 - Verificacao de Motoristas agora abre DENTRO do dashboard (aba interna via iframe #pg-motoristas + funcao abrirVerificarMotoristas), nao sai mais pra pagina separada. Removida a caixa "Ignorar cache" da pagina (confundia; cache de 24h segue por padrao). Link "Voltar" com target=_top - 26/08/2026 -->
 <!-- v31.58 - Menu: novo item "Verificacao de Motoristas" na secao Gestao (depois de Pessoas). Abre a pagina standalone verificar-motorista.html (Driver Status: antecedentes PF + mandados CNJ + CNH). Usa location.href (nao 'nav('), entao aparece pra TODOS os usuarios logados e nao e filtrado por aplicarPermissoesVisuais. Modulo aditivo, nada mais no index mudou - 26/08/2026 -->
 <!-- v31.57 - Ponto\Seguranca: FECHADO o furo de bater de fora pelo IP. As faixas AMPLAS de provedor (177.152. Souuni e 177.222. Internet 5) liberavam a rede INTEIRA do provedor - quem tinha o mesmo provedor EM CASA passava como se fosse o escritorio. Trocadas pelos blocos /24 REAIS do escritorio (177.152.116/.117 e 177.222.209/.212); todos os IPs que o escritorio usou no mes continuam passando, mas casa no mesmo provedor nao passa mais. BONUS: no editor de ponto, cada batida agora mostra ONDE bateu (IP .x.x / GPS / home office) e um ⚠ vermelho quando o IP nao e de bloco conhecido do escritorio - da pra ver de relance quem bateu de fora. Obs: se o provedor do escritorio girar pra um /24 novo, adicionar (a lista de tentativas falhas v31.56 mostra o IP bloqueado) - 20/08/2026 -->
 <!-- v31.56 - Ponto: REGISTRO DE TENTATIVAS FALHAS. Antes so as batidas que davam certo ficavam gravadas (ponto_registros); quando falhava (GPS negado/IP fora/fora do raio) nao sobrava rastro, entao "eu bati e nao registrou" era palavra contra palavra. Agora toda tentativa que falha e gravada (nova tabela ponto_tentativas via RPC ponto_log_tentativa) com hora+motivo+IP, e os gestores veem a lista "Tentativas que FALHARAM neste dia" no editor de ponto (RPC ponto_tentativas_dia). RODAR docs/ponto_tentativas.sql no Supabase - 19/08/2026 -->
@@ -2488,6 +2489,25 @@ if(document.readyState !== 'loading'){
   document.addEventListener('DOMContentLoaded', function(){ setTimeout(aplicarPermissoesVisuais, 1000); });
 }
 
+// 🆕 v31.59: abre a Verificacao de Motoristas DENTRO do dashboard (iframe), sem sair.
+// Nao passa por nav()/permissoes: e uma aba interna visivel pra todos os logados.
+window.abrirVerificarMotoristas = function(el){
+  try {
+    document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); });
+    if(el) el.classList.add('active');
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); p.setAttribute('style','display:none !important'); });
+    var pg = document.getElementById('pg-motoristas');
+    if(pg){
+      pg.classList.add('active');
+      pg.setAttribute('style','display:block !important');
+      var f = document.getElementById('vm-iframe');
+      if(f && !f.getAttribute('src')){ f.setAttribute('src','verificar-motorista.html'); } // carrega na 1a vez
+    }
+    try { document.body.classList.remove('menu-open','sidebar-open','nav-open'); } catch(e){}
+    try { window.scrollTo(0,0); } catch(e){}
+  } catch(e){ console.warn('abrirVerificarMotoristas', e); }
+};
+
 window.nav = function(el, page){
   try {
     // VERIFICA PERMISSÃO PRIMEIRO
@@ -2615,7 +2635,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'inbox')" style="display:none" data-feature-flag="inbox-instagram">📷 Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas</div>
-    <div class="nav-item" onclick="location.href='verificar-motorista.html'" title="Consulta de antecedentes, mandados de prisão e CNH por CPF">🚗 Verificação de Motoristas</div>
+    <div class="nav-item" onclick="abrirVerificarMotoristas(this)" title="Consulta de antecedentes, mandados de prisão e CNH por CPF">🚗 Verificação de Motoristas</div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
     <div class="nav-item" id="nav-meu-ponto" onclick="abrirMeuPonto(this)" style="display:none">🕒 Meu Ponto</div>
     <div class="nav-item" id="nav-ponto-gestao" onclick="abrirPontoGestao(this)" style="display:none">🛡️ Ponto · Gestão</div>
@@ -6349,6 +6369,11 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       <div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Carregando...</div>
     </div>
   </div>
+</div>
+
+<!-- ==================== 🚗 VERIFICAÇÃO DE MOTORISTAS (aba interna via iframe) ==================== -->
+<div class="page" id="pg-motoristas">
+  <iframe id="vm-iframe" title="Verificação de Motoristas" style="width:100%;height:calc(100dvh - 32px);min-height:560px;border:0;background:transparent;display:block"></iframe>
 </div>
 
 <!-- ==================== 🛡️ PONTO · GESTÃO (Etapa 3) ==================== -->
