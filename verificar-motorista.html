@@ -229,9 +229,10 @@
     var nome = document.getElementById('f-nome').value.trim();
     btn.disabled = true; var orig = btn.innerHTML; btn.innerHTML = '<span class="spin"></span>Consultando…';
     try {
+      var extra = (window.__ocrExtra && window.__ocrCpf === cpf) ? window.__ocrExtra : undefined;
       var r = await fetch('/api/verificar-motorista', {
         method:'POST', headers: headers(),
-        body: JSON.stringify({ action:'consultar', cpf:cpf, nome:nome, consentimento: true })
+        body: JSON.stringify({ action:'consultar', cpf:cpf, nome:nome, consentimento: true, extra: extra })
       });
       var data = await r.json();
       if(!r.ok || !data.ok){
@@ -382,6 +383,7 @@
       var b64 = await downscaleToBase64(file, 1600, 0.8);
       var r = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_ocr', image_base64: b64.data, mime: b64.mime }) })).json();
       if(!r.ok){ ocrStatus.innerHTML = '⚠️ ' + esc(r.erro || 'não consegui ler a foto'); return; }
+      window.__ocrExtra = r.extra || null; window.__ocrCpf = r.cpf || null; // campos p/ SENATRAN/PF
       if(r.cpf) cpfEl.value = mascaraCpf(r.cpf);
       else if(r.cpf_bruto) cpfEl.value = r.cpf_bruto;
       if(r.nome) document.getElementById('f-nome').value = r.nome;

@@ -243,56 +243,75 @@ function mapEsfera(txt){
   return 'civel';
 }
 // Monta o shape interno (igual ao mock) a partir das respostas da Infosimples.
+// Stack nacional: SENATRAN Validar CNH + PF Antecedentes + CNJ Mandados de Prisao.
+// Cada consulta e opcional (so roda se o path estiver setado no ENV).
 async function consultarAgregador(cpf, nome, extra){
   extra = extra || {};
   const out = {
     fonte: 'infosimples', nome: nome ? normNome(nome) : null, cpf_situacao: 'regular',
-    antecedentes: { criminal_positivo: false, detalhe: 'Escopo atual: processos + CNH (sem folha criminal sigilosa).' },
-    processos: [], cnh: { situacao: 'desconhecida' }
+    antecedentes: { criminal_positivo: false, detalhe: 'Sem consulta de antecedentes configurada.' },
+    processos: [], cnh: { situacao: 'desconhecida' }, identidade: null, mandados: []
   };
 
-  // ---- CNH ----
+  // ---- CNH: SENATRAN / Validar CNH (campos exatos da Infosimples) ----
   if(process.env.AGREGADOR_CNH_PATH){
     try {
       const jc = await infosimplesConsulta(process.env.AGREGADOR_CNH_PATH, {
         cpf: cpf,
-        // alguns endpoints de CNH exigem tambem registro/nascimento/validade — vindos do OCR:
-        registro: extra.registro || '', nascimento: extra.nascimento || '', validade: extra.validade || ''
+        registro: extra.registro || '',
+        codigo_seguranca: extra.codigo_seguranca || '',
+        nome_condutor: nome || '',
+        nome_mae: extra.nome_mae || '',
+        // credenciais de acesso ao portal SENATRAN (login gov.br) OU certificado A1:
+        login_cpf: process.env.SENATRAN_LOGIN_CPF || '',
+        login_senha: process.env.SENATRAN_LOGIN_SENHA || '',
+        pkcs12_cert: process.env.SENATRAN_PKCS12_CERT || '',
+        pkcs12_pass: process.env.SENATRAN_PKCS12_PASS || ''
       });
       const d = (jc && Array.isArray(jc.data) && jc.data[0]) || null;
       if(d){
         out.cnh = {
-          numero: d.registro || d.numero || null,
-          categoria: d.categoria || null,
-          validade: d.validade_data || d.validade || null,
+          numero: d.registro || null, categoria: d.categoria || null,
+          validade: d.validade_data || null, emissao: d.emissao_data || null,
           situacao: mapSituacaoCnh(d.situacao)
         };
-        if(d.nome && !out.nome) out.nome = normNome(d.nome);
+        if(d.nome) out.nome = normNome(d.nome);
+        out.identidade = { nome_confere: d.nome_condutor_identico_ao_informado, mae_confere: d.nome_mae_identico_ao_informado };
       }
-    } catch(e){ /* CNH indisponivel: fica 'desconhecida' */ }
+    } catch(e){ /* CNH indisponivel */ }
   }
 
-  // ---- PROCESSOS ----
-  if(process.env.AGREGADOR_PROC_PATH){
+  // ---- ANTECEDENTES: Policia Federal / Emitir (nacional) ----
+  // [mapeamento afinado com o JSON real do endpoint]
+  if(process.env.AGREGADOR_ANTECEDENTES_PATH){
     try {
-      const jp = await infosimplesConsulta(process.env.AGREGADOR_PROC_PATH, { cpf: cpf, nome: nome || '' });
-      const linhas = (jp && Array.isArray(jp.data)) ? jp.data : [];
-      // a resposta pode vir como lista de processos ou um objeto com .processos — trata os 2
-      const lista = linhas.length && linhas[0] && Array.isArray(linhas[0].processos) ? linhas[0].processos : linhas;
-      out.processos = (lista || []).map(function(p){
-        const classe = p.classe || p.assunto || p.tipo || '';
-        const esfera = mapEsfera(classe + ' ' + (p.assunto || ''));
-        const polo = /r[ée]u|passivo|requerid/i.test(JSON.stringify(p.polo || p.partes || '')) ? 'reu' : (p.polo || 'desconhecido');
-        const ativo = !/arquivad|baixad|extint|transitad/i.test(String(p.status || p.situacao || '')) ;
-        return { numero: p.numero || p.numero_processo || '', esfera: esfera, polo: polo, ativo: ativo, assunto: p.assunto || classe || 'Processo' };
-      });
-      if(esfera_tem_criminal(out.processos)) out.antecedentes = { criminal_positivo: false, detalhe: 'Ver processos criminais listados.' };
-    } catch(e){ /* processos indisponivel: fica [] */ }
+      const ja = await infosimplesConsulta(process.env.AGREGADOR_ANTECEDENTES_PATH, { cpf: cpf, nome: nome || '', nascimento: extra.nascimento || '' });
+      const d = (ja && Array.isArray(ja.data) && ja.data[0]) || null;
+      if(d){
+        const txt = JSON.stringify(d).toLowerCase();
+        const nadaConsta = /nada consta|n[aã]o constam|negativ/.test(txt) && !/consta(m)? (registro|anota|antecedent)/.test(txt);
+        out.antecedentes = { criminal_positivo: !nadaConsta, detalhe: d.resultado || d.situacao || (nadaConsta ? 'Nada consta (Policia Federal).' : 'Consta anotacao (Policia Federal) - conferir certidao.') };
+      }
+    } catch(e){ /* antecedentes indisponivel */ }
+  }
+
+  // ---- MANDADOS DE PRISAO: CNJ (nacional) ----
+  if(process.env.AGREGADOR_MANDADOS_PATH){
+    try {
+      const jm = await infosimplesConsulta(process.env.AGREGADOR_MANDADOS_PATH, { cpf: cpf, nome: nome || '' });
+      const lista = (jm && Array.isArray(jm.data)) ? jm.data : [];
+      // se a consulta trouxe qualquer mandado, e restricao grave
+      const temMandado = lista.some(function(x){ return x && (x.numero || x.mandado || (Array.isArray(x.mandados) && x.mandados.length)); });
+      out.mandados = lista;
+      if(temMandado){
+        out.antecedentes.criminal_positivo = true;
+        out.antecedentes.detalhe = 'MANDADO DE PRISAO em aberto (CNJ).';
+      }
+    } catch(e){ /* mandados indisponivel */ }
   }
 
   return out;
 }
-function esfera_tem_criminal(procs){ return (procs || []).some(function(p){ return p.esfera === 'criminal'; }); }
 
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
@@ -340,7 +359,7 @@ exports.handler = async function(event){
       const mime = body.mime || 'image/jpeg';
       if(!img) return json(cors, { ok:false, erro:'imagem_ausente' }, 400);
       try {
-        const prompt = 'Voce recebe a foto de um documento brasileiro (CNH ou RG). Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo ou null","cnh_numero":"ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se a imagem nao for um documento legivel, retorne todos os campos como null.';
+        const prompt = 'Voce recebe a foto de uma CNH (Carteira Nacional de Habilitacao) brasileira. Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo do condutor ou null","nome_mae":"nome da mae/filiacao ou null","nascimento":"AAAA-MM-DD ou null","cnh_registro":"numero de registro da CNH (11 digitos) ou null","cnh_seguranca":"numero de seguranca da CNH / codigo de seguranca ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se a imagem nao for uma CNH legivel, retorne todos os campos como null.';
         const rA = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'content-type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
@@ -366,7 +385,14 @@ exports.handler = async function(event){
           cpf: cpfValido(cpfOcr) ? cpfOcr : null,
           cpf_bruto: cpfOcr || null,
           nome: dados.nome || null,
-          cnh: { numero: dados.cnh_numero || null, categoria: dados.cnh_categoria || null, validade: dados.cnh_validade || null }
+          cnh: { numero: dados.cnh_registro || null, categoria: dados.cnh_categoria || null, validade: dados.cnh_validade || null },
+          // campos extras que o SENATRAN/PF exigem — vao junto na hora do Verificar:
+          extra: {
+            registro: dados.cnh_registro || null,
+            codigo_seguranca: dados.cnh_seguranca || null,
+            nome_mae: dados.nome_mae || null,
+            nascimento: dados.nascimento || null
+          }
         });
       } catch(e){
         return json(cors, { ok:false, erro:'Erro no OCR' }, 500);
@@ -450,8 +476,8 @@ exports.handler = async function(event){
       bruto = mockResposta(cpf, nome);
     } else {
       // FASE 2: agregador real (Infosimples). So roda quando AGREGADOR_API_KEY estiver
-      // setado e USE_MOCK != 'true'. Mapeamento de campos afinado quando a chave chegar.
-      bruto = await consultarAgregador(cpf, nome);
+      // setado e USE_MOCK != 'true'. `extra` traz os campos lidos do OCR da CNH.
+      bruto = await consultarAgregador(cpf, nome, body.extra || {});
     }
 
     const norm = normalizar(bruto);
