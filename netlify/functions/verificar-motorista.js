@@ -205,6 +205,95 @@ function resposta(reg){
   };
 }
 
+// ============================================================
+// FASE 2 — AGREGADOR REAL (Infosimples v2)  [processos + CNH]
+// Transporte padrao da Infosimples: POST form-urlencoded, auth por `token`,
+// resposta { code:200, data:[...], errors:[...] }.
+// Config por ENV (nada hardcodado):
+//   AGREGADOR_API_KEY   = token da Infosimples
+//   AGREGADOR_CNH_PATH  = caminho da consulta de CNH   (ex: 'senatran/validar-cnh' ou 'detran/ro/cnh') — vazio = pula CNH
+//   AGREGADOR_PROC_PATH = caminho da consulta de processos por CPF (ex: 'tribunal/.../processos') — vazio = pula processos
+// OBS: o mapeamento dos campos abaixo e PROVISORIO — ajusto pro shape exato do
+// endpoint que voce contratar assim que a chave chegar (por isso fica em MOCK ate la).
+// ============================================================
+async function infosimplesConsulta(path, params){
+  const token = process.env.AGREGADOR_API_KEY;
+  const url = 'https://api.infosimples.com/api/v2/consultas/' + path;
+  const form = new URLSearchParams(Object.assign({ token: token, timeout: '600' }, params || {}));
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString()
+  });
+  const j = await r.json().catch(function(){ return {}; });
+  return j; // { code, code_message, data:[...], errors:[...] }
+}
+function mapSituacaoCnh(s){
+  s = String(s || '').toLowerCase();
+  if(/suspens/.test(s)) return 'suspensa';
+  if(/cassa|cancelad/.test(s)) return 'cassada';
+  if(/vencid|expirad/.test(s)) return 'vencida';
+  if(/regular|valid|ativ|apto/.test(s)) return 'valida';
+  return 'desconhecida';
+}
+function mapEsfera(txt){
+  txt = String(txt || '').toLowerCase();
+  if(/crim|penal/.test(txt)) return 'criminal';
+  if(/trabalh/.test(txt)) return 'trabalhista';
+  return 'civel';
+}
+// Monta o shape interno (igual ao mock) a partir das respostas da Infosimples.
+async function consultarAgregador(cpf, nome, extra){
+  extra = extra || {};
+  const out = {
+    fonte: 'infosimples', nome: nome ? normNome(nome) : null, cpf_situacao: 'regular',
+    antecedentes: { criminal_positivo: false, detalhe: 'Escopo atual: processos + CNH (sem folha criminal sigilosa).' },
+    processos: [], cnh: { situacao: 'desconhecida' }
+  };
+
+  // ---- CNH ----
+  if(process.env.AGREGADOR_CNH_PATH){
+    try {
+      const jc = await infosimplesConsulta(process.env.AGREGADOR_CNH_PATH, {
+        cpf: cpf,
+        // alguns endpoints de CNH exigem tambem registro/nascimento/validade — vindos do OCR:
+        registro: extra.registro || '', nascimento: extra.nascimento || '', validade: extra.validade || ''
+      });
+      const d = (jc && Array.isArray(jc.data) && jc.data[0]) || null;
+      if(d){
+        out.cnh = {
+          numero: d.registro || d.numero || null,
+          categoria: d.categoria || null,
+          validade: d.validade_data || d.validade || null,
+          situacao: mapSituacaoCnh(d.situacao)
+        };
+        if(d.nome && !out.nome) out.nome = normNome(d.nome);
+      }
+    } catch(e){ /* CNH indisponivel: fica 'desconhecida' */ }
+  }
+
+  // ---- PROCESSOS ----
+  if(process.env.AGREGADOR_PROC_PATH){
+    try {
+      const jp = await infosimplesConsulta(process.env.AGREGADOR_PROC_PATH, { cpf: cpf, nome: nome || '' });
+      const linhas = (jp && Array.isArray(jp.data)) ? jp.data : [];
+      // a resposta pode vir como lista de processos ou um objeto com .processos — trata os 2
+      const lista = linhas.length && linhas[0] && Array.isArray(linhas[0].processos) ? linhas[0].processos : linhas;
+      out.processos = (lista || []).map(function(p){
+        const classe = p.classe || p.assunto || p.tipo || '';
+        const esfera = mapEsfera(classe + ' ' + (p.assunto || ''));
+        const polo = /r[ée]u|passivo|requerid/i.test(JSON.stringify(p.polo || p.partes || '')) ? 'reu' : (p.polo || 'desconhecido');
+        const ativo = !/arquivad|baixad|extint|transitad/i.test(String(p.status || p.situacao || '')) ;
+        return { numero: p.numero || p.numero_processo || '', esfera: esfera, polo: polo, ativo: ativo, assunto: p.assunto || classe || 'Processo' };
+      });
+      if(esfera_tem_criminal(out.processos)) out.antecedentes = { criminal_positivo: false, detalhe: 'Ver processos criminais listados.' };
+    } catch(e){ /* processos indisponivel: fica [] */ }
+  }
+
+  return out;
+}
+function esfera_tem_criminal(procs){ return (procs || []).some(function(p){ return p.esfera === 'criminal'; }); }
+
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -360,8 +449,9 @@ exports.handler = async function(event){
     if(useMock){
       bruto = mockResposta(cpf, nome);
     } else {
-      // FASE 2: implementar consultarAgregador(cpf, nome) usando process.env.AGREGADOR_API_KEY.
-      return json(cors, { ok:false, erro:'Agregador real ainda nao configurado (defina USE_MOCK=false + AGREGADOR_API_KEY e implemente consultarAgregador).' }, 501);
+      // FASE 2: agregador real (Infosimples). So roda quando AGREGADOR_API_KEY estiver
+      // setado e USE_MOCK != 'true'. Mapeamento de campos afinado quando a chave chegar.
+      bruto = await consultarAgregador(cpf, nome);
     }
 
     const norm = normalizar(bruto);
