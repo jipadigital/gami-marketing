@@ -254,7 +254,7 @@ async function infosimplesAuto(chave, envSlug, candidatos, params){
   return ultima;
 }
 function mapSituacaoCnh(s){
-  s = String(s || '').toLowerCase();
+  s = String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); // tira acento: "válida" -> "valida"
   if(/suspens/.test(s)) return 'suspensa';
   if(/cassa|cancelad/.test(s)) return 'cassada';
   if(/vencid|expirad/.test(s)) return 'vencida';
@@ -275,9 +275,10 @@ async function consultarAgregador(cpf, nome, extra){
   const out = {
     fonte: 'infosimples', nome: nome ? normNome(nome) : null, cpf_situacao: 'regular',
     antecedentes: { criminal_positivo: false, detalhe: 'Sem consulta de antecedentes configurada.' },
-    processos: [], cnh: { situacao: 'desconhecida' }, identidade: null, mandados: []
+    processos: [], cnh: { situacao: 'desconhecida' }, identidade: null, mandados: [], fontes: []
   };
   const revisaoMotivos = [];
+  function _fonte(nome, j){ out.fontes.push({ fonte: nome, code: (j && j.code) || null, msg: (j && j.code_message) || null }); }
 
   // ---- CNH: SENATRAN / Validar CNH (campos exatos da Infosimples) ----
   if(process.env.AGREGADOR_CNH_PATH !== 'off'){
@@ -294,6 +295,7 @@ async function consultarAgregador(cpf, nome, extra){
         pkcs12_cert: process.env.SENATRAN_PKCS12_CERT || '',
         pkcs12_pass: process.env.SENATRAN_PKCS12_PASS || ''
       });
+      _fonte('CNH', jc);
       if(infosimplesOk(jc) && jc.data[0]){
         const d = jc.data[0];
         out.cnh = {
@@ -316,6 +318,7 @@ async function consultarAgregador(cpf, nome, extra){
         cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '', nome_pai: extra.nome_pai || '',
         birthdate: extra.nascimento || '', uf_nascimento: extra.uf_nascimento || ''
       });
+      _fonte('Antecedentes PF', ja);
       if(infosimplesOk(ja) && ja.data[0]){
         const d = ja.data[0];
         const negativa = (d.conseguiu_emitir_certidao_negativa === true);
@@ -340,6 +343,7 @@ async function consultarAgregador(cpf, nome, extra){
   if(process.env.AGREGADOR_MANDADOS_PATH !== 'off'){
     try {
       const jm = await infosimplesAuto('mandados', process.env.AGREGADOR_MANDADOS_PATH, SLUGS_MANDADOS, { cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '' });
+      _fonte('Mandados CNJ', jm);
       if(infosimplesOk(jm)){
         const mandados = jm.data.filter(function(x){ return x && (x.mandado || x.processo || x.tipificacao_penal); });
         out.mandados = mandados.map(function(m){
@@ -569,8 +573,10 @@ exports.handler = async function(event){
     const inseridoArr = await rIns.json();
     const reg = Array.isArray(inseridoArr) ? inseridoArr[0] : inseridoArr;
     reg.resumo = resumo;
+    const rResp = resposta(reg);
+    if(bruto && bruto.fontes) rResp.fontes = bruto.fontes; // status de cada consulta (diagnostico)
 
-    return json(cors, { ok:true, cache:false, resultado: resposta(reg) });
+    return json(cors, { ok:true, cache:false, resultado: rResp });
 
   } catch(err){
     console.error('[verificar-motorista]', err && err.message);
