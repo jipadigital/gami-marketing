@@ -13,6 +13,7 @@
 // FASE 2 (real): setar AGREGADOR_API_KEY + USE_MOCK=false e implementar consultarAgregador().
 // ============================================================
 
+const crypto = require('crypto');
 const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
@@ -40,6 +41,38 @@ function svcHeaders(extra){
 }
 function json(cors, body, status){
   return { statusCode: status || 200, headers: cors, body: JSON.stringify(body) };
+}
+
+// ---- Storage (documentos): bucket PRIVADO + URLs assinadas ----
+const DOCS_BUCKET = 'motorista-docs';
+const DOC_TIPOS = ['cnh', 'rg', 'comprovante', 'outro'];
+function nomeSeguro(s){
+  return String(s || 'arquivo').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9._-]/g, '_').replace(/_+/g, '_').slice(-80) || 'arquivo';
+}
+// Cria uma URL assinada de UPLOAD (o navegador manda o arquivo direto pro Storage)
+async function storageSignUpload(path){
+  const r = await fetch(SUPA_URL + '/storage/v1/object/upload/sign/' + DOCS_BUCKET + '/' + encodeURI(path), {
+    method: 'POST', headers: svcHeaders({ 'Content-Type': 'application/json' })
+  });
+  if(!r.ok) throw new Error('sign_upload ' + r.status);
+  const j = await r.json();                 // { url: '/object/upload/sign/<bucket>/<path>?token=...' }
+  return SUPA_URL + '/storage/v1' + (j.url || j.signedUrl || '');
+}
+// Cria uma URL assinada de LEITURA (curta duracao)
+async function storageSignView(path, expiresIn){
+  const r = await fetch(SUPA_URL + '/storage/v1/object/sign/' + DOCS_BUCKET + '/' + encodeURI(path), {
+    method: 'POST', headers: svcHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ expiresIn: expiresIn || 300 })
+  });
+  if(!r.ok) return null;
+  const j = await r.json();                 // { signedURL: '/object/sign/<bucket>/<path>?token=...' }
+  return SUPA_URL + '/storage/v1' + (j.signedURL || j.signedUrl || '');
+}
+async function storageRemover(path){
+  await fetch(SUPA_URL + '/storage/v1/object/' + DOCS_BUCKET + '/' + encodeURI(path), {
+    method: 'DELETE', headers: svcHeaders()
+  }).catch(function(){});
 }
 
 // ---- CPF: valida formato + digitos verificadores -----------
@@ -209,6 +242,60 @@ exports.handler = async function(event){
       if(!rH.ok) return json(cors, { ok:false, erro:'Falha ao ler historico' }, 500);
       const lista = await rH.json();
       return json(cors, { ok:true, historico: Array.isArray(lista) ? lista : [] });
+    }
+
+    // ---- DOCUMENTOS (anexos): bucket privado + URLs assinadas ----
+    if(action === 'doc_sign_upload'){
+      const cpfD = soDigitos(body.cpf);
+      if(!cpfValido(cpfD)) return json(cors, { ok:false, erro:'cpf_invalido' }, 400);
+      const nome = nomeSeguro(body.filename);
+      const path = cpfD + '/' + crypto.randomUUID() + '-' + nome;
+      try {
+        const uploadUrl = await storageSignUpload(path);
+        return json(cors, { ok:true, uploadUrl, storage_path: path, nome_arquivo: nome });
+      } catch(e){
+        return json(cors, { ok:false, erro:'Falha ao preparar upload (bucket criado?)' }, 500);
+      }
+    }
+    if(action === 'doc_registrar'){
+      const cpfD = soDigitos(body.cpf);
+      if(!cpfValido(cpfD)) return json(cors, { ok:false, erro:'cpf_invalido' }, 400);
+      if(!body.storage_path) return json(cors, { ok:false, erro:'storage_path_ausente' }, 400);
+      const tipo = DOC_TIPOS.indexOf(body.tipo) >= 0 ? body.tipo : 'outro';
+      const rIns = await fetch(SUPA_URL + '/rest/v1/motorista_documentos', {
+        method: 'POST',
+        headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+        body: JSON.stringify({
+          cpf: cpfD, tipo, nome_arquivo: (body.nome_arquivo || null),
+          storage_path: body.storage_path, mime: (body.mime || null),
+          tamanho: (body.tamanho || null),
+          enviado_por: caller.pessoa_id, enviado_por_nome: caller.nome || null
+        })
+      });
+      if(!rIns.ok){ const t = await rIns.text().catch(()=> ''); return json(cors, { ok:false, erro:'Falha ao registrar: ' + t.substring(0,150) }, 500); }
+      return json(cors, { ok:true });
+    }
+    if(action === 'doc_listar'){
+      const cpfD = soDigitos(body.cpf);
+      if(!cpfValido(cpfD)) return json(cors, { ok:true, documentos: [] });
+      const rD = await fetch(SUPA_URL + '/rest/v1/motorista_documentos?cpf=eq.' + encodeURIComponent(cpfD) + '&select=id,tipo,nome_arquivo,storage_path,mime,tamanho,enviado_por_nome,enviado_em&order=enviado_em.desc', { headers: svcHeaders() });
+      if(!rD.ok) return json(cors, { ok:false, erro:'Falha ao listar' }, 500);
+      const docs = await rD.json();
+      // gera URL assinada de leitura pra cada um (5 min)
+      for(const d of (Array.isArray(docs) ? docs : [])){
+        d.url = await storageSignView(d.storage_path, 300);
+        delete d.storage_path;
+      }
+      return json(cors, { ok:true, documentos: Array.isArray(docs) ? docs : [] });
+    }
+    if(action === 'doc_excluir'){
+      const id = String(body.id || '');
+      if(!id) return json(cors, { ok:false, erro:'id_ausente' }, 400);
+      const rGet = await fetch(SUPA_URL + '/rest/v1/motorista_documentos?id=eq.' + encodeURIComponent(id) + '&select=storage_path&limit=1', { headers: svcHeaders() });
+      const arr = rGet.ok ? await rGet.json() : [];
+      if(Array.isArray(arr) && arr.length) await storageRemover(arr[0].storage_path);
+      await fetch(SUPA_URL + '/rest/v1/motorista_documentos?id=eq.' + encodeURIComponent(id), { method:'DELETE', headers: svcHeaders({ 'Prefer':'return=minimal' }) }).catch(function(){});
+      return json(cors, { ok:true });
     }
 
     // ---- 3) CONSULTAR ----

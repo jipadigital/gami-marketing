@@ -78,6 +78,14 @@
   .gate p{color:var(--text3);font-size:13px}
   .gate a{color:var(--accent);text-decoration:none;font-weight:700}
   h3.sec{font-size:13px;font-weight:700;color:var(--text2);margin:22px 0 10px;display:flex;align-items:center;gap:8px}
+  select{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit;outline:none}
+  select:focus{border-color:var(--accent)}
+  input[type=file]{width:100%;font-size:12px;color:var(--text2);padding:9px 0}
+  input[type=file]::file-selector-button{margin-right:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text2);font-family:inherit;font-size:12px;cursor:pointer}
+  .doc-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:9px;margin-top:8px;font-size:12.5px}
+  .doc-item a{color:var(--accent);text-decoration:none;font-weight:700}
+  .doc-item .x{margin-left:auto;color:var(--red);cursor:pointer;font-weight:700;background:none;border:none;font-size:14px;line-height:1}
+  .doc-tp{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--text2);flex-shrink:0}
 </style>
 </head>
 <body>
@@ -114,6 +122,28 @@
       </label>
       <button id="btn" class="btn" disabled>Verificar</button>
       <div class="lgpd">🔐 Consulta feita em servidor seguro · resultado auditado · nenhum dado sensível trafega exposto.</div>
+    </div>
+
+    <div id="docs-card" class="card hidden">
+      <h3 class="sec" style="margin:0 0 12px">📎 Documentos do motorista <span id="d-cpf-lbl" class="meta" style="font-weight:400"></span></h3>
+      <div class="row">
+        <div class="field" style="margin-bottom:0">
+          <label for="d-tipo">Tipo</label>
+          <select id="d-tipo">
+            <option value="cnh">CNH</option>
+            <option value="rg">RG</option>
+            <option value="comprovante">Comprovante de endereço</option>
+            <option value="outro">Outro</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="d-file">Arquivo (foto ou PDF, até 12MB)</label>
+          <input id="d-file" type="file" accept="image/*,application/pdf"/>
+        </div>
+      </div>
+      <button id="d-btn" class="btn" style="margin-top:14px" disabled>Anexar documento</button>
+      <div id="d-erro" class="err hidden" style="margin-top:12px"></div>
+      <div id="d-lista" style="margin-top:14px"></div>
     </div>
 
     <div id="erro" class="err hidden"></div>
@@ -281,6 +311,73 @@
     } catch(e){ box.innerHTML = '<div class="empty">Não foi possível carregar o histórico.</div>'; }
   }
 
+  // ---------- Documentos (anexos) ----------
+  var SUPA_ANON = 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61'; // chave PUBLICA (nao secreta) - so pro upload assinado no Storage
+  var docsCard = document.getElementById('docs-card');
+  var dTipo = document.getElementById('d-tipo');
+  var dFile = document.getElementById('d-file');
+  var dBtn  = document.getElementById('d-btn');
+  var dErro = document.getElementById('d-erro');
+  var dLista= document.getElementById('d-lista');
+  var dCpfLbl = document.getElementById('d-cpf-lbl');
+  var cpfDocsAtual = '';
+
+  function cpfDigits(){ return cpfEl.value.replace(/\D/g,''); }
+  function atualizarDocsVisibilidade(){
+    var c = cpfDigits();
+    if(c.length === 11){
+      docsCard.classList.remove('hidden');
+      dCpfLbl.textContent = '· ' + mascaraCpf(c);
+      if(c !== cpfDocsAtual){ cpfDocsAtual = c; listarDocs(); }
+    } else {
+      docsCard.classList.add('hidden');
+      cpfDocsAtual = '';
+    }
+  }
+  cpfEl.addEventListener('input', atualizarDocsVisibilidade);
+  dFile.addEventListener('change', function(){ dBtn.disabled = !dFile.files.length; });
+
+  function fmtTam(n){ n = n || 0; return n > 1048576 ? (n/1048576).toFixed(1)+' MB' : Math.round(n/1024)+' KB'; }
+
+  dBtn.addEventListener('click', async function(){
+    dErro.classList.add('hidden');
+    var file = dFile.files[0]; if(!file) return;
+    if(file.size > 12*1024*1024){ dErro.textContent = '⚠️ Arquivo muito grande (máx 12MB).'; dErro.classList.remove('hidden'); return; }
+    var cpf = cpfDigits();
+    dBtn.disabled = true; var o = dBtn.innerHTML; dBtn.innerHTML = '<span class="spin"></span>Enviando…';
+    try {
+      var s = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_sign_upload', cpf:cpf, filename:file.name }) })).json();
+      if(!s.ok) throw new Error(s.erro || 'assinatura');
+      var up = await fetch(s.uploadUrl, { method:'PUT', headers:{ 'apikey': SUPA_ANON, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert':'true' }, body: file });
+      if(!up.ok) throw new Error('upload HTTP ' + up.status);
+      var reg = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_registrar', cpf:cpf, tipo:dTipo.value, storage_path:s.storage_path, nome_arquivo:s.nome_arquivo, mime:file.type, tamanho:file.size }) })).json();
+      if(!reg.ok) throw new Error(reg.erro || 'registro');
+      dFile.value = ''; dBtn.disabled = true; listarDocs();
+    } catch(e){ dErro.textContent = '⚠️ Falha ao enviar: ' + e.message; dErro.classList.remove('hidden'); }
+    finally { dBtn.innerHTML = o; }
+  });
+
+  var DTIPO_LBL = { cnh:'CNH', rg:'RG', comprovante:'Comprovante', outro:'Outro' };
+  async function listarDocs(){
+    dLista.innerHTML = '<div class="meta">Carregando documentos…</div>';
+    try {
+      var data = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_listar', cpf: cpfDocsAtual }) })).json();
+      if(!data.ok || !data.documentos || !data.documentos.length){ dLista.innerHTML = '<div class="meta">Nenhum documento anexado ainda.</div>'; return; }
+      dLista.innerHTML = data.documentos.map(function(d){
+        return '<div class="doc-item"><span class="doc-tp">'+esc(DTIPO_LBL[d.tipo]||d.tipo)+'</span>'
+          + '<span>'+esc(d.nome_arquivo||'arquivo')+' <span class="meta">'+fmtTam(d.tamanho)+' · '+fmtData(d.enviado_em)+'</span></span>'
+          + (d.url ? ' <a href="'+d.url+'" target="_blank" rel="noopener">Ver</a>' : ' <span class="meta">(link expira)</span>')
+          + '<button class="x" data-id="'+d.id+'" title="Excluir">✕</button></div>';
+      }).join('');
+      Array.prototype.forEach.call(dLista.querySelectorAll('.x'), function(b){ b.addEventListener('click', function(){ excluirDoc(b.getAttribute('data-id')); }); });
+    } catch(e){ dLista.innerHTML = '<div class="meta">Erro ao carregar documentos.</div>'; }
+  }
+  async function excluirDoc(id){
+    if(!confirm('Excluir este documento? Não dá pra desfazer.')) return;
+    try { await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_excluir', id:id }) }); listarDocs(); } catch(e){}
+  }
+
+  atualizarDocsVisibilidade();
   carregarHistorico();
 })();
 </script>
