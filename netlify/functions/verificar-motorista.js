@@ -55,7 +55,7 @@ async function storageSignUpload(path){
   const r = await fetch(SUPA_URL + '/storage/v1/object/upload/sign/' + DOCS_BUCKET + '/' + encodeURI(path), {
     method: 'POST', headers: svcHeaders({ 'Content-Type': 'application/json' })
   });
-  if(!r.ok) throw new Error('sign_upload ' + r.status);
+  if(!r.ok){ const t = await r.text().catch(() => ''); throw new Error('sign_upload HTTP ' + r.status + ' ' + t.substring(0,180)); }
   const j = await r.json();                 // { url: '/object/upload/sign/<bucket>/<path>?token=...' }
   return SUPA_URL + '/storage/v1' + (j.url || j.signedUrl || '');
 }
@@ -244,6 +244,46 @@ exports.handler = async function(event){
       return json(cors, { ok:true, historico: Array.isArray(lista) ? lista : [] });
     }
 
+    // ---- OCR: le CPF/nome/CNH de uma FOTO do documento (sem digitar) ----
+    if(action === 'doc_ocr'){
+      if(!process.env.ANTHROPIC_API_KEY) return json(cors, { ok:false, erro:'OCR indisponivel (sem ANTHROPIC_API_KEY)' }, 501);
+      const img = body.image_base64 || '';
+      const mime = body.mime || 'image/jpeg';
+      if(!img) return json(cors, { ok:false, erro:'imagem_ausente' }, 400);
+      try {
+        const prompt = 'Voce recebe a foto de um documento brasileiro (CNH ou RG). Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo ou null","cnh_numero":"ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se a imagem nao for um documento legivel, retorne todos os campos como null.';
+        const rA = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'content-type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 400,
+            messages: [{ role:'user', content: [
+              { type:'image', source:{ type:'base64', media_type: mime, data: img } },
+              { type:'text', text: prompt }
+            ] }]
+          })
+        });
+        if(!rA.ok) return json(cors, { ok:false, erro:'OCR falhou (' + rA.status + ')' }, 502);
+        const jA = await rA.json();
+        let txt = (jA.content && jA.content[0] && jA.content[0].text) || '';
+        txt = txt.replace(/```json|```/g, '').trim();
+        let dados = {};
+        try { dados = JSON.parse(txt); }
+        catch(e){ const m = txt.match(/\{[\s\S]*\}/); if(m){ try { dados = JSON.parse(m[0]); } catch(_){} } }
+        const cpfOcr = soDigitos(dados.cpf);
+        return json(cors, {
+          ok: true,
+          cpf: cpfValido(cpfOcr) ? cpfOcr : null,
+          cpf_bruto: cpfOcr || null,
+          nome: dados.nome || null,
+          cnh: { numero: dados.cnh_numero || null, categoria: dados.cnh_categoria || null, validade: dados.cnh_validade || null }
+        });
+      } catch(e){
+        return json(cors, { ok:false, erro:'Erro no OCR' }, 500);
+      }
+    }
+
     // ---- DOCUMENTOS (anexos): bucket privado + URLs assinadas ----
     if(action === 'doc_sign_upload'){
       const cpfD = soDigitos(body.cpf);
@@ -254,7 +294,7 @@ exports.handler = async function(event){
         const uploadUrl = await storageSignUpload(path);
         return json(cors, { ok:true, uploadUrl, storage_path: path, nome_arquivo: nome });
       } catch(e){
-        return json(cors, { ok:false, erro:'Falha ao preparar upload (bucket criado?)' }, 500);
+        return json(cors, { ok:false, erro:'Falha ao preparar upload: ' + (e && e.message || 'erro') }, 500);
       }
     }
     if(action === 'doc_registrar'){

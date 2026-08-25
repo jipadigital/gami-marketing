@@ -86,6 +86,10 @@
   .doc-item a{color:var(--accent);text-decoration:none;font-weight:700}
   .doc-item .x{margin-left:auto;color:var(--red);cursor:pointer;font-weight:700;background:none;border:none;font-size:14px;line-height:1}
   .doc-tp{font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid var(--border);color:var(--text2);flex-shrink:0}
+  .ocr-btn{width:100%;padding:15px;border:1.5px dashed var(--accent);border-radius:11px;background:rgba(26,184,240,.08);color:var(--accent);font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;transition:background .12s}
+  .ocr-btn:hover{background:rgba(26,184,240,.15)}
+  .ocr-status{margin-top:10px;padding:10px 12px;border-radius:9px;font-size:12.5px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)}
+  .ou{text-align:center;color:var(--text3);font-size:10.5px;margin:16px 0 6px;text-transform:uppercase;letter-spacing:.6px}
 </style>
 </head>
 <body>
@@ -108,6 +112,12 @@
   <!-- App -->
   <div id="app" class="hidden">
     <div class="card">
+      <div class="ocrbox">
+        <button id="ocr-btn" type="button" class="ocr-btn">📷 Ler CNH por foto — preenche sozinho</button>
+        <input id="ocr-file" type="file" accept="image/*" capture="environment" style="display:none"/>
+        <div id="ocr-status" class="ocr-status hidden"></div>
+      </div>
+      <div class="ou">ou preencha manual</div>
       <div class="field">
         <label for="f-cpf">CPF do motorista</label>
         <input id="f-cpf" type="text" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" autocomplete="off"/>
@@ -339,23 +349,71 @@
 
   function fmtTam(n){ n = n || 0; return n > 1048576 ? (n/1048576).toFixed(1)+' MB' : Math.round(n/1024)+' KB'; }
 
+  // faz o upload de um arquivo (assinatura -> PUT no Storage -> registra metadados)
+  async function anexarArquivo(file, tipo, cpf){
+    var s = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_sign_upload', cpf:cpf, filename:file.name }) })).json();
+    if(!s.ok) throw new Error(s.erro || 'assinatura');
+    var up = await fetch(s.uploadUrl, { method:'PUT', headers:{ 'apikey': SUPA_ANON, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert':'true' }, body: file });
+    if(!up.ok) throw new Error('upload HTTP ' + up.status);
+    var reg = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_registrar', cpf:cpf, tipo:tipo, storage_path:s.storage_path, nome_arquivo:s.nome_arquivo, mime:file.type, tamanho:file.size }) })).json();
+    if(!reg.ok) throw new Error(reg.erro || 'registro');
+    if(cpf === cpfDocsAtual) listarDocs();
+  }
+
   dBtn.addEventListener('click', async function(){
     dErro.classList.add('hidden');
     var file = dFile.files[0]; if(!file) return;
     if(file.size > 12*1024*1024){ dErro.textContent = '⚠️ Arquivo muito grande (máx 12MB).'; dErro.classList.remove('hidden'); return; }
-    var cpf = cpfDigits();
     dBtn.disabled = true; var o = dBtn.innerHTML; dBtn.innerHTML = '<span class="spin"></span>Enviando…';
-    try {
-      var s = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_sign_upload', cpf:cpf, filename:file.name }) })).json();
-      if(!s.ok) throw new Error(s.erro || 'assinatura');
-      var up = await fetch(s.uploadUrl, { method:'PUT', headers:{ 'apikey': SUPA_ANON, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert':'true' }, body: file });
-      if(!up.ok) throw new Error('upload HTTP ' + up.status);
-      var reg = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_registrar', cpf:cpf, tipo:dTipo.value, storage_path:s.storage_path, nome_arquivo:s.nome_arquivo, mime:file.type, tamanho:file.size }) })).json();
-      if(!reg.ok) throw new Error(reg.erro || 'registro');
-      dFile.value = ''; dBtn.disabled = true; listarDocs();
-    } catch(e){ dErro.textContent = '⚠️ Falha ao enviar: ' + e.message; dErro.classList.remove('hidden'); }
-    finally { dBtn.innerHTML = o; }
+    try { await anexarArquivo(file, dTipo.value, cpfDigits()); dFile.value = ''; }
+    catch(e){ dErro.textContent = '⚠️ Falha ao enviar: ' + e.message; dErro.classList.remove('hidden'); }
+    finally { dBtn.innerHTML = o; dBtn.disabled = true; }
   });
+
+  // ---------- OCR: ler a CNH por foto (preenche sozinho) ----------
+  var ocrBtn = document.getElementById('ocr-btn');
+  var ocrFile = document.getElementById('ocr-file');
+  var ocrStatus = document.getElementById('ocr-status');
+  ocrBtn.addEventListener('click', function(){ ocrFile.click(); });
+  ocrFile.addEventListener('change', async function(){
+    var file = ocrFile.files[0]; if(!file) return;
+    ocrStatus.classList.remove('hidden'); ocrStatus.innerHTML = '<span class="spin"></span>Lendo o documento…';
+    try {
+      var b64 = await downscaleToBase64(file, 1600, 0.8);
+      var r = await (await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_ocr', image_base64: b64.data, mime: b64.mime }) })).json();
+      if(!r.ok){ ocrStatus.innerHTML = '⚠️ ' + esc(r.erro || 'não consegui ler a foto'); return; }
+      if(r.cpf) cpfEl.value = mascaraCpf(r.cpf);
+      else if(r.cpf_bruto) cpfEl.value = r.cpf_bruto;
+      if(r.nome) document.getElementById('f-nome').value = r.nome;
+      validar(); atualizarDocsVisibilidade();
+      if(r.cpf){
+        var partes = ['CPF ' + mascaraCpf(r.cpf)]; if(r.nome) partes.push(esc(r.nome));
+        ocrStatus.innerHTML = '✅ Li da foto: <b>' + partes.join(' · ') + '</b>. Confira, marque o consentimento e clique <b>Verificar</b>.';
+        try { await anexarArquivo(file, 'cnh', r.cpf); } catch(e){ /* anexo é bônus; não trava o OCR */ }
+      } else {
+        ocrStatus.innerHTML = '⚠️ Não achei um CPF válido na foto' + (r.cpf_bruto ? (' (li "' + esc(r.cpf_bruto) + '")') : '') + '. Confira ou digite manual.';
+      }
+    } catch(e){ ocrStatus.innerHTML = '⚠️ Erro ao ler a foto: ' + esc(e.message || ''); }
+    finally { ocrFile.value = ''; }
+  });
+
+  // redimensiona a imagem no navegador (rápido + payload pequeno) e devolve base64 JPEG
+  function downscaleToBase64(file, maxDim, quality){
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(file); var img = new Image();
+      img.onload = function(){
+        var w = img.width, h = img.height, scale = Math.min(1, maxDim / Math.max(w, h));
+        var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+        var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+        c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+        URL.revokeObjectURL(url);
+        try { var du = c.toDataURL('image/jpeg', quality); resolve({ data: du.split(',')[1], mime: 'image/jpeg' }); }
+        catch(err){ reject(err); }
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('imagem inválida')); };
+      img.src = url;
+    });
+  }
 
   var DTIPO_LBL = { cnh:'CNH', rg:'RG', comprovante:'Comprovante', outro:'Outro' };
   async function listarDocs(){
