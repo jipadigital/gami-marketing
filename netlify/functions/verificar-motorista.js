@@ -419,7 +419,8 @@ exports.handler = async function(event){
     if(caller.ativo === false) return json(cors, { ok:false, erro:'Usuario desativado' }, 403);
     if(!caller.token_atual || caller.token_atual !== callerToken) return json(cors, { ok:false, erro:'Token invalido (faca login de novo)' }, 401);
     if(caller.token_expira_em && new Date(caller.token_expira_em) < new Date()) return json(cors, { ok:false, erro:'Sessao expirada (faca login de novo)' }, 401);
-    if(String(caller.email || '').toLowerCase() !== SUPER_ADMIN_EMAIL) return json(cors, { ok:false, erro:'Acesso restrito.' }, 403);
+    // Acesso liberado para QUALQUER usuario Gami com sessao valida (subido pra todos).
+    // (Pra restringir a um papel no futuro, checar caller/pessoa aqui.)
 
     const action = body.action || 'consultar';
 
