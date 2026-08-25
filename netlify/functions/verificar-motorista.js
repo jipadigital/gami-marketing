@@ -151,6 +151,7 @@ function calcularDriverStatus(norm, nomeInformado){
   const homonimo = !!(nomeInformado && nomeRet && normNome(nomeInformado) !== normNome(nomeRet));
 
   const antCriminal = norm.antecedentes && norm.antecedentes.criminal_positivo === true;
+  const antRevisao = norm.antecedentes && norm.antecedentes.revisao === true;
   const procs = norm.processos || [];
   const procCriminalReu = procs.some(p => p.esfera === 'criminal' && p.polo === 'reu' && p.ativo);
   const cnhSit = (norm.cnh && norm.cnh.situacao) || 'desconhecida';
@@ -161,7 +162,7 @@ function calcularDriverStatus(norm, nomeInformado){
 
   let status;
   if(antCriminal || procCriminalReu || cnhSuspensa) status = 'REPROVADO';
-  else if(procCivelTrab || cnhVencida || homonimo || cpfIrregular) status = 'ANALISE';
+  else if(procCivelTrab || cnhVencida || homonimo || cpfIrregular || antRevisao) status = 'ANALISE';
   else status = 'APTO';
 
   // Homonimo NUNCA reprova automatico (pode ser outra pessoa com o mesmo nome).
@@ -174,6 +175,7 @@ function calcularDriverStatus(norm, nomeInformado){
   if(cnhVencida) score -= 12;
   if(procCivelTrab) score -= 15;
   if(cpfIrregular) score -= 12;
+  if(antRevisao) score -= 15;
   if(homonimo) score -= 8;
   if(score < 0) score = 0; if(score > 100) score = 100;
 
@@ -281,31 +283,44 @@ async function consultarAgregador(cpf, nome, extra){
     } catch(e){ /* CNH indisponivel */ }
   }
 
-  // ---- ANTECEDENTES: Policia Federal / Emitir (nacional) ----
-  // [mapeamento afinado com o JSON real do endpoint]
+  // ---- ANTECEDENTES: Policia Federal / SINIC (campo chave: conseguiu_emitir_certidao_negativa) ----
   if(process.env.AGREGADOR_ANTECEDENTES_PATH){
     try {
-      const ja = await infosimplesConsulta(process.env.AGREGADOR_ANTECEDENTES_PATH, { cpf: cpf, nome: nome || '', nascimento: extra.nascimento || '' });
+      const ja = await infosimplesConsulta(process.env.AGREGADOR_ANTECEDENTES_PATH, {
+        cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '', nome_pai: extra.nome_pai || '',
+        birthdate: extra.nascimento || '', uf_nascimento: extra.uf_nascimento || ''
+      });
       const d = (ja && Array.isArray(ja.data) && ja.data[0]) || null;
       if(d){
-        const txt = JSON.stringify(d).toLowerCase();
-        const nadaConsta = /nada consta|n[aã]o constam|negativ/.test(txt) && !/consta(m)? (registro|anota|antecedent)/.test(txt);
-        out.antecedentes = { criminal_positivo: !nadaConsta, detalhe: d.resultado || d.situacao || (nadaConsta ? 'Nada consta (Policia Federal).' : 'Consta anotacao (Policia Federal) - conferir certidao.') };
+        const negativa = (d.conseguiu_emitir_certidao_negativa === true);
+        // Negativa emitida = nada consta. NAO emitida NAO prova crime (pode ser divergencia
+        // de dados) => nao reprova; marca REVISAO (vira ANALISE) pra conferencia humana.
+        out.antecedentes = {
+          criminal_positivo: false,
+          revisao: !negativa,
+          detalhe: negativa
+            ? 'Nada consta - certidao negativa emitida (PF/SINIC).'
+            : ((d.mensagem || 'Nao foi possivel emitir a certidao negativa') + ' - conferir manualmente (PF/SINIC).'),
+          certidao: d.numero || d.certidao_codigo || null,
+          validade: d.validade_data || null
+        };
       }
     } catch(e){ /* antecedentes indisponivel */ }
   }
 
-  // ---- MANDADOS DE PRISAO: CNJ (nacional) ----
+  // ---- MANDADOS DE PRISAO: CNJ / BNMP (mandado em aberto = restricao grave) ----
   if(process.env.AGREGADOR_MANDADOS_PATH){
     try {
-      const jm = await infosimplesConsulta(process.env.AGREGADOR_MANDADOS_PATH, { cpf: cpf, nome: nome || '' });
+      const jm = await infosimplesConsulta(process.env.AGREGADOR_MANDADOS_PATH, { cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '' });
       const lista = (jm && Array.isArray(jm.data)) ? jm.data : [];
-      // se a consulta trouxe qualquer mandado, e restricao grave
-      const temMandado = lista.some(function(x){ return x && (x.numero || x.mandado || (Array.isArray(x.mandados) && x.mandados.length)); });
-      out.mandados = lista;
-      if(temMandado){
-        out.antecedentes.criminal_positivo = true;
-        out.antecedentes.detalhe = 'MANDADO DE PRISAO em aberto (CNJ).';
+      const mandados = lista.filter(function(x){ return x && (x.mandado || x.processo || x.tipificacao_penal); });
+      out.mandados = mandados.map(function(m){
+        return { mandado: m.mandado || null, processo: m.processo || null, tipificacao: m.tipificacao_penal || m.artigo || null, situacao: m.situacao || null, orgao: m.orgao_judicial || m.tribunal || null, expedicao: m.expedicao_datahora || null };
+      });
+      if(out.mandados.length){
+        out.antecedentes.criminal_positivo = true;   // mandado de prisao em aberto = REPROVADO
+        out.antecedentes.revisao = false;
+        out.antecedentes.detalhe = 'MANDADO DE PRISAO em aberto (CNJ/BNMP): ' + (out.mandados[0].tipificacao || out.mandados[0].situacao || 'ver detalhes') + '.';
       }
     } catch(e){ /* mandados indisponivel */ }
   }
@@ -359,7 +374,7 @@ exports.handler = async function(event){
       const mime = body.mime || 'image/jpeg';
       if(!img) return json(cors, { ok:false, erro:'imagem_ausente' }, 400);
       try {
-        const prompt = 'Voce recebe a foto de uma CNH (Carteira Nacional de Habilitacao) brasileira. Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo do condutor ou null","nome_mae":"nome da mae/filiacao ou null","nascimento":"AAAA-MM-DD ou null","cnh_registro":"numero de registro da CNH (11 digitos) ou null","cnh_seguranca":"numero de seguranca da CNH / codigo de seguranca ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se a imagem nao for uma CNH legivel, retorne todos os campos como null.';
+        const prompt = 'Voce recebe a foto de uma CNH (Carteira Nacional de Habilitacao) brasileira. Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo do condutor ou null","nome_mae":"nome da mae (filiacao) ou null","nome_pai":"nome do pai (filiacao) ou null","nascimento":"AAAA-MM-DD ou null","cnh_registro":"numero de registro da CNH (11 digitos) ou null","cnh_seguranca":"numero de seguranca da CNH / codigo de seguranca ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se a imagem nao for uma CNH legivel, retorne todos os campos como null.';
         const rA = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'content-type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
@@ -391,6 +406,7 @@ exports.handler = async function(event){
             registro: dados.cnh_registro || null,
             codigo_seguranca: dados.cnh_seguranca || null,
             nome_mae: dados.nome_mae || null,
+            nome_pai: dados.nome_pai || null,
             nascimento: dados.nascimento || null
           }
         });
