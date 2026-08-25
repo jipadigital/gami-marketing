@@ -141,7 +141,8 @@ function normalizar(bruto){
     cpf_situacao: bruto.cpf_situacao || 'regular',
     antecedentes: bruto.antecedentes || { criminal_positivo: false },
     processos: Array.isArray(bruto.processos) ? bruto.processos : [],
-    cnh: bruto.cnh || { situacao: 'desconhecida' }
+    cnh: bruto.cnh || { situacao: 'desconhecida' },
+    revisao_geral: bruto.revisao_geral === true   // falha tecnica em alguma fonte -> ANALISE
   };
 }
 
@@ -152,6 +153,7 @@ function calcularDriverStatus(norm, nomeInformado){
 
   const antCriminal = norm.antecedentes && norm.antecedentes.criminal_positivo === true;
   const antRevisao = norm.antecedentes && norm.antecedentes.revisao === true;
+  const revisaoGeral = norm.revisao_geral === true;
   const procs = norm.processos || [];
   const procCriminalReu = procs.some(p => p.esfera === 'criminal' && p.polo === 'reu' && p.ativo);
   const cnhSit = (norm.cnh && norm.cnh.situacao) || 'desconhecida';
@@ -162,7 +164,7 @@ function calcularDriverStatus(norm, nomeInformado){
 
   let status;
   if(antCriminal || procCriminalReu || cnhSuspensa) status = 'REPROVADO';
-  else if(procCivelTrab || cnhVencida || homonimo || cpfIrregular || antRevisao) status = 'ANALISE';
+  else if(procCivelTrab || cnhVencida || homonimo || cpfIrregular || antRevisao || revisaoGeral) status = 'ANALISE';
   else status = 'APTO';
 
   // Homonimo NUNCA reprova automatico (pode ser outra pessoa com o mesmo nome).
@@ -176,6 +178,7 @@ function calcularDriverStatus(norm, nomeInformado){
   if(procCivelTrab) score -= 15;
   if(cpfIrregular) score -= 12;
   if(antRevisao) score -= 15;
+  if(revisaoGeral) score -= 15;
   if(homonimo) score -= 8;
   if(score < 0) score = 0; if(score > 100) score = 100;
 
@@ -381,12 +384,12 @@ async function consultarAgregador(cpf, nome, extra){
     } catch(e){ revisaoMotivos.push('Mandados CNJ indisponivel'); }
   }
 
-  // FAIL-SAFE: se alguma consulta configurada nao confirmou e NAO ha reprovacao
-  // definitiva, manda pra ANALISE (nunca deixa passar como APTO por falha tecnica).
+  // FAIL-SAFE: se alguma consulta nao confirmou e NAO ha reprovacao definitiva,
+  // manda pra ANALISE (nunca passa como APTO por falha tecnica). Os MOTIVOS TECNICOS
+  // ficam so no `diag` (visivel so pro admin) — NAO poluem o detalhe do usuario.
+  out.diag = revisaoMotivos.slice();
   if(revisaoMotivos.length && !out.antecedentes.criminal_positivo){
-    out.antecedentes.revisao = true;
-    var base = (out.antecedentes.detalhe && out.antecedentes.detalhe.indexOf('Sem consulta') < 0) ? (out.antecedentes.detalhe + ' | ') : '';
-    out.antecedentes.detalhe = base + 'Conferir: ' + revisaoMotivos.join('; ') + '.';
+    out.revisao_geral = true;
   }
 
   return out;
@@ -605,7 +608,8 @@ exports.handler = async function(event){
     const reg = Array.isArray(inseridoArr) ? inseridoArr[0] : inseridoArr;
     reg.resumo = resumo;
     const rResp = resposta(reg);
-    if(bruto && bruto.fontes) rResp.fontes = bruto.fontes; // status de cada consulta (diagnostico)
+    if(bruto && bruto.fontes) rResp.fontes = bruto.fontes; // status de cada consulta (diagnostico admin)
+    if(bruto && bruto.diag && bruto.diag.length) rResp.diag = bruto.diag; // motivos tecnicos (admin)
 
     return json(cors, { ok:true, cache:false, resultado: rResp });
 
