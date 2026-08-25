@@ -427,12 +427,15 @@ exports.handler = async function(event){
           method: 'POST',
           headers: { 'content-type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
           body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
+            model: process.env.OCR_MODEL || 'claude-sonnet-5',
             max_tokens: 400,
             messages: [{ role:'user', content: [ blocoMidia, { type:'text', text: prompt } ] }]
           })
         });
-        if(!rA.ok) return json(cors, { ok:false, erro:'OCR falhou (' + rA.status + ')' }, 502);
+        if(!rA.ok){
+          let errTxt = ''; try { errTxt = await rA.text(); } catch(e){}
+          return json(cors, { ok:false, erro:'OCR falhou (HTTP ' + rA.status + ') ' + errTxt.substring(0,220) }, 502);
+        }
         const jA = await rA.json();
         let txt = (jA.content && jA.content[0] && jA.content[0].text) || '';
         txt = txt.replace(/```json|```/g, '').trim();
