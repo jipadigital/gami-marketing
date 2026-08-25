@@ -523,13 +523,15 @@ exports.handler = async function(event){
     if(body.consentimento !== true) return json(cors, { ok:false, erro:'consentimento_obrigatorio' }, 400);
     if(!cpfValido(cpf)) return json(cors, { ok:false, erro:'cpf_invalido' }, 400);
 
-    // 3.1) cache 24h
-    const desde24h = new Date(Date.now() - 864e5).toISOString();
-    const rCache = await fetch(SUPA_URL + '/rest/v1/motorista_consultas?cpf=eq.' + encodeURIComponent(cpf) + '&consultado_em=gte.' + encodeURIComponent(desde24h) + '&order=consultado_em.desc&limit=1', { headers: svcHeaders() });
-    if(rCache.ok){
-      const cacheArr = await rCache.json();
-      if(Array.isArray(cacheArr) && cacheArr.length){
-        return json(cors, { ok:true, cache:true, resultado: resposta(cacheArr[0]) });
+    // 3.1) cache 24h (pulado quando forcar=true, p/ re-testar sem esperar 24h)
+    if(body.forcar !== true){
+      const desde24h = new Date(Date.now() - 864e5).toISOString();
+      const rCache = await fetch(SUPA_URL + '/rest/v1/motorista_consultas?cpf=eq.' + encodeURIComponent(cpf) + '&consultado_em=gte.' + encodeURIComponent(desde24h) + '&order=consultado_em.desc&limit=1', { headers: svcHeaders() });
+      if(rCache.ok){
+        const cacheArr = await rCache.json();
+        if(Array.isArray(cacheArr) && cacheArr.length){
+          return json(cors, { ok:true, cache:true, resultado: resposta(cacheArr[0]) });
+        }
       }
     }
 
