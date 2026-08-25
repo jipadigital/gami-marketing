@@ -230,6 +230,8 @@ async function infosimplesConsulta(path, params){
   const j = await r.json().catch(function(){ return {}; });
   return j; // { code, code_message, data:[...], errors:[...] }
 }
+// So confia nos dados quando code === 200 (sucesso). Qualquer outro code = falha.
+function infosimplesOk(j){ return !!(j && j.code === 200 && Array.isArray(j.data)); }
 function mapSituacaoCnh(s){
   s = String(s || '').toLowerCase();
   if(/suspens/.test(s)) return 'suspensa';
@@ -254,6 +256,7 @@ async function consultarAgregador(cpf, nome, extra){
     antecedentes: { criminal_positivo: false, detalhe: 'Sem consulta de antecedentes configurada.' },
     processos: [], cnh: { situacao: 'desconhecida' }, identidade: null, mandados: []
   };
+  const revisaoMotivos = [];
 
   // ---- CNH: SENATRAN / Validar CNH (campos exatos da Infosimples) ----
   if(process.env.AGREGADOR_CNH_PATH){
@@ -270,8 +273,8 @@ async function consultarAgregador(cpf, nome, extra){
         pkcs12_cert: process.env.SENATRAN_PKCS12_CERT || '',
         pkcs12_pass: process.env.SENATRAN_PKCS12_PASS || ''
       });
-      const d = (jc && Array.isArray(jc.data) && jc.data[0]) || null;
-      if(d){
+      if(infosimplesOk(jc) && jc.data[0]){
+        const d = jc.data[0];
         out.cnh = {
           numero: d.registro || null, categoria: d.categoria || null,
           validade: d.validade_data || null, emissao: d.emissao_data || null,
@@ -279,8 +282,10 @@ async function consultarAgregador(cpf, nome, extra){
         };
         if(d.nome) out.nome = normNome(d.nome);
         out.identidade = { nome_confere: d.nome_condutor_identico_ao_informado, mae_confere: d.nome_mae_identico_ao_informado };
+      } else {
+        revisaoMotivos.push('CNH nao confirmada (' + ((jc && jc.code_message) || 'sem retorno') + ')');
       }
-    } catch(e){ /* CNH indisponivel */ }
+    } catch(e){ revisaoMotivos.push('CNH indisponivel'); }
   }
 
   // ---- ANTECEDENTES: Policia Federal / SINIC (campo chave: conseguiu_emitir_certidao_negativa) ----
@@ -290,8 +295,8 @@ async function consultarAgregador(cpf, nome, extra){
         cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '', nome_pai: extra.nome_pai || '',
         birthdate: extra.nascimento || '', uf_nascimento: extra.uf_nascimento || ''
       });
-      const d = (ja && Array.isArray(ja.data) && ja.data[0]) || null;
-      if(d){
+      if(infosimplesOk(ja) && ja.data[0]){
+        const d = ja.data[0];
         const negativa = (d.conseguiu_emitir_certidao_negativa === true);
         // Negativa emitida = nada consta. NAO emitida NAO prova crime (pode ser divergencia
         // de dados) => nao reprova; marca REVISAO (vira ANALISE) pra conferencia humana.
@@ -304,25 +309,38 @@ async function consultarAgregador(cpf, nome, extra){
           certidao: d.numero || d.certidao_codigo || null,
           validade: d.validade_data || null
         };
+      } else {
+        revisaoMotivos.push('Antecedentes PF nao confirmados (' + ((ja && ja.code_message) || 'sem retorno') + ')');
       }
-    } catch(e){ /* antecedentes indisponivel */ }
+    } catch(e){ revisaoMotivos.push('Antecedentes PF indisponivel'); }
   }
 
   // ---- MANDADOS DE PRISAO: CNJ / BNMP (mandado em aberto = restricao grave) ----
   if(process.env.AGREGADOR_MANDADOS_PATH){
     try {
       const jm = await infosimplesConsulta(process.env.AGREGADOR_MANDADOS_PATH, { cpf: cpf, nome: nome || '', nome_mae: extra.nome_mae || '' });
-      const lista = (jm && Array.isArray(jm.data)) ? jm.data : [];
-      const mandados = lista.filter(function(x){ return x && (x.mandado || x.processo || x.tipificacao_penal); });
-      out.mandados = mandados.map(function(m){
-        return { mandado: m.mandado || null, processo: m.processo || null, tipificacao: m.tipificacao_penal || m.artigo || null, situacao: m.situacao || null, orgao: m.orgao_judicial || m.tribunal || null, expedicao: m.expedicao_datahora || null };
-      });
-      if(out.mandados.length){
-        out.antecedentes.criminal_positivo = true;   // mandado de prisao em aberto = REPROVADO
-        out.antecedentes.revisao = false;
-        out.antecedentes.detalhe = 'MANDADO DE PRISAO em aberto (CNJ/BNMP): ' + (out.mandados[0].tipificacao || out.mandados[0].situacao || 'ver detalhes') + '.';
+      if(infosimplesOk(jm)){
+        const mandados = jm.data.filter(function(x){ return x && (x.mandado || x.processo || x.tipificacao_penal); });
+        out.mandados = mandados.map(function(m){
+          return { mandado: m.mandado || null, processo: m.processo || null, tipificacao: m.tipificacao_penal || m.artigo || null, situacao: m.situacao || null, orgao: m.orgao_judicial || m.tribunal || null, expedicao: m.expedicao_datahora || null };
+        });
+        if(out.mandados.length){
+          out.antecedentes.criminal_positivo = true;   // mandado de prisao em aberto = REPROVADO
+          out.antecedentes.revisao = false;
+          out.antecedentes.detalhe = 'MANDADO DE PRISAO em aberto (CNJ/BNMP): ' + (out.mandados[0].tipificacao || out.mandados[0].situacao || 'ver detalhes') + '.';
+        }
+      } else {
+        revisaoMotivos.push('Mandados CNJ nao confirmados (' + ((jm && jm.code_message) || 'sem retorno') + ')');
       }
-    } catch(e){ /* mandados indisponivel */ }
+    } catch(e){ revisaoMotivos.push('Mandados CNJ indisponivel'); }
+  }
+
+  // FAIL-SAFE: se alguma consulta configurada nao confirmou e NAO ha reprovacao
+  // definitiva, manda pra ANALISE (nunca deixa passar como APTO por falha tecnica).
+  if(revisaoMotivos.length && !out.antecedentes.criminal_positivo){
+    out.antecedentes.revisao = true;
+    var base = (out.antecedentes.detalhe && out.antecedentes.detalhe.indexOf('Sem consulta') < 0) ? (out.antecedentes.detalhe + ' | ') : '';
+    out.antecedentes.detalhe = base + 'Conferir: ' + revisaoMotivos.join('; ') + '.';
   }
 
   return out;
