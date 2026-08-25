@@ -106,6 +106,37 @@ exports.handler = async function(event, context) {
     };
   }
 
+  // 🆕 TRAVA ANTI-DUPLICATA: a função agendada às vezes é disparada 2x (entrega dupla
+  // da Netlify / schedule duplicado), postando o mesmo story em dobro. Se ESTA categoria
+  // já foi postada com sucesso nos últimos 45 min, pula — só no modo 'auto' (post manual
+  // pelo dashboard continua livre pra repostar quando quiser).
+  if (modo === 'auto') {
+    try {
+      const desde = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+      const dedupUrl = `${SUPA_URL}/rest/v1/stories_log?select=postado_em&categoria=eq.${encodeURIComponent(categoriaUsada)}&status=eq.postado&postado_em=gte.${encodeURIComponent(desde)}&limit=1`;
+      const rDed = await fetch(dedupUrl, { headers: { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY } });
+      if (rDed.ok) {
+        const jaPostado = await rDed.json();
+        if (Array.isArray(jaPostado) && jaPostado.length > 0) {
+          console.log(`⏭️ Duplicata evitada: "${categoriaUsada}" já postada às ${jaPostado[0].postado_em}. Pulando.`);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              skipped: true,
+              motivo: 'duplicata_evitada',
+              message: `Categoria "${categoriaUsada}" já foi postada nos últimos 45 min (${jaPostado[0].postado_em}). Pulando pra não duplicar.`,
+              categoria: categoriaUsada
+            })
+          };
+        }
+      }
+    } catch (e) {
+      // Se a checagem falhar, segue o fluxo normal — nunca trava o post por causa do dedup.
+      console.warn('[dedup] checagem falhou, seguindo:', e.message);
+    }
+  }
+
   try {
     // PASSO 1: Buscar imagens disponíveis na pasta da categoria
     let imagemFinal = imagem_url;
