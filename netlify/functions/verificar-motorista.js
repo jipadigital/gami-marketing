@@ -261,6 +261,20 @@ function mapSituacaoCnh(s){
   if(/regular|valid|ativ|apto/.test(s)) return 'valida';
   return 'desconhecida';
 }
+// CNH lida do DOCUMENTO (OCR), quando o SENATRAN nao esta disponivel.
+// Pega validade (flag vencida) e categoria. NAO confirma suspensao/autenticidade.
+function _dataVencida(s){
+  try { if(!s) return false; return new Date(String(s) + 'T23:59:59') < new Date(); } catch(e){ return false; }
+}
+function _cnhDoDocumento(o, ex){
+  if(!ex || !ex.validade) return false;
+  o.cnh = {
+    numero: ex.registro || null, categoria: ex.categoria || null, validade: ex.validade,
+    situacao: _dataVencida(ex.validade) ? 'vencida' : 'valida',
+    origem: 'documento'   // lida da foto, NAO validada no SENATRAN
+  };
+  return true;
+}
 function mapEsfera(txt){
   txt = String(txt || '').toLowerCase();
   if(/crim|penal/.test(txt)) return 'criminal';
@@ -280,8 +294,12 @@ async function consultarAgregador(cpf, nome, extra){
   const revisaoMotivos = [];
   function _fonte(nome, j){ out.fontes.push({ fonte: nome, code: (j && j.code) || null, msg: (j && j.code_message) || null }); }
 
-  // ---- CNH: SENATRAN / Validar CNH (campos exatos da Infosimples) ----
-  if(process.env.AGREGADOR_CNH_PATH !== 'off'){
+  // ---- CNH ----
+  // Modo 'documento' (AGREGADOR_CNH_PATH=off): usa a CNH lida da foto (validade/categoria).
+  if(process.env.AGREGADOR_CNH_PATH === 'off'){
+    _cnhDoDocumento(out, extra);
+  } else {
+    // SENATRAN / Validar CNH (campos exatos da Infosimples); se falhar, cai pro documento.
     try {
       const jc = await infosimplesAuto('cnh', process.env.AGREGADOR_CNH_PATH, SLUGS_CNH, {
         cpf: cpf,
@@ -306,9 +324,10 @@ async function consultarAgregador(cpf, nome, extra){
         if(d.nome) out.nome = normNome(d.nome);
         out.identidade = { nome_confere: d.nome_condutor_identico_ao_informado, mae_confere: d.nome_mae_identico_ao_informado };
       } else {
-        revisaoMotivos.push('CNH nao confirmada (' + ((jc && jc.code_message) || 'sem retorno') + ')');
+        // SENATRAN nao retornou (ex: 603 sem acesso). Usa a CNH do documento como fallback.
+        if(!_cnhDoDocumento(out, extra)) revisaoMotivos.push('CNH nao confirmada (' + ((jc && jc.code_message) || 'sem retorno') + ')');
       }
-    } catch(e){ revisaoMotivos.push('CNH indisponivel'); }
+    } catch(e){ if(!_cnhDoDocumento(out, extra)) revisaoMotivos.push('CNH indisponivel'); }
   }
 
   // ---- ANTECEDENTES: Policia Federal / SINIC (campo chave: conseguiu_emitir_certidao_negativa) ----
@@ -457,7 +476,9 @@ exports.handler = async function(event){
             codigo_seguranca: dados.cnh_seguranca || null,
             nome_mae: dados.nome_mae || null,
             nome_pai: dados.nome_pai || null,
-            nascimento: dados.nascimento || null
+            nascimento: dados.nascimento || null,
+            validade: dados.cnh_validade || null,
+            categoria: dados.cnh_categoria || null
           }
         });
       } catch(e){
