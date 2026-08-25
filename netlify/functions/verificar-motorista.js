@@ -354,6 +354,8 @@ async function consultarAgregador(cpf, nome, extra){
           out.antecedentes.revisao = false;
           out.antecedentes.detalhe = 'MANDADO DE PRISAO em aberto (CNJ/BNMP): ' + (out.mandados[0].tipificacao || out.mandados[0].situacao || 'ver detalhes') + '.';
         }
+      } else if(jm && jm.code === 612){
+        out.mandados = []; // 612 = nada retornado = NENHUM mandado de prisao = limpo (nao e falha)
       } else {
         revisaoMotivos.push('Mandados CNJ nao confirmados (' + ((jm && jm.code_message) || 'sem retorno') + ')');
       }
