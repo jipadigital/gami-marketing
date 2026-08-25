@@ -417,17 +417,19 @@ exports.handler = async function(event){
       const mime = body.mime || 'image/jpeg';
       if(!img) return json(cors, { ok:false, erro:'imagem_ausente' }, 400);
       try {
-        const prompt = 'Voce recebe a foto de uma CNH (Carteira Nacional de Habilitacao) brasileira. Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo do condutor ou null","nome_mae":"nome da mae (filiacao) ou null","nome_pai":"nome do pai (filiacao) ou null","nascimento":"AAAA-MM-DD ou null","cnh_registro":"numero de registro da CNH (11 digitos) ou null","cnh_seguranca":"numero de seguranca da CNH / codigo de seguranca ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se a imagem nao for uma CNH legivel, retorne todos os campos como null.';
+        const prompt = 'Voce recebe uma CNH (Carteira Nacional de Habilitacao) brasileira, em foto ou PDF. Extraia os campos e responda SOMENTE com um JSON valido, sem nenhum texto fora do JSON, no formato exato: {"cpf":"11 digitos ou null","nome":"nome completo do condutor ou null","nome_mae":"nome da mae (filiacao) ou null","nome_pai":"nome do pai (filiacao) ou null","nascimento":"AAAA-MM-DD ou null","cnh_registro":"numero de registro da CNH (11 digitos) ou null","cnh_seguranca":"numero de seguranca da CNH / codigo de seguranca ou null","cnh_categoria":"ex AB ou null","cnh_validade":"AAAA-MM-DD ou null"}. Se nao for uma CNH legivel, retorne todos os campos como null.';
+        // PDF vai como bloco 'document'; imagem como 'image'.
+        const ehPdf = String(mime).toLowerCase().indexOf('pdf') >= 0;
+        const blocoMidia = ehPdf
+          ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data: img } }
+          : { type:'image', source:{ type:'base64', media_type: mime, data: img } };
         const rA = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: { 'content-type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
           body: JSON.stringify({
             model: 'claude-sonnet-4-20250514',
             max_tokens: 400,
-            messages: [{ role:'user', content: [
-              { type:'image', source:{ type:'base64', media_type: mime, data: img } },
-              { type:'text', text: prompt }
-            ] }]
+            messages: [{ role:'user', content: [ blocoMidia, { type:'text', text: prompt } ] }]
           })
         });
         if(!rA.ok) return json(cors, { ok:false, erro:'OCR falhou (' + rA.status + ')' }, 502);
