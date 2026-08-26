@@ -1,3 +1,4 @@
+<!-- v31.62 - Ranking\Pontos (curadoria): foi_reconhecido 15->10 (era passivo e valia 3x quem reconhece), aniversario_dia 20->10 (presente, nao merito), e "visitou_3_abas" REMOVIDO do catalogo e do gatilho (hookNavAba) - era farm de presenca. Login diario (2) e tarefa concluida (1) mantidos por decisao do dono - 26/08/2026 -->
 <!-- v31.61 - Verificacao de Motoristas (iframe): a ponte por postMessage dependia de timing; agora a sessao vai DETERMINISTICA na URL do iframe (#gs=base64 com gami_usuario_logado+token). getSessao le o hash primeiro; postMessage fica so de backup. Resolve o "Acesso restrito" no iframe - 26/08/2026 -->
 <!-- v31.60 - Verificacao de Motoristas (iframe): a pagina dava "Acesso restrito" mesmo logado, pq o localStorage do iframe as vezes nao traz a sessao (particao de storage / Modo Teste). Adicionada PONTE via postMessage: o dashboard (pai) manda gami_usuario_logado + gami_sessao_token pro iframe (_vmEnviarSessao no onload + sob pedido gami-need-session), e a pagina aplica a sessao recebida. Fallback robusto - 26/08/2026 -->
 <!-- v31.59 - Verificacao de Motoristas agora abre DENTRO do dashboard (aba interna via iframe #pg-motoristas + funcao abrirVerificarMotoristas), nao sai mais pra pagina separada. Removida a caixa "Ignorar cache" da pagina (confundia; cache de 24h segue por padrao). Link "Voltar" com target=_top - 26/08/2026 -->
@@ -10902,7 +10903,6 @@ var PONTOS_CATALOGO = {
   'pulse_respondido':     { pontos: 2,  categoria: 'engajamento', label: 'Respondeu Pulse', limite_dia: 1 },
   'tarefa_concluida':     { pontos: 1,  categoria: 'engajamento', label: 'Tarefa concluída' },
   'anotacao_calendario':  { pontos: 1,  categoria: 'engajamento', label: 'Anotação no calendário', limite_dia: 1 },
-  'visitou_3_abas':       { pontos: 1,  categoria: 'engajamento', label: 'Visitou 3+ abas no dia', limite_dia: 1 },
   'versiculo_lido':       { pontos: 1,  categoria: 'engajamento', label: 'Leu o versículo do dia', limite_dia: 1 },
   
   // STREAKS (sequências)
@@ -10914,13 +10914,13 @@ var PONTOS_CATALOGO = {
   
   // CULTURA E TIME
   'reconheceu_colega':    { pontos: 5,   categoria: 'cultura', label: 'Reconheceu um colega' },
-  'foi_reconhecido':      { pontos: 15,  categoria: 'cultura', label: 'Foi reconhecido por colega' },
+  'foi_reconhecido':      { pontos: 10,  categoria: 'cultura', label: 'Foi reconhecido por colega' },
   'comentou_mural_de':    { pontos: 1,   categoria: 'cultura', label: 'Escreveu no mural', limite_dia: 1 },
   'assinou_culture_code': { pontos: 15,  categoria: 'cultura', label: 'Assinou o Culture Code', limite_dia: 1 },
   'recado_positivo':      { pontos: 5,   categoria: 'cultura', label: 'Postou recado positivo' },
   'recebeu_curtida':      { pontos: 1,   categoria: 'cultura', label: 'Recebeu curtida (até 5)' },
   'dica_util':            { pontos: 5,   categoria: 'cultura', label: 'Postou dica útil pra equipe' },
-  'aniversario_dia':      { pontos: 20,  categoria: 'cultura', label: 'Aniversário do dia' },
+  'aniversario_dia':      { pontos: 10,  categoria: 'cultura', label: 'Aniversário do dia' },
   'aniversario_empresa_1ano': { pontos: 50, categoria: 'cultura', label: '1 ano de Gâmi (aniversário empresa)' },
   'aniversario_empresa_ano':  { pontos: 50, categoria: 'cultura', label: 'Aniversário de empresa anual' },
   'devocional':           { pontos: 10,  categoria: 'cultura', label: 'Participou do devocional' },
@@ -45050,10 +45050,7 @@ function hookNavAba(nomeAba){
   var hoje = new Date().toISOString().split('T')[0];
   if(!_abasVisitadas[hoje]) _abasVisitadas[hoje] = {};
   _abasVisitadas[hoje][nomeAba] = true;
-  if(Object.keys(_abasVisitadas[hoje]).length >= 3){
-    var user = getUsuarioLogado();
-    if(user && user.id) atribuirPontos(user.id, 'visitou_3_abas');
-  }
+  // v31.62: "visitou_3_abas" removido do ranking (era farm de presenca, sem merito).
 }
 async function hookTarefaConcluida(tarefa){
   var user = getUsuarioLogado();
