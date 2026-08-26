@@ -178,13 +178,27 @@
   var S = getSessao();
   var gate = document.getElementById('gate');
   var app  = document.getElementById('app');
-  var podeUsar = S.u && S.token;   // qualquer usuario Gami logado
-  if(!podeUsar){
-    gate.classList.remove('hidden');
-    document.getElementById('gate-msg').textContent = 'Você precisa estar logado no Gâmi. Faça login e volte aqui.';
-    return;
+  var _appPronto = false;
+  function aplicarSessao(){
+    if(S && S.u && S.token){
+      gate.classList.add('hidden');
+      app.classList.remove('hidden');
+      if(!_appPronto){ _appPronto = true; try { atualizarDocsVisibilidade(); } catch(e){} try { carregarHistorico(); } catch(e){} }
+    } else if(!_appPronto){
+      app.classList.add('hidden');
+      gate.classList.remove('hidden');
+      document.getElementById('gate-msg').textContent = 'Você precisa estar logado no Gâmi. Faça login e volte aqui.';
+    }
   }
-  app.classList.remove('hidden');
+  // Quando embedado no dashboard (iframe), a sessao pode nao vir pelo localStorage do
+  // iframe (particao de storage / Modo Teste). Entao pedimos a sessao ao app PAI.
+  window.addEventListener('message', function(ev){
+    var d = ev.data;
+    if(d && d.type === 'gami-sessao' && d.u && d.token){ S = { u: d.u, token: d.token }; aplicarSessao(); }
+  });
+  if(!(S && S.u && S.token) && window.self !== window.top){
+    try { window.parent.postMessage({ type:'gami-need-session' }, '*'); } catch(e){}
+  }
 
   function headers(){
     return { 'Content-Type':'application/json', 'X-Gami-User': S.u.id || S.u.pessoa_id || '', 'X-Gami-Token': S.token };
@@ -461,8 +475,7 @@
     try { await fetch('/api/verificar-motorista', { method:'POST', headers: headers(), body: JSON.stringify({ action:'doc_excluir', id:id }) }); listarDocs(); } catch(e){}
   }
 
-  atualizarDocsVisibilidade();
-  carregarHistorico();
+  aplicarSessao();
 })();
 </script>
 </body>

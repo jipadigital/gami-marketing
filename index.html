@@ -1,3 +1,4 @@
+<!-- v31.60 - Verificacao de Motoristas (iframe): a pagina dava "Acesso restrito" mesmo logado, pq o localStorage do iframe as vezes nao traz a sessao (particao de storage / Modo Teste). Adicionada PONTE via postMessage: o dashboard (pai) manda gami_usuario_logado + gami_sessao_token pro iframe (_vmEnviarSessao no onload + sob pedido gami-need-session), e a pagina aplica a sessao recebida. Fallback robusto - 26/08/2026 -->
 <!-- v31.59 - Verificacao de Motoristas agora abre DENTRO do dashboard (aba interna via iframe #pg-motoristas + funcao abrirVerificarMotoristas), nao sai mais pra pagina separada. Removida a caixa "Ignorar cache" da pagina (confundia; cache de 24h segue por padrao). Link "Voltar" com target=_top - 26/08/2026 -->
 <!-- v31.58 - Menu: novo item "Verificacao de Motoristas" na secao Gestao (depois de Pessoas). Abre a pagina standalone verificar-motorista.html (Driver Status: antecedentes PF + mandados CNJ + CNH). Usa location.href (nao 'nav('), entao aparece pra TODOS os usuarios logados e nao e filtrado por aplicarPermissoesVisuais. Modulo aditivo, nada mais no index mudou - 26/08/2026 -->
 <!-- v31.57 - Ponto\Seguranca: FECHADO o furo de bater de fora pelo IP. As faixas AMPLAS de provedor (177.152. Souuni e 177.222. Internet 5) liberavam a rede INTEIRA do provedor - quem tinha o mesmo provedor EM CASA passava como se fosse o escritorio. Trocadas pelos blocos /24 REAIS do escritorio (177.152.116/.117 e 177.222.209/.212); todos os IPs que o escritorio usou no mes continuam passando, mas casa no mesmo provedor nao passa mais. BONUS: no editor de ponto, cada batida agora mostra ONDE bateu (IP .x.x / GPS / home office) e um ⚠ vermelho quando o IP nao e de bloco conhecido do escritorio - da pra ver de relance quem bateu de fora. Obs: se o provedor do escritorio girar pra um /24 novo, adicionar (a lista de tentativas falhas v31.56 mostra o IP bloqueado) - 20/08/2026 -->
@@ -2501,12 +2502,32 @@ window.abrirVerificarMotoristas = function(el){
       pg.classList.add('active');
       pg.setAttribute('style','display:block !important');
       var f = document.getElementById('vm-iframe');
-      if(f && !f.getAttribute('src')){ f.setAttribute('src','verificar-motorista.html'); } // carrega na 1a vez
+      if(f){
+        if(!f.getAttribute('src')){ f.setAttribute('src','verificar-motorista.html'); } // carrega na 1a vez
+        f.onload = function(){ _vmEnviarSessao(f); };
+        setTimeout(function(){ _vmEnviarSessao(f); }, 400); // caso ja esteja carregado
+      }
     }
     try { document.body.classList.remove('menu-open','sidebar-open','nav-open'); } catch(e){}
     try { window.scrollTo(0,0); } catch(e){}
   } catch(e){ console.warn('abrirVerificarMotoristas', e); }
 };
+// Ponte de sessao dashboard -> iframe da Verificacao de Motoristas.
+function _vmEnviarSessao(f){
+  try {
+    var u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null');
+    var token = localStorage.getItem('gami_sessao_token') || '';
+    if(f && f.contentWindow && u && token){ f.contentWindow.postMessage({ type:'gami-sessao', u:u, token:token }, '*'); }
+  } catch(e){}
+}
+window.addEventListener('message', function(ev){
+  try {
+    if(ev.data && ev.data.type === 'gami-need-session'){
+      var f = document.getElementById('vm-iframe');
+      if(f) _vmEnviarSessao(f);
+    }
+  } catch(e){}
+});
 
 window.nav = function(el, page){
   try {
