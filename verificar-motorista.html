@@ -170,6 +170,16 @@
 
   // ---- sessão (mesma origem do dashboard: lê o localStorage do Gâmi) ----
   function getSessao(){
+    // 1) sessao passada pelo dashboard na URL (#gs=base64) — deterministico, nao depende
+    //    do localStorage do iframe (que pode ser particionado / vazio dentro do iframe).
+    try {
+      var m = (location.hash || '').match(/gs=([^&]+)/);
+      if(m){
+        var obj = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+        if(obj && obj.u && obj.token) return { u: obj.u, token: obj.token };
+      }
+    } catch(e){}
+    // 2) localStorage (quando aberta direto, fora do iframe)
     var u=null, token='';
     try { u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null'); } catch(e){}
     try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}

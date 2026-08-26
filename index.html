@@ -1,3 +1,4 @@
+<!-- v31.61 - Verificacao de Motoristas (iframe): a ponte por postMessage dependia de timing; agora a sessao vai DETERMINISTICA na URL do iframe (#gs=base64 com gami_usuario_logado+token). getSessao le o hash primeiro; postMessage fica so de backup. Resolve o "Acesso restrito" no iframe - 26/08/2026 -->
 <!-- v31.60 - Verificacao de Motoristas (iframe): a pagina dava "Acesso restrito" mesmo logado, pq o localStorage do iframe as vezes nao traz a sessao (particao de storage / Modo Teste). Adicionada PONTE via postMessage: o dashboard (pai) manda gami_usuario_logado + gami_sessao_token pro iframe (_vmEnviarSessao no onload + sob pedido gami-need-session), e a pagina aplica a sessao recebida. Fallback robusto - 26/08/2026 -->
 <!-- v31.59 - Verificacao de Motoristas agora abre DENTRO do dashboard (aba interna via iframe #pg-motoristas + funcao abrirVerificarMotoristas), nao sai mais pra pagina separada. Removida a caixa "Ignorar cache" da pagina (confundia; cache de 24h segue por padrao). Link "Voltar" com target=_top - 26/08/2026 -->
 <!-- v31.58 - Menu: novo item "Verificacao de Motoristas" na secao Gestao (depois de Pessoas). Abre a pagina standalone verificar-motorista.html (Driver Status: antecedentes PF + mandados CNJ + CNH). Usa location.href (nao 'nav('), entao aparece pra TODOS os usuarios logados e nao e filtrado por aplicarPermissoesVisuais. Modulo aditivo, nada mais no index mudou - 26/08/2026 -->
@@ -2503,9 +2504,12 @@ window.abrirVerificarMotoristas = function(el){
       pg.setAttribute('style','display:block !important');
       var f = document.getElementById('vm-iframe');
       if(f){
-        if(!f.getAttribute('src')){ f.setAttribute('src','verificar-motorista.html'); } // carrega na 1a vez
+        if(!f.getAttribute('src')){
+          var sess = _vmSessaoBase64();
+          f.setAttribute('src', 'verificar-motorista.html' + (sess ? ('#gs=' + sess) : '')); // sessao no hash (deterministico)
+        }
         f.onload = function(){ _vmEnviarSessao(f); };
-        setTimeout(function(){ _vmEnviarSessao(f); }, 400); // caso ja esteja carregado
+        setTimeout(function(){ _vmEnviarSessao(f); }, 400); // backup por postMessage
       }
     }
     try { document.body.classList.remove('menu-open','sidebar-open','nav-open'); } catch(e){}
@@ -2513,6 +2517,14 @@ window.abrirVerificarMotoristas = function(el){
   } catch(e){ console.warn('abrirVerificarMotoristas', e); }
 };
 // Ponte de sessao dashboard -> iframe da Verificacao de Motoristas.
+function _vmSessaoBase64(){
+  try {
+    var u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null');
+    var token = localStorage.getItem('gami_sessao_token') || '';
+    if(!u || !token) return '';
+    return encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({ u:u, token:token })))));
+  } catch(e){ return ''; }
+}
 function _vmEnviarSessao(f){
   try {
     var u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null');
