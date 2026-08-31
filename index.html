@@ -1,3 +1,4 @@
+<!-- v31.66 - Ponto: quem e home office/liberado NAO precisa mais justificar atraso. O check de atraso (exige justificativa) vinha ANTES do atalho de liberacao, entao home office (Jheniffer etc.) tinha que justificar toda batida fora do horario esperado (ela colocava so "."). Agora o check de atraso pula quem passa no _pessoaLiberadaValidacao - nos 2 fluxos (Meu Ponto + ponto do dashboard) - 30/08/2026 -->
 <!-- v31.65 - Ponto: Andreia Luiza Damke (pe027, andreiazk45@gmail.com) passou a trabalhar home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Jessica). Por email + nome "luiza damke" (sem acento) - 30/08/2026 -->
 <!-- v31.64 - Gestor de Vitoria: Wesley Dias -> Jean Alves Guerra. CIDADES_DATA_DEFAULT (c10) trocado (gestor+tel 27997779290); textos do manual e prompt atualizados. Pessoa+login do Jean criados. No ranking o Wesley some com refresh (ranking_mensal/pontos_log ja limpos no servidor) - 28/08/2026 -->
 <!-- v31.63 - Desligamento: Wesley Dias (pe013), ex-gestor de Vitoria, adicionado ao PESSOAS_DESLIGADAS (some de Pessoas e o syncPessoas apaga do servidor). Login desativado + pontos_log limpos via SQL. Vitoria fica sem gestor ate cadastrar o novo - 28/08/2026 -->
@@ -52134,9 +52135,11 @@ async function mpBaterPonto(){
   var justifInput = document.getElementById('mp-justificativa');
   var justifBox = document.getElementById('mp-justificativa-box');
   
-  // 🕐 VERIFICA ATRASO: se passou da tolerância, exige justificativa
+  // 🕐 VERIFICA ATRASO: se passou da tolerância, exige justificativa.
+  // 🆕 v31.66: quem é home office / liberado NAO precisa justificar atraso
+  // (horario flexivel de casa) — pula direto pro registro liberado abaixo.
   var info = _calcularProximaBatidaEAtraso();
-  if(info && info.exigeJustificativa){
+  if(info && info.exigeJustificativa && !_pessoaLiberadaValidacao(MP_PESSOA)){
     var justifAtual = (justifInput && justifInput.value || '').trim();
     if(!justifAtual){
       if(justifBox){
@@ -55045,9 +55048,11 @@ async function dashBaterPontoRapido(){
   var justifInput = document.getElementById('dash-ponto-justif');
   var justifBox = document.getElementById('dash-ponto-justif-box');
   
-  // 🕐 VERIFICA ATRASO: se passou da tolerância, exige justificativa
+  // 🕐 VERIFICA ATRASO: se passou da tolerância, exige justificativa.
+  // 🆕 v31.66: quem é home office / liberado NAO precisa justificar atraso
+  // (horario flexivel de casa) — pula direto pro registro liberado abaixo.
   var info = _calcularProximaBatidaEAtraso();
-  if(info && info.exigeJustificativa){
+  if(info && info.exigeJustificativa && !_pessoaLiberadaValidacao(MP_PESSOA)){
     var justifAtual = (justifInput && justifInput.value || '').trim();
     if(!justifAtual){
       if(justifBox){
