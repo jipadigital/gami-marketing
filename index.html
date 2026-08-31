@@ -1,3 +1,4 @@
+<!-- v31.68 - Banner Campeao do mes: preview (?campeao=preview) agora mostra o mes CORRENTE (agosto), nao o anterior (julho), e ignora o "ja fechei". Comportamento real segue: dia 01-03 mostra o mes anterior - 30/08/2026 -->
 <!-- v31.67 - Dashboard: banner "Campeao(a) do mes" acima do Mural de Recados. Aparece SO nos dias 01, 02 e 03 de cada mes, celebrando o Nº1 do ranking do MES ANTERIOR (calculado do pontos_log por data_acao). Visual festivo: coroa flutuando na foto, glow dourado, brilho e confete. Dismissivel (por mes). Preview via ?campeao=preview. renderCampeaoMesBanner no initDashboard - 30/08/2026 -->
 <!-- v31.66 - Ponto: quem e home office/liberado NAO precisa mais justificar atraso. O check de atraso (exige justificativa) vinha ANTES do atalho de liberacao, entao home office (Jheniffer etc.) tinha que justificar toda batida fora do horario esperado (ela colocava so "."). Agora o check de atraso pula quem passa no _pessoaLiberadaValidacao - nos 2 fluxos (Meu Ponto + ponto do dashboard) - 30/08/2026 -->
 <!-- v31.65 - Ponto: Andreia Luiza Damke (pe027, andreiazk45@gmail.com) passou a trabalhar home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Jessica). Por email + nome "luiza damke" (sem acento) - 30/08/2026 -->
@@ -33969,8 +33970,9 @@ async function renderCampeaoMesBanner(){
     var preview = /campeao=preview/.test(location.search || ''); // ?campeao=preview força mostrar (teste)
     if(hoje.getDate() > 3 && !preview) return; // só dias 1, 2 e 3
 
-    // mês anterior (início/fim + nome + chave)
-    var prim = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    // Normal (dia 01-03): mês ANTERIOR. Preview: mês CORRENTE (pra ver agosto agora).
+    var prim = preview ? new Date(hoje.getFullYear(), hoje.getMonth(), 1)
+                       : new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
     var ano = prim.getFullYear(), mes = prim.getMonth(); // 0-11
     var mm = String(mes + 1).padStart(2, '0');
     var ini = ano + '-' + mm + '-01';
@@ -33979,8 +33981,8 @@ async function renderCampeaoMesBanner(){
     var chave = ano + '-' + mm;
     var mesNome = prim.toLocaleDateString('pt-BR', { month: 'long' });
 
-    // já fechou o banner deste mês?
-    try { if(localStorage.getItem('gami_campeao_visto_' + chave)) return; } catch(e){}
+    // já fechou o banner deste mês? (no preview sempre mostra)
+    try { if(!preview && localStorage.getItem('gami_campeao_visto_' + chave)) return; } catch(e){}
 
     // busca os pontos do mês anterior e acha o Nº1
     var url = SUPA_URL + '/rest/v1/pontos_log?data_acao=gte.' + ini + '&data_acao=lte.' + fim + '&select=pessoa_id,pessoa_nome,pontos&limit=5000';
