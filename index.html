@@ -1,3 +1,4 @@
+<!-- v31.67 - Dashboard: banner "Campeao(a) do mes" acima do Mural de Recados. Aparece SO nos dias 01, 02 e 03 de cada mes, celebrando o Nº1 do ranking do MES ANTERIOR (calculado do pontos_log por data_acao). Visual festivo: coroa flutuando na foto, glow dourado, brilho e confete. Dismissivel (por mes). Preview via ?campeao=preview. renderCampeaoMesBanner no initDashboard - 30/08/2026 -->
 <!-- v31.66 - Ponto: quem e home office/liberado NAO precisa mais justificar atraso. O check de atraso (exige justificativa) vinha ANTES do atalho de liberacao, entao home office (Jheniffer etc.) tinha que justificar toda batida fora do horario esperado (ela colocava so "."). Agora o check de atraso pula quem passa no _pessoaLiberadaValidacao - nos 2 fluxos (Meu Ponto + ponto do dashboard) - 30/08/2026 -->
 <!-- v31.65 - Ponto: Andreia Luiza Damke (pe027, andreiazk45@gmail.com) passou a trabalhar home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Jessica). Por email + nome "luiza damke" (sem acento) - 30/08/2026 -->
 <!-- v31.64 - Gestor de Vitoria: Wesley Dias -> Jean Alves Guerra. CIDADES_DATA_DEFAULT (c10) trocado (gestor+tel 27997779290); textos do manual e prompt atualizados. Pessoa+login do Jean criados. No ranking o Wesley some com refresh (ranking_mensal/pontos_log ja limpos no servidor) - 28/08/2026 -->
@@ -3002,6 +3003,9 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
   <!-- ====== CARD DIREÇÃO GÂMI (mensagem da Diretoria + Cleyton + Gerência) ====== -->
   <div id="dash-direcao" style="margin:14px 0"></div>
+
+  <!-- ====== 🏆 CAMPEÃO DO MÊS (dias 01–03, celebra o Nº1 do mês anterior) ====== -->
+  <div id="dash-campeao-banner" style="display:none"></div>
 
   <!-- ====== 6. MURAL DE RECADOS (fora do Modo Foco) ====== -->
   <div class="card dash-section" style="margin-bottom:14px">
@@ -33953,6 +33957,96 @@ function _gamiConfetti(){
   }
 })();
 
+// 🏆 v31.67: banner "Parabéns ao campeão do mês" no dashboard.
+// Aparece SÓ nos dias 01, 02 e 03 de cada mês, celebrando o Nº1 do ranking do
+// MÊS ANTERIOR. Computa o campeão direto do pontos_log (por data_acao). Dismissível.
+async function renderCampeaoMesBanner(){
+  var box = document.getElementById('dash-campeao-banner');
+  if(!box) return;
+  box.style.display = 'none';
+  try {
+    var hoje = new Date();
+    var preview = /campeao=preview/.test(location.search || ''); // ?campeao=preview força mostrar (teste)
+    if(hoje.getDate() > 3 && !preview) return; // só dias 1, 2 e 3
+
+    // mês anterior (início/fim + nome + chave)
+    var prim = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    var ano = prim.getFullYear(), mes = prim.getMonth(); // 0-11
+    var mm = String(mes + 1).padStart(2, '0');
+    var ini = ano + '-' + mm + '-01';
+    var ult = new Date(ano, mes + 1, 0).getDate();
+    var fim = ano + '-' + mm + '-' + String(ult).padStart(2, '0');
+    var chave = ano + '-' + mm;
+    var mesNome = prim.toLocaleDateString('pt-BR', { month: 'long' });
+
+    // já fechou o banner deste mês?
+    try { if(localStorage.getItem('gami_campeao_visto_' + chave)) return; } catch(e){}
+
+    // busca os pontos do mês anterior e acha o Nº1
+    var url = SUPA_URL + '/rest/v1/pontos_log?data_acao=gte.' + ini + '&data_acao=lte.' + fim + '&select=pessoa_id,pessoa_nome,pontos&limit=5000';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+    if(!r.ok) return;
+    var linhas = await r.json();
+    if(!Array.isArray(linhas) || !linhas.length) return;
+    var soma = {};
+    linhas.forEach(function(x){
+      if(!x.pessoa_id) return;
+      if(!soma[x.pessoa_id]) soma[x.pessoa_id] = { nome: x.pessoa_nome || '', pts: 0 };
+      soma[x.pessoa_id].pts += (x.pontos || 0);
+    });
+    var top = Object.entries(soma).sort(function(a, b){ return b[1].pts - a[1].pts; })[0];
+    if(!top || top[1].pts <= 0) return;
+    var campId = top[0], campNome = top[1].nome, campPts = top[1].pts;
+
+    // foto do campeão
+    var foto = '';
+    try {
+      var pes = (typeof getPessoas === 'function') ? getPessoas() : [];
+      var p = pes.find(function(x){ return x.id === campId; });
+      if(p) { foto = p.foto || ''; if(!campNome) campNome = p.nome || ''; }
+    } catch(e){}
+    var esc = (typeof tfEsc === 'function') ? tfEsc : function(s){ return String(s == null ? '' : s); };
+    var inicial = (campNome || '?').charAt(0).toUpperCase();
+    var avatarInner = foto
+      ? '<img src="' + esc(foto) + '" alt="" style="width:100%;height:100%;object-fit:cover"/>'
+      : '<span style="font-size:30px;font-weight:800;color:#8a6d1a">' + inicial + '</span>';
+
+    // Visual festivo: coroa flutuando na foto, glow dourado pulsante, brilho passando e confete.
+    box.innerHTML =
+      '<style>'
+      +   '@keyframes campShine{0%{transform:translateX(-140%) skewX(-16deg)}60%,100%{transform:translateX(280%) skewX(-16deg)}}'
+      +   '@keyframes campGlow{0%,100%{box-shadow:0 0 0 4px rgba(245,197,24,.35),0 0 16px rgba(245,197,24,.45)}50%{box-shadow:0 0 0 6px rgba(245,197,24,.55),0 0 28px rgba(245,197,24,.8)}}'
+      +   '.camp-shine{position:absolute;top:0;left:0;width:32%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:campShine 3.4s ease-in-out infinite;pointer-events:none;z-index:1}'
+      +   '.camp-photo{animation:campGlow 2.4s ease-in-out infinite}'
+      +   '.camp-wrap .rk-crown{filter:drop-shadow(0 4px 5px rgba(160,110,10,.5))}'
+      +   '.camp-conf{position:absolute;pointer-events:none;opacity:.9}'
+      +   '@media (prefers-reduced-motion:reduce){.camp-shine,.camp-photo{animation:none}}'
+      + '</style>'
+      + '<div class="camp-wrap" style="margin:14px 0;padding:22px 16px 18px;border-radius:18px;position:relative;overflow:hidden;text-align:center;background:linear-gradient(135deg,#FFF6DE 0%,#FFE79A 55%,#F8CF5B 100%);border:1px solid #F0BE3C;box-shadow:0 8px 26px rgba(240,190,60,.3)">'
+      +   '<span class="camp-shine"></span>'
+      +   '<span class="camp-conf" style="top:13px;left:16px;font-size:15px">🎉</span>'
+      +   '<span class="camp-conf" style="top:22px;right:44px;font-size:12px">✨</span>'
+      +   '<span class="camp-conf" style="bottom:16px;left:32px;font-size:12px">✨</span>'
+      +   '<span class="camp-conf" style="bottom:12px;right:18px;font-size:15px">🎊</span>'
+      +   '<button onclick="_fecharCampeaoBanner(\'' + chave + '\')" title="Fechar" style="position:absolute;top:9px;right:11px;background:rgba(133,79,11,.14);border:none;color:#7a5410;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;font-family:inherit;z-index:4">✕</button>'
+      +   '<div style="position:relative;z-index:2">'
+      +     '<div style="font-size:11px;font-weight:800;letter-spacing:2px;color:#8a5e0b;text-transform:uppercase;margin-bottom:4px">🏆 Campeão(ã) de ' + mesNome + '</div>'
+      +     '<div style="margin-bottom:-16px;position:relative;z-index:3"><span class="rk-crown" style="font-size:36px;display:inline-block">👑</span></div>'
+      +     '<div class="camp-photo" style="width:94px;height:94px;border-radius:50%;margin:0 auto;overflow:hidden;border:3px solid #fff;background:#FFF3D6;display:flex;align-items:center;justify-content:center;position:relative">' + avatarInner + '</div>'
+      +     '<div style="font-size:16px;font-weight:800;color:#3A2C00;margin-top:12px">' + esc(campNome) + '</div>'
+      +     '<div style="margin-top:2px"><span style="font-family:\'Syne\',sans-serif;font-size:32px;font-weight:800;color:#0E7AB8;line-height:1">' + campPts + '</span> <span style="font-size:10px;color:#8a6d1a;text-transform:uppercase;letter-spacing:1px;font-weight:700">pontos</span></div>'
+      +     '<div style="font-size:13px;color:#7a5e10;margin-top:9px;font-weight:600">👏 Parabéns! Você foi o Nº 1 do ranking em ' + mesNome + '.</div>'
+      +   '</div>'
+      + '</div>';
+    box.style.display = 'block';
+  } catch(e){ console.warn('[campeaoMes]', e && e.message); }
+}
+window._fecharCampeaoBanner = function(chave){
+  try { localStorage.setItem('gami_campeao_visto_' + chave, '1'); } catch(e){}
+  var box = document.getElementById('dash-campeao-banner');
+  if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+};
+
 function initDashboard(){
   // 📖 Versículo PRIMEIRO (sem demora, sem pisca)
   try { carregarVersiculo(); } catch(e){ console.warn('versiculo:', e); }
@@ -33972,6 +34066,7 @@ function initDashboard(){
   try { renderMinhaAgenda(); } catch(e){ console.warn('renderMinhaAgenda:', e); }
   try { renderAtrasadas(); } catch(e){ console.warn('renderAtrasadas:', e); }
   try { renderReconhecimento(); } catch(e){ console.warn('renderReconhecimento:', e); }
+  try { renderCampeaoMesBanner(); } catch(e){ console.warn('campeaoMes:', e); }
   try { renderAniversariantesMes(); } catch(e){ console.warn('renderAniversariantesMes:', e); }
   // Ranking de cidades — async, com retry automático
   (function loadRankingComRetry(){
