@@ -33967,12 +33967,10 @@ async function renderCampeaoMesBanner(){
   box.style.display = 'none';
   try {
     var hoje = new Date();
-    var preview = /campeao=preview/.test(location.search || ''); // ?campeao=preview força mostrar (teste)
-    if(hoje.getDate() > 3 && !preview) return; // só dias 1, 2 e 3
+    if(hoje.getDate() > 3) return; // aparece SÓ nos dias 01, 02 e 03 de cada mês
 
-    // Normal (dia 01-03): mês ANTERIOR. Preview: mês CORRENTE (pra ver agosto agora).
-    var prim = preview ? new Date(hoje.getFullYear(), hoje.getMonth(), 1)
-                       : new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    // Campeão do MÊS ANTERIOR (no dia 01/09 = agosto, e assim por diante)
+    var prim = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
     var ano = prim.getFullYear(), mes = prim.getMonth(); // 0-11
     var mm = String(mes + 1).padStart(2, '0');
     var ini = ano + '-' + mm + '-01';
@@ -33981,8 +33979,8 @@ async function renderCampeaoMesBanner(){
     var chave = ano + '-' + mm;
     var mesNome = prim.toLocaleDateString('pt-BR', { month: 'long' });
 
-    // já fechou o banner deste mês? (no preview sempre mostra)
-    try { if(!preview && localStorage.getItem('gami_campeao_visto_' + chave)) return; } catch(e){}
+    // já fechou o banner deste mês?
+    try { if(localStorage.getItem('gami_campeao_visto_' + chave)) return; } catch(e){}
 
     // busca os pontos do mês anterior e acha o Nº1
     var url = SUPA_URL + '/rest/v1/pontos_log?data_acao=gte.' + ini + '&data_acao=lte.' + fim + '&select=pessoa_id,pessoa_nome,pontos&limit=5000';
