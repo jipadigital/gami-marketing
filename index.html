@@ -1,3 +1,4 @@
+<!-- v31.70 - Compromissos do dashboard: EVENTO (📅, menos aniversario) agora tem checkbox pra concluir ali mesmo (colaborador nao conseguia "finalizar" evento, so tarefa/anotacao tinham check). Estado "feito" salvo por usuario em gami_agenda_ev_feitos (nao mexe no calendario). Nova agendaToggleEvento. Obs: v31.69 removeu o ?campeao=preview (so dias 01-03) - 04/09/2026 -->
 <!-- v31.68 - Banner Campeao do mes: preview (?campeao=preview) agora mostra o mes CORRENTE (agosto), nao o anterior (julho), e ignora o "ja fechei". Comportamento real segue: dia 01-03 mostra o mes anterior - 30/08/2026 -->
 <!-- v31.67 - Dashboard: banner "Campeao(a) do mes" acima do Mural de Recados. Aparece SO nos dias 01, 02 e 03 de cada mes, celebrando o Nº1 do ranking do MES ANTERIOR (calculado do pontos_log por data_acao). Visual festivo: coroa flutuando na foto, glow dourado, brilho e confete. Dismissivel (por mes). Preview via ?campeao=preview. renderCampeaoMesBanner no initDashboard - 30/08/2026 -->
 <!-- v31.66 - Ponto: quem e home office/liberado NAO precisa mais justificar atraso. O check de atraso (exige justificativa) vinha ANTES do atalho de liberacao, entao home office (Jheniffer etc.) tinha que justificar toda batida fora do horario esperado (ela colocava so "."). Agora o check de atraso pula quem passa no _pessoaLiberadaValidacao - nos 2 fluxos (Meu Ponto + ponto do dashboard) - 30/08/2026 -->
@@ -34679,7 +34680,14 @@ function coletarItensAgendaHoje(){
       return e.pessoa_id === meuId3;
     })
            .forEach(function(e){
-             itens.push({tipo:'evento', icone:e.tipo==='aniversario'?'🎂':'📅', titulo:e.titulo||e.nome||'Evento', hora:e.hora||'', cor:'#378ADD', origem:'calendario'});
+             if(e.tipo === 'aniversario'){
+               // aniversário é informativo, sem check
+               itens.push({tipo:'evento', icone:'🎂', titulo:e.titulo||e.nome||'Evento', hora:e.hora||'', cor:'#378ADD', origem:'calendario'});
+             } else {
+               // 🆕 v31.70: evento pode ser concluído (check) no proprio compromisso
+               var _chEv = 'ev|' + (e.id || (hojeStr + '|' + (e.titulo||e.nome||'')));
+               itens.push({tipo:'evento', icone:'📅', titulo:e.titulo||e.nome||'Evento', hora:e.hora||'', cor:'#378ADD', origem:'calendario', chaveEvento:_chEv, feito: _agendaEventosFeitos().indexOf(_chEv) >= 0});
+             }
            });
   } catch(e){}
   
@@ -34778,8 +34786,15 @@ function renderMinhaAgenda(){
         + 'style="width:20px;height:20px;border-radius:6px;border:2px solid '+(item.feito?'#1D9E75':item.cor)+';background:'+(item.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'
         + (item.feito?'<span style="color:white;font-size:12px">✓</span>':'')
         + '</div>';
+    } else if(item.tipo === 'evento' && item.chaveEvento){
+      // 🆕 v31.70: evento com check (conclui no proprio compromisso)
+      var _chEsc = String(item.chaveEvento).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      checkboxHTML = '<div onclick="agendaToggleEvento(\''+_chEsc+'\')" '
+        + 'style="width:20px;height:20px;border-radius:6px;border:2px solid '+(item.feito?'#1D9E75':item.cor)+';background:'+(item.feito?'#1D9E75':'transparent')+';cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+        + (item.feito?'<span style="color:white;font-size:12px">✓</span>':'')
+        + '</div>';
     } else {
-      // Item sem checkbox (post, evento) — só ícone informativo
+      // Item sem checkbox (post, aniversário) — só ícone informativo
       checkboxHTML = '<div style="width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+item.icone+'</div>';
     }
     
@@ -34829,6 +34844,19 @@ function agendaToggleManual(idx){
   }
   renderMinhaAgenda();
 }
+
+/* 🆕 v31.70: concluir/desmarcar EVENTO direto no compromisso.
+   Guarda o estado "feito" por usuário no localStorage (nao mexe no calendario). */
+function _agendaEventosFeitos(){ try { return JSON.parse(localStorage.getItem('gami_agenda_ev_feitos') || '[]'); } catch(e){ return []; } }
+window.agendaToggleEvento = function(chave){
+  try {
+    var arr = _agendaEventosFeitos();
+    var i = arr.indexOf(chave);
+    if(i >= 0) arr.splice(i, 1); else arr.push(chave);
+    localStorage.setItem('gami_agenda_ev_feitos', JSON.stringify(arr));
+  } catch(e){}
+  renderMinhaAgenda();
+};
 
 /* Modal de adicionar tarefa rápida — sincronizado com a aba Tarefas (mesma fonte
    de dados via getTarefas/saveTarefas). Substitui os prompt/confirm nativos. */
