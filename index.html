@@ -1,3 +1,4 @@
+<!-- v31.71 - Ponto: concluir um EVENTO/compromisso agora da +1 (nova acao evento_concluido no catalogo), igual tarefa. Trava anti-farm: 1x por evento (referencia_id = chave do evento; confere no servidor + set local gami_agenda_ev_pontuados). Desmarcar/remarcar nao pontua de novo - 04/09/2026 -->
 <!-- v31.70 - Compromissos do dashboard: EVENTO (📅, menos aniversario) agora tem checkbox pra concluir ali mesmo (colaborador nao conseguia "finalizar" evento, so tarefa/anotacao tinham check). Estado "feito" salvo por usuario em gami_agenda_ev_feitos (nao mexe no calendario). Nova agendaToggleEvento. Obs: v31.69 removeu o ?campeao=preview (so dias 01-03) - 04/09/2026 -->
 <!-- v31.68 - Banner Campeao do mes: preview (?campeao=preview) agora mostra o mes CORRENTE (agosto), nao o anterior (julho), e ignora o "ja fechei". Comportamento real segue: dia 01-03 mostra o mes anterior - 30/08/2026 -->
 <!-- v31.67 - Dashboard: banner "Campeao(a) do mes" acima do Mural de Recados. Aparece SO nos dias 01, 02 e 03 de cada mes, celebrando o Nº1 do ranking do MES ANTERIOR (calculado do pontos_log por data_acao). Visual festivo: coroa flutuando na foto, glow dourado, brilho e confete. Dismissivel (por mes). Preview via ?campeao=preview. renderCampeaoMesBanner no initDashboard - 30/08/2026 -->
@@ -10912,6 +10913,7 @@ var PONTOS_CATALOGO = {
   'login_diario':         { pontos: 2,  categoria: 'engajamento', label: 'Login no dashboard', limite_dia: 1 },
   'pulse_respondido':     { pontos: 2,  categoria: 'engajamento', label: 'Respondeu Pulse', limite_dia: 1 },
   'tarefa_concluida':     { pontos: 1,  categoria: 'engajamento', label: 'Tarefa concluída' },
+  'evento_concluido':     { pontos: 1,  categoria: 'engajamento', label: 'Compromisso concluído' },
   'anotacao_calendario':  { pontos: 1,  categoria: 'engajamento', label: 'Anotação no calendário', limite_dia: 1 },
   'versiculo_lido':       { pontos: 1,  categoria: 'engajamento', label: 'Leu o versículo do dia', limite_dia: 1 },
   
@@ -34848,14 +34850,35 @@ function agendaToggleManual(idx){
 /* 🆕 v31.70: concluir/desmarcar EVENTO direto no compromisso.
    Guarda o estado "feito" por usuário no localStorage (nao mexe no calendario). */
 function _agendaEventosFeitos(){ try { return JSON.parse(localStorage.getItem('gami_agenda_ev_feitos') || '[]'); } catch(e){ return []; } }
-window.agendaToggleEvento = function(chave){
-  try {
-    var arr = _agendaEventosFeitos();
-    var i = arr.indexOf(chave);
-    if(i >= 0) arr.splice(i, 1); else arr.push(chave);
-    localStorage.setItem('gami_agenda_ev_feitos', JSON.stringify(arr));
-  } catch(e){}
+function _agendaEventosPontuados(){ try { return JSON.parse(localStorage.getItem('gami_agenda_ev_pontuados') || '[]'); } catch(e){ return []; } }
+window.agendaToggleEvento = async function(chave){
+  var arr = _agendaEventosFeitos();
+  var i = arr.indexOf(chave);
+  var marcando = (i < 0);
+  if(i >= 0) arr.splice(i, 1); else arr.push(chave);
+  try { localStorage.setItem('gami_agenda_ev_feitos', JSON.stringify(arr)); } catch(e){}
   renderMinhaAgenda();
+  // 🆕 v31.71: +1 ponto ao CONCLUIR o compromisso — só 1x por evento (trava anti-farm).
+  // Desmarcar/remarcar NÃO gera ponto de novo. Confere no servidor pra nao duplicar entre dispositivos.
+  if(!marcando) return;
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u || !u.id || typeof atribuirPontos !== 'function') return;
+    var pontuados = _agendaEventosPontuados();
+    if(pontuados.indexOf(chave) >= 0) return; // já pontuou nesse dispositivo
+    var jaNoServidor = false;
+    try {
+      var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + encodeURIComponent(u.id)
+        + '&tipo_acao=eq.evento_concluido&referencia_id=eq.' + encodeURIComponent(chave) + '&select=id&limit=1';
+      var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+      if(r.ok){ var j = await r.json(); jaNoServidor = Array.isArray(j) && j.length > 0; }
+    } catch(e){}
+    if(!jaNoServidor){
+      await atribuirPontos(u.id, 'evento_concluido', { referencia_id: chave, descricao: 'Compromisso concluído' });
+    }
+    pontuados.push(chave);
+    try { localStorage.setItem('gami_agenda_ev_pontuados', JSON.stringify(pontuados)); } catch(e){}
+  } catch(e){ console.warn('[evento ponto]', e && e.message); }
 };
 
 /* Modal de adicionar tarefa rápida — sincronizado com a aba Tarefas (mesma fonte
