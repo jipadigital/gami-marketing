@@ -1,3 +1,4 @@
+<!-- v31.72 - Tarefas: DELEGAR liberado pra TODOS os usuarios logados (antes so super_admin/diretoria/gerencia/gestor). Agora qualquer colaborador (ex: Suzislaine) pode marcar/passar uma tarefa pra outra pessoa (ex: gestor), que aparece nas Tarefas + Compromissos dele. 3 travas trocadas: aba "Delegadas por mim", secao do modal e o tfDelegar - 04/09/2026 -->
 <!-- v31.71 - Ponto: concluir um EVENTO/compromisso agora da +1 (nova acao evento_concluido no catalogo), igual tarefa. Trava anti-farm: 1x por evento (referencia_id = chave do evento; confere no servidor + set local gami_agenda_ev_pontuados). Desmarcar/remarcar nao pontua de novo - 04/09/2026 -->
 <!-- v31.70 - Compromissos do dashboard: EVENTO (📅, menos aniversario) agora tem checkbox pra concluir ali mesmo (colaborador nao conseguia "finalizar" evento, so tarefa/anotacao tinham check). Estado "feito" salvo por usuario em gami_agenda_ev_feitos (nao mexe no calendario). Nova agendaToggleEvento. Obs: v31.69 removeu o ?campeao=preview (so dias 01-03) - 04/09/2026 -->
 <!-- v31.68 - Banner Campeao do mes: preview (?campeao=preview) agora mostra o mes CORRENTE (agosto), nao o anterior (julho), e ignora o "ja fechei". Comportamento real segue: dia 01-03 mostra o mes anterior - 30/08/2026 -->
@@ -39878,7 +39879,7 @@ function tfSetupAbasConformePermissao(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var nivel = (typeof detectarNivelPermissao === 'function' && u) ? detectarNivelPermissao(u) : 'visitante';
   var ehSuperAdmin = nivel === 'super_admin';
-  var podeDelegar = ehSuperAdmin || ['diretoria','gerencia','gestor'].indexOf(nivel) >= 0;
+  var podeDelegar = !!u; // v31.72: delegar liberado pra TODOS os colaboradores logados
 
   // Mostra aba "Delegadas por mim" só pra quem pode delegar
   var btnDeleg = document.getElementById('tft-delegadas');
@@ -42388,7 +42389,7 @@ function tfMontarDelegacao(){
   // o UI de delegar (só Gestor batia, por coincidência). Agora usa o nível
   // canônico igual tfDelegar (detectarNivelPermissao já resolve super_admin/Cleyton).
   var nivelPerm = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : (u.nivel||'').toLowerCase();
-  var podeDelegar = ['super_admin','diretoria','gerencia','gestor'].indexOf(nivelPerm) >= 0;
+  var podeDelegar = !!u; // v31.72: delegar liberado pra TODOS os usuarios logados
   if(!podeDelegar){ wrap.innerHTML=''; return; }
 
   var pessoas = (typeof getPessoas==='function') ? getPessoas() : [];
@@ -42979,7 +42980,7 @@ async function tfDelegar(destinoPessoaId, destinoNome, texto, prioridadeDeleg, d
   // 'diretoria'/'gerencia', então Diretor e Gerente NÃO conseguiam delegar.
   // detectarNivelPermissao já resolve super_admin (Cleyton/email) e marketing.
   var nivelPerm = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : (u.nivel||'').toLowerCase();
-  var podeDelegar = ['super_admin','diretoria','gerencia','gestor'].indexOf(nivelPerm) >= 0;
+  var podeDelegar = !!u; // v31.72: delegar liberado pra TODOS os usuarios logados
   if(!podeDelegar){ alert('Seu perfil não pode delegar tarefas.'); return { ok:false, erro:'Sem permissão' }; }
 
   var tarefa = {
