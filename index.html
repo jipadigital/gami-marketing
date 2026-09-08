@@ -1,3 +1,4 @@
+<!-- v31.73 - Calendario: painel lateral do dia agora mostra COMPROMISSOS (gami_cal). BUG: grid mostrava "Reuniao com Marcos" no dia, mas ao clicar a lateral dizia "Nada agendado" (so lia tarefas/notas/aniversario/feriado, nao os agendamentos). Agora _calCarregarDadosDoDia le a mesma fonte do grid, filtrada por data + pessoa_id - 08/09/2026 -->
 <!-- v31.72 - Tarefas: DELEGAR liberado pra TODOS os usuarios logados (antes so super_admin/diretoria/gerencia/gestor). Agora qualquer colaborador (ex: Suzislaine) pode marcar/passar uma tarefa pra outra pessoa (ex: gestor), que aparece nas Tarefas + Compromissos dele. 3 travas trocadas: aba "Delegadas por mim", secao do modal e o tfDelegar - 04/09/2026 -->
 <!-- v31.71 - Ponto: concluir um EVENTO/compromisso agora da +1 (nova acao evento_concluido no catalogo), igual tarefa. Trava anti-farm: 1x por evento (referencia_id = chave do evento; confere no servidor + set local gami_agenda_ev_pontuados). Desmarcar/remarcar nao pontua de novo - 04/09/2026 -->
 <!-- v31.70 - Compromissos do dashboard: EVENTO (📅, menos aniversario) agora tem checkbox pra concluir ali mesmo (colaborador nao conseguia "finalizar" evento, so tarefa/anotacao tinham check). Estado "feito" salvo por usuario em gami_agenda_ev_feitos (nao mexe no calendario). Nova agendaToggleEvento. Obs: v31.69 removeu o ?campeao=preview (so dias 01-03) - 04/09/2026 -->
@@ -9279,7 +9280,35 @@ function _calCarregarDadosDoDia(dia){
       if(pendentes.length > 5) html += '<div style="font-size:10.5px;color:var(--text3);padding:5px 0">+' + (pendentes.length-5) + ' mais</div>';
       html += '</div>';
     }
-    
+
+    // 🆕 v31.73: Compromissos/agendamentos do usuário (gami_cal) neste dia.
+    // BUG que corrige: o grid mostrava "📌 Reunião com Marcos" no dia, mas ao
+    // clicar o painel lateral dizia "Nada agendado" — porque só lia tarefas/notas.
+    // Agora lê a MESMA fonte do grid (gami_cal filtrado por data + pessoa_id).
+    try {
+      var _uCalP = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+      var _meuIdCalP = _uCalP ? _uCalP.id : null;
+      var _evsP = JSON.parse(localStorage.getItem('gami_cal')||'[]');
+      if(Array.isArray(_evsP) && _meuIdCalP){
+        var _compromissos = _evsP.filter(function(e){
+          if(!e || e.data !== dStr) return false;
+          if(e.tipo === 'aniversario') return false; // aniversários vêm da seção própria
+          return e.pessoa_id === _meuIdCalP;         // só os meus
+        });
+        if(_compromissos.length){
+          html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📌 Compromissos (' + _compromissos.length + ')</div>';
+          _compromissos.slice(0,6).forEach(function(e){
+            var _titEv = String(e.titulo || e.nome || 'Compromisso');
+            var _horaEv = e.hora ? '<span style="font-size:11px;color:var(--text3);font-weight:600;flex-shrink:0">'+tfEsc(String(e.hora))+'</span>' : '';
+            html += '<div class="cal-painel-item" style="align-items:flex-start;gap:7px" onclick="nav(document.querySelector(\'.nav-item[onclick*=agenda]\')||document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px;flex-shrink:0">📌</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word">' + tfEsc(_titEv) + '</div>' + _horaEv + '</div>';
+            itens++;
+          });
+          if(_compromissos.length > 6) html += '<div style="font-size:10.5px;color:var(--text3);padding:2px 0">+' + (_compromissos.length-6) + ' mais</div>';
+          html += '</div>';
+        }
+      }
+    } catch(e){ console.warn('_calCarregarDadosDoDia compromissos:', e); }
+
     // Anotações do dia
     var notas = [];
     if(typeof getNotasCalendario === 'function'){
