@@ -1,3 +1,4 @@
+<!-- v31.74 - Calendario: tarefa DELEGADA agora aparece marcada nos DOIS lados. Quem ENVIOU ve "📤 para Fulano" (busca dedicada delegada_por=eu, cache _tfDelegCalCache); quem RECEBEU ve "📥 de Fulano" (via _tfSupaCache). Corrige tambem descasamento bucket-vs-prazo: painel do dia agora coleta por PRAZO (igual o grid) + tolera prazo||data_limite - 08/09/2026 -->
 <!-- v31.73 - Calendario: painel lateral do dia agora mostra COMPROMISSOS (gami_cal). BUG: grid mostrava "Reuniao com Marcos" no dia, mas ao clicar a lateral dizia "Nada agendado" (so lia tarefas/notas/aniversario/feriado, nao os agendamentos). Agora _calCarregarDadosDoDia le a mesma fonte do grid, filtrada por data + pessoa_id - 08/09/2026 -->
 <!-- v31.72 - Tarefas: DELEGAR liberado pra TODOS os usuarios logados (antes so super_admin/diretoria/gerencia/gestor). Agora qualquer colaborador (ex: Suzislaine) pode marcar/passar uma tarefa pra outra pessoa (ex: gestor), que aparece nas Tarefas + Compromissos dele. 3 travas trocadas: aba "Delegadas por mim", secao do modal e o tfDelegar - 04/09/2026 -->
 <!-- v31.71 - Ponto: concluir um EVENTO/compromisso agora da +1 (nova acao evento_concluido no catalogo), igual tarefa. Trava anti-farm: 1x por evento (referencia_id = chave do evento; confere no servidor + set local gami_agenda_ev_pontuados). Desmarcar/remarcar nao pontua de novo - 04/09/2026 -->
@@ -2580,7 +2581,7 @@ window.nav = function(el, page){
       // run init function if exists
       var initMap = {
         'dashboard':       function(){ if(typeof initDashboard==='function') initDashboard(); if(typeof hookNavAba==='function') hookNavAba('dashboard'); },
-        'calendario':      function(){ if(typeof _calSupaPullSeNecessario==='function') _calSupaPullSeNecessario(); if(typeof renderCalendar==='function') renderCalendar(); },
+        'calendario':      function(){ if(typeof _calSupaPullSeNecessario==='function') _calSupaPullSeNecessario(); if(typeof renderCalendar==='function') renderCalendar(); if(typeof _tfCarregarDelegadasCalendario==='function') _tfCarregarDelegadasCalendario(); },
         'tarefas':         function(){ if(typeof initTarefas==='function') initTarefas(); },
         'marketing':       function(){ if(typeof marketingAba==='function') marketingAba('visao'); },
         'campanhas':       function(){ if(typeof syncMeta==='function') try{syncMeta();}catch(e){} },
@@ -8911,6 +8912,54 @@ function renderCalHero(){
   }catch(e){ console.warn('renderCalHero:', e); }
 }
 
+/* ============================================================== */
+/* v31.74: DELEGAÇÃO NO CALENDÁRIO — marca a tarefa nos DOIS lados */
+/* (quem enviou vê "📤 p/ Fulano", quem recebeu vê "📥 de Fulano") */
+/* ============================================================== */
+// Cache das tarefas que EU deleguei (pessoa_id = outro, delegada_por = eu).
+// Elas NÃO entram em tarefas_minhas (que só devolve pessoa_id === eu), então
+// o calendário de quem ENVIOU não as via. Busca dedicada, RLS permite ler por delegada_por.
+window._tfDelegCalCache = window._tfDelegCalCache || { porMim: [], ts: 0 };
+async function _tfCarregarDelegadasCalendario(force){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id) return;
+    var agora = Date.now();
+    if(!force && window._tfDelegCalCache.ts && (agora - window._tfDelegCalCache.ts) < 60000) return; // cache 60s
+    var r = (typeof supaSelect==='function') ? await supaSelect('tarefas',
+      'delegada_por=eq.'+encodeURIComponent(u.id)+'&select=id,texto,pessoa_id,delegada_por,delegada_por_nome,data_limite,hora_limite,feito&order=data_limite.desc') : null;
+    window._tfDelegCalCache = { porMim: Array.isArray(r) ? r : [], ts: agora };
+    // re-renderiza o que estiver visível
+    if(typeof renderCalendar==='function'){ try { renderCalendar(); } catch(e){} }
+    if(selectedDay){ try { var _p=selectedDay.split('-'); if(typeof selectDay==='function') selectDay(parseInt(_p[2]), parseInt(_p[1])-1, parseInt(_p[0])); } catch(e){} }
+  } catch(e){ console.warn('_tfCarregarDelegadasCalendario:', e); }
+}
+// Nome curto (2 primeiros nomes) de uma pessoa pelo id
+function _tfNomeCurtoPessoa(pid){
+  try {
+    var pessoas = (typeof getPessoas==='function') ? getPessoas() : [];
+    var p = pessoas.find(function(x){ return x && x.id === pid; });
+    var nome = (p && p.nome) ? p.nome : (pid || '');
+    return nome.split(' ').slice(0,2).join(' ');
+  } catch(e){ return pid || ''; }
+}
+// Tarefas que EU deleguei com prazo (data_limite) num dia YYYY-MM-DD
+function _tfDelegadasNoDia(key){
+  var arr = (window._tfDelegCalCache && window._tfDelegCalCache.porMim) || [];
+  return arr.filter(function(t){ return t && (t.data_limite === key); });
+}
+// Tarefas delegadas PRA mim (recebidas) num dia — robusto via _tfSupaCache (todas as minhas)
+function _tfRecebidasNoDia(key){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id) return [];
+    var cache = (window._tfSupaCache && Array.isArray(window._tfSupaCache)) ? window._tfSupaCache : [];
+    return cache.filter(function(t){
+      return t && t.delegada_por && t.pessoa_id === u.id && ((t.data_limite||t.prazo) === key);
+    });
+  } catch(e){ return []; }
+}
+
 function renderCalendar(){
   var label = document.getElementById('cal-month-label');
   if(label) label.textContent = MESES_PT[calMonth] + ' ' + calYear;
@@ -8919,6 +8968,9 @@ function renderCalendar(){
 
   var grid = document.getElementById('cal-grid-render');
   if(!grid) return;
+
+  // v31.74: garante o cache de tarefas delegadas por mim (guard 60s evita loop de re-render)
+  if(typeof _tfCarregarDelegadasCalendario === 'function') _tfCarregarDelegadasCalendario();
 
   var firstDay = new Date(calYear, calMonth, 1).getDay();
   var daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
@@ -9010,14 +9062,24 @@ function renderCalendar(){
     // Tarefas
     try {
       if(typeof getTarefas === 'function'){
-        var diariasNoDia = getTarefas('diario').filter(function(t){ return t.prazo === key; });
+        var diariasNoDia = getTarefas('diario').filter(function(t){ return (t.prazo||t.data_limite) === key; });
         diariasNoDia.slice(0,2).forEach(function(t){
-          itensTexto.push({tipo:'task', texto:'✓ '+(t.texto||''), done:!!t.feito});
+          // v31.74: se foi delegada PRA mim, mostra "📥 de Fulano" em vez do check
+          var _pref = t.delegada_por_nome ? ('📥 '+String(t.delegada_por_nome).split(' ')[0]+': ') : '✓ ';
+          itensTexto.push({tipo:'task', texto:_pref+(t.texto||''), done:!!t.feito});
         });
         if(diariasNoDia.length > 2){
           itensTexto.push({tipo:'more', texto:'+'+(diariasNoDia.length-2)+' tarefa'+(diariasNoDia.length-2>1?'s':'')});
         }
       }
+    } catch(e){}
+
+    // v31.74: Tarefas que EU deleguei (aparecem no calendário de QUEM ENVIOU)
+    try {
+      var _delegDia = (typeof _tfDelegadasNoDia === 'function') ? _tfDelegadasNoDia(key) : [];
+      _delegDia.slice(0,2).forEach(function(t){
+        itensTexto.push({tipo:'task', texto:'📤 '+_tfNomeCurtoPessoa(t.pessoa_id).split(' ')[0]+': '+(t.texto||''), done:!!t.feito});
+      });
     } catch(e){}
 
     // Tarefas recorrentes (projetadas no futuro - so se este dia >= hoje)
@@ -9254,11 +9316,26 @@ function _calCarregarDadosDoDia(dia){
     var m = String(dia.getMonth()+1).padStart(2,'0');
     var d = String(dia.getDate()).padStart(2,'0');
     var dStr = y + '-' + m + '-' + d;
-    // 🆕 v26.98: usa helper STRICT (v3 com fallback v2)
-    var tarefas = (typeof _tfLerTarefasDoDia === 'function') 
-      ? _tfLerTarefasDoDia(y + '_' + m + '_' + d) 
-      : [];
-    
+    // 🆕 v31.74: coleta as tarefas do dia pela MESMA fonte do grid do mês (por PRAZO),
+    // e mescla com a leitura por bucket-dia (dias passados). Antes só lia por bucket-dia
+    // (_tfLerTarefasDoDia) → tarefa cujo bucket != prazo (ex.: delegada com prazo futuro)
+    // aparecia no grid mas o painel dizia "Nada agendado". Dedup por id.
+    var tarefas = [];
+    try {
+      if(typeof getTarefas === 'function'){
+        getTarefas('diario').forEach(function(t){ if(t && (t.prazo||t.data_limite) === dStr) tarefas.push(t); });
+      }
+    } catch(e){}
+    try {
+      var _porBucket = (typeof _tfLerTarefasDoDia === 'function') ? _tfLerTarefasDoDia(y + '_' + m + '_' + d) : [];
+      _porBucket.forEach(function(t){ if(t && t.id && !tarefas.find(function(x){return x.id===t.id;})) tarefas.push(t); });
+    } catch(e){}
+    // v31.74: recebidas (delegadas pra mim) via cache — robusto mesmo se o bucket != prazo
+    try {
+      var _receb = (typeof _tfRecebidasNoDia === 'function') ? _tfRecebidasNoDia(dStr) : [];
+      _receb.forEach(function(t){ if(t && t.id && !tarefas.find(function(x){return x.id===t.id;})) tarefas.push(t); });
+    } catch(e){}
+
     // Filtra por permissão se aplicável
     if(typeof filtrarTarefasPorPermissao === 'function'){
       try { tarefas = filtrarTarefasPorPermissao(tarefas); } catch(e){}
@@ -9270,16 +9347,34 @@ function _calCarregarDadosDoDia(dia){
     if(pendentes.length || feitas.length){
       html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📋 Tarefas (' + (pendentes.length+feitas.length) + ')</div>';
       pendentes.slice(0,5).forEach(function(t){
-        html += '<div class="cal-painel-item" style="align-items:flex-start" onclick="nav(document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px;flex-shrink:0">▢</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word">' + ((t.texto||t.titulo)||'(sem título)').replace(/</g,'&lt;') + '</div></div>';
+        var _deQuem = t.delegada_por_nome ? '<div style="font-size:10px;color:#6A1B9A;font-weight:600;margin-top:1px">📥 de '+tfEsc(String(t.delegada_por_nome).split(' ').slice(0,2).join(' '))+'</div>' : '';
+        html += '<div class="cal-painel-item" style="align-items:flex-start" onclick="nav(document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px;flex-shrink:0">▢</div><div style="flex:1;font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word">' + ((t.texto||t.titulo)||'(sem título)').replace(/</g,'&lt;') + _deQuem + '</div></div>';
         itens++;
       });
       feitas.slice(0,3).forEach(function(t){
-        html += '<div class="cal-painel-item" style="align-items:flex-start;opacity:.5"><div style="font-size:14px;flex-shrink:0">✓</div><div style="flex:1;font-size:12px;color:var(--text2);line-height:1.35;text-decoration:line-through;overflow-wrap:break-word">' + ((t.texto||t.titulo)||'(sem título)').replace(/</g,'&lt;') + '</div></div>';
+        var _deQuemF = t.delegada_por_nome ? '<div style="font-size:10px;color:#6A1B9A;font-weight:600;margin-top:1px">📥 de '+tfEsc(String(t.delegada_por_nome).split(' ').slice(0,2).join(' '))+'</div>' : '';
+        html += '<div class="cal-painel-item" style="align-items:flex-start;opacity:.5"><div style="font-size:14px;flex-shrink:0">✓</div><div style="flex:1;font-size:12px;color:var(--text2);line-height:1.35;text-decoration:line-through;overflow-wrap:break-word">' + ((t.texto||t.titulo)||'(sem título)').replace(/</g,'&lt;') + _deQuemF + '</div></div>';
         itens++;
       });
       if(pendentes.length > 5) html += '<div style="font-size:10.5px;color:var(--text3);padding:5px 0">+' + (pendentes.length-5) + ' mais</div>';
       html += '</div>';
     }
+
+    // 🆕 v31.74: Tarefas que EU deleguei neste dia (aparecem no painel de QUEM ENVIOU).
+    try {
+      var _delegDiaP = (typeof _tfDelegadasNoDia === 'function') ? _tfDelegadasNoDia(dStr) : [];
+      if(_delegDiaP.length){
+        html += '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:#6A1B9A;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📤 Delegadas por mim (' + _delegDiaP.length + ')</div>';
+        _delegDiaP.slice(0,5).forEach(function(t){
+          var _paraQuem = _tfNomeCurtoPessoa(t.pessoa_id);
+          var _riscado = t.feito ? 'text-decoration:line-through;opacity:.55' : '';
+          var _hr = t.hora_limite ? ' · '+String(t.hora_limite).slice(0,5) : '';
+          html += '<div class="cal-painel-item" style="align-items:flex-start;gap:7px" onclick="nav(document.querySelector(\'.nav-item[onclick*=tarefas]\'),\'tarefas\')"><div style="font-size:14px;flex-shrink:0">📤</div><div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--text);line-height:1.35;overflow-wrap:break-word;'+_riscado+'">' + tfEsc(t.texto||'') + '</div><div style="font-size:10px;color:#6A1B9A;font-weight:600;margin-top:1px">para '+tfEsc(_paraQuem)+_hr+(t.feito?' · ✅ feita':'')+'</div></div></div>';
+          itens++;
+        });
+        html += '</div>';
+      }
+    } catch(e){ console.warn('painel delegadas por mim:', e); }
 
     // 🆕 v31.73: Compromissos/agendamentos do usuário (gami_cal) neste dia.
     // BUG que corrige: o grid mostrava "📌 Reunião com Marcos" no dia, mas ao
@@ -43069,6 +43164,8 @@ async function tfDelegar(destinoPessoaId, destinoNome, texto, prioridadeDeleg, d
         (u.nome||u.email)+' → '+destinoNome+': '+texto.trim().slice(0,60));
     }
   } catch(e){ console.warn('[Delegar] auditLog falhou (não bloqueia):', e); }
+  // v31.74: atualiza o cache de delegadas pro calendário de QUEM ENVIOU já marcar
+  try { if(typeof _tfCarregarDelegadasCalendario === 'function') _tfCarregarDelegadasCalendario(true); } catch(e){}
   return { ok:true, tarefa:tarefa };
 }
 
