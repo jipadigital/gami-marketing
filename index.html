@@ -1,3 +1,4 @@
+<!-- v31.75 - Pontos: CONCLUIR UM PROJETO agora da +1 (nova acao projeto_concluido no catalogo, aparece nas regras "Como ganhar pontos" automaticamente). Trava anti-farm: 1x por projeto (referencia_id = id do projeto; confere no servidor + set local gami_proj_pontuados). Reabrir/reconcluir nao pontua de novo. Hook nos 2 caminhos: seletor de status do detalhe (_salvarCampoProjeto) e modal de edicao (tfSalvarProjeto) - 09/09/2026 -->
 <!-- v31.74 - Calendario: tarefa DELEGADA agora aparece marcada nos DOIS lados. Quem ENVIOU ve "📤 para Fulano" (busca dedicada delegada_por=eu, cache _tfDelegCalCache); quem RECEBEU ve "📥 de Fulano" (via _tfSupaCache). Corrige tambem descasamento bucket-vs-prazo: painel do dia agora coleta por PRAZO (igual o grid) + tolera prazo||data_limite - 08/09/2026 -->
 <!-- v31.73 - Calendario: painel lateral do dia agora mostra COMPROMISSOS (gami_cal). BUG: grid mostrava "Reuniao com Marcos" no dia, mas ao clicar a lateral dizia "Nada agendado" (so lia tarefas/notas/aniversario/feriado, nao os agendamentos). Agora _calCarregarDadosDoDia le a mesma fonte do grid, filtrada por data + pessoa_id - 08/09/2026 -->
 <!-- v31.72 - Tarefas: DELEGAR liberado pra TODOS os usuarios logados (antes so super_admin/diretoria/gerencia/gestor). Agora qualquer colaborador (ex: Suzislaine) pode marcar/passar uma tarefa pra outra pessoa (ex: gestor), que aparece nas Tarefas + Compromissos dele. 3 travas trocadas: aba "Delegadas por mim", secao do modal e o tfDelegar - 04/09/2026 -->
@@ -11039,6 +11040,7 @@ var PONTOS_CATALOGO = {
   'pulse_respondido':     { pontos: 2,  categoria: 'engajamento', label: 'Respondeu Pulse', limite_dia: 1 },
   'tarefa_concluida':     { pontos: 1,  categoria: 'engajamento', label: 'Tarefa concluída' },
   'evento_concluido':     { pontos: 1,  categoria: 'engajamento', label: 'Compromisso concluído' },
+  'projeto_concluido':    { pontos: 1,  categoria: 'engajamento', label: 'Projeto concluído' },
   'anotacao_calendario':  { pontos: 1,  categoria: 'engajamento', label: 'Anotação no calendário', limite_dia: 1 },
   'versiculo_lido':       { pontos: 1,  categoria: 'engajamento', label: 'Leu o versículo do dia', limite_dia: 1 },
   
@@ -42231,9 +42233,39 @@ function _salvarCampoProjeto(campo, valor){
     var s = document.getElementById('proj-notas-status');
     if(s){ s.textContent = '✓ salvo'; s.style.color = '#1D9E75'; }
   }
+  // v31.75: +1 ponto ao concluir o projeto (mudança inline de status)
+  if(campo === 'status' && valor === 'concluido' && typeof _projetoConcluidoPonto === 'function'){
+    _projetoConcluidoPonto(p.id, p.nome);
+  }
   // Re-renderiza lista de projetos pra refletir mudanças
   if(typeof tfRenderProjetos === 'function') tfRenderProjetos();
 }
+
+// 🆕 v31.75: dá +1 ponto ao CONCLUIR um projeto — só 1x por projeto (trava anti-farm,
+// igual evento_concluido). Confere no servidor (pontos_log + referencia_id = id do projeto)
+// pra não duplicar entre dispositivos. Reabrir/reconcluir NÃO pontua de novo.
+window._projetoConcluidoPonto = async function(projId, projNome){
+  try {
+    var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+    if(!u || !u.id || typeof atribuirPontos !== 'function' || !projId) return;
+    var set = [];
+    try { set = JSON.parse(localStorage.getItem('gami_proj_pontuados')||'[]'); } catch(e){}
+    if(set.indexOf(projId) >= 0) return; // já pontuou nesse dispositivo
+    var jaNoServidor = false;
+    try {
+      var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + encodeURIComponent(u.id)
+        + '&tipo_acao=eq.projeto_concluido&referencia_id=eq.' + encodeURIComponent(projId) + '&select=id&limit=1';
+      var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+      if(r.ok){ var j = await r.json(); jaNoServidor = Array.isArray(j) && j.length > 0; }
+    } catch(e){}
+    if(!jaNoServidor){
+      await atribuirPontos(u.id, 'projeto_concluido', { referencia_id: projId, descricao: 'Projeto concluído' + (projNome ? ': '+projNome : '') });
+      if(typeof toast === 'function') toast('🏆 +1 ponto — projeto concluído!', 'success');
+    }
+    set.push(projId);
+    try { localStorage.setItem('gami_proj_pontuados', JSON.stringify(set)); } catch(e){}
+  } catch(e){ console.warn('[projeto ponto]', e && e.message); }
+};
 function _marcarNotasProjeto(){
   var s = document.getElementById('proj-notas-status');
   if(s){ s.textContent = '● escrevendo...'; s.style.color = '#EF9F27'; }
@@ -42421,6 +42453,10 @@ function tfSalvarProjeto(eid){
   if(eid){var i=projs.findIndex(function(p){return p.id===eid;});if(i>=0){novo.tarefas=projs[i].tarefas||[];projs[i]=novo;}else projs.push(novo);}
   else projs.push(novo);
   saveTarefas('projetos',null,projs);
+  // v31.75: +1 ponto ao concluir o projeto pelo modal (trava 1x por projeto no helper)
+  if(novo.status === 'concluido' && typeof _projetoConcluidoPonto === 'function'){
+    _projetoConcluidoPonto(novo.id, novo.nome);
+  }
   closeModal('modal-campanha');
   tfRenderProjetos();
   tfAtualizarMetricas();
