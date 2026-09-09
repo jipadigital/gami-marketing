@@ -1,3 +1,4 @@
+<!-- v31.77 - Ranking: SORTEIO "Pessoa Gami da semana" agora funciona de verdade (antes era so texto decorativo, spotlight_terca vazio, ninguem recebia +20). Sorteia 1 pessoa ativa na TERCA, da +20 (acao spotlight) 1x por semana (dedup por referencia_id + config compartilhada spotlight_semana), mostra nome/foto no card. Aparece so na terca, some da quarta em diante. renderSpotlightTerca ligado no renderRanking - 09/09/2026 -->
 <!-- v31.76 - Pessoas: widgets de TIME estavam lendo localStorage (so do usuario logado / prefixo obsoleto) -> sempre vazios. "Top 3 da semana" e "Produtividade do time (hoje)" agora leem do SERVIDOR (pontos_log/tarefa_concluida, mesma fonte do ranking). Reconhecido da semana continua manual (admin nomeia). Sorteio "Pessoa Gami da semana" NAO existe no codigo (so placeholder) - 09/09/2026 -->
 <!-- v31.75 - Pontos: CONCLUIR UM PROJETO agora da +1 (nova acao projeto_concluido no catalogo, aparece nas regras "Como ganhar pontos" automaticamente). Trava anti-farm: 1x por projeto (referencia_id = id do projeto; confere no servidor + set local gami_proj_pontuados). Reabrir/reconcluir nao pontua de novo. Hook nos 2 caminhos: seletor de status do detalhe (_salvarCampoProjeto) e modal de edicao (tfSalvarProjeto) - 09/09/2026 -->
 <!-- v31.74 - Calendario: tarefa DELEGADA agora aparece marcada nos DOIS lados. Quem ENVIOU ve "📤 para Fulano" (busca dedicada delegada_por=eu, cache _tfDelegCalCache); quem RECEBEU ve "📥 de Fulano" (via _tfSupaCache). Corrige tambem descasamento bucket-vs-prazo: painel do dia agora coleta por PRAZO (igual o grid) + tolera prazo||data_limite - 08/09/2026 -->
@@ -43803,11 +43804,85 @@ function setRankTab(tab){
 
 function renderRanking(){
   renderRankingVisaoGeral();
+  try { renderSpotlightTerca(); } catch(e){ console.warn('renderSpotlightTerca:', e); }
   var btnAdmin = document.getElementById('btn-admin-pontos');
   if(btnAdmin){
     btnAdmin.textContent = isAdminPontos() ? '🎛️ Painel Admin' : '🎛️ Admin';
     btnAdmin.style.background = isAdminPontos() ? 'var(--gami-blue-l)' : '';
   }
+}
+
+/* ============================================================== */
+/* 🌟 PESSOA GÂMI DA SEMANA — sorteio de TERÇA (v31.77)          */
+/* Aparece só na terça; some da quarta em diante. Sorteia 1 pessoa */
+/* ativa, dá +20 (acao 'spotlight') 1x por semana, guarda em       */
+/* configuracoes/spotlight_semana (compartilhado entre aparelhos). */
+/* ============================================================== */
+function _spotlightHojeKey(){
+  return (typeof tfHojeLocal === 'function') ? tfHojeLocal() : new Date().toISOString().slice(0,10);
+}
+function _spotlightPlaceholderHTML(){
+  return '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px;line-height:1.6">'
+    + 'Toda <strong style="color:#9333EA">terça-feira</strong>, uma pessoa é sorteada<br>'
+    + 'e recebe <strong style="color:#10B981">+20 pontos</strong> 🎉</div>';
+}
+function _spotlightVencedorHTML(cfg){
+  var ini = (cfg.nome||'?').split(' ').slice(0,2).map(function(w){ return (w[0]||'').toUpperCase(); }).join('');
+  var av = cfg.foto
+    ? '<img src="'+cfg.foto+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:3px solid #FCD34D;box-shadow:0 2px 12px rgba(147,51,234,.28)">'
+    : '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#9333EA,#C084FC);color:white;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;border:3px solid #FCD34D">'+ini+'</div>';
+  return '<div style="text-align:center;padding:14px 10px">'
+    + '<div style="font-size:24px;margin-bottom:2px">🌟</div>'
+    + '<div style="display:flex;justify-content:center;margin:6px 0">'+av+'</div>'
+    + '<div style="font-size:15px;font-weight:800;color:var(--text);font-family:\'Syne\',sans-serif">'+tfEsc(cfg.nome)+'</div>'
+    + (cfg.cargo ? '<div style="font-size:10.5px;color:var(--text3)">'+tfEsc(cfg.cargo)+'</div>' : '')
+    + '<div style="margin-top:9px;display:inline-block;background:linear-gradient(135deg,#10B981,#34D399);color:white;font-size:12px;font-weight:700;padding:5px 14px;border-radius:20px">🎉 Pessoa Gâmi da semana · +20</div>'
+    + '</div>';
+}
+async function _sortearPessoaTerca(semanaKey){
+  // re-checa no servidor pra evitar corrida entre 2 aparelhos abrindo junto
+  try { var atual = await loadConfigFromSupa('spotlight_semana'); if(atual && atual.semana === semanaKey) return atual; } catch(e){}
+  var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+  var elig = pessoas.filter(function(p){
+    if(!p || !p.id || !p.nome) return false;
+    if(typeof _ehIdTeste === 'function' && _ehIdTeste(p.id)) return false;
+    if(/\bteste\b/i.test(p.nome)) return false;
+    return true;
+  });
+  if(!elig.length) return null;
+  var esc = elig[Math.floor(Math.random()*elig.length)];
+  var cfg = { semana: semanaKey, pessoa_id: esc.id, nome: esc.nome, foto: esc.foto||esc.foto_url||'', cargo: esc.cargo||'', ts: new Date().toISOString() };
+  try { await syncConfig('spotlight_semana', cfg); } catch(e){}
+  // +20 — 1x por semana (dedup por referencia_id + checagem no servidor)
+  try {
+    var refId = 'spotlight_' + semanaKey;
+    var ja = false;
+    try {
+      var u2 = SUPA_URL + '/rest/v1/pontos_log?tipo_acao=eq.spotlight&referencia_id=eq.' + encodeURIComponent(refId) + '&select=id&limit=1';
+      var rr = await fetch(u2, { headers: supaHeaders(), cache: 'no-store' });
+      if(rr.ok){ var jj = await rr.json(); ja = Array.isArray(jj) && jj.length > 0; }
+    } catch(e){}
+    if(!ja && typeof atribuirPontos === 'function'){
+      await atribuirPontos(esc.id, 'spotlight', { referencia_id: refId, descricao: '🌟 Pessoa Gâmi da semana', pessoa_nome: esc.nome });
+    }
+  } catch(e){}
+  return cfg;
+}
+async function renderSpotlightTerca(){
+  var host = document.getElementById('rank-spotlight');
+  if(!host) return;
+  var ehTerca = (new Date()).getDay() === 2; // 2 = terça
+  if(!ehTerca){
+    host.innerHTML = _spotlightPlaceholderHTML(); // some na quarta+
+    return;
+  }
+  var semanaKey = _spotlightHojeKey();
+  var cfg = null;
+  try { cfg = await loadConfigFromSupa('spotlight_semana'); } catch(e){}
+  if(!cfg || cfg.semana !== semanaKey){
+    cfg = await _sortearPessoaTerca(semanaKey);
+  }
+  host.innerHTML = (cfg && cfg.nome) ? _spotlightVencedorHTML(cfg) : _spotlightPlaceholderHTML();
 }
 
 function renderRankingVisaoGeral(){
