@@ -166,24 +166,6 @@ exports.handler = async function(event){
       'Authorization': 'Basic ' + Buffer.from(user + ':' + pass).toString('base64')
     };
 
-    // DIAG TEMPORARIO (&raw=1): mostra o corpo CRU que a Machine devolve, sem parsear.
-    // Usado pra debugar Vitoria (resposta nao-JSON). Nao vaza segredo alem de tamanhos.
-    if(p.raw === '1'){
-      var sepD = path.indexOf('?')>=0 ? '&' : '?';
-      var urlD = BASE_URL + path + sepD + 'pagina=1&limite=5';
-      var rD = await fetch(urlD, { method:'GET', headers });
-      var txtD = await rD.text();
-      return { statusCode:200, headers:cors, body: JSON.stringify({
-        diag:true, cidade:cidade, recurso:recurso, url:urlD,
-        http_status: rD.status,
-        content_type: rD.headers.get('content-type'),
-        body_len: txtD.length,
-        body_head: txtD.slice(0,300),
-        cred_lens: { user_len: (user||'').length, pass_len: (pass||'').length, apikey_len: (apiKey||'').length },
-        cred_trim_flag: { user_tem_espaco: /\s/.test(user||''), pass_tem_espaco: /\s/.test(pass||''), apikey_tem_espaco: /\s/.test(apiKey||'') }
-      }) };
-    }
-
     var todos = [];
     var pagina = 1;
     var LIMITE = 100;
