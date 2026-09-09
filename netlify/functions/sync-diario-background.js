@@ -337,7 +337,6 @@ exports.handler = async function(event){
 };
 
 // Marca como Background Function (timeout 15min)
-// TEMPORARIO 09/09/2026: schedule removido pra permitir invocacao HTTP (backfill Vitoria).
-// O agendamento @daily bloqueia chamada HTTP (403). Sera RESTAURADO logo apos o backfill.
-// (O sync-agendado.mjs a cada 2h dispara esta funcao via fetch, entao a rede segue coberta.)
-exports.config = {};
+exports.config = {
+  schedule: '@daily'
+};
