@@ -1,3 +1,4 @@
+<!-- v31.76 - Pessoas: widgets de TIME estavam lendo localStorage (so do usuario logado / prefixo obsoleto) -> sempre vazios. "Top 3 da semana" e "Produtividade do time (hoje)" agora leem do SERVIDOR (pontos_log/tarefa_concluida, mesma fonte do ranking). Reconhecido da semana continua manual (admin nomeia). Sorteio "Pessoa Gami da semana" NAO existe no codigo (so placeholder) - 09/09/2026 -->
 <!-- v31.75 - Pontos: CONCLUIR UM PROJETO agora da +1 (nova acao projeto_concluido no catalogo, aparece nas regras "Como ganhar pontos" automaticamente). Trava anti-farm: 1x por projeto (referencia_id = id do projeto; confere no servidor + set local gami_proj_pontuados). Reabrir/reconcluir nao pontua de novo. Hook nos 2 caminhos: seletor de status do detalhe (_salvarCampoProjeto) e modal de edicao (tfSalvarProjeto) - 09/09/2026 -->
 <!-- v31.74 - Calendario: tarefa DELEGADA agora aparece marcada nos DOIS lados. Quem ENVIOU ve "📤 para Fulano" (busca dedicada delegada_por=eu, cache _tfDelegCalCache); quem RECEBEU ve "📥 de Fulano" (via _tfSupaCache). Corrige tambem descasamento bucket-vs-prazo: painel do dia agora coleta por PRAZO (igual o grid) + tolera prazo||data_limite - 08/09/2026 -->
 <!-- v31.73 - Calendario: painel lateral do dia agora mostra COMPROMISSOS (gami_cal). BUG: grid mostrava "Reuniao com Marcos" no dia, mas ao clicar a lateral dizia "Nada agendado" (so lia tarefas/notas/aniversario/feriado, nao os agendamentos). Agora _calCarregarDadosDoDia le a mesma fonte do grid, filtrada por data + pessoa_id - 08/09/2026 -->
@@ -13804,29 +13805,18 @@ function setPessoaFiltro(btn, filtro){
 // 🎯 HELPERS DOS 6 CARDS DA PÁGINA PESSOAS (v23.69b)
 // ============================================================
 
-// Conta tarefas concluídas hoje (todas as listas localStorage)
-function _pm_contarTarefasConcluidasHoje(){
-  var hoje = new Date(); hoje.setHours(0,0,0,0);
-  var contador = 0;
+// Conta tarefas concluídas HOJE de TODO o time via pontos_log (servidor).
+// v31.76: antes lia localStorage (prefixo obsoleto 'gami_tarefas*' + só do usuário
+// logado) → sempre 0. Agora usa a mesma fonte do ranking (pontos_log/tarefa_concluida).
+async function _pm_contarTarefasConcluidasHoje(){
   try {
-    // Lista todas as chaves de tarefas no localStorage
-    Object.keys(localStorage).forEach(function(k){
-      if(k.indexOf('gami_tarefas') !== 0) return;
-      try {
-        var arr = JSON.parse(localStorage.getItem(k)||'[]');
-        if(!Array.isArray(arr)) return;
-        arr.forEach(function(t){
-          if(t && t.feito && t.concluidoEm){
-            var d = new Date(t.concluidoEm);
-            if(!isNaN(d) && d >= hoje) contador++;
-          }
-        });
-      } catch(e){}
-    });
-  } catch(e){
-    console.warn('[pm contar tarefas]', e);
-  }
-  return contador;
+    var hoje = (typeof tfHojeLocal === 'function') ? tfHojeLocal() : new Date().toISOString().slice(0,10);
+    var url = SUPA_URL + '/rest/v1/pontos_log?tipo_acao=eq.tarefa_concluida&data_acao=eq.' + hoje + '&select=id&limit=5000';
+    var r = await fetch(url, { headers: supaHeaders(), cache: 'no-store' });
+    if(!r.ok) return 0;
+    var arr = await r.json();
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch(e){ console.warn('[produtividade hoje]', e && e.message); return 0; }
 }
 
 // 🆕 v28.7: HEARTBEAT de presença — grava last_seen enquanto o app está aberto
@@ -14065,49 +14055,38 @@ function renderPessoasAtividade(forcado){
 }
 
 // 🆕 PARTE 2 — Renderiza Top 3 produtividade da semana
-function renderPessoasTop3(){
+// v31.76: fonte agora é o SERVIDOR (pontos_log), não o localStorage. O localStorage
+// só tem as tarefas do usuário LOGADO (cada um só puxa as suas via tarefas_minhas),
+// então o "Top 3 do time" nunca via o time → ficava "Nenhuma tarefa concluída".
+async function renderPessoasTop3(){
   var host = document.getElementById('pessoas-top3-conteudo');
   if(!host) return;
-  
-  // 🆕 v26.58: Top 3 só conta pessoas REAIS cadastradas (sem fakes/fallbacks)
+
   var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
-  var pessoasIds = {};
-  pessoas.forEach(function(p){ if(p && p.id) pessoasIds[p.id] = true; });
-  
-  // Coleta tarefas concluídas dos últimos 7 dias do localStorage
-  var ranking = {}; // pessoa_id → contador
-  var hoje = new Date();
-  for(var i=0; i<7; i++){
-    var d = new Date(hoje); d.setDate(d.getDate() - i);
-    var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
-    var key_norm = y + '_' + m + '_' + dd;
-    try {
-      // 🆕 v26.98: usa helper que pega de TODAS as pessoas (pra ranking funcionar)
-      var lista = (typeof _tfLerTarefasDoDiaTodos === 'function') ? _tfLerTarefasDoDiaTodos(key_norm) : [];
-      lista.forEach(function(t){
-        if(!t || !(t.feito || t.concluida)) return;
-        // 🆕 Pega pessoa_id real; sem fallback pra 'eu' ou strings aleatórias
-        var pid = t.pessoa_id || t.criada_por || t.delegada_por;
-        // 🆕 Só conta se a pessoa EXISTE no cadastro
-        if(!pid || !pessoasIds[pid]) return;
-        ranking[pid] = (ranking[pid] || 0) + 1;
+  var pById = {}; pessoas.forEach(function(p){ if(p && p.id) pById[p.id] = p; });
+
+  // Conta tarefa_concluida dos últimos 7 dias (inclui hoje) via pontos_log, por pessoa.
+  var d7 = new Date(); d7.setDate(d7.getDate() - 6);
+  var dStr = d7.getFullYear() + '-' + String(d7.getMonth()+1).padStart(2,'0') + '-' + String(d7.getDate()).padStart(2,'0');
+  var ranking = {}; // pessoa_id → {total, nome}
+  try {
+    var url = SUPA_URL + '/rest/v1/pontos_log?tipo_acao=eq.tarefa_concluida&data_acao=gte.' + dStr + '&select=pessoa_id,pessoa_nome&limit=5000';
+    var r = await fetch(url, { headers: supaHeaders(), cache: 'no-store' });
+    if(r.ok){
+      var arr = await r.json();
+      arr.forEach(function(row){
+        var pid = row.pessoa_id; if(!pid) return;
+        if(!ranking[pid]) ranking[pid] = { total: 0, nome: row.pessoa_nome };
+        ranking[pid].total++;
       });
-    } catch(e){}
-  }
-  
-  // Converte pra array e ordena
+    }
+  } catch(e){ console.warn('[top3 semana]', e && e.message); }
+
   var top = Object.keys(ranking).map(function(pid){
-    var p = pessoas.find(function(x){ return x.id === pid; });
-    return { 
-      id: pid, 
-      pessoa: p,
-      nome: p ? p.nome : '—',
-      total: ranking[pid]
-    };
-  }).filter(function(item){ return item.pessoa; }) // 🆕 Filtra: só com pessoa real
-    .sort(function(a,b){ return b.total - a.total; })
-    .slice(0,3);
-  
+    var p = pById[pid];
+    return { id: pid, pessoa: p, nome: (p && p.nome) || ranking[pid].nome || '—', total: ranking[pid].total };
+  }).sort(function(a,b){ return b.total - a.total; }).slice(0,3);
+
   if(!top.length){
     host.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="font-size:24px;opacity:.3">🏆</div><div style="font-size:12px;color:#854F0B;opacity:.7">Nenhuma tarefa concluída ainda</div></div>';
     return;
@@ -15220,10 +15199,9 @@ function renderPessoas(){
   // 1. 🟢 Online agora — já preenchido por _pmCarregarOnlineAgora() acima (v28.7).
   //    (removido o overwrite antigo que jogava a contagem da meia-noite no número.)
   
-  // 2. ✅ Tarefas concluídas hoje
-  var concluidas = _pm_contarTarefasConcluidasHoje();
+  // 2. ✅ Tarefas concluídas hoje (v31.76: async, do servidor)
   var elT = document.getElementById('pm-tarefas-hoje');
-  if(elT) elT.textContent = concluidas;
+  _pm_contarTarefasConcluidasHoje().then(function(n){ if(elT) elT.textContent = n; }).catch(function(){});
   
   // 3. 🎂 Próximos 7 dias
   var prox7 = pessoas.filter(function(p){ return isBdayWeek(p.nascimento); })
