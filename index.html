@@ -1,3 +1,4 @@
+<!-- v31.78 - Agenda: FIX duplicacao dos "Compromissos de hoje" (Suzi via cada item 2x: "15 eventos + 15 anotacoes"). Causa: adicionarItemAgenda grava o compromisso nos DOIS stores (manuais + espelho em gami_cal p/ aparecer no Calendario), e coletarItensAgendaHoje lia os dois. Fix: coletor pula o espelho (gami_cal origem:'agenda') - a versao manual e a que conta. Espelho segue no Calendario. Conserta existentes e futuros - 10/09/2026 -->
 <!-- v31.77 - Ranking: SORTEIO "Pessoa Gami da semana" agora funciona de verdade (antes era so texto decorativo, spotlight_terca vazio, ninguem recebia +20). Sorteia 1 pessoa ativa na TERCA, da +20 (acao spotlight) 1x por semana (dedup por referencia_id + config compartilhada spotlight_semana), mostra nome/foto no card. Aparece so na terca, some da quarta em diante. renderSpotlightTerca ligado no renderRanking - 09/09/2026 -->
 <!-- v31.76 - Pessoas: widgets de TIME estavam lendo localStorage (so do usuario logado / prefixo obsoleto) -> sempre vazios. "Top 3 da semana" e "Produtividade do time (hoje)" agora leem do SERVIDOR (pontos_log/tarefa_concluida, mesma fonte do ranking). Reconhecido da semana continua manual (admin nomeia). Sorteio "Pessoa Gami da semana" NAO existe no codigo (so placeholder) - 09/09/2026 -->
 <!-- v31.75 - Pontos: CONCLUIR UM PROJETO agora da +1 (nova acao projeto_concluido no catalogo, aparece nas regras "Como ganhar pontos" automaticamente). Trava anti-farm: 1x por projeto (referencia_id = id do projeto; confere no servidor + set local gami_proj_pontuados). Reabrir/reconcluir nao pontua de novo. Hook nos 2 caminhos: seletor de status do detalhe (_salvarCampoProjeto) e modal de edicao (tfSalvarProjeto) - 09/09/2026 -->
@@ -34781,8 +34782,14 @@ function coletarItensAgendaHoje(){
     var u3 = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     var meuId3 = u3 ? u3.id : null;
     var eventos = JSON.parse(localStorage.getItem('gami_cal')||'[]');
-    eventos.filter(function(e){ 
+    eventos.filter(function(e){
       if(e.data !== hojeStr) return false;
+      // 🐛 v31.78 FIX (Suzi): compromisso add pela agenda é gravado nos DOIS stores
+      // — em `manuais` E espelhado em `gami_cal` (origem:'agenda') pra aparecer no
+      // Calendário. O coletor lia os dois → cada compromisso DUPLICAVA (aparecia como
+      // "evento" E como "anotação"). Aqui pulamos o espelho: quem entra é a versão
+      // manual (item 4). O espelho segue existindo só pro Calendário.
+      if(e.origem === 'agenda') return false;
       if(e.tipo === 'aniversario') return true; // públicos pra todos
       if(!meuId3) return false;
       return e.pessoa_id === meuId3;
