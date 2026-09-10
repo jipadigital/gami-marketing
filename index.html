@@ -1,3 +1,4 @@
+<!-- v31.81 - Agenda: AVISOS DE HORARIO. Botao 🔔 Avisos pede permissao (Notification API) e liga um agendador local que compara a hora dos compromissos de hoje com o relogio do PC/celular e dispara pre-aviso ~10min antes + aviso na hora (notificacao nativa + toast). 1x por gatilho/dia (dedup localStorage). Auto-inicia se ja tem permissao. Funciona com a aba aberta - 10/09/2026 -->
 <!-- v31.80 - Ranking Geral: mostra os EMOJIS dos badges conquistados (com tooltip do nome) no lugar do numero '🎖️ N'. Loader agora traz a lista de badge_id por pessoa; render mapeia via BADGES_CATALOGO (fallback 🎖️), cap em 10 + '+N' - 10/09/2026 -->
 <!-- v31.79 - Ranking: nova secao RANKING GERAL (todos os tempos) no fim da aba Ranking. Soma pontos_log de sempre (paginado 1000/req, cobre os 2000+ registros, cache 5min) + patente (obterPatente) + nº de conquistas (badges_desbloqueadas, 1 fetch). Mostra so quem esta no cadastro (quem saiu some). renderRankingGeralAcumulado ligado no renderRanking - 10/09/2026 -->
 <!-- v31.78 - Agenda: FIX duplicacao dos "Compromissos de hoje" (Suzi via cada item 2x: "15 eventos + 15 anotacoes"). Causa: adicionarItemAgenda grava o compromisso nos DOIS stores (manuais + espelho em gami_cal p/ aparecer no Calendario), e coletarItensAgendaHoje lia os dois. Fix: coletor pula o espelho (gami_cal origem:'agenda') - a versao manual e a que conta. Espelho segue no Calendario. Conserta existentes e futuros - 10/09/2026 -->
@@ -2964,6 +2965,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
           <svg width="11" height="11" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg>
           Projetar meu dia com IA
         </button>
+        <button onclick="_agendaAtivarAlertas()" title="Receber aviso no horário de cada compromisso (usa o relógio do seu PC/celular)" style="padding:7px 11px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(255,255,255,.1);color:white;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">🔔 Avisos</button>
         <button onclick="adicionarItemAgenda()" style="padding:7px 11px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(255,255,255,.1);color:white;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit">+ Adicionar</button>
       </div>
     </div>
@@ -34854,12 +34856,85 @@ function coletarItensAgendaHoje(){
   return itens;
 }
 
+/* ============================================================== */
+/* ⏰ AVISOS DE HORÁRIO (v31.81) — notifica no relógio do aparelho */
+/* Compara a hora dos compromissos de hoje com o relógio LOCAL do  */
+/* PC/celular e dispara: pré-aviso ~10min antes + aviso na hora.   */
+/* Cada item avisa 1x por gatilho/dia (dedup em localStorage).     */
+/* Funciona com a aba aberta (foreground ou background).           */
+/* ============================================================== */
+function _agendaAlertasKey(){ return 'gami_agenda_alertas_' + ((typeof _agendaHojeStr==='function')?_agendaHojeStr():new Date().toISOString().slice(0,10)); }
+function _agendaAlertasFeitos(){ try { return JSON.parse(localStorage.getItem(_agendaAlertasKey())||'[]'); } catch(e){ return []; } }
+function _agendaAlertasMarcar(sig){ try { var a=_agendaAlertasFeitos(); if(a.indexOf(sig)<0){ a.push(sig); localStorage.setItem(_agendaAlertasKey(), JSON.stringify(a)); } } catch(e){} }
+function _agendaDispararAlerta(titulo, quandoLbl){
+  var corpo = quandoLbl + ' · ' + titulo;
+  try {
+    if('Notification' in window && Notification.permission === 'granted' && !(getUsuarioLogado && getUsuarioLogado() && getUsuarioLogado()._impersonacao)){
+      var n = new Notification('⏰ Compromisso Gâmi', { body: corpo, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', tag: 'gami-agenda-'+titulo, requireInteraction: false });
+      n.onclick = function(){ try { window.focus(); } catch(e){} n.close(); };
+    }
+  } catch(e){}
+  try { if(typeof toast === 'function') toast('⏰ ' + corpo, 'info'); } catch(e){}
+}
+function _agendaAlertasCheck(){
+  try {
+    if(typeof coletarItensAgendaHoje !== 'function') return;
+    var itens = coletarItensAgendaHoje();
+    if(!Array.isArray(itens) || !itens.length) return;
+    var agora = new Date();
+    var nowMin = agora.getHours()*60 + agora.getMinutes();
+    var feitos = _agendaAlertasFeitos();
+    itens.forEach(function(it){
+      if(!it || it.feito) return;
+      var h = String(it.hora||'').trim();
+      if(!/^\d{1,2}:\d{2}$/.test(h)) return; // só itens com HORA (HH:MM); tarefa sem hora é ignorada
+      var pp = h.split(':');
+      var itMin = (+pp[0])*60 + (+pp[1]);
+      var diff = itMin - nowMin; // >0 falta; ~0 agora
+      var titulo = it.titulo || 'Compromisso';
+      var sig = titulo + '|' + h;
+      // Pré-aviso ~10 min antes (janela 8..11 min)
+      if(diff >= 8 && diff <= 11 && feitos.indexOf(sig+'|pre') < 0){
+        _agendaDispararAlerta(titulo, 'em ~' + diff + ' min (' + h + ')');
+        _agendaAlertasMarcar(sig+'|pre');
+      }
+      // No horário (janela -2..+1 min)
+      if(diff <= 1 && diff >= -2 && feitos.indexOf(sig+'|now') < 0){
+        _agendaDispararAlerta(titulo, 'agora (' + h + ')');
+        _agendaAlertasMarcar(sig+'|now');
+      }
+    });
+  } catch(e){ console.warn('[agenda alertas]', e && e.message); }
+}
+function _agendaAlertasIniciar(){
+  if(window._agendaAlertasTimer) return;
+  try { _agendaAlertasCheck(); } catch(e){}
+  window._agendaAlertasTimer = setInterval(function(){
+    try { _agendaAlertasCheck(); } catch(e){}
+  }, 45000); // checa a cada 45s
+}
+// Botão "🔔 Avisos" da agenda: pede permissão e liga o agendador
+window._agendaAtivarAlertas = async function(){
+  if(!('Notification' in window)){ if(typeof toast==='function') toast('Seu navegador não suporta notificações.', 'error'); return; }
+  if(Notification.permission === 'granted'){ _agendaAlertasIniciar(); if(typeof toast==='function') toast('🔔 Avisos de horário ativados!', 'success'); return; }
+  if(Notification.permission === 'denied'){ if(typeof toast==='function') toast('Notificações bloqueadas. Libere no cadeado 🔒 da barra de endereço.', 'error'); return; }
+  try {
+    var p = await Notification.requestPermission();
+    if(p === 'granted'){ _agendaAlertasIniciar(); if(typeof toast==='function') toast('🔔 Avisos de horário ativados!', 'success'); }
+    else if(typeof toast==='function') toast('Sem permissão — os avisos aparecem só dentro do app.', 'info');
+  } catch(e){}
+};
+
 function renderMinhaAgenda(){
   var lista = document.getElementById('mam-lista');
   var resumo = document.getElementById('mam-resumo');
   var vazio = document.getElementById('mam-vazio');
   var dataDiv = document.getElementById('mam-data');
   if(!lista) return;
+
+  // v31.81: se já tem permissão de notificação, liga o agendador de avisos de horário
+  // (guardado por window._agendaAlertasTimer, então re-render não duplica o timer).
+  try { if('Notification' in window && Notification.permission === 'granted') _agendaAlertasIniciar(); } catch(e){}
 
   // Título fixo (saudação completa fica só no hero)
   if(dataDiv){
