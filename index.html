@@ -1,3 +1,4 @@
+<!-- v31.82 - Push REAL: notificacao de compromisso mesmo com o app FECHADO. Service worker ganha handlers push+notificationclick; cliente inscreve o aparelho (push_subscriptions) e, com app aberto, grava os horarios de hoje em push_agendados; funcao push-enviar (servidor, web-push+VAPID) dispara na hora. Precisa: rodar docs/push-notificacoes.sql + add VAPID_PUBLIC/PRIVATE no Netlify. Schedule da push-enviar ligado apos teste - 10/09/2026 -->
 <!-- v31.81 - Agenda: AVISOS DE HORARIO. Botao 🔔 Avisos pede permissao (Notification API) e liga um agendador local que compara a hora dos compromissos de hoje com o relogio do PC/celular e dispara pre-aviso ~10min antes + aviso na hora (notificacao nativa + toast). 1x por gatilho/dia (dedup localStorage). Auto-inicia se ja tem permissao. Funciona com a aba aberta - 10/09/2026 -->
 <!-- v31.80 - Ranking Geral: mostra os EMOJIS dos badges conquistados (com tooltip do nome) no lugar do numero '🎖️ N'. Loader agora traz a lista de badge_id por pessoa; render mapeia via BADGES_CATALOGO (fallback 🎖️), cap em 10 + '+N' - 10/09/2026 -->
 <!-- v31.79 - Ranking: nova secao RANKING GERAL (todos os tempos) no fim da aba Ranking. Soma pontos_log de sempre (paginado 1000/req, cobre os 2000+ registros, cache 5min) + patente (obterPatente) + nº de conquistas (badges_desbloqueadas, 1 fetch). Mostra so quem esta no cadastro (quem saiu some). renderRankingGeralAcumulado ligado no renderRanking - 10/09/2026 -->
@@ -34920,10 +34921,85 @@ window._agendaAtivarAlertas = async function(){
   if(Notification.permission === 'denied'){ if(typeof toast==='function') toast('Notificações bloqueadas. Libere no cadeado 🔒 da barra de endereço.', 'error'); return; }
   try {
     var p = await Notification.requestPermission();
-    if(p === 'granted'){ _agendaAlertasIniciar(); if(typeof toast==='function') toast('🔔 Avisos de horário ativados!', 'success'); }
+    if(p === 'granted'){
+      _agendaAlertasIniciar();
+      var okPush = await _pushSubscribe();          // v31.82: inscreve p/ push (app fechado)
+      if(okPush) await _pushSyncAgendados();
+      if(typeof toast==='function') toast(okPush ? '🔔 Avisos ativados (funcionam até com o app fechado)!' : '🔔 Avisos de horário ativados!', 'success');
+    }
     else if(typeof toast==='function') toast('Sem permissão — os avisos aparecem só dentro do app.', 'info');
   } catch(e){}
 };
+
+/* ============================================================== */
+/* 🔔 PUSH REAL (v31.82) — notifica com o app FECHADO             */
+/* Inscreve o aparelho (push_subscriptions) e, com o app aberto,   */
+/* grava os horários de hoje em push_agendados. A função           */
+/* push-enviar (servidor) dispara na hora, mesmo app fechado.      */
+/* ============================================================== */
+var VAPID_PUBLIC = 'BOSqGHTjCwEvHOJZjL0QIQWa2mbNAtK--Eima3RSMr63MDv86cCy8u67DAp2EFHaCQkiQkP5HAtEsWr7T1j4G1U';
+function _urlB64ToUint8(base64){
+  var pad = '='.repeat((4 - base64.length % 4) % 4);
+  var b = (base64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+  var raw = atob(b); var arr = new Uint8Array(raw.length);
+  for(var i=0;i<raw.length;i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+async function _pushSubscribe(){
+  try {
+    if(!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    if(!('Notification' in window) || Notification.permission !== 'granted') return false;
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id) return false;
+    var reg = await navigator.serviceWorker.ready;
+    var sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(VAPID_PUBLIC) });
+    }
+    var j = sub.toJSON();
+    if(!j || !j.keys) return false;
+    var linha = { pessoa_id: u.id, endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_agent: (navigator.userAgent||'').slice(0,180) };
+    await fetch(SUPA_URL + '/rest/v1/push_subscriptions?on_conflict=endpoint', {
+      method: 'POST',
+      headers: Object.assign(supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify(linha)
+    });
+    window._pushInscrito = true;
+    return true;
+  } catch(e){ console.warn('[push subscribe]', e && e.message); return false; }
+}
+async function _pushSyncAgendados(){
+  try {
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(!u || !u.id || typeof coletarItensAgendaHoje !== 'function') return;
+    var itens = coletarItensAgendaHoje();
+    if(!Array.isArray(itens) || !itens.length) return;
+    var hoje = new Date();
+    var rows = [];
+    itens.forEach(function(it){
+      if(!it || it.feito) return;
+      var h = String(it.hora||'').trim();
+      if(!/^\d{1,2}:\d{2}$/.test(h)) return;
+      var pp = h.split(':');
+      var base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), +pp[0], +pp[1], 0, 0);
+      if(isNaN(base.getTime())) return;
+      var titulo = (it.titulo || 'Compromisso').slice(0, 120);
+      // só agenda o que ainda vai acontecer (com 1 min de folga)
+      if(base.getTime() > Date.now() - 60000){
+        rows.push({ pessoa_id: u.id, titulo: titulo, quando: base.toISOString(), tipo: 'now' });
+        var pre = new Date(base.getTime() - 10*60000);
+        if(pre.getTime() > Date.now() - 60000) rows.push({ pessoa_id: u.id, titulo: titulo, quando: pre.toISOString(), tipo: 'pre' });
+      }
+    });
+    if(!rows.length) return;
+    // ignore-duplicates: não mexe em quem já foi enviado
+    await fetch(SUPA_URL + '/rest/v1/push_agendados?on_conflict=pessoa_id,titulo,quando,tipo', {
+      method: 'POST',
+      headers: Object.assign(supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'resolution=ignore-duplicates,return=minimal' }),
+      body: JSON.stringify(rows)
+    });
+  } catch(e){ console.warn('[push sync agendados]', e && e.message); }
+}
 
 function renderMinhaAgenda(){
   var lista = document.getElementById('mam-lista');
@@ -34932,9 +35008,14 @@ function renderMinhaAgenda(){
   var dataDiv = document.getElementById('mam-data');
   if(!lista) return;
 
-  // v31.81: se já tem permissão de notificação, liga o agendador de avisos de horário
-  // (guardado por window._agendaAlertasTimer, então re-render não duplica o timer).
-  try { if('Notification' in window && Notification.permission === 'granted') _agendaAlertasIniciar(); } catch(e){}
+  // v31.81/82: se já tem permissão, liga o agendador local E garante a inscrição de
+  // push + sincroniza os horários de hoje pro servidor (pra avisar com o app fechado).
+  try {
+    if('Notification' in window && Notification.permission === 'granted'){
+      _agendaAlertasIniciar();
+      if(typeof _pushSubscribe === 'function') _pushSubscribe().then(function(ok){ if(ok && typeof _pushSyncAgendados==='function') _pushSyncAgendados(); });
+    }
+  } catch(e){}
 
   // Título fixo (saudação completa fica só no hero)
   if(dataDiv){

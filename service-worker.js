@@ -1,8 +1,8 @@
 // service-worker.js
-// PWA Gâmi Marketing — v23.143
+// PWA Gâmi Marketing — v23.144
 // SEGURANÇA: cache só de assets estáticos. APIs sempre fresh.
 
-const CACHE_VERSION = 'v23-143-2026-09-10';
+const CACHE_VERSION = 'v23-144-2026-09-10';
 const CACHE_NAME = 'gami-' + CACHE_VERSION;
 
 // 🚫 NUNCA cacheia: APIs, functions, autenticação
@@ -120,6 +120,37 @@ self.addEventListener('fetch', function(event) {
         }
         return new Response('Offline', { status: 504, statusText: 'Offline' });
       });
+    })
+  );
+});
+
+// PUSH — recebe notificação do servidor (funciona com o app FECHADO)
+self.addEventListener('push', function(event) {
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; }
+  catch(e){ data = { title: '⏰ Compromisso Gâmi', body: (event.data && event.data.text && event.data.text()) || '' }; }
+  var title = data.title || '⏰ Compromisso Gâmi';
+  var opts = {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: data.tag || 'gami-push',
+    requireInteraction: false,
+    data: { url: data.url || '/' }
+  };
+  event.waitUntil(self.registration.showNotification(title, opts));
+});
+
+// Clique na notificação → foca/abre o dashboard
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  var url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
+      for (var i = 0; i < list.length; i++) {
+        if ('focus' in list[i]) { try { list[i].navigate && list[i].navigate(url); } catch(e){} return list[i].focus(); }
+      }
+      if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
