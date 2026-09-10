@@ -1,8 +1,8 @@
 // service-worker.js
-// PWA Gâmi Marketing — v23.145
+// PWA Gâmi Marketing — v23.146
 // SEGURANÇA: cache só de assets estáticos. APIs sempre fresh.
 
-const CACHE_VERSION = 'v23-145-2026-09-10';
+const CACHE_VERSION = 'v23-146-2026-09-10';
 const CACHE_NAME = 'gami-' + CACHE_VERSION;
 
 // 🚫 NUNCA cacheia: APIs, functions, autenticação

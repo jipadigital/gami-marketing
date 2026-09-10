@@ -1,3 +1,4 @@
+<!-- v31.84 - Avisos de horario: agora cobrem TAREFAS e TAREFAS DE PROJETO (nao so compromissos). Novo coletor _agendaItensComHora junta compromissos + tarefas do dia + tarefas de projeto com hora (hora||hora_limite, so as de hoje). Bug de brinde: tarefa nova nao salvava o 'Horario (opcional)' (hora_limite faltava no objeto) - corrigido - 10/09/2026 -->
 <!-- v31.83 - Sininho: notificacoes do mural agora sao UMA POR RECADO com o nome de quem postou + trecho (antes agregava tudo em 'N recados novos no mural'). Exclui recados que te mencionam (esses ja aparecem no bloco de mencoes). Cap 15. id estavel por recado (marca lida individual) - 10/09/2026 -->
 <!-- v31.82 - Push REAL: notificacao de compromisso mesmo com o app FECHADO. Service worker ganha handlers push+notificationclick; cliente inscreve o aparelho (push_subscriptions) e, com app aberto, grava os horarios de hoje em push_agendados; funcao push-enviar (servidor, web-push+VAPID) dispara na hora. Precisa: rodar docs/push-notificacoes.sql + add VAPID_PUBLIC/PRIVATE no Netlify. Schedule da push-enviar ligado apos teste - 10/09/2026 -->
 <!-- v31.81 - Agenda: AVISOS DE HORARIO. Botao 🔔 Avisos pede permissao (Notification API) e liga um agendador local que compara a hora dos compromissos de hoje com o relogio do PC/celular e dispara pre-aviso ~10min antes + aviso na hora (notificacao nativa + toast). 1x por gatilho/dia (dedup localStorage). Auto-inicia se ja tem permissao. Funciona com a aba aberta - 10/09/2026 -->
@@ -34890,10 +34891,34 @@ function _agendaDispararAlerta(titulo, quandoLbl){
   } catch(e){}
   try { if(typeof toast === 'function') toast('⏰ ' + corpo, 'info'); } catch(e){}
 }
+// v31.84: junta TUDO que tem horário HOJE — compromissos + tarefas do dia +
+// tarefas de projeto. (Antes só compromissos avisavam; tarefa comum não porque
+// o coletor da agenda usava a DATA no lugar da hora.)
+function _agendaItensComHora(){
+  var out = [], seen = {};
+  var hojeStr = (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().slice(0,10);
+  function add(titulo, hora, feito, id){
+    var mt = String(hora||'').trim().match(/^(\d{1,2}):(\d{2})/);
+    if(!mt) return;
+    var hhmm = ('0'+mt[1]).slice(-2) + ':' + mt[2];
+    var key = (id||titulo||'') + '|' + hhmm;
+    if(seen[key]) return; seen[key] = 1;
+    out.push({ titulo: titulo || 'Tarefa', hora: hhmm, feito: !!feito });
+  }
+  try { // 1) compromissos/eventos (já vêm com hora HH:MM; pula tipo 'tarefa' pq ali a hora vem errada)
+    if(typeof coletarItensAgendaHoje==='function') coletarItensAgendaHoje().forEach(function(it){ if(it && it.tipo!=='tarefa') add(it.titulo, it.hora, it.feito, it.id); });
+  } catch(e){}
+  try { // 2) tarefas do dia com horário
+    if(typeof getTarefas==='function') getTarefas('diario').forEach(function(t){ if(!t) return; var d=t.prazo||t.data_limite; if(d && d!==hojeStr) return; add(t.texto, t.hora||t.hora_limite, t.feito, t.id); });
+  } catch(e){}
+  try { // 3) tarefas de projeto com horário (só as de hoje)
+    if(typeof getTarefasDeProjetos==='function') getTarefasDeProjetos().forEach(function(t){ if(!t) return; var d=t.prazo||t.data_limite; if(d && d!==hojeStr) return; add(t.texto||t.titulo, t.hora||t.hora_limite, t.feito, t.id); });
+  } catch(e){}
+  return out;
+}
 function _agendaAlertasCheck(){
   try {
-    if(typeof coletarItensAgendaHoje !== 'function') return;
-    var itens = coletarItensAgendaHoje();
+    var itens = _agendaItensComHora();
     if(!Array.isArray(itens) || !itens.length) return;
     var agora = new Date();
     var nowMin = agora.getHours()*60 + agora.getMinutes();
@@ -34984,8 +35009,8 @@ async function _pushSubscribe(){
 async function _pushSyncAgendados(){
   try {
     var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
-    if(!u || !u.id || typeof coletarItensAgendaHoje !== 'function') return;
-    var itens = coletarItensAgendaHoje();
+    if(!u || !u.id) return;
+    var itens = (typeof _agendaItensComHora === 'function') ? _agendaItensComHora() : [];
     if(!Array.isArray(itens) || !itens.length) return;
     var hoje = new Date();
     var rows = [];
@@ -43007,6 +43032,7 @@ function tfSalvarModal(){
     prio:prio,
     cat:cat,
     prazo:prazo,
+    hora_limite: hora_limite,   // v31.84: antes o "Horário (opcional)" era lido mas NÃO salvo na tarefa nova
     obs:obs,
     feito:false,
     criadoEm:new Date().toISOString(),
