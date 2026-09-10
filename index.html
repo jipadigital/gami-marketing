@@ -1,3 +1,4 @@
+<!-- v31.83 - Sininho: notificacoes do mural agora sao UMA POR RECADO com o nome de quem postou + trecho (antes agregava tudo em 'N recados novos no mural'). Exclui recados que te mencionam (esses ja aparecem no bloco de mencoes). Cap 15. id estavel por recado (marca lida individual) - 10/09/2026 -->
 <!-- v31.82 - Push REAL: notificacao de compromisso mesmo com o app FECHADO. Service worker ganha handlers push+notificationclick; cliente inscreve o aparelho (push_subscriptions) e, com app aberto, grava os horarios de hoje em push_agendados; funcao push-enviar (servidor, web-push+VAPID) dispara na hora. Precisa: rodar docs/push-notificacoes.sql + add VAPID_PUBLIC/PRIVATE no Netlify. Schedule da push-enviar ligado apos teste - 10/09/2026 -->
 <!-- v31.81 - Agenda: AVISOS DE HORARIO. Botao 🔔 Avisos pede permissao (Notification API) e liga um agendador local que compara a hora dos compromissos de hoje com o relogio do PC/celular e dispara pre-aviso ~10min antes + aviso na hora (notificacao nativa + toast). 1x por gatilho/dia (dedup localStorage). Auto-inicia se ja tem permissao. Funciona com a aba aberta - 10/09/2026 -->
 <!-- v31.80 - Ranking Geral: mostra os EMOJIS dos badges conquistados (com tooltip do nome) no lugar do numero '🎖️ N'. Loader agora traz a lista de badge_id por pessoa; render mapeia via BADGES_CATALOGO (fallback 🎖️), cap em 10 + '+N' - 10/09/2026 -->
@@ -1514,15 +1515,27 @@ function coletarNotificacoes(){
     var novosRecados = recados.filter(function(r){
       var t = r && r.data ? new Date(r.data).getTime() : 0;
       var autor = r && r.autor ? r.autor : '';
-      return t >= ultDia && autor !== meuNome2; // nao notifica o proprio autor
+      if(t < ultDia || autor === meuNome2) return false; // nao notifica o proprio autor
+      // se me menciona, aparece no bloco de mençoes abaixo (nao duplica aqui)
+      if(meuNome2 && r.texto && String(r.texto).toLowerCase().indexOf('@'+meuNome2.toLowerCase()) >= 0) return false;
+      return true;
     });
-    if(novosRecados.length){
-      notifs.push({
-        id:'recados-novos-'+novosRecados.length+'-'+novosRecados[0].id,
-        icon:'📌', titulo:novosRecados.length+' recado'+(novosRecados.length>1?'s':'')+' novo'+(novosRecados.length>1?'s':'')+' no mural',
-        sub:'Veja no Dashboard', linkAba:'dashboard', ts:Date.now()
+    // v31.83: UMA notificação por recado, com o NOME de quem postou + trecho
+    // (antes agregava tudo em "N recados novos no mural"). Cap 15 pra não explodir.
+    novosRecados
+      .sort(function(a,b){ return (b.data?new Date(b.data).getTime():0) - (a.data?new Date(a.data).getTime():0); })
+      .slice(0, 15)
+      .forEach(function(r){
+        var _txt = String(r.texto || '').replace(/\s+/g,' ').trim();
+        notifs.push({
+          id: 'recado-' + r.id,
+          icon: '📌',
+          titulo: (r.autor || 'Alguém') + ' postou no mural',
+          sub: _txt ? ('"' + _txt.slice(0,70) + (_txt.length>70?'…':'') + '"') : 'Veja no Dashboard',
+          linkAba: 'dashboard',
+          ts: r.data ? new Date(r.data).getTime() : Date.now()
+        });
       });
-    }
 
     // 3) Mencoes em recados (autor mencionou meuNome com @)
     if(meuNome2){
