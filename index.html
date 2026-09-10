@@ -1,3 +1,4 @@
+<!-- v31.79 - Ranking: nova secao RANKING GERAL (todos os tempos) no fim da aba Ranking. Soma pontos_log de sempre (paginado 1000/req, cobre os 2000+ registros, cache 5min) + patente (obterPatente) + nº de conquistas (badges_desbloqueadas, 1 fetch). Mostra so quem esta no cadastro (quem saiu some). renderRankingGeralAcumulado ligado no renderRanking - 10/09/2026 -->
 <!-- v31.78 - Agenda: FIX duplicacao dos "Compromissos de hoje" (Suzi via cada item 2x: "15 eventos + 15 anotacoes"). Causa: adicionarItemAgenda grava o compromisso nos DOIS stores (manuais + espelho em gami_cal p/ aparecer no Calendario), e coletarItensAgendaHoje lia os dois. Fix: coletor pula o espelho (gami_cal origem:'agenda') - a versao manual e a que conta. Espelho segue no Calendario. Conserta existentes e futuros - 10/09/2026 -->
 <!-- v31.77 - Ranking: SORTEIO "Pessoa Gami da semana" agora funciona de verdade (antes era so texto decorativo, spotlight_terca vazio, ninguem recebia +20). Sorteia 1 pessoa ativa na TERCA, da +20 (acao spotlight) 1x por semana (dedup por referencia_id + config compartilhada spotlight_semana), mostra nome/foto no card. Aparece so na terca, some da quarta em diante. renderSpotlightTerca ligado no renderRanking - 09/09/2026 -->
 <!-- v31.76 - Pessoas: widgets de TIME estavam lendo localStorage (so do usuario logado / prefixo obsoleto) -> sempre vazios. "Top 3 da semana" e "Produtividade do time (hoje)" agora leem do SERVIDOR (pontos_log/tarefa_concluida, mesma fonte do ranking). Reconhecido da semana continua manual (admin nomeia). Sorteio "Pessoa Gami da semana" NAO existe no codigo (so placeholder) - 09/09/2026 -->
@@ -6932,8 +6933,15 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
         <button onclick="nav(document.querySelector('.nav-item[onclick*=&quot;dashboard&quot;]'),'dashboard')" style="font-size:11px;padding:6px 14px;border:none;border-radius:8px;background:#0E7AB8;color:white;font-weight:700;cursor:pointer;font-family:inherit">Ver no Dashboard →</button>
       </div>
     </div>
+
+    <!-- =========== RANKING GERAL ACUMULADO (todos os tempos) =========== -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:2px">🏛️ Ranking Geral · todos os tempos</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Tudo que cada uma já conquistou: pontos acumulados, patente e nº de conquistas.</div>
+      <div id="rank-geral-acumulado"><div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Carregando…</div></div>
+    </div>
   </div>
-  
+
   <!-- =========== CONQUISTAS =========== -->
   <div id="rank-tab-conquistas" class="rank-tab-content" style="display:none">
     <div class="card" style="margin-bottom:14px">
@@ -43812,6 +43820,7 @@ function setRankTab(tab){
 function renderRanking(){
   renderRankingVisaoGeral();
   try { renderSpotlightTerca(); } catch(e){ console.warn('renderSpotlightTerca:', e); }
+  try { renderRankingGeralAcumulado(); } catch(e){ console.warn('renderRankingGeralAcumulado:', e); }
   var btnAdmin = document.getElementById('btn-admin-pontos');
   if(btnAdmin){
     btnAdmin.textContent = isAdminPontos() ? '🎛️ Painel Admin' : '🎛️ Admin';
@@ -43890,6 +43899,105 @@ async function renderSpotlightTerca(){
     cfg = await _sortearPessoaTerca(semanaKey);
   }
   host.innerHTML = (cfg && cfg.nome) ? _spotlightVencedorHTML(cfg) : _spotlightPlaceholderHTML();
+}
+
+/* ============================================================== */
+/* 🏛️ RANKING GERAL ACUMULADO (todos os tempos) — v31.79          */
+/* Soma pontos_log de sempre (paginado, cache 5min), + patente     */
+/* (obterPatente) + nº de conquistas (badges_desbloqueadas).       */
+/* ============================================================== */
+async function _carregarPontosAcumulados(){
+  if(window._rankGeralCache && (Date.now() - window._rankGeralCache.ts) < 300000) return window._rankGeralCache.data;
+  var g = {}, offset = 0, page = 1000;
+  try {
+    while(true){
+      var r = await fetch(SUPA_URL + '/rest/v1/pontos_log?select=pessoa_id,pessoa_nome,pontos&order=id&limit=' + page + '&offset=' + offset, { headers: supaHeaders(), cache: 'no-store' });
+      if(!r.ok) break;
+      var arr = await r.json();
+      if(!Array.isArray(arr) || !arr.length) break;
+      arr.forEach(function(row){
+        var pid = row.pessoa_id; if(!pid) return;
+        if(!g[pid]) g[pid] = { pessoa_id: pid, nome: row.pessoa_nome, total: 0 };
+        g[pid].total += (+row.pontos || 0);
+      });
+      if(arr.length < page) break;
+      offset += page;
+      if(offset > 100000) break; // salvaguarda
+    }
+  } catch(e){ console.warn('[acumulado]', e && e.message); }
+  var data = Object.keys(g).map(function(k){ return g[k]; });
+  window._rankGeralCache = { ts: Date.now(), data: data };
+  return data;
+}
+async function _carregarBadgesPorPessoa(){
+  var counts = {}, offset = 0;
+  try {
+    while(true){
+      var r = await fetch(SUPA_URL + '/rest/v1/badges_desbloqueadas?select=pessoa_id&limit=1000&offset=' + offset, { headers: supaHeaders(), cache: 'no-store' });
+      if(!r.ok) break;
+      var arr = await r.json();
+      if(!Array.isArray(arr) || !arr.length) break;
+      arr.forEach(function(x){ if(x.pessoa_id) counts[x.pessoa_id] = (counts[x.pessoa_id] || 0) + 1; });
+      if(arr.length < 1000) break;
+      offset += 1000;
+      if(offset > 50000) break;
+    }
+  } catch(e){}
+  return counts;
+}
+function _rankGeralHTML(lista){
+  var medal = ['🥇','🥈','🥉'];
+  return lista.map(function(it, idx){
+    var posLbl = idx < 3 ? medal[idx] : ((idx+1) + 'º');
+    var ini = (it.nome||'?').split(' ').slice(0,2).map(function(w){ return (w[0]||'').toUpperCase(); }).join('');
+    var av = it.foto
+      ? '<img src="' + it.foto + '" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0">'
+      : '<div style="width:38px;height:38px;border-radius:50%;background:' + ((it.patente && it.patente.cor) || '#B0B0B0') + ';color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">' + ini + '</div>';
+    var pat = it.patente ? '<span style="font-size:11px;color:var(--text2);font-weight:600">' + it.patente.emoji + ' ' + tfEsc(it.patente.nome) + '</span>' : '';
+    var conq = it.conquistas ? '<span style="font-size:11px;color:var(--text3)">🎖️ ' + it.conquistas + '</span>' : '';
+    return '<div style="display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--border)">'
+      + '<div style="width:26px;text-align:center;font-size:' + (idx<3?'18px':'12px') + ';font-weight:800;color:var(--text3);flex-shrink:0">' + posLbl + '</div>'
+      + av
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + tfEsc(it.nome) + '</div>'
+        + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:1px">' + pat + conq + '</div>'
+      + '</div>'
+      + '<div style="text-align:right;flex-shrink:0"><div style="font-family:\'Syne\',sans-serif;font-size:17px;font-weight:800;color:var(--orange);line-height:1">' + it.total.toLocaleString('pt-BR') + '</div><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">pontos</div></div>'
+    + '</div>';
+  }).join('');
+}
+async function renderRankingGeralAcumulado(){
+  var host = document.getElementById('rank-geral-acumulado');
+  if(!host) return;
+  try {
+    var totais = await _carregarPontosAcumulados();
+    var badges = await _carregarBadgesPorPessoa();
+    var pessoas = (typeof getPessoas === 'function') ? getPessoas() : [];
+    var pById = {}; pessoas.forEach(function(p){ if(p && p.id) pById[p.id] = p; });
+    var lista = totais
+      .filter(function(t){ return pById[t.pessoa_id] && !(typeof _ehIdTeste === 'function' && _ehIdTeste(t.pessoa_id)); }) // só quem ainda está no cadastro (quem saiu some)
+      .map(function(t){
+        var p = pById[t.pessoa_id];
+        return {
+          id: t.pessoa_id,
+          nome: (p && p.nome) || t.nome || '—',
+          foto: (p && (p.foto || p.foto_url)) || '',
+          cargo: (p && p.cargo) || '',
+          total: t.total,
+          patente: (typeof obterPatente === 'function') ? obterPatente(t.total) : null,
+          conquistas: badges[t.pessoa_id] || 0
+        };
+      })
+      .sort(function(a,b){ return b.total - a.total; });
+    if(!lista.length){
+      host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Ainda sem pontos acumulados.</div>';
+      return;
+    }
+    host.innerHTML = _rankGeralHTML(lista);
+  } catch(e){
+    console.warn('renderRankingGeralAcumulado:', e && e.message);
+    host.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px">Não deu pra carregar agora. Tente atualizar.</div>';
+  }
 }
 
 function renderRankingVisaoGeral(){
