@@ -1,3 +1,4 @@
+<!-- v31.80 - Ranking Geral: mostra os EMOJIS dos badges conquistados (com tooltip do nome) no lugar do numero '🎖️ N'. Loader agora traz a lista de badge_id por pessoa; render mapeia via BADGES_CATALOGO (fallback 🎖️), cap em 10 + '+N' - 10/09/2026 -->
 <!-- v31.79 - Ranking: nova secao RANKING GERAL (todos os tempos) no fim da aba Ranking. Soma pontos_log de sempre (paginado 1000/req, cobre os 2000+ registros, cache 5min) + patente (obterPatente) + nº de conquistas (badges_desbloqueadas, 1 fetch). Mostra so quem esta no cadastro (quem saiu some). renderRankingGeralAcumulado ligado no renderRanking - 10/09/2026 -->
 <!-- v31.78 - Agenda: FIX duplicacao dos "Compromissos de hoje" (Suzi via cada item 2x: "15 eventos + 15 anotacoes"). Causa: adicionarItemAgenda grava o compromisso nos DOIS stores (manuais + espelho em gami_cal p/ aparecer no Calendario), e coletarItensAgendaHoje lia os dois. Fix: coletor pula o espelho (gami_cal origem:'agenda') - a versao manual e a que conta. Espelho segue no Calendario. Conserta existentes e futuros - 10/09/2026 -->
 <!-- v31.77 - Ranking: SORTEIO "Pessoa Gami da semana" agora funciona de verdade (antes era so texto decorativo, spotlight_terca vazio, ninguem recebia +20). Sorteia 1 pessoa ativa na TERCA, da +20 (acao spotlight) 1x por semana (dedup por referencia_id + config compartilhada spotlight_semana), mostra nome/foto no card. Aparece so na terca, some da quarta em diante. renderSpotlightTerca ligado no renderRanking - 09/09/2026 -->
@@ -43930,20 +43931,24 @@ async function _carregarPontosAcumulados(){
   return data;
 }
 async function _carregarBadgesPorPessoa(){
-  var counts = {}, offset = 0;
+  var byId = {}, offset = 0;
   try {
     while(true){
-      var r = await fetch(SUPA_URL + '/rest/v1/badges_desbloqueadas?select=pessoa_id&limit=1000&offset=' + offset, { headers: supaHeaders(), cache: 'no-store' });
+      var r = await fetch(SUPA_URL + '/rest/v1/badges_desbloqueadas?select=pessoa_id,badge_id&limit=1000&offset=' + offset, { headers: supaHeaders(), cache: 'no-store' });
       if(!r.ok) break;
       var arr = await r.json();
       if(!Array.isArray(arr) || !arr.length) break;
-      arr.forEach(function(x){ if(x.pessoa_id) counts[x.pessoa_id] = (counts[x.pessoa_id] || 0) + 1; });
+      arr.forEach(function(x){
+        if(!x.pessoa_id) return;
+        if(!byId[x.pessoa_id]) byId[x.pessoa_id] = [];
+        if(x.badge_id && byId[x.pessoa_id].indexOf(x.badge_id) < 0) byId[x.pessoa_id].push(x.badge_id);
+      });
       if(arr.length < 1000) break;
       offset += 1000;
       if(offset > 50000) break;
     }
   } catch(e){}
-  return counts;
+  return byId; // { pessoa_id: [badge_id, ...] }
 }
 function _rankGeralHTML(lista){
   var medal = ['🥇','🥈','🥉'];
@@ -43954,7 +43959,17 @@ function _rankGeralHTML(lista){
       ? '<img src="' + it.foto + '" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0">'
       : '<div style="width:38px;height:38px;border-radius:50%;background:' + ((it.patente && it.patente.cor) || '#B0B0B0') + ';color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0">' + ini + '</div>';
     var pat = it.patente ? '<span style="font-size:11px;color:var(--text2);font-weight:600">' + it.patente.emoji + ' ' + tfEsc(it.patente.nome) + '</span>' : '';
-    var conq = it.conquistas ? '<span style="font-size:11px;color:var(--text3)">🎖️ ' + it.conquistas + '</span>' : '';
+    // v31.80: mostra os EMOJIS dos badges conquistados (com tooltip do nome), não só o número
+    var _bs = it.conquistas || [];
+    var conq = _bs.length
+      ? '<span style="display:inline-flex;gap:3px;flex-wrap:wrap;align-items:center">'
+          + _bs.slice(0,10).map(function(bid){
+              var info = (typeof BADGES_CATALOGO !== 'undefined' && BADGES_CATALOGO[bid]) || { emoji:'🎖️', nome: bid };
+              return '<span title="' + tfEsc(info.nome) + '" style="font-size:14px;line-height:1">' + (info.emoji || '🎖️') + '</span>';
+            }).join('')
+          + (_bs.length > 10 ? '<span style="font-size:10px;color:var(--text3);font-weight:600">+' + (_bs.length-10) + '</span>' : '')
+        + '</span>'
+      : '';
     return '<div style="display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--border)">'
       + '<div style="width:26px;text-align:center;font-size:' + (idx<3?'18px':'12px') + ';font-weight:800;color:var(--text3);flex-shrink:0">' + posLbl + '</div>'
       + av
@@ -43985,7 +44000,7 @@ async function renderRankingGeralAcumulado(){
           cargo: (p && p.cargo) || '',
           total: t.total,
           patente: (typeof obterPatente === 'function') ? obterPatente(t.total) : null,
-          conquistas: badges[t.pessoa_id] || 0
+          conquistas: badges[t.pessoa_id] || []
         };
       })
       .sort(function(a,b){ return b.total - a.total; });
