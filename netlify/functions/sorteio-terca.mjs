@@ -15,6 +15,9 @@
 
 const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 
+// Roda toda TERÇA às 11h UTC (08h no horário BR). Idempotente: só sorteia 1x/semana.
+export const config = { schedule: '0 11 * * 2' };
+
 export default async () => {
   const SVC = process.env.SUPA_SERVICE_KEY;
   if(!SVC) return json({ ok:false, error:'SUPA_SERVICE_KEY ausente' });
