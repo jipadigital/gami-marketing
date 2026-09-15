@@ -1,3 +1,4 @@
+<!-- v31.85 - (1) Mural: seletor de EMOJI (botao 😊 abre paleta, insere no cursor). (2) Pessoa Gami da semana: sorteio agora e UNICO no SERVIDOR (funcao sorteio-terca), acabou a corrida que dava 2 ganhadores; card so EXIBE (e parseia o valor STRING que nao parseava antes). - 15/09/2026 -->
 <!-- v31.84 - Avisos de horario: agora cobrem TAREFAS e TAREFAS DE PROJETO (nao so compromissos). Novo coletor _agendaItensComHora junta compromissos + tarefas do dia + tarefas de projeto com hora (hora||hora_limite, so as de hoje). Bug de brinde: tarefa nova nao salvava o 'Horario (opcional)' (hora_limite faltava no objeto) - corrigido - 10/09/2026 -->
 <!-- v31.83 - Sininho: notificacoes do mural agora sao UMA POR RECADO com o nome de quem postou + trecho (antes agregava tudo em 'N recados novos no mural'). Exclui recados que te mencionam (esses ja aparecem no bloco de mencoes). Cap 15. id estavel por recado (marca lida individual) - 10/09/2026 -->
 <!-- v31.82 - Push REAL: notificacao de compromisso mesmo com o app FECHADO. Service worker ganha handlers push+notificationclick; cliente inscreve o aparelho (push_subscriptions) e, com app aberto, grava os horarios de hoje em push_agendados; funcao push-enviar (servidor, web-push+VAPID) dispara na hora. Precisa: rodar docs/push-notificacoes.sql + add VAPID_PUBLIC/PRIVATE no Netlify. Schedule da push-enviar ligado apos teste - 10/09/2026 -->
@@ -44088,13 +44089,16 @@ async function renderSpotlightTerca(){
     host.innerHTML = _spotlightPlaceholderHTML(); // some na quarta+
     return;
   }
+  // v31.85: SÓ EXIBE o vencedor. O sorteio agora é feito 1x no SERVIDOR (função
+  // sorteio-terca), sem corrida entre aparelhos — antes cada aparelho sorteava e
+  // dava pra sair 2 ganhadores no mesmo dia. `valor` vem como STRING JSON: parseia.
   var semanaKey = _spotlightHojeKey();
   var cfg = null;
-  try { cfg = await loadConfigFromSupa('spotlight_semana'); } catch(e){}
-  if(!cfg || cfg.semana !== semanaKey){
-    cfg = await _sortearPessoaTerca(semanaKey);
-  }
-  host.innerHTML = (cfg && cfg.nome) ? _spotlightVencedorHTML(cfg) : _spotlightPlaceholderHTML();
+  try {
+    cfg = await loadConfigFromSupa('spotlight_semana');
+    if(typeof cfg === 'string'){ try { cfg = JSON.parse(cfg); } catch(e){ cfg = null; } }
+  } catch(e){}
+  host.innerHTML = (cfg && cfg.nome && cfg.semana === semanaKey) ? _spotlightVencedorHTML(cfg) : _spotlightPlaceholderHTML();
 }
 
 /* ============================================================== */
@@ -47784,6 +47788,32 @@ function _muralPodeRemover(recado){
   return false;
 }
 
+/* v31.85: seletor de emoji do mural */
+var _MURAL_EMOJIS = ['😀','😂','🥰','😍','😎','🤩','🥳','😅','😉','🙏','👏','🙌','💪','👍','🤝','🔥','✅','🎉','✨','⭐','🌟','❤️','💛','💙','💚','🚀','🏆','💡','📌','☕','🌱','😴'];
+function _muralEmojiPaletaHTML(){
+  return '<div id="mural-emoji-box" style="display:none;flex-wrap:wrap;gap:2px;margin-top:6px;padding:6px;background:white;border:1px solid var(--border);border-radius:8px">'
+    + _MURAL_EMOJIS.map(function(e){
+        return '<button type="button" onclick="_muralInserirEmoji(\''+e+'\')" style="border:none;background:transparent;font-size:18px;line-height:1;cursor:pointer;padding:3px;border-radius:6px" onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">'+e+'</button>';
+      }).join('')
+    + '</div>';
+}
+function _muralToggleEmoji(){
+  var box = document.getElementById('mural-emoji-box');
+  if(box) box.style.display = (box.style.display === 'none' || !box.style.display) ? 'flex' : 'none';
+}
+function _muralInserirEmoji(emoji){
+  var ta = document.getElementById('mural-input');
+  if(!ta) return;
+  var s = (ta.selectionStart != null) ? ta.selectionStart : ta.value.length;
+  var en = (ta.selectionEnd != null) ? ta.selectionEnd : ta.value.length;
+  var novo = (ta.value.slice(0,s) + emoji + ta.value.slice(en)).slice(0,140);
+  ta.value = novo;
+  var pos = Math.min(s + emoji.length, 140);
+  ta.focus(); try { ta.setSelectionRange(pos, pos); } catch(e){}
+  try { if(typeof _muralOnInput === 'function') _muralOnInput({ target: ta }); } catch(e){}
+  var c = document.getElementById('mural-counter'); if(c) c.textContent = ta.value.length + ' / 140';
+}
+
 function salvarRecadoInline(){
   var input = document.getElementById('mural-input');
   if(!input) return;
@@ -47926,9 +47956,13 @@ function renderRecados(){
           + 'onkeydown="if(event.key===\'Escape\'){_muralFecharMencao();}else if(event.key===\'Enter\' && event.ctrlKey){event.preventDefault();salvarRecadoInline();}" '
           + 'style="width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;background:white;box-sizing:border-box"></textarea>'
         + '<div id="mural-mencao-dropdown" style="display:none;position:absolute;left:58px;right:14px;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(11,37,66,.15);z-index:100;max-height:280px;overflow-y:auto;margin-top:4px"></div>'
+        + _muralEmojiPaletaHTML()
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">'
           + '<span id="mural-counter" style="font-size:10px;color:var(--text3)">0 / 140</span>'
-          + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar (Ctrl+Enter)</button>'
+          + '<div style="display:flex;gap:6px;align-items:center">'
+            + '<button type="button" onclick="_muralToggleEmoji()" title="Inserir emoji" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:14px;cursor:pointer;line-height:1">😊</button>'
+            + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar (Ctrl+Enter)</button>'
+          + '</div>'
         + '</div>'
       + '</div>'
     + '</div>'
