@@ -1,4 +1,4 @@
-<!-- v31.89 - Relatorios: novo "Churn inteligente" (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v31.90 - Relatorios: tirados do MENU os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -17004,18 +17004,6 @@ var RELATORIOS = {
         temValor:true, fase:1 },
       { id:'empresas_fantasmas', icone:'👻', nome:'Empresas fantasmas',
         descricao:'Cadastradas há 30+ dias mas com 0-2 pedidos — não engajaram após cadastro',
-        temValor:false, fase:1 },
-      { id:'empresas_pararam_30d', icone:'🛑', nome:'Empresas que pararam (30d)',
-        descricao:'Empresas que TINHAM pedidos antes mas ZERARAM nos últimos 30 dias — churn confirmado',
-        temValor:false, fase:1 },
-      { id:'empresas_pararam_60d', icone:'🛑', nome:'Empresas que pararam (60d)',
-        descricao:'Empresas que TINHAM pedidos antes mas ZERARAM nos últimos 60 dias — churn confirmado',
-        temValor:false, fase:1 },
-      { id:'empresas_pararam_90d', icone:'🛑', nome:'Empresas que pararam (90d)',
-        descricao:'Empresas que TINHAM pedidos antes mas ZERARAM nos últimos 90 dias — churn confirmado',
-        temValor:false, fase:1 },
-      { id:'empresas_pararam_intervalo', icone:'⏳', nome:'Pararam de pedir (5–90 dias)',
-        descricao:'Empresas cujo ÚLTIMO pedido foi entre 5 e 90 dias atrás (janela ajustável) — lista de reativação, das que pararam mais recente pras mais antigas',
         temValor:false, fase:1 },
       { id:'empresas_churn_inteligente', icone:'🎯', nome:'Churn inteligente',
         descricao:'Só quem fugiu do PRÓPRIO ritmo: compara o tempo parado com a cadência normal de cada cliente. Corta o falso alarme de quem só pede irregular. Lista de recuperação de verdade.',
