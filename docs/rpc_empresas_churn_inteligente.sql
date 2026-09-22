@@ -72,5 +72,5 @@ AS $fn$
     AND calc.gap_normal > 0
     AND calc.gap_atual >= p_gap_min_dias
     AND calc.gap_atual > calc.gap_normal * p_fator
-  ORDER BY razao DESC, dias_sem_pedir DESC;
+  ORDER BY (calc.gap_atual / NULLIF(calc.gap_normal, 0)) DESC, calc.gap_atual DESC;
 $fn$;
