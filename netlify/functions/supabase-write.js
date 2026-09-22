@@ -38,8 +38,15 @@ const TABELAS_PERMITIDAS = [
   'cidades_extra',     // dados adicionais das cidades
   'configuracoes',     // configurações do dashboard
   'reconhecimentos',   // reconhecimentos da semana
-  'badges_desbloqueadas' // conquistas/badges dos colaboradores (gamificação)
+  'badges_desbloqueadas', // conquistas/badges dos colaboradores (gamificação)
+  'notificacoes'       // notificações (delegação avisa o delegante, etc.)
 ];
+
+// 🆕 Tabelas de COLABORAÇÃO: qualquer usuário com SESSÃO VÁLIDA pode gravar aqui
+// (não precisa ser super_admin). Necessário pra fluxos entre colaboradores, ex.:
+// o Mazinho concluir uma tarefa que a Suzi delegou (UPDATE em tarefas) e avisá-la
+// (INSERT em notificacoes). Fora dessas, segue só super_admin.
+const TABELAS_COLAB = ['tarefas', 'notificacoes'];
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
@@ -240,22 +247,25 @@ exports.handler = async function(event){
   }
   
   const usuario = sessao.usuario;
-  
-  // Só super_admin pode escrever (por enquanto)
-  if(!usuario.super_admin){
-    return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada (não é super_admin)'}) };
-  }
-  
+
   // Parse do body
   let body;
   try { body = JSON.parse(event.body); }
   catch(e){ return { statusCode: 400, headers: cors, body: JSON.stringify({error:'Body inválido'}) }; }
-  
+
   const { tabela, operacao, dados, filtro, patch } = body;
-  
+
   // Valida tabela
   if(TABELAS_PERMITIDAS.indexOf(tabela) < 0){
     return { statusCode: 400, headers: cors, body: JSON.stringify({error:'Tabela não permitida: '+tabela}) };
+  }
+
+  // Permissão: super_admin escreve em qualquer tabela permitida; usuário com
+  // sessão válida escreve nas tabelas de COLABORAÇÃO (tarefas, notificacoes).
+  // Antes SÓ super_admin podia gravar aqui, então colaborador (ex: Mazinho) não
+  // conseguia concluir tarefa delegada nem notificar o delegante → "Não consegui salvar".
+  if(!usuario.super_admin && TABELAS_COLAB.indexOf(tabela) < 0){
+    return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada (não é super_admin)'}) };
   }
   
   // Constrói chamada ao Supabase com SERVICE_KEY (bypassa RLS)
