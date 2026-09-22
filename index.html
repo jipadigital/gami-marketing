@@ -1,4 +1,4 @@
-<!-- v31.95 - Secao Atrasadas: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v31.96 - FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -40990,8 +40990,8 @@ function _tfAtrasadasHTML(){
     var dtxt = '';
     try { var d = new Date((it.prazo||'') + 'T00:00:00'); if(!isNaN(d.getTime())){ var n = Math.round((hoje - d)/86400000); if(n > 0) dtxt = ' · atrasado ' + n + 'd'; } } catch(e){}
     var toggle = it.kind === 'agenda'
-      ? "agendaToggleAtrasado('" + String(it.atraKey).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "');setTimeout(function(){try{tfRenderDiario()}catch(e){}},60)"
-      : "tfToggle('diario','" + it.id + "');setTimeout(function(){try{tfRenderDiario()}catch(e){}},60)";
+      ? "_tfConcluirAtrasada('agenda','" + String(it.atraKey).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "')"
+      : "_tfConcluirAtrasada('tarefa','" + it.id + "')";
     var excluir = it.kind === 'agenda'
       ? "removerItemAgendaAtrasado('" + String(it.atraKey).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "');setTimeout(function(){try{tfRenderDiario()}catch(e){}},60)"
       : "tfExcluir('diario','" + it.id + "');setTimeout(function(){try{tfRenderDiario()}catch(e){}},60)";
@@ -41009,6 +41009,49 @@ function _tfAtrasadasHTML(){
     + '</div>'
     + rows + '</div>';
 }
+// v31.96: conclui UMA atrasada de forma ROBUSTA (funciona em qualquer balde).
+// Tarefa: marca feito no SERVIDOR (fonte da verdade) + cache, entao nao volta no
+// reload — antes usava tfToggle('diario',id) que so olhava o balde de hoje e falhava
+// em tarefa de dia passado. Agenda: marca feito no localStorage (blacklistado do mirror).
+function _tfConcluirAtrasada(kind, key){
+  try {
+    if(kind === 'agenda'){
+      if(typeof _agendaLerTodos === 'function'){
+        var all = _agendaLerTodos(), mud = false;
+        all.forEach(function(m){ if(_agendaAtraKey(m) === key && !m.feito){ m.feito = true; mud = true; } });
+        if(mud) localStorage.setItem(_agendaManuaisKey(), JSON.stringify(all));
+      }
+    } else {
+      var id = key;
+      var t = (window._tfSupaCache || []).find(function(x){ return x && x.id === id; });
+      // 1) cache em memória
+      if(t) t.feito = true;
+      // 2) balde local (se a tarefa estiver carregada localmente, em qualquer dia)
+      try {
+        var pid = (typeof _tfPessoaId === 'function') ? _tfPessoaId() : null;
+        if(pid){
+          for(var i2 = 0; i2 < localStorage.length; i2++){
+            var k = localStorage.key(i2);
+            if(!k || (typeof TF_KEY_PREFIX !== 'undefined' && k.indexOf(TF_KEY_PREFIX + pid) !== 0)) continue;
+            try {
+              var arr = JSON.parse(localStorage.getItem(k) || '[]');
+              if(!Array.isArray(arr)) continue;
+              var mudou = false;
+              arr.forEach(function(x){ if(x && x.id === id && !x.feito){ x.feito = true; x.feitaEm = new Date().toISOString(); mudou = true; } });
+              if(mudou) localStorage.setItem(k, JSON.stringify(arr));
+            } catch(e){}
+          }
+        }
+      } catch(e){}
+      // 3) SERVIDOR (fonte da verdade) — persiste pro reload
+      try {
+        if(typeof supaUpsert === 'function') supaUpsert('tarefas', { id: id, feito: true, concluido_em: new Date().toISOString() });
+      } catch(e){}
+    }
+  } catch(e){ console.warn('[concluir atrasada]', e && e.message); }
+  setTimeout(function(){ try { if(typeof renderMinhaAgenda==='function') renderMinhaAgenda(); } catch(e){} try { tfRenderDiario(); } catch(e){} }, 60);
+}
+
 // v31.95: conclui TODAS as atrasadas de uma vez (agenda + tarefas), com confirmação.
 function _tfLimparAtrasadas(){
   var itens = (typeof _tfColetarAtrasadas === 'function') ? _tfColetarAtrasadas() : [];
@@ -41024,9 +41067,14 @@ function _tfLimparAtrasadas(){
       if(mudou) localStorage.setItem(_agendaManuaisKey(), JSON.stringify(all));
     }
   } catch(e){ console.warn('[limpar atrasadas agenda]', e && e.message); }
-  // Tarefas: conclui cada uma (sincroniza pelo tfToggle)
+  // Tarefas: marca feito no cache + servidor (fonte da verdade), independente do balde
   itens.forEach(function(it){
-    if(it.kind === 'tarefa'){ try { if(typeof tfToggle === 'function') tfToggle('diario', it.id); } catch(e){} }
+    if(it.kind !== 'tarefa') return;
+    try {
+      var t = (window._tfSupaCache || []).find(function(x){ return x && x.id === it.id; });
+      if(t) t.feito = true;
+      if(typeof supaUpsert === 'function') supaUpsert('tarefas', { id: it.id, feito: true, concluido_em: new Date().toISOString() });
+    } catch(e){}
   });
   try { if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda(); } catch(e){}
   try { tfRenderDiario(); } catch(e){}
