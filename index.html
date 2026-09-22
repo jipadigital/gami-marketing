@@ -1,4 +1,4 @@
-<!-- v31.91 - Relatorios: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v31.92 - Tarefas (aba Hoje): nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -40975,6 +40975,60 @@ function tfIniciarDiario(){
   try { if(typeof tfRenderBannerAtrasadas==='function') tfRenderBannerAtrasadas(); } catch(e){}
 }
 
+/* v31.92: seção "⏰ Atrasadas" no topo da aba Hoje (Tarefas). Junta os COMPROMISSOS
+   da agenda de dias passados + TAREFAS com prazo vencido — que antes só apareciam no
+   dashboard (Compromissos de hoje) e não na página Tarefas. Com checkbox pra concluir. */
+function _tfColetarAtrasadas(){
+  var hojeStr = tfHojeLocal();
+  var out = [], seen = {};
+  // 1) compromissos da agenda atrasados
+  try {
+    var atr = (typeof getAgendaItensAtrasados === 'function') ? getAgendaItensAtrasados() : [];
+    atr.forEach(function(m){
+      if(!m || m.feito) return;
+      var chave = (m.data||'') + '|' + (m.hora||'') + '|' + (m.titulo||'');
+      if(seen['ag'+chave]) return; seen['ag'+chave] = 1;
+      out.push({ kind:'agenda', atraKey: chave, texto: (m.titulo||'(sem título)'), prazo: (m.data||'') });
+    });
+  } catch(e){}
+  // 2) tarefas com prazo VENCIDO (balde de hoje + cache do servidor = as minhas, qualquer dia)
+  try {
+    var fontes = (typeof getTarefas === 'function') ? getTarefas('diario').slice() : [];
+    var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+    if(u && window._tfSupaCache && Array.isArray(window._tfSupaCache)){
+      window._tfSupaCache.forEach(function(t){ if(t && t.pessoa_id === u.id) fontes.push({ id:t.id, texto:t.texto, feito:!!t.feito, prazo:(t.prazo||t.data_limite||'') }); });
+    }
+    fontes.forEach(function(t){
+      if(!t || t.feito || t.fixa) return;
+      var pz = t.prazo || t.data_limite;
+      if(!pz || pz >= hojeStr) return;
+      if(seen['tf'+t.id]) return; seen['tf'+t.id] = 1;
+      out.push({ kind:'tarefa', id: t.id, texto: (t.texto||'(sem título)'), prazo: pz });
+    });
+  } catch(e){}
+  return out;
+}
+function _tfAtrasadasHTML(){
+  var itens = (typeof _tfColetarAtrasadas === 'function') ? _tfColetarAtrasadas() : [];
+  if(!itens.length) return '';
+  var hoje = new Date(); hoje.setHours(0,0,0,0);
+  var rows = itens.map(function(it){
+    var dtxt = '';
+    try { var d = new Date((it.prazo||'') + 'T00:00:00'); if(!isNaN(d.getTime())){ var n = Math.round((hoje - d)/86400000); if(n > 0) dtxt = ' · atrasado ' + n + 'd'; } } catch(e){}
+    var toggle = it.kind === 'agenda'
+      ? "agendaToggleAtrasado('" + String(it.atraKey).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "');setTimeout(function(){try{tfRenderDiario()}catch(e){}},60)"
+      : "tfToggle('diario','" + it.id + "');setTimeout(function(){try{tfRenderDiario()}catch(e){}},60)";
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 11px;border-top:1px solid #F3C9C9">'
+      + '<div onclick="' + toggle + '" title="Concluir" style="width:19px;height:19px;border-radius:6px;border:2px solid #E24B4A;background:transparent;cursor:pointer;flex-shrink:0"></div>'
+      + '<span style="flex:1;font-size:12.5px;color:var(--text);line-height:1.35">' + tfEsc(it.texto) + '<span style="color:#A32D2D;font-size:10.5px;font-weight:600">' + dtxt + '</span></span>'
+      + (it.kind === 'agenda' ? '<span style="font-size:9px;color:#A32D2D;opacity:.65;flex-shrink:0">compromisso</span>' : '')
+      + '</div>';
+  }).join('');
+  return '<div style="background:#FFF5F5;border:1px solid #E24B4A44;border-radius:10px;margin-bottom:12px;overflow:hidden">'
+    + '<div style="padding:9px 11px;font-size:11px;font-weight:800;color:#A32D2D;text-transform:uppercase;letter-spacing:.5px;background:#FCEBEB">⏰ Atrasadas (' + itens.length + ') · marque o quadradinho pra concluir</div>'
+    + rows + '</div>';
+}
+
 function tfRenderDiario(){
   var lista=getTarefas('diario');
 
@@ -41061,7 +41115,7 @@ function tfRenderDiario(){
     if(_tfFiltroAtual==='feito') msgVazio = 'Nenhuma tarefa concluída ainda';
     if(_tfFiltroAtual==='atrasadas') msgVazio = '🎉 Nenhuma atrasada! Tá em dia.';
     if(fBusca || fCat || fPrio) msgVazio = 'Nenhuma tarefa encontrada com esses filtros';
-    el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:36px;margin-bottom:8px">'+(_tfFiltroAtual==='atrasadas'?'🎯':'✅')+'</div><div style="font-weight:500">'+msgVazio+'</div><div style="font-size:12px;margin-top:4px">Use o campo acima para adicionar</div></div>';
+    el.innerHTML=(_tfFiltroAtual!=='atrasadas'?_tfAtrasadasHTML():'')+'<div style="text-align:center;padding:40px;color:var(--text3)"><div style="font-size:36px;margin-bottom:8px">'+(_tfFiltroAtual==='atrasadas'?'🎯':'✅')+'</div><div style="font-weight:500">'+msgVazio+'</div><div style="font-size:12px;margin-top:4px">Use o campo acima para adicionar</div></div>';
     tfAtualizarBarra(lista.filter(function(t){ return !t.fixa; }));
     return;
   }
@@ -41075,7 +41129,7 @@ function tfRenderDiario(){
     filtradas.filter(function(t){return t.feito;})
   );
 
-  el.innerHTML=sorted.map(function(t,i){
+  el.innerHTML=(_tfFiltroAtual!=='atrasadas'?_tfAtrasadasHTML():'')+sorted.map(function(t,i){
     var p=prios[t.prio]||prios.media;
     var catCor=cats[t.cat]||cats.Outro;
     // Vencida? (tem prazo, prazo < hoje, não feita) → vermelho
