@@ -1,4 +1,4 @@
-<!-- v31.94 - Secao Atrasadas (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v31.95 - Secao Atrasadas: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -41003,8 +41003,34 @@ function _tfAtrasadasHTML(){
       + '</div>';
   }).join('');
   return '<div style="background:#FFF5F5;border:1px solid #E24B4A44;border-radius:10px;margin-bottom:12px;overflow:hidden">'
-    + '<div style="padding:9px 11px;font-size:11px;font-weight:800;color:#A32D2D;text-transform:uppercase;letter-spacing:.5px;background:#FCEBEB">⏰ Atrasadas (' + itens.length + ') · marque o quadradinho pra concluir</div>'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 11px;background:#FCEBEB">'
+      + '<span style="font-size:11px;font-weight:800;color:#A32D2D;text-transform:uppercase;letter-spacing:.5px">⏰ Atrasadas (' + itens.length + ')</span>'
+      + '<button onclick="_tfLimparAtrasadas()" title="Concluir todas de uma vez" style="font-size:10px;font-weight:700;padding:3px 10px;border:1px solid #E24B4A55;border-radius:6px;background:white;color:#A32D2D;cursor:pointer;font-family:inherit">✓ Concluir todas</button>'
+    + '</div>'
     + rows + '</div>';
+}
+// v31.95: conclui TODAS as atrasadas de uma vez (agenda + tarefas), com confirmação.
+function _tfLimparAtrasadas(){
+  var itens = (typeof _tfColetarAtrasadas === 'function') ? _tfColetarAtrasadas() : [];
+  if(!itens.length) return;
+  if(!confirm('Concluir todas as ' + itens.length + ' atrasadas de uma vez?')) return;
+  // Agenda: marca feito num único save (mais rápido que toggle 1 a 1)
+  try {
+    var chaves = {};
+    itens.forEach(function(it){ if(it.kind === 'agenda') chaves[it.atraKey] = 1; });
+    if(Object.keys(chaves).length && typeof _agendaLerTodos === 'function'){
+      var all = _agendaLerTodos(), mudou = false;
+      all.forEach(function(m){ var k = _agendaAtraKey(m); if(chaves[k] && !m.feito){ m.feito = true; mudou = true; } });
+      if(mudou) localStorage.setItem(_agendaManuaisKey(), JSON.stringify(all));
+    }
+  } catch(e){ console.warn('[limpar atrasadas agenda]', e && e.message); }
+  // Tarefas: conclui cada uma (sincroniza pelo tfToggle)
+  itens.forEach(function(it){
+    if(it.kind === 'tarefa'){ try { if(typeof tfToggle === 'function') tfToggle('diario', it.id); } catch(e){} }
+  });
+  try { if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda(); } catch(e){}
+  try { tfRenderDiario(); } catch(e){}
+  if(typeof toast === 'function') toast('✅ Atrasadas concluídas!', 'success');
 }
 
 function tfRenderDiario(){
