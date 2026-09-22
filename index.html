@@ -1,4 +1,4 @@
-<!-- v31.92 - Tarefas (aba Hoje): nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v31.93 - Unificado: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -35351,14 +35351,7 @@ function adicionarItemAgenda(){
             '<select id="qt-prio" class="sel" style="width:100%;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"><option value="alta">🔴 Alta</option><option value="media" selected>🟡 Média</option><option value="baixa">🟢 Baixa</option></select>'+
           '</div>'+
         '</div>'+
-        '<div>'+
-          '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">Tipo</div>'+
-          '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid #DDE3EB;border-radius:8px;background:#F5F7FA"><input type="radio" name="qt-tipo" value="tarefa" checked/> 📋 Tarefa</label>'+
-            '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 11px;border:1px solid #DDE3EB;border-radius:8px;background:#F5F7FA"><input type="radio" name="qt-tipo" value="agenda"/> 📌 Compromisso</label>'+
-          '</div>'+
-          '<div style="font-size:10px;color:#56627a;margin-top:6px">📌 Compromissos aparecem no calendário e ficam guardados pra sempre.</div>'+
-        '</div>'+
+        '<div style="font-size:10px;color:#56627a;margin-top:2px">Vai pras suas Tarefas, aparece nos Compromissos de hoje e no Calendário. Põe o horário se quiser um aviso.</div>'+
         '<div style="display:flex;gap:8px;margin-top:6px">'+
           '<button class="btn btn-ghost" style="flex:1;padding:9px 14px;border:1px solid #DDE3EB;background:transparent;color:#0B2542;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" onclick="document.getElementById(\'modal-quicktask\').remove()">Cancelar</button>'+
           '<button class="btn btn-primary" style="flex:2;padding:9px 14px;border:none;background:#1AB8F0;color:white;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarQuickTask()">Adicionar</button>'+
@@ -35384,50 +35377,31 @@ function salvarQuickTask(){
   var hora  = (document.getElementById('qt-hora')||{}).value || '';
   var data  = (document.getElementById('qt-data')||{}).value || new Date().toISOString().split('T')[0];
   var prio  = (document.getElementById('qt-prio')||{}).value || 'media';
-  var tipoEl = document.querySelector('input[name="qt-tipo"]:checked');
-  var tipo  = tipoEl ? tipoEl.value : 'tarefa';
 
-  if(tipo === 'tarefa'){
+  // v31.93: UNIFICADO — tudo que se adiciona aqui vira TAREFA (acabou o tipo
+  // "compromisso" separado, que ficava só no aparelho e sumia da pagina Tarefas).
+  // A tarefa aparece em Tarefas + Compromissos de hoje + Calendario, SINCRONIZA
+  // entre aparelhos (tfSupaSalvar), da pra concluir num lugar so e conta ponto.
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var nova = {
+    id: 'tf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    texto: titulo, prio: prio, cat: 'Outro',
+    prazo: data, hora: hora, hora_limite: hora || null,
+    feito: false, criadaEm: new Date().toISOString(),
+    pessoa_id: u ? u.id : null
+  };
+  try {
     if(typeof getTarefas === 'function' && typeof saveTarefas === 'function'){
-      var tarefas = getTarefas('diario');
-      tarefas.push({
-        id: 'tf_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-        texto: titulo,
-        prio: prio,
-        cat: 'Outro',
-        prazo: data,
-        hora: hora,
-        feito: false,
-        criadaEm: new Date().toISOString()
-      });
-      saveTarefas('diario', null, tarefas);
-      if(typeof tfRenderDiario === 'function') try { tfRenderDiario(); } catch(e){}
+      var tarefas = getTarefas('diario'); tarefas.push(nova); saveTarefas('diario', null, tarefas);
     }
-  } else {
-    // Compromisso: salva no storage unificado COM data + também cria evento no calendário
-    var manuaisData = getAgendaItensManuais(data);
-    manuaisData.push({titulo:titulo, hora:hora, data:data, icone:'📌', feito:false, criadoEm: new Date().toISOString()});
-    saveAgendaItensManuais(manuaisData, data);
-    
-    // Também salva no calendário pra aparecer lá
-    try {
-      var uCal = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
-      var eventos = JSON.parse(localStorage.getItem('gami_cal')||'[]');
-      eventos.push({
-        id: 'evt_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
-        titulo: titulo,
-        data: data,
-        hora: hora,
-        tipo: 'compromisso',
-        origem: 'agenda',
-        pessoa_id: (uCal && uCal.id) ? uCal.id : null  // 🔒 sem isso o compromisso não aparecia nem pro dono e poluía o pote comum
-      });
-      localStorage.setItem('gami_cal', JSON.stringify(eventos));
-    } catch(e){ console.warn('cal save:', e); }
-  }
-  document.getElementById('modal-quicktask').remove();
-  if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda();
-  if(typeof renderCalendario === 'function') try { renderCalendario(); } catch(e){}
+  } catch(e){}
+  try { if(typeof tfSupaSalvar === 'function') tfSupaSalvar(nova, 'diario', null); } catch(e){} // sincroniza (cross-device)
+
+  var m = document.getElementById('modal-quicktask'); if(m) m.remove();
+  if(typeof tfRenderDiario === 'function') try { tfRenderDiario(); } catch(e){}
+  if(typeof renderMinhaAgenda === 'function') try { renderMinhaAgenda(); } catch(e){}
+  if(typeof renderCalendar === 'function') try { renderCalendar(); } catch(e){}
+  if(typeof toast === 'function') toast('✅ Adicionado nas suas tarefas!', 'success');
 }
 
 function removerItemAgenda(manualIdx){
