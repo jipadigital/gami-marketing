@@ -1,17 +1,17 @@
--- RPC: empresas_churn_inteligente  (Churn Inteligente) — 22/09/2026
--- Diferente do "pararam de pedir (X dias)" (corte fixo que enche de falso positivo),
--- aqui a régua é o RITMO de CADA cliente. Só alerta quem está parado ALÉM do próprio
--- padrão. Usa o PERCENTIL 80 dos intervalos entre pedidos como "gap normal" do cliente
--- (robusto pra quem pede em rajada: ex. BELAITECH tem 5 dias de gap normal, então 5 dias
--- parada NÃO alerta; já quem pede todo dia e sumiu há 5 dias alerta).
+-- RPC: empresas_churn_inteligente  (Churn Inteligente) — v2, 22/09/2026
+-- Régua = ritmo de CADA cliente, medido em DIAS ATIVOS (dias em que a empresa pediu),
+-- não por pedido individual. Isso corrige o cliente que faz vários pedidos de uma vez
+-- (rajada), que fazia o "gap normal" dar 0 e a razão explodir. gap_normal = percentil 80
+-- dos intervalos entre dias ativos (o "maior gap normal" do cliente). Só alerta quem
+-- está parado > fator × esse gap normal.
 --
--- Rodar no Supabase (SQL Editor). Depois o relatório "🎯 Churn inteligente" usa a função.
+-- Rodar no Supabase (SQL Editor) — CREATE OR REPLACE, pode rodar por cima da versão antiga.
 
 CREATE OR REPLACE FUNCTION empresas_churn_inteligente(
   p_cidade_slug   text,
-  p_min_pedidos   int     DEFAULT 5,     -- histórico mínimo pra a cadência ser confiável
-  p_fator         numeric DEFAULT 2.0,   -- alerta se gap atual > fator × gap normal (p80)
-  p_lookback_dias int     DEFAULT 90,    -- janela pra medir o ritmo do cliente
+  p_min_pedidos   int     DEFAULT 5,     -- total mínimo de pedidos (histórico)
+  p_fator         numeric DEFAULT 2.0,   -- alerta se parado > fator × gap normal
+  p_lookback_dias int     DEFAULT 90,    -- janela pra medir o ritmo
   p_gap_min_dias  int     DEFAULT 3      -- piso: ignora quem parou há menos que isso
 )
 RETURNS TABLE(
@@ -27,38 +27,42 @@ RETURNS TABLE(
 LANGUAGE sql STABLE
 AS $fn$
   WITH base AS (
-    SELECT c.nome_passageiro AS nome, c.data_hora_solicitacao AS dt
+    SELECT c.nome_passageiro AS nome, c.data_hora_solicitacao AS dt,
+           date_trunc('day', c.data_hora_solicitacao) AS dia
     FROM machine_corridas c
     WHERE c.cidade_slug = p_cidade_slug
       AND c.data_hora_solicitacao >= now() - (p_lookback_dias || ' days')::interval
       AND c.nome_passageiro IS NOT NULL
       AND btrim(c.nome_passageiro) <> ''
   ),
-  gaps AS (
-    SELECT
-      nome, dt,
-      EXTRACT(EPOCH FROM (dt - lag(dt) OVER (PARTITION BY nome ORDER BY dt))) / 86400.0 AS gap_dias
-    FROM base
+  dias AS (  -- dias DISTINTOS em que a empresa pediu
+    SELECT DISTINCT nome, dia FROM base
   ),
-  stats AS (
-    SELECT
-      nome,
-      count(*) AS qtd,
-      max(dt)  AS ultimo,
-      -- "gap normal" = percentil 80 dos intervalos entre pedidos (ignora o 1º, que é null)
+  gaps AS (  -- intervalo (em dias) entre dias ativos consecutivos
+    SELECT nome, dia,
+      EXTRACT(EPOCH FROM (dia - lag(dia) OVER (PARTITION BY nome ORDER BY dia))) / 86400.0 AS gap_dias
+    FROM dias
+  ),
+  cad AS (
+    SELECT nome,
+      count(*) AS dias_ativos,
       percentile_cont(0.8) WITHIN GROUP (ORDER BY gap_dias) FILTER (WHERE gap_dias IS NOT NULL) AS gap_normal
-    FROM gaps
-    GROUP BY nome
+    FROM gaps GROUP BY nome
+  ),
+  tot AS (  -- total de pedidos + último pedido (timestamp real)
+    SELECT nome, count(*) AS qtd, max(dt) AS ultimo_ts
+    FROM base GROUP BY nome
   ),
   calc AS (
-    SELECT s.*, EXTRACT(EPOCH FROM (now() - s.ultimo)) / 86400.0 AS gap_atual
-    FROM stats s
+    SELECT c.nome, c.dias_ativos, c.gap_normal, t.qtd, t.ultimo_ts,
+      EXTRACT(EPOCH FROM (now() - t.ultimo_ts)) / 86400.0 AS gap_atual
+    FROM cad c JOIN tot t ON t.nome = c.nome
   )
   SELECT
     calc.nome,
     COALESCE(e.telefone, '')  AS telefone,
     COALESCE(NULLIF(btrim(e.bairro), ''), '—') AS bairro,
-    calc.ultimo               AS ultimo_pedido,
+    calc.ultimo_ts            AS ultimo_pedido,
     round(calc.gap_atual::numeric, 1)   AS dias_sem_pedir,
     round(calc.gap_normal::numeric, 1)  AS gap_normal_dias,
     calc.qtd                  AS qtd_pedidos,
@@ -68,6 +72,7 @@ AS $fn$
     ON e.cidade_slug = p_cidade_slug
    AND lower(btrim(e.nome)) = lower(btrim(calc.nome))
   WHERE calc.qtd >= p_min_pedidos
+    AND calc.dias_ativos >= 3           -- precisa de histórico de dias pra ter cadência
     AND calc.gap_normal IS NOT NULL
     AND calc.gap_normal > 0
     AND calc.gap_atual >= p_gap_min_dias
