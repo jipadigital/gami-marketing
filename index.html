@@ -1,3 +1,4 @@
+<!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
 <!-- v31.85 - (1) Mural: seletor de EMOJI (botao 😊 abre paleta, insere no cursor). (2) Pessoa Gami da semana: sorteio agora e UNICO no SERVIDOR (funcao sorteio-terca), acabou a corrida que dava 2 ganhadores; card so EXIBE (e parseia o valor STRING que nao parseava antes). - 15/09/2026 -->
@@ -40478,31 +40479,33 @@ function tfRenderBannerAtrasadas(){
 /* ============================================================ */
 /* TAREFAS — DELEGADAS POR MIM (acompanhamento)                  */
 /* ============================================================ */
-function renderDelegadasPorMim(){
+async function renderDelegadasPorMim(){
   var el = document.getElementById('tf-delegadas-list');
   var contEl = document.getElementById('tf-deleg-contadores');
   if(!el || !contEl) return;
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   if(!u){ el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)">Faça login pra ver as tarefas delegadas</div>'; return; }
 
-  // Busca tarefas delegadas (da cache Supabase ou localStorage)
+  // v31.88: fonte PRIMÁRIA = busca DIRETA no servidor (delegada_por = eu). Antes só
+  // lia o _tfSupaCache, que traz APENAS as tarefas onde EU sou dono (pessoa_id=eu) —
+  // e a tarefa delegada tem pessoa_id = quem RECEBEU, então nunca aparecia aqui
+  // (só no calendário, que já usava a busca direta). Agora a aba usa a mesma fonte.
   var todas = [];
-  // Busca na cache Supabase
-  if(window._tfSupaCache && Array.isArray(window._tfSupaCache)){
-    window._tfSupaCache.forEach(function(t){
-      if(t.delegada_por === u.id){
-        todas.push(t);
-      }
-    });
-  }
-  // Também no localStorage local (caso tenha delegadas locais) — 🆕 v26.95 isolado
+  var _idsDeleg = {};
+  function _addDeleg(t){ if(t && t.id && !_idsDeleg[t.id]){ _idsDeleg[t.id] = 1; todas.push(t); } }
+  try {
+    var rDeleg = (typeof supaSelect === 'function')
+      ? await supaSelect('tarefas', 'delegada_por=eq.' + encodeURIComponent(u.id) + '&select=*&order=data_limite.desc')
+      : null;
+    if(Array.isArray(rDeleg)) rDeleg.forEach(_addDeleg);
+  } catch(e){ console.warn('[delegadas] fetch direto falhou:', e && e.message); }
+  // Fallback: cache do calendário (já buscou delegada_por=eu)
+  try { if(window._tfDelegCalCache && Array.isArray(window._tfDelegCalCache.porMim)) window._tfDelegCalCache.porMim.forEach(_addDeleg); } catch(e){}
+  // Merge: cache geral + locais (redundância defensiva)
+  try { if(window._tfSupaCache && Array.isArray(window._tfSupaCache)) window._tfSupaCache.forEach(function(t){ if(t.delegada_por === u.id) _addDeleg(t); }); } catch(e){}
   try {
     var listaLocal = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
-    listaLocal.forEach(function(t){
-      if(t.delegada_por === u.id && !todas.find(function(x){return x.id===t.id;})){
-        todas.push(t);
-      }
-    });
+    listaLocal.forEach(function(t){ if(t.delegada_por === u.id) _addDeleg(t); });
   } catch(e){}
 
   var hojeStr = tfHojeLocal();
