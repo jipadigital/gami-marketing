@@ -40658,72 +40658,52 @@ async function renderDelegadasPorMim(){
 }
 
 // 🆕 v26.99: Toggle de tarefa delegada (do ponto de vista de quem delegou)
+/* v31.99: marca feito no servidor via PATCH DIRETO (anon UPDATE funciona = HTTP 204).
+   O POST-upsert (supaUpsert/tfSupaSalvar) falhava pra tarefa DELEGADA ("Não consegui
+   salvar") e a rota server-side só valia p/ super_admin. PATCH resolve pra todos. */
+async function _tfPatchFeito(id, feito){
+  try {
+    var r = await fetch(SUPA_URL + '/rest/v1/tarefas?id=eq.' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: Object.assign({}, supaHeaders(), { 'Prefer': 'return=minimal' }),
+      body: JSON.stringify({ feito: !!feito, concluido_em: feito ? new Date().toISOString() : null })
+    });
+    return r.ok;
+  } catch(e){ console.warn('[patch feito]', e && e.message); return false; }
+}
+
 async function tfToggleDelegada(id){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   if(!u){ alert('Faça login pra marcar tarefas'); return; }
-  
-  // Acha a tarefa no cache Supabase ou localStorage
-  var tarefa = null;
-  if(window._tfSupaCache){
-    tarefa = window._tfSupaCache.find(function(t){return t.id===id;});
-  }
-  if(!tarefa && typeof _tfLerTodasMinhasTarefas === 'function'){
-    var locais = _tfLerTodasMinhasTarefas();
-    tarefa = locais.find(function(t){return t.id===id;});
-  }
-  if(!tarefa){
-    alert('Tarefa não encontrada. Recarregue a página.');
-    return;
-  }
-  
-  // Toggle do feito
-  var novoFeito = !tarefa.feito;
-  tarefa.feito = novoFeito;
-  tarefa.concluidoEm = novoFeito ? new Date().toISOString() : null;
-  
-  // Salva no Supabase via Netlify Function (rota segura)
+  // v31.99: NÃO depende do cache (a delegada tem pessoa_id = quem RECEBEU, então nunca
+  // está no cache do delegante → dava "Tarefa não encontrada"). Lê o estado direto do
+  // servidor, faz PATCH e re-renderiza. Quem DELEGOU concluir NÃO ganha ponto.
+  var atual = false, tarefaTxt = '', destino = null;
   try {
-    if(typeof _syncEscrever === 'function'){
-      await _syncEscrever({
-        tabela: 'tarefas',
-        operacao: 'upsert',
-        dados: [{
-          id: id,
-          feito: novoFeito,
-          concluido_em: tarefa.concluidoEm
-        }]
-      });
-    } else if(typeof supaUpsert === 'function'){
-      await supaUpsert('tarefas', {
-        id: id, 
-        feito: novoFeito, 
-        concluido_em: tarefa.concluidoEm
-      });
-    }
-    
-    if(typeof toast === 'function'){
-      toast(novoFeito ? '✅ Marcada como feita' : '↩️ Reaberta', 'success');
-    }
-    if(typeof auditLog === 'function'){
-      auditLog(novoFeito?'tarefa_concluida_pelo_delegante':'tarefa_reaberta_pelo_delegante', 
-               id, (tarefa.texto||'').slice(0,60));
-    }
-    
-    // Re-renderiza
-    if(typeof renderDelegadasPorMim === 'function') renderDelegadasPorMim();
-    
-    // Se tem pessoa destinatária, notifica
-    if(novoFeito && tarefa.pessoa_id && tarefa.pessoa_id !== u.id && typeof criarNotificacao === 'function'){
-      criarNotificacao(tarefa.pessoa_id, 'tarefa_concluida_delegante',
-        (u.nome||u.email)+' marcou como feita a tarefa que delegou pra você',
-        tarefa.texto||'', 'tarefas');
-    }
-  } catch(e){
-    console.error('[tfToggleDelegada]', e);
-    alert('❌ Erro ao salvar: ' + (e.message||'tente de novo'));
-    // Reverte estado local
-    tarefa.feito = !novoFeito;
+    var rg = (typeof supaSelect === 'function') ? await supaSelect('tarefas', 'id=eq.' + encodeURIComponent(id) + '&select=feito,texto,pessoa_id&limit=1') : null;
+    if(Array.isArray(rg) && rg[0]){ atual = !!rg[0].feito; tarefaTxt = rg[0].texto || ''; destino = rg[0].pessoa_id; }
+    else { alert('Tarefa não encontrada. Recarregue a página.'); return; }
+  } catch(e){ if(typeof toast === 'function') toast('Erro ao ler a tarefa. Tenta de novo.', 'error'); return; }
+
+  var novoFeito = !atual;
+  var ok = await _tfPatchFeito(id, novoFeito);
+  if(!ok){ if(typeof toast === 'function') toast('Não consegui salvar. Tenta de novo.', 'error'); return; }
+
+  // atualiza caches locais (se existirem) pra refletir na hora
+  try {
+    [window._tfSupaCache, (window._tfDelegCalCache && window._tfDelegCalCache.porMim)].forEach(function(arr){
+      if(Array.isArray(arr)){ var c = arr.find(function(t){ return t && t.id === id; }); if(c) c.feito = novoFeito; }
+    });
+  } catch(e){}
+
+  if(typeof auditLog === 'function') auditLog(novoFeito?'tarefa_concluida_pelo_delegante':'tarefa_reaberta_pelo_delegante', id, tarefaTxt.slice(0,60));
+  if(typeof toast === 'function') toast(novoFeito ? '✅ Marcada como feita' : '↩️ Reaberta', 'success');
+  // (sem atribuirPontos: quem delegou NÃO ganha ponto por concluir)
+  if(novoFeito && destino && destino !== u.id && typeof criarNotificacao === 'function'){
+    criarNotificacao(destino, 'tarefa_concluida_delegante',
+      (u.nome||u.email) + ' marcou como feita a tarefa que delegou pra você', tarefaTxt, 'tarefas');
   }
+  if(typeof renderDelegadasPorMim === 'function') renderDelegadasPorMim();
 }
 
 /* ============================================================ */
@@ -41049,10 +41029,8 @@ function _tfConcluirAtrasada(kind, key){
           }
         }
       } catch(e){}
-      // 3) SERVIDOR (fonte da verdade) — persiste pro reload
-      try {
-        if(typeof supaUpsert === 'function') supaUpsert('tarefas', { id: id, feito: true, concluido_em: new Date().toISOString() });
-      } catch(e){}
+      // 3) SERVIDOR (fonte da verdade) — PATCH direto (anon UPDATE 204), persiste no reload
+      try { if(typeof _tfPatchFeito === 'function') _tfPatchFeito(id, true); } catch(e){}
     }
   } catch(e){ console.warn('[concluir atrasada]', e && e.message); }
   setTimeout(function(){ try { if(typeof renderMinhaAgenda==='function') renderMinhaAgenda(); } catch(e){} try { tfRenderDiario(); } catch(e){} }, 60);
@@ -41079,7 +41057,7 @@ function _tfLimparAtrasadas(){
     try {
       var t = (window._tfSupaCache || []).find(function(x){ return x && x.id === it.id; });
       if(t) t.feito = true;
-      if(typeof supaUpsert === 'function') supaUpsert('tarefas', { id: it.id, feito: true, concluido_em: new Date().toISOString() });
+      if(typeof _tfPatchFeito === 'function') _tfPatchFeito(it.id, true);
     } catch(e){}
   });
   try { if(typeof renderMinhaAgenda === 'function') renderMinhaAgenda(); } catch(e){}
@@ -41534,18 +41512,13 @@ function tfToggle(tipo, id, sufixo){
       tarefaTocada={id:sc.id,texto:sc.texto,feito:sc.feito,delegada_por:sc.delegada_por,delegada_por_nome:sc.delegada_por_nome};
     }
   }
-  // Sincroniza estado com Supabase
-  if(tarefaTocada && typeof supaUpsert==='function'){
-    // P0.1: antes o toggle mandava payload PARCIAL {id,feito,concluido_em}. Se a
-    // tarefa ainda não existia no Supabase, virava INSERT sem colunas obrigatórias
-    // (pessoa_id, texto) → 400. Agora manda a LINHA COMPLETA via tfSupaSalvar
-    // (mesmo caminho da criação, que funciona). Cache delegado (parcial, já existe
-    // no banco) mantém o merge parcial.
-    if(tarefaTocada.texto && tarefaTocada.pessoa_id && typeof tfSupaSalvar==='function'){
-      tfSupaSalvar(tarefaTocada, tipo, sufixo);
-    } else {
-      supaUpsert('tarefas',{ id:id, feito:!!tarefaTocada.feito, concluido_em: tarefaTocada.feito?new Date().toISOString():null });
-    }
+  // Sincroniza estado com Supabase — v31.99: PATCH DIRETO (anon UPDATE = HTTP 204).
+  // Antes usava tfSupaSalvar/supaUpsert (POST-upsert), que FALHAVA pra tarefa DELEGADA
+  // ("Não consegui salvar" + voltava no reload, casos Mazinho/Vanessa). PATCH só muda o
+  // feito de uma linha existente e funciona pra todos (a tarefa já existe no banco desde
+  // a criação/delegação). auditLog + notificação ao delegante mantidos.
+  if(tarefaTocada){
+    _tfPatchFeito(id, !!tarefaTocada.feito);
     if(typeof auditLog==='function') auditLog(tarefaTocada.feito?'tarefa_concluida':'tarefa_reaberta', id, (tarefaTocada.texto||'').slice(0,60));
     // Se era delegada e foi concluída, notifica quem delegou
     if(tarefaTocada.feito && tarefaTocada.delegada_por){
