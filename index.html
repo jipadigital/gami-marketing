@@ -1,4 +1,4 @@
-<!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -4461,8 +4461,8 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
         <!-- Cidades ativas -->
         <div class="mv-kpi" title="Cidades com integração Machine + Instagram + leads recentes">
           <div class="mv-kpi-label">🏙️ Cidades ativas</div>
-          <div class="mv-kpi-val">9<span style="font-size:14px;color:var(--text3);font-weight:500"> / 11</span></div>
-          <div class="mv-kpi-sub">Vitória + Jaboatão pendentes</div>
+          <div class="mv-kpi-val">9<span style="font-size:14px;color:var(--text3);font-weight:500"> / 10</span></div>
+          <div class="mv-kpi-sub">Jaboatão pendente</div>
         </div>
       </div>
     </div>
@@ -5309,7 +5309,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <div class="card-title">Criador rápido</div>
       <div class="field"><div class="field-label">Cidade + tipo</div>
         <div style="display:flex;gap:6px">
-          <select class="sel" id="quick-cidade"><option>Fortaleza</option><option>Maceió</option><option>João Pessoa</option><option>Recife</option><option>Natal</option><option>Aracaju</option><option>São Luís</option><option>Teresina</option><option>Vitória</option></select>
+          <select class="sel" id="quick-cidade"><option>Fortaleza</option><option>Maceió</option><option>João Pessoa</option><option>Recife</option><option>Natal</option><option>Aracaju</option><option>São Luís</option><option>Teresina</option></select>
           <select class="sel" id="quick-tipo"><option>Captação motoboys</option><option>Parceria restaurante</option><option>Aniversariante Gâmi</option><option>Meta batida</option><option>Bastidores</option><option>Institucional</option></select>
         </div>
       </div>
@@ -5334,7 +5334,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
   <div class="ai-bar" style="margin-top:10px">
     <div class="ai-ico"><svg width="12" height="12" fill="none" viewBox="0 0 24 24"><path d="M12 2L14.5 9.5H22L16 14L18.5 21.5L12 17L5.5 21.5L8 14L2 9.5H9.5L12 2Z" fill="white"/></svg></div>
     <div style="flex:1;font-size:12px;color:var(--text2)"><strong>IA:</strong> Quer criar posts para todas as 10 cidades de uma vez?</div>
-    <button class="btn btn-ia btn-sm" onclick="openAI('Crie posts de captação de motoboys para todas as 9 cidades da Gâmi: Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís, Teresina e Vitória. Cada post personalizado para a cidade.')">Criar em massa ↗</button>
+    <button class="btn btn-ia btn-sm" onclick="openAI('Crie posts de captação de motoboys para todas as 8 cidades da Gâmi: Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís e Teresina. Cada post personalizado para a cidade.')">Criar em massa ↗</button>
   </div>
 </div>
 
@@ -7377,7 +7377,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
             <div><div class="field-label">Tema do post *</div><input id="bg-tema" class="inp" placeholder="Ex: Como ser motoboy na Gâmi em Fortaleza"/></div>
             <div class="g2">
               <div><div class="field-label">Categoria</div><select id="bg-cat" class="sel"><option>Delivery</option><option>Gastronomia</option><option>Motoboy</option><option>Empreendedorismo</option><option>Logística</option><option>Dicas</option></select></div>
-              <div><div class="field-label">Cidade</div><select id="bg-cidade" class="sel"><option value="">Geral</option><option>Fortaleza</option><option>Recife</option><option>Maceió</option><option>João Pessoa</option><option>Natal</option><option>Aracaju</option><option>São Luís</option><option>Teresina</option><option>Vitória</option></select></div>
+              <div><div class="field-label">Cidade</div><select id="bg-cidade" class="sel"><option value="">Geral</option><option>Fortaleza</option><option>Recife</option><option>Maceió</option><option>João Pessoa</option><option>Natal</option><option>Aracaju</option><option>São Luís</option><option>Teresina</option></select></div>
             </div>
             <div><div class="field-label">Palavra-chave</div><input id="bg-kw" class="inp" placeholder="Ex: delivery motoboy fortaleza"/></div>
             <div>
@@ -8545,7 +8545,6 @@ var DATAS_ESPECIAIS = {
   '08-05':{ nome:'Dia Nacional da Saúde', tipo:'nacional', emoji:'🏥', sugestao:'Post sobre saúde dos motoboys. Equipamentos de proteção e cuidado com a equipe.' },
   '08-09':{ destaque:true, nome:'Dia dos Pais', tipo:'nacional', emoji:'👨', sugestao:'CAMPANHA: Motoboys pais e pais clientes. "Gâmi entrega o almoço do Dia dos Pais."' },
   '08-11':{ nome:'Dia do Advogado / Dia do Estudante', tipo:'comemorativo', emoji:'📚', sugestao:'Post sobre motoboys estudantes. "Gâmi apoia quem quer crescer e evoluir."' },
-  '08-15':{ nome:'Aniversário de Vitória', tipo:'municipal', cidade:'Vitória', emoji:'🏙️', sugestao:'Post especial para Vitória celebrando o aniversário com a presença da Gâmi.' },
   '08-22':{ nome:'Dia do Folclore', tipo:'nacional', emoji:'🎭', sugestao:'Post sobre a cultura local de cada cidade onde a Gâmi opera. Valorizar o regionalismo.' },
   '08-25':{ nome:'Dia do Soldado', tipo:'comemorativo', emoji:'🎖️', sugestao:'Post de bravura e dedicação — como os motoboys que enfrentam o trânsito todo dia.' },
 
@@ -10717,7 +10716,7 @@ var ROTINA_ITEMS = [
     descricao: 'Abra o dashboard e identifique o que é mais urgente agora.',
     icon: '👀',
     cor: '#E24B4A', corBg: '#FCEBEB', corText: '#A32D2D',
-    prompt: 'Com base nas 9 cidades da Gâmi Delivery (Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís, Teresina, Vitória) e os pilares captação de motoboys, parcerias com restaurantes e cultura interna, quais são as 3 prioridades absolutas de marketing para hoje?'
+    prompt: 'Com base nas 8 cidades da Gâmi Delivery (Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís, Teresina) e os pilares captação de motoboys, parcerias com restaurantes e cultura interna, quais são as 3 prioridades absolutas de marketing para hoje?'
   },
   {
     id: 'r02', ordem: 2,
@@ -10757,7 +10756,7 @@ var ROTINA_ITEMS = [
     descricao: 'Verifique o desempenho e as necessidades de cada cidade.',
     icon: '🗺️',
     cor: '#BA7517', corBg: '#FAEEDA', corText: '#854F0B',
-    prompt: 'Faça uma análise rápida do status de marketing das 9 cidades da Gâmi Delivery (Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís, Teresina, Vitória). Qual cidade precisa de ação imediata hoje e por quê?'
+    prompt: 'Faça uma análise rápida do status de marketing das 8 cidades da Gâmi Delivery (Fortaleza, Maceió, João Pessoa, Recife, Natal, Aracaju, São Luís, Teresina). Qual cidade precisa de ação imediata hoje e por quê?'
   },
   {
     id: 'r07', ordem: 7,
@@ -11053,7 +11052,7 @@ var CARGO_COLOR = Object.fromEntries(
     cat.funcoes.map(fn => [fn, {bg:cat.bg, color:cat.color, dot:cat.dot}])
   ).concat(CARGO_CATS.map(cat=>[cat.nome, {bg:cat.bg, color:cat.color, dot:cat.dot}]))
 );
-var CIDADE_OPTS = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Campo Grande','Teresina','Vitória','Matriz'];
+var CIDADE_OPTS = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Campo Grande','Teresina','Matriz'];
 
 var PESSOAS_DEFAULT = [
   // Lista vazia - você cadastra suas pessoas reais via "+ Adicionar pessoa"
@@ -13484,7 +13483,8 @@ var PESSOAS_DESLIGADAS = [
   'pe022',        // Gabriella da Cruz (11/08/2026)
   'pemr5cqx9x',   // Cristina Oliveira (13/08/2026)
   'pemrc34xh5',   // Luciana Hink Dias (13/08/2026)
-  'pe013'         // Wesley Dias - ex-gestor de Vitoria (28/08/2026)
+  'pe013',        // Wesley Dias - ex-gestor de Vitoria (28/08/2026)
+  'pejeanguerra'  // Jean Alves Guerra - gestor de Vitoria, operação encerrada (28/09/2026)
 ];
 function getPessoas(){
   try{
@@ -16664,8 +16664,8 @@ var CIDADES_DATA_DEFAULT = [
   { id:'c6', nome:'Aracaju',    uf:'SE', gestor:'Sidnen da Silva',             tel:'82998278026', status:'ativa',  inicio:'2025-01-29', campanhas:0, posts_semana:0, machine_api:'mch_api_QheteUpBZChzh7SFhbJ99S12', instagram_conectado:true  },
   { id:'c7', nome:'São Luís',   uf:'MA', gestor:'Cláudio Martins',             tel:'82999298439', status:'ativa',  inicio:'2026-03-10', campanhas:0, posts_semana:0, machine_api:'mch_api_9HUXyIM4TJtglW12J3JAfXLz', instagram_conectado:false },
   { id:'c9', nome:'Teresina',   uf:'PI', gestor:'Rosimar Siqueira (MAZINHO)',  tel:'69984356443', status:'ativa',  inicio:'2025-10-26', campanhas:0, posts_semana:0, machine_api:'mch_api_RjJkmPUGdbcrSyD4cpAiUrEo', instagram_conectado:false },
-  { id:'c10',nome:'Vitória',    uf:'ES', gestor:'Jean Alves Guerra',          tel:'27997779290', status:'ativa',  inicio:'2026-01-17', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
   { id:'c11',nome:'Campo Grande',uf:'MS',gestor:'João Duarte',                 tel:'',            status:'atencao',inicio:'2026-05-09', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
+  // c10 Vitória/ES (gestor Jean Alves Guerra) — OPERAÇÃO ENCERRADA 28/09/2026, removida (ver CIDADES_REMOVIDAS + PESSOAS_DESLIGADAS)
 ];
 
 var STATUS_CIDADE = {
@@ -16683,8 +16683,8 @@ function getCidadesData(){
     
     // 🆕 CIDADES ENCERRADAS: removidas do sistema, inclusive do cache local
     // (senão o merge abaixo mantém a cidade que ficou salva no navegador).
-    var CIDADES_REMOVIDAS_IDS = ['c8'];                 // c8 = Cuiabá (encerrada 27/07/2026)
-    var CIDADES_REMOVIDAS_NOMES = ['cuiaba', 'cuiabá'];
+    var CIDADES_REMOVIDAS_IDS = ['c8','c10'];           // c8 = Cuiabá (27/07/2026), c10 = Vitória (28/09/2026)
+    var CIDADES_REMOVIDAS_NOMES = ['cuiaba', 'cuiabá', 'vitoria', 'vitória'];
     var _antes = parsed.length;
     parsed = parsed.filter(function(c){
       if(!c) return false;
@@ -23656,7 +23656,7 @@ function _responsavelCidade(cidade){
     })
     .replace(/^-|-$/g,'');
   var MAPA = {
-    'aracaju':'Flávia', 'maceio':'Flávia', 'sao-luis':'Flávia', 'vitoria':'Flávia',
+    'aracaju':'Flávia', 'maceio':'Flávia', 'sao-luis':'Flávia',
     'recife':'Micaelle', 'natal':'Micaelle', 'joao-pessoa':'Micaelle', 'teresina':'Micaelle', 'fortaleza':'Micaelle',
     'campo-grande':'Cristina'
   };
@@ -24119,11 +24119,6 @@ var DATAS_CIDADES = {
     { mes:8, dia:16, nome:'Aniversário de Teresina', tipo:'aniversario', icone:'🎂' },
     { mes:10,dia:19, nome:'Dia do Piauí',             tipo:'cultural', icone:'⭐' },
     { mes:6, dia:24, nome:'São João piauiense',       tipo:'cultural', icone:'🔥' },
-  ],
-  'Vitória': [
-    { mes:9, dia:8,  nome:'Aniversário de Vitória',  tipo:'aniversario', icone:'🎂' },
-    { mes:5, dia:23, nome:'Colonização do ES',       tipo:'cultural', icone:'⭐' },
-    { mes:4, dia:1,  nome:'Festa da Penha',          tipo:'cultural', icone:'⛪' },
   ],
   'Campo Grande': [
     { mes:8, dia:26, nome:'Aniversário de Campo Grande', tipo:'aniversario', icone:'🎂' },
@@ -27103,7 +27098,6 @@ var CIDADES_FUNDACAO = {
   'Aracaju':      { data:'1855-03-17', ano:1855, nome:'17 de março' },
   'São Luís':     { data:'1612-09-08', ano:1612, nome:'08 de setembro' },
   'Teresina':     { data:'1852-08-16', ano:1852, nome:'16 de agosto' },
-  'Vitória':      { data:'1551-09-08', ano:1551, nome:'08 de setembro' },
   'Campo Grande': { data:'1899-08-26', ano:1899, nome:'26 de agosto' }
 };
 
@@ -27117,7 +27111,6 @@ var CIDADES_CURIOSIDADES = {
   'Aracaju': ['Capital de Sergipe · menor capital do nordeste', 'Primeira capital brasileira planejada (1855)', 'Orla com 6 km de extensão · paraíso pra caminhada'],
   'São Luís': ['Capital do Maranhão · Patrimônio Mundial UNESCO', 'Única capital fundada por franceses no Brasil', 'Reggae é praticamente religião na cidade'],
   'Teresina': ['Capital do Piauí · única capital nordestina fora do litoral', 'Conhecida como "Chapadinha" pela formação geológica', 'Pólo médico do meio-norte brasileiro'],
-  'Vitória': ['Capital do ES · ilha com 39 ilhas e 7 morros', 'Uma das menores capitais do Brasil em território', '3ª melhor qualidade de vida entre capitais brasileiras'],
   'Campo Grande': ['Capital do MS · "Cidade Morena" pela cor da terra', 'Polo de produção rural · agronegócio forte', 'Cidade mais arborizada do Brasil em proporção']
 };
 
@@ -27291,7 +27284,7 @@ function toggleMapaBrasil(){
     'Fortaleza':[-3.7,-38.5], 'Maceió':[-9.6,-35.7], 'João Pessoa':[-7.1,-34.8],
     'Recife':[-8.0,-34.9], 'Natal':[-5.7,-35.2], 'Aracaju':[-10.9,-37.1],
     'São Luís':[-2.5,-44.3], 'Teresina':[-5.0,-42.8],
-    'Vitória':[-20.3,-40.3], 'Campo Grande':[-20.4,-54.6]
+    'Campo Grande':[-20.4,-54.6]
   };
   
   // BBox do Brasil pra projeção
@@ -31518,7 +31511,7 @@ function abrirDMCidadeIG(){
     'fortaleza': 'gamideliveryfortaleza','recife':'gamideliveryrecifeejaboatao','maceió':'gamidelivery','maceio':'gamidelivery',
     'joão pessoa':'gamideliveryjoaopessoa','joao pessoa':'gamideliveryjoaopessoa','aracaju':'gamideliveryaracaju',
     'são luís':'gamideliverysaoluis','sao luis':'gamideliverysaoluis',
-    'teresina':'gamideliveryteresina','vitória':'gamideliveryvitoria','vitoria':'gamideliveryvitoria'
+    'teresina':'gamideliveryteresina'
   };
   var username = igMap[(c.nome||'').toLowerCase()] || 'gamidelivery';
   window.open('https://www.instagram.com/'+username+'/', '_blank');
@@ -34849,7 +34842,6 @@ var CIDADES_CLIMA = [
   { nome:'Aracaju',      uf:'SE' },
   { nome:'São Luís',     uf:'MA' },
   { nome:'Teresina',     uf:'PI' },
-  { nome:'Vitória',      uf:'ES' },
   { nome:'Campo Grande', uf:'MS' },
 ];
 function _climaCacheKey(){ var d=new Date(); return 'gami_clima_cidades_'+d.getFullYear()+'_'+d.getMonth()+'_'+d.getDate()+'_'+d.getHours(); }
@@ -36339,7 +36331,7 @@ function saveRankingCidades(obj){
 
 function _cidadesRanking(){
   // 10 cidades do ranking (10 atuais + Campo Grande)
-  return ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Teresina','Vitória','Campo Grande'];
+  return ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Teresina','Campo Grande'];
 }
 
 // ============================================================
@@ -37762,7 +37754,7 @@ function renderInboxChips(){
   var totalNaoLidas = (_inboxDados||[]).filter(function(m){return !m.lida;}).length;
 
   // SEMPRE mostra as 10 cidades operantes (mesmo sem mensagens) + extras com tráfego
-  var ordem = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Teresina','Vitória'];
+  var ordem = ['Fortaleza','Maceió','João Pessoa','Recife','Natal','Aracaju','São Luís','Teresina'];
   var extras = Object.keys(byCidade).filter(function(c){ return ordem.indexOf(c) < 0; });
   var listaCid = ordem.concat(extras);
   
@@ -38416,7 +38408,7 @@ async function classificarConversasIA(){
 // ===================== BLOG & SEO =====================
 var BLOG_POSTS_KEY = 'gami_blog_posts_v3';
 var BLOG_WP_KEY    = 'gami_wp_cfg_v3';
-var BLOG_CIDADES_LIST = ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Teresina','Vitória'];
+var BLOG_CIDADES_LIST = ['Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Teresina'];
 var BLOG_SUGESTOES_LIST = [
   {tema:'Como se tornar motoboy na Gâmi Delivery e ganhar bem',cat:'Motoboy'},
   {tema:'Os melhores pratos para pedir por delivery em [cidade]',cat:'Gastronomia'},
@@ -38584,7 +38576,7 @@ async function blogChamarIA(prompt){
 async function blogGerarTemas(){
   var el=document.getElementById('blog-temas-lista');
   if(el)el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3)">⏳ Gerando temas...</div>';
-  var prompt='Gere 10 ideias de posts para o blog gamidelivery.com.br. Temas variados sobre: delivery, motoboys, gastronomia local, empreendedorismo, dicas de entrega, cidades do nordeste, parcerias com restaurantes.\n\nResponda APENAS com JSON array:\n[{"tema":"...","categoria":"...","cidade":"...","kw":"..."}]\n\nCategorias: Delivery, Motoboy, Gastronomia, Empreendedorismo, Dicas\nCidades (opcional): Fortaleza, Recife, Maceió, João Pessoa, Natal, Aracaju, São Luís, Teresina, Vitória';
+  var prompt='Gere 10 ideias de posts para o blog gamidelivery.com.br. Temas variados sobre: delivery, motoboys, gastronomia local, empreendedorismo, dicas de entrega, cidades do nordeste, parcerias com restaurantes.\n\nResponda APENAS com JSON array:\n[{"tema":"...","categoria":"...","cidade":"...","kw":"..."}]\n\nCategorias: Delivery, Motoboy, Gastronomia, Empreendedorismo, Dicas\nCidades (opcional): Fortaleza, Recife, Maceió, João Pessoa, Natal, Aracaju, São Luís, Teresina';
   try{
     var r=await fetch('/.netlify/functions/blog-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt,json:true})});
     if(r.ok){
@@ -44847,7 +44839,6 @@ var RANKING_CIDADES_MAP = {
   'aracaju':      { nome: 'Aracaju', uf: 'SE' },
   'sao-luis':     { nome: 'São Luís', uf: 'MA' },
   'teresina':     { nome: 'Teresina', uf: 'PI' },
-  'vitoria':      { nome: 'Vitória', uf: 'ES' },
   'campo-grande': { nome: 'Campo Grande', uf: 'MS' }
 };
 
@@ -47758,7 +47749,7 @@ function renderCarreira(){
         porCidade[c].push(p);
       });
     });
-    var ordemCidades = ['Matriz','Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Teresina','Vitória'];
+    var ordemCidades = ['Matriz','Fortaleza','Recife','Maceió','João Pessoa','Natal','Aracaju','São Luís','Teresina'];
     var ordCidKeys = ordemCidades.filter(function(c){ return porCidade[c]; });
     Object.keys(porCidade).forEach(function(c){ if(ordCidKeys.indexOf(c)<0) ordCidKeys.push(c); });
     var maxQtd = Math.max.apply(null, Object.values(porCidade).map(function(l){return l.length;}).concat([1]));
@@ -49562,7 +49553,7 @@ window.MANUAL_ARTIGOS = [
 {id:'modo-foco',categoria:'comecar',titulo:'Modo foco para concentração',icone:'🎯',tags:['foco','concentração','distração','minimalista'],conteudo:'<h2>🎯 Modo Foco</h2><p>O <strong>modo foco</strong> esconde tudo que não é essencial e deixa só o que importa pro trabalho do momento.</p><h3>Quando ele ajuda</h3><ul><li>Você tem muitas tarefas e quer só ver o essencial</li><li>Está em modo de execução pesada</li><li>Vai apresentar a tela pra alguém</li><li>Tá no celular com tela pequena</li></ul><h3>Como ativar</h3><ol><li>Vá pro <strong>Dashboard</strong>.</li><li>Procure o botão flutuante <strong>🎯 no canto inferior direito</strong>.</li><li>Click — a tela muda instantaneamente.</li></ol><h3>O que aparece em modo foco</h3><ul><li>Compromissos de hoje</li><li>Seus stickies pessoais (notinhas amarelas)</li><li>Recados que precisa ver</li></ul><div class="man-callout-dica">💡 <strong>Dica Gâmi:</strong> os <strong>stickies pessoais</strong> só aparecem no modo foco. É a forma de ter "lembretes" sem poluir o dashboard normal.</div><h3>Como sair</h3><p>Click no mesmo botão 🎯 — a tela volta ao normal.</p>'},
 {id:'criar-tarefa',categoria:'tarefas',titulo:'Criar uma tarefa',icone:'➕',tags:['tarefa','criar','adicionar','to-do'],conteudo:'<h2>➕ Criar uma tarefa</h2><p>Tarefas são suas anotações de "o que preciso fazer". Funcionam como um <strong>to-do list</strong>, mas com poderes extras (delegar, prazo, sincronizar com o time).</p><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Escolha o balde: <strong>Diário</strong> (hoje), <strong>Semana</strong>, <strong>Mês</strong>, <strong>Projetos</strong> (coisas grandes).</li><li>Click no campo <strong>"+ Nova tarefa"</strong>.</li><li>Digite o texto da tarefa.</li><li>Escolha prioridade: <strong>🔴 Alta · 🟡 Média · 🔵 Baixa</strong></li><li>Escolha categoria.</li><li>Defina prazo se precisar.</li><li>Click <strong>Salvar</strong>.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> tarefas com prazo aparecem em <strong>vermelho quando atrasam</strong>.</div><h3>Editar</h3><p>Click no <strong>ícone ✏️</strong> ao lado da tarefa.</p><h3>Concluir</h3><p>Click no <strong>checkbox</strong> ao lado. Vira "concluída". Pra ver as concluídas, click em "Mostrar concluídas".</p><h3>Apagar</h3><p>Click no <strong>ícone 🗑️</strong>.</p>'},
 {id:'delegar-tarefa',categoria:'tarefas',titulo:'Delegar tarefa pra alguém',icone:'📤',tags:['delegar','passar','time','colega'],conteudo:'<h2>📤 Delegar uma tarefa</h2><p>Delegar é <strong>passar uma tarefa pra outra pessoa do time</strong>. Ela recebe na lista dela.</p><h3>Quando delegar</h3><ul><li>Você é gestor e quer atribuir algo</li><li>Algo veio pra você mas é da especialidade de outro</li><li>Quer combinar uma data limite específica</li></ul><h3>Passo a passo</h3><ol><li>Vá em <strong>✅ Tarefas</strong>.</li><li>Click em <strong>"+ Delegar tarefa"</strong>.</li><li>Preencha: <strong>pra quem · texto · prioridade · data · mensagem opcional</strong></li><li>Click <strong>Delegar</strong>.</li></ol><h3>O que acontece depois</h3><ul><li>A tarefa aparece na lista da pessoa imediatamente</li><li>Você também vê a tarefa marcada como "delegada"</li><li>Quando ela concluir, você é notificado</li></ul><div class="man-callout-dica">💡 <strong>Boa prática Gâmi:</strong> use mensagem clara. Evite vago ("vê isso") — descreva exatamente ("postar 3 stories sobre a parceria com a empresa X até sexta às 18h").</div><h3>Ver tarefas que delegaram pra mim</h3><p>Na aba <strong>✅ Tarefas</strong>, filtre por <strong>"Recebidas"</strong>.</p>'},
-{id:'navegar-cidades',categoria:'cidades',titulo:'Página de Cidades — visão geral',icone:'🗺️',tags:['cidades','painel','operação','lista','gestor','whatsapp','instagram','diagnostico','relatorio'],conteudo:'<h2>🗺️ Página de Cidades — visão geral</h2><p>A Gâmi tá em <strong>10 cidades</strong>. Quando você clica em <strong>🏙️ Cidades</strong> no menu, abre a página com a lista completa da rede.</p><h3>Onde estamos hoje</h3><ul><li>🏖️ <strong>Maceió/AL</strong> — Chayd</li><li>🌴 <strong>Fortaleza/CE</strong> — Ítalo</li><li>🌊 <strong>João Pessoa/PB</strong> — Harison</li><li>🌅 <strong>Recife e Jaboatão/PE</strong> — Raimundo e GUGA</li><li>🐪 <strong>Natal/RN</strong> — Talis</li><li>🏝️ <strong>Aracaju/SE</strong> — Sidnen</li><li>🌳 <strong>São Luís/MA</strong> — Cláudio</li><li>🌵 <strong>Teresina/PI</strong> — Mazinho</li><li>⛰️ <strong>Vitória/ES</strong> — Jean</li><li>🌻 <strong>Campo Grande/MS</strong> — João Duarte</li></ul><h3>3 botões grandes no topo da página</h3><p>Antes da lista, tem três botões que rodam IA em toda a rede:</p><ul><li><strong>🤖 Diagnóstico IA da semana</strong> — a IA analisa as 10 cidades e gera um panorama semanal com alertas, oportunidades e pontos de atenção da rede inteira.</li><li><strong>📅 Relatório Mensal IA</strong> — gera o relatório mensal completo de todas as cidades. Roda <strong>uma vez por mês</strong>, a partir do dia 01.</li><li><strong>📚 Histórico IA</strong> — vê todos os diagnósticos IA salvos das semanas anteriores. Útil pra comparar evolução.</li></ul><h3>Filtros e busca</h3><p>Abaixo dos botões IA, você pode filtrar:</p><ul><li><strong>🔍 Busca</strong> — digite o nome da cidade pra filtrar.</li><li><strong>Status</strong> — Todas · 🟢 Ativas · 🟡 Atenção · 🔴 Críticas.</li><li><strong>📍 Região</strong> — Todas · Nordeste · Centro-Oeste · Sudeste.</li><li><strong>🗺️ Mapa do Brasil</strong> — botão pra mostrar/esconder o mapa interativo com todas as cidades marcadas.</li></ul><h3>O card de cada cidade</h3><p>Cada cidade aparece como um <strong>card</strong> com:</p><ul><li><strong>Foto do gestor</strong> + nome dele e da cidade</li><li>Status visual (verde/amarelo/vermelho)</li><li>Tempo desde a abertura (ex: "Desde mar/2024 · 1 ano")</li><li>Curiosidade da cidade (se cadastrada)</li><li>Alertas críticos (se houver)</li></ul><h3>4 botões em cada card</h3><p>Embaixo de cada cidade tem 4 botões pequenos pra ações rápidas:</p><ol><li><strong>📱 WhatsApp</strong> — abre direto o WhatsApp do gestor da cidade.</li><li><strong>📷 Instagram</strong> — indica se o Instagram da cidade já tá conectado (rosa) ou pendente (cinza).</li><li><strong>🤖 Diagnóstico IA</strong> — análise IA semanal específica dessa cidade (não da rede inteira).</li><li><strong>📅 Relatório Mensal</strong> — relatório mensal IA dessa cidade individual.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> esses 4 botões funcionam <strong>sem abrir o painel completo</strong> da cidade. São pra ações rápidas. Pra ver tudo da cidade, clique em qualquer outro lugar do card.</div><h3>Entrar numa cidade</h3><p>Click no <strong>card da cidade</strong> (qualquer área que não seja os 4 botões) pra abrir o <strong>painel completo</strong> dela.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> dependendo do seu papel, você pode ver todas as cidades, só algumas, ou só uma. Se atende uma cidade só, o app pode abrir direto ela.</div>'},
+{id:'navegar-cidades',categoria:'cidades',titulo:'Página de Cidades — visão geral',icone:'🗺️',tags:['cidades','painel','operação','lista','gestor','whatsapp','instagram','diagnostico','relatorio'],conteudo:'<h2>🗺️ Página de Cidades — visão geral</h2><p>A Gâmi tá em <strong>9 cidades</strong>. Quando você clica em <strong>🏙️ Cidades</strong> no menu, abre a página com a lista completa da rede.</p><h3>Onde estamos hoje</h3><ul><li>🏖️ <strong>Maceió/AL</strong> — Chayd</li><li>🌴 <strong>Fortaleza/CE</strong> — Ítalo</li><li>🌊 <strong>João Pessoa/PB</strong> — Harison</li><li>🌅 <strong>Recife e Jaboatão/PE</strong> — Raimundo e GUGA</li><li>🐪 <strong>Natal/RN</strong> — Talis</li><li>🏝️ <strong>Aracaju/SE</strong> — Sidnen</li><li>🌳 <strong>São Luís/MA</strong> — Cláudio</li><li>🌵 <strong>Teresina/PI</strong> — Mazinho</li><li>🌻 <strong>Campo Grande/MS</strong> — João Duarte</li></ul><h3>3 botões grandes no topo da página</h3><p>Antes da lista, tem três botões que rodam IA em toda a rede:</p><ul><li><strong>🤖 Diagnóstico IA da semana</strong> — a IA analisa as 9 cidades e gera um panorama semanal com alertas, oportunidades e pontos de atenção da rede inteira.</li><li><strong>📅 Relatório Mensal IA</strong> — gera o relatório mensal completo de todas as cidades. Roda <strong>uma vez por mês</strong>, a partir do dia 01.</li><li><strong>📚 Histórico IA</strong> — vê todos os diagnósticos IA salvos das semanas anteriores. Útil pra comparar evolução.</li></ul><h3>Filtros e busca</h3><p>Abaixo dos botões IA, você pode filtrar:</p><ul><li><strong>🔍 Busca</strong> — digite o nome da cidade pra filtrar.</li><li><strong>Status</strong> — Todas · 🟢 Ativas · 🟡 Atenção · 🔴 Críticas.</li><li><strong>📍 Região</strong> — Todas · Nordeste · Centro-Oeste · Sudeste.</li><li><strong>🗺️ Mapa do Brasil</strong> — botão pra mostrar/esconder o mapa interativo com todas as cidades marcadas.</li></ul><h3>O card de cada cidade</h3><p>Cada cidade aparece como um <strong>card</strong> com:</p><ul><li><strong>Foto do gestor</strong> + nome dele e da cidade</li><li>Status visual (verde/amarelo/vermelho)</li><li>Tempo desde a abertura (ex: "Desde mar/2024 · 1 ano")</li><li>Curiosidade da cidade (se cadastrada)</li><li>Alertas críticos (se houver)</li></ul><h3>4 botões em cada card</h3><p>Embaixo de cada cidade tem 4 botões pequenos pra ações rápidas:</p><ol><li><strong>📱 WhatsApp</strong> — abre direto o WhatsApp do gestor da cidade.</li><li><strong>📷 Instagram</strong> — indica se o Instagram da cidade já tá conectado (rosa) ou pendente (cinza).</li><li><strong>🤖 Diagnóstico IA</strong> — análise IA semanal específica dessa cidade (não da rede inteira).</li><li><strong>📅 Relatório Mensal</strong> — relatório mensal IA dessa cidade individual.</li></ol><div class="man-callout-dica">💡 <strong>Dica:</strong> esses 4 botões funcionam <strong>sem abrir o painel completo</strong> da cidade. São pra ações rápidas. Pra ver tudo da cidade, clique em qualquer outro lugar do card.</div><h3>Entrar numa cidade</h3><p>Click no <strong>card da cidade</strong> (qualquer área que não seja os 4 botões) pra abrir o <strong>painel completo</strong> dela.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> dependendo do seu papel, você pode ver todas as cidades, só algumas, ou só uma. Se atende uma cidade só, o app pode abrir direto ela.</div>'},
 {id:'cidade-visao-geral',categoria:'cidades',titulo:'Aba Visão Geral da cidade',icone:'📊',tags:['cidade','visão geral','painel','métricas','comparativo','aniversários'],conteudo:'<h2>📊 Aba Visão Geral</h2><p>Quando você entra numa cidade, a <strong>primeira aba</strong> que abre é a <strong>📊 Visão geral</strong>. É um resumo operacional completo.</p><h3>1. Painel operacional</h3><p>No topo tem um banner pedindo pra <strong>"Carregar dados reais"</strong>. Click no botão verde — a IA puxa os dados da Machine API e mostra:</p><ul><li>Corridas hoje</li><li>Motoboys ativos</li><li>Lojas ativas</li><li>Ticket médio</li><li>Taxa de conclusão</li><li>Tempo médio por entrega</li></ul><p>Esse painel também mostra gráficos: corridas por hora, status das corridas, top lojas, top motoboys.</p><h3>2. Comparativo</h3><p>Card que mostra <strong>Hoje vs Ontem</strong> e <strong>Mês atual vs Mês anterior</strong>. Indica se a operação tá subindo ou descendo.</p><h3>3. Alertas inteligentes</h3><p>A IA detecta automaticamente situações que merecem atenção. Exemplos: queda brusca de corridas, motoboy sumiu, empresa parou de pedir, taxa de cancelamento subindo.</p><h3>4. 🎂 Aniversários próximos</h3><p>Lista os colaboradores Gâmi <strong>dessa cidade</strong> que fazem aniversário nos próximos dias. Bom pra não esquecer de parabenizar.</p><h3>5. Plano de ação IA</h3><p>No final tem um botão <strong>"Plano de ação ↗"</strong>. A IA analisa toda a cidade e gera um plano com prioridades, problemas a resolver, oportunidades de crescimento e próximos passos sugeridos.</p><div class="man-callout-dica">💡 <strong>Dica:</strong> use o Plano de Ação IA como ponto de partida pra reuniões com o time da cidade. Ele já traz o diagnóstico mastigado.</div>'},
 {id:'cidade-motoboys',categoria:'cidades',titulo:'Aba Motoboys da cidade',icone:'🏍️',tags:['motoboys','condutores','entregadores','machine','ranking','sumidos'],conteudo:'<h2>🏍️ Aba Motoboys</h2><p>Mostra <strong>tudo sobre os motoboys</strong> que rodam na cidade. Carregue os dados reais primeiro (botão no topo) pra ativar todos os blocos.</p><h3>1. 6 cards de métricas</h3><p>No topo, métricas rápidas: total de motoboys, ativos hoje, corridas concluídas, ticket médio, distribuição por área, e outros indicadores-chave.</p><h3>2. Top motoboys: dia, semana e mês</h3><p>Três colunas lado a lado mostrando quem mais rodou <strong>hoje</strong>, na <strong>semana</strong> e no <strong>mês</strong>. Click no motoboy pra ver detalhes individuais.</p><h3>3. Motoboys sumidos</h3><p>Lista de quem <strong>parou de rodar</strong> recentemente. Ajuda a recuperar entregador que tá afastando ou perdeu interesse.</p><h3>4. Destaques semanais (5 prêmios)</h3><p>A IA identifica 5 prêmios semanais entre os motoboys: mais corridas, mais consistente, melhor avaliação, recuperação da semana, novato destaque. Boa forma de gamificar.</p><h3>5. Lista completa com filtros</h3><p>Todos os motoboys da cidade com filtros por status (ativo, sumido, novo) e busca por nome.</p><h3>6. Gráfico hora × cobertura</h3><p>Visual que cruza o <strong>horário do dia</strong> com a <strong>cobertura de motoboys</strong>. Identifica buracos: tem hora que tem motoboy demais, hora que tem de menos. Use pra planejar escalas.</p><h3>7. 📢 Comunicação rápida</h3><p>Botão <strong>"Enviar WhatsApp em massa"</strong>. Manda um aviso pra todos os motoboys ativos da cidade de uma vez. Útil pra recados urgentes, mudanças de horário, campanhas.</p><div class="man-callout-atencao">⚠️ <strong>Atenção:</strong> a comunicação em massa via WhatsApp deve ser usada com responsabilidade. Não abuse — motoboy bom pode bloquear o número se receber spam.</div>'},
 {id:'cidade-empresas',categoria:'cidades',titulo:'Aba Empresas da cidade',icone:'🏪',tags:['empresas','clientes','restaurantes','machine','analisar ia','curva abc'],conteudo:'<h2>🏪 Aba Empresas</h2><p>Esta é a aba <strong>mais densa em informações</strong>. Mostra todas as empresas/clientes da cidade. Carregue os dados reais primeiro pra ativar tudo.</p><h3>1. 6 cards de métricas no topo</h3><p>Visão rápida: total de empresas ativas, novas no mês, sumidas, em queda, em alta, e ticket médio por empresa.</p><h3>2. Top empresas: dia, semana e mês</h3><p>Três blocos lado a lado mostrando as <strong>empresas que mais pediram</strong> hoje, na semana e no mês. Cada nome é <strong>clicável</strong> — abre o detalhe da empresa (explicado abaixo).</p><h3>3. Empresas sumidas</h3><p>Lista das empresas que <strong>pararam de pedir</strong>. A IA classifica há quanto tempo cada uma sumiu (3 dias, 7 dias, 15 dias, etc). Use pra puxar conversa e recuperar cliente.</p><h3>4. Empresas em queda</h3><p>Diferente das sumidas, essas <strong>ainda pedem</strong>, mas o volume caiu. A IA compara o ritmo atual com o histórico e marca quem tá perdendo tração.</p><h3>5. Lista completa com filtros</h3><p>Todas as empresas cadastradas na Machine, com filtros e busca. Click em qualquer empresa pra abrir o detalhe.</p><h3>6. Insights operacionais</h3><p>Quadros com análise estratégica automática:</p><ul><li><strong>Curva ABC</strong> — quais empresas geram 80% da receita (A), 15% (B) e 5% (C)</li><li><strong>Em queda</strong> — quem tá diminuindo o ritmo</li><li><strong>Em alta</strong> — quem tá crescendo</li><li><strong>Novos</strong> — empresas que entraram recentemente</li><li><strong>Fantasma</strong> — empresas cadastradas mas que nunca pediram</li></ul><h3>7. Análise estratégica</h3><p>A IA cruza dados por <strong>bairro</strong>, <strong>categoria de negócio</strong> (pizzaria, hamburgueria, açaí, etc) e <strong>comparativo</strong> entre tipos de cliente.</p><h3>8. Operação avançada</h3><p>Detalhes técnicos: empresas com <strong>alta taxa de cancelamento</strong> (problema operacional) e empresas com <strong>cadastro incompleto</strong> (sem CNPJ, sem categoria, sem telefone — afeta relatórios).</p><h3>Veja também</h3><p>Pra entender o detalhe de UMA empresa específica (modal completo + botão Analisar com IA), leia o artigo <strong>"🔍 Detalhe de empresa + Analisar com IA"</strong>.</p>'},
@@ -50525,14 +50516,13 @@ var EST_LOCALIZACOES = [
   { codigo: 'aracaju', nome: 'Aracaju/SE' },
   { codigo: 'sao-luis', nome: 'São Luís/MA' },
   { codigo: 'teresina', nome: 'Teresina/PI' },
-  { codigo: 'vitoria', nome: 'Vitória/ES' },
   { codigo: 'campo-grande', nome: 'Campo Grande/MS' }
 ];
 
 // 🆕 v26.73: Mapa de permissões de Suporte de Ji-Paraná → cidades que cada uma cuida do estoque
 // Match por primeiro nome (case insensitive)
 var EST_SUPORTE_PERMISSOES = {
-  'luiza':      ['recife', 'vitoria'],
+  'luiza':      ['recife'],
   'jessica':    ['maceio'],
   'estefânia':  ['joao-pessoa', 'fortaleza'],
   'estefania':  ['joao-pessoa', 'fortaleza'],
