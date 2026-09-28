@@ -80,6 +80,8 @@ CREATE OR REPLACE FUNCTION refresh_raiox()
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET statement_timeout TO '600s'
 AS $ref$ BEGIN REFRESH MATERIALIZED VIEW mv_empresas_raiox; END; $ref$;
 
+-- precisa dropar antes: a v6 mudou o tipo de retorno (colunas a mais)
+DROP FUNCTION IF EXISTS empresas_raiox_cidade(text, integer, integer);
 CREATE OR REPLACE FUNCTION empresas_raiox_cidade(
   p_cidade_slug text, p_meses int DEFAULT 6, p_min_pedidos int DEFAULT 1
 )
