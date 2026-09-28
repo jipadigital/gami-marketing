@@ -1,50 +1,83 @@
--- RPC: empresas_raiox_cidade  (Raio-X das empresas) — v5, 28/09/2026
--- Por que v5: a v4 criava a MATERIALIZED VIEW já com dados, mas isso varre ~1,2 GB (Campo
--- Grande, o campo raw é gordo) e estoura o teto do SQL Editor do Supabase ("upstream timeout").
--- v5: no editor só rodam comandos INSTANTÂNEOS (MV vazia + funções). O cálculo pesado (o
--- REFRESH) roda em SEGUNDO PLANO via pg_cron, que não tem teto de HTTP. Um job "bootstrap"
--- popula em ~poucos minutos e se apaga sozinho; um job diário mantém atualizado.
+-- RPC: empresas_raiox_cidade  (Raio-X das empresas) — v6, 28/09/2026
+-- v6 acrescenta por empresa: HORA e DIA de pico (mode de hora/dow em America/Campo_Grande),
+-- BAIRRO OPERACIONAL (bairro da coleta, preenche o que o cadastro deixa vazio) e TOP 3
+-- BAIRROS DE ENTREGA (unnest das paradas). Tudo na MV, calculada em background por pg_cron
+-- (não passa pelo teto do editor). Duas varreduras de machine_corridas (métricas+coleta, e
+-- paradas); roda em <1-2 min no refresh (statement_timeout 600s).
 --
--- Rodar TUDO isto no Supabase (SQL Editor). Deve voltar rápido ("Success"). Espere ~3-5 min
--- pro relatório encher (o bootstrap roda em background), depois Ctrl+Shift+R.
+-- Rodar TUDO no Supabase (SQL Editor) — volta rápido ("Success"); o resumo repopula em
+-- ~poucos minutos (pg_cron), depois Ctrl+Shift+R.
 
 -- 1) Estrutura (instantâneo) -------------------------------------------------
 DROP MATERIALIZED VIEW IF EXISTS mv_empresas_raiox CASCADE;
 CREATE MATERIALIZED VIEW mv_empresas_raiox AS
-  WITH mes AS (
+  WITH base AS (   -- varredura 1: campos leves + hora/dia + bairro da coleta (sem paradas)
     SELECT
       cidade_slug,
       btrim(nome_passageiro)                                          AS nome,
-      to_char(date_trunc('month', data_hora_solicitacao),'YYYY-MM')   AS ym,
-      count(*)                                                       AS n,
-      count(*) FILTER (WHERE status_solicitacao='F')                 AS fin,
-      count(*) FILTER (WHERE status_solicitacao='C')                 AS canc,
-      sum(COALESCE(valor_corrida,0)) FILTER (WHERE status_solicitacao='F') AS fat,
-      min(data_hora_solicitacao)                                     AS primeiro,
-      max(data_hora_solicitacao)                                     AS ultimo
+      data_hora_solicitacao                                          AS dt,
+      status_solicitacao                                            AS st,
+      COALESCE(valor_corrida,0)::numeric                             AS val,
+      to_char(date_trunc('month', data_hora_solicitacao),'YYYY-MM')  AS ym,
+      (extract(hour FROM data_hora_solicitacao AT TIME ZONE 'America/Campo_Grande'))::int AS hora,
+      (extract(dow  FROM data_hora_solicitacao AT TIME ZONE 'America/Campo_Grande'))::int AS dow,
+      NULLIF(btrim(raw->'coleta'->>'bairro'),'')                     AS bcol
     FROM machine_corridas
     WHERE data_hora_solicitacao >= date_trunc('month', now()) - interval '5 months'
       AND btrim(COALESCE(nome_passageiro,'')) <> ''
-    GROUP BY 1, 2, 3
+  ),
+  agg AS (
+    SELECT cidade_slug, nome,
+      count(*) qtd, count(*) FILTER (WHERE st='F') fin, count(*) FILTER (WHERE st='C') canc,
+      sum(val) FILTER (WHERE st='F') fat, min(dt) primeiro, max(dt) ultimo,
+      mode() WITHIN GROUP (ORDER BY hora) hora_pico,
+      mode() WITHIN GROUP (ORDER BY dow)  dia_pico,
+      mode() WITHIN GROUP (ORDER BY bcol) bairro_op
+    FROM base GROUP BY 1,2
+  ),
+  serie AS (
+    SELECT cidade_slug, nome, jsonb_agg(jsonb_build_object('ym',ym,'n',n) ORDER BY ym) meses
+    FROM ( SELECT cidade_slug, nome, ym, count(*) n FROM base GROUP BY 1,2,3 ) q
+    GROUP BY 1,2
+  ),
+  entrega AS (   -- varredura 2: top 3 bairros pra onde a empresa entrega (paradas)
+    SELECT cidade_slug, nome,
+      string_agg(bairro || ' (' || n || ')', ', ' ORDER BY n DESC) bairros_entrega
+    FROM (
+      SELECT c.cidade_slug, btrim(c.nome_passageiro) AS nome,
+        NULLIF(btrim(p->>'bairro'),'') AS bairro, count(*) n,
+        row_number() OVER (PARTITION BY c.cidade_slug, btrim(c.nome_passageiro)
+                           ORDER BY count(*) DESC) rn
+      FROM machine_corridas c
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(c.raw->'paradas','[]'::jsonb)) p
+      WHERE c.data_hora_solicitacao >= date_trunc('month', now()) - interval '5 months'
+        AND btrim(COALESCE(c.nome_passageiro,'')) <> ''
+        AND NULLIF(btrim(p->>'bairro'),'') IS NOT NULL
+      GROUP BY c.cidade_slug, btrim(c.nome_passageiro), NULLIF(btrim(p->>'bairro'),'')
+    ) q
+    WHERE rn <= 3
+    GROUP BY cidade_slug, nome
   )
   SELECT
-    cidade_slug, nome,
-    sum(n)::bigint    AS qtd_total,
-    sum(fin)::bigint  AS qtd_finalizadas,
-    sum(canc)::bigint AS qtd_canceladas,
-    round(sum(fat),2) AS faturamento,
-    round(CASE WHEN sum(fin)>0 THEN sum(fat)/sum(fin) ELSE 0 END, 2) AS ticket,
-    min(primeiro)     AS primeiro,
-    max(ultimo)       AS ultimo,
-    jsonb_agg(jsonb_build_object('ym',ym,'n',n) ORDER BY ym) AS meses
-  FROM mes
-  GROUP BY cidade_slug, nome
-  WITH NO DATA;   -- <<< cria VAZIA (instantâneo); o pg_cron popula depois
+    a.cidade_slug, a.nome,
+    a.qtd::bigint  AS qtd_total,
+    a.fin::bigint  AS qtd_finalizadas,
+    a.canc::bigint AS qtd_canceladas,
+    round(COALESCE(a.fat,0),2) AS faturamento,
+    round(CASE WHEN a.fin>0 THEN a.fat/a.fin ELSE 0 END, 2) AS ticket,
+    a.primeiro, a.ultimo, s.meses,
+    a.hora_pico, a.dia_pico,
+    COALESCE(a.bairro_op,'')       AS bairro_op,
+    COALESCE(e.bairros_entrega,'') AS bairros_entrega
+  FROM agg a
+  LEFT JOIN serie   s ON s.cidade_slug = a.cidade_slug AND s.nome = a.nome
+  LEFT JOIN entrega e ON e.cidade_slug = a.cidade_slug AND e.nome = a.nome
+  WITH NO DATA;
 
 CREATE INDEX IF NOT EXISTS idx_mv_raiox_cidade ON mv_empresas_raiox (cidade_slug, qtd_total DESC);
 
 CREATE OR REPLACE FUNCTION refresh_raiox()
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET statement_timeout TO '300s'
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET statement_timeout TO '600s'
 AS $ref$ BEGIN REFRESH MATERIALIZED VIEW mv_empresas_raiox; END; $ref$;
 
 CREATE OR REPLACE FUNCTION empresas_raiox_cidade(
@@ -54,7 +87,8 @@ RETURNS TABLE(
   nome text, bairro text, telefone text,
   qtd_total bigint, qtd_finalizadas bigint, qtd_canceladas bigint,
   faturamento numeric, ticket numeric,
-  primeiro timestamptz, ultimo timestamptz, meses jsonb
+  primeiro timestamptz, ultimo timestamptz, meses jsonb,
+  hora_pico int, dia_pico int, bairros_entrega text
 )
 LANGUAGE sql STABLE
 AS $fn$
@@ -65,27 +99,18 @@ AS $fn$
   )
   SELECT
     m.nome,
-    COALESCE(NULLIF(btrim(e.bairro),''),'') AS bairro,
-    COALESCE(e.telefone,'')                 AS telefone,
+    COALESCE(NULLIF(m.bairro_op,''), NULLIF(btrim(e.bairro),''), '') AS bairro,
+    COALESCE(e.telefone,'') AS telefone,
     m.qtd_total, m.qtd_finalizadas, m.qtd_canceladas,
-    m.faturamento, m.ticket, m.primeiro, m.ultimo, m.meses
+    m.faturamento, m.ticket, m.primeiro, m.ultimo, m.meses,
+    m.hora_pico, m.dia_pico, m.bairros_entrega
   FROM mv_empresas_raiox m
   LEFT JOIN emp e ON e.nk = lower(btrim(m.nome))
   WHERE m.cidade_slug = p_cidade_slug AND m.qtd_total >= p_min_pedidos
   ORDER BY m.qtd_total DESC;
 $fn$;
 
--- 2) Cálculo pesado em SEGUNDO PLANO (pg_cron, sem teto de HTTP) --------------
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- mantém atualizado todo dia às 06:30 UTC (03:30 BR)
-SELECT cron.schedule('raiox_daily', '30 6 * * *', 'SELECT refresh_raiox();');
-
--- popula AGORA: roda a cada 3 min e se apaga sozinho no 1º sucesso
+-- 2) Repopular em background (pg_cron) --------------------------------------
 SELECT cron.schedule('raiox_bootstrap', '*/3 * * * *',
   'DO $b$ BEGIN PERFORM refresh_raiox(); PERFORM cron.unschedule(''raiox_bootstrap''); END $b$;');
-
--- Se em ~10 min o relatório não encher, rode manualmente pra ver o erro:
---   SELECT refresh_raiox();
--- E pra parar o bootstrap na mão (caso não tenha se apagado):
---   SELECT cron.unschedule('raiox_bootstrap');
+-- (o job diário raiox_daily continua valendo; chama refresh_raiox pra esta MV nova)
