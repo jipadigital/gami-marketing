@@ -1,13 +1,23 @@
--- RPC: empresas_raiox_cidade  (Raio-X das empresas / relatório completo) — 25/09/2026
+-- RPC: empresas_raiox_cidade  (Raio-X das empresas / relatório completo) — v3, 28/09/2026
 -- Uma linha por empresa (nome_passageiro) com tudo que dá pra tabular pro PDF/impressão:
 -- total de pedidos, finalizadas, canceladas, faturamento, ticket, primeiro/último pedido,
--- telefone (join machine_empresas por nome) e a série MÊS A MÊS (jsonb) dos últimos N meses.
+-- telefone + bairro (do cadastro machine_empresas) e a série MÊS A MÊS (jsonb).
 -- A tendência (subindo/estável/caindo) é calculada no cliente a partir da série.
 --
--- Só serve pra cidades que estão no espelho machine_corridas (hoje: campo-grande). As demais
--- caem no fallback ao vivo do cliente (~45 dias).
+-- PERFORMANCE: Campo Grande tem ~590k corridas (quase tudo cabe em 6 meses). A v1 estourava o
+-- timeout porque extraía JSON linha a linha; a v2 ainda fazia 2 passadas. Esta v3:
+--   1) NÃO toca em raw (bairro/telefone vêm do cadastro),
+--   2) faz UMA passada: agrega por (nome, mês) e depois rola pro total (conjunto pequeno),
+--   3) a própria função sobe o statement_timeout pra 30s (o padrão do PostgREST corta antes).
+-- Índice deixa o corte por data eficiente.
 --
--- Rodar no Supabase (SQL Editor) — CREATE OR REPLACE, pode rodar por cima.
+-- Só serve pra cidades no espelho machine_corridas (hoje: campo-grande). As demais caem no
+-- fallback ao vivo do cliente (~45 dias).
+--
+-- Rodar no Supabase (SQL Editor) — cria o índice (1x) e a função (CREATE OR REPLACE).
+
+CREATE INDEX IF NOT EXISTS idx_mc_cidade_data
+  ON machine_corridas (cidade_slug, data_hora_solicitacao);
 
 CREATE OR REPLACE FUNCTION empresas_raiox_cidade(
   p_cidade_slug text,
@@ -28,59 +38,54 @@ RETURNS TABLE(
   meses           jsonb
 )
 LANGUAGE sql STABLE
+SET statement_timeout TO '30s'
 AS $fn$
-  WITH base AS (
+  WITH mes AS (  -- UMA passada: contagens por (empresa, mês). Sem tocar em raw.
     SELECT
-      btrim(c.nome_passageiro)                                          AS nome,
-      NULLIF(btrim(c.raw->'coleta'->>'bairro'),'')                      AS bairro,
-      c.status_solicitacao                                             AS st,
-      COALESCE(c.valor_corrida,0)::numeric                             AS val,
-      c.data_hora_solicitacao                                         AS dt,
-      to_char(date_trunc('month', c.data_hora_solicitacao),'YYYY-MM')  AS ym
+      btrim(c.nome_passageiro)                                         AS nome,
+      to_char(date_trunc('month', c.data_hora_solicitacao),'YYYY-MM')  AS ym,
+      count(*)                                                        AS n,
+      count(*) FILTER (WHERE c.status_solicitacao='F')                AS fin,
+      count(*) FILTER (WHERE c.status_solicitacao='C')                AS canc,
+      sum(COALESCE(c.valor_corrida,0)) FILTER (WHERE c.status_solicitacao='F') AS fat,
+      min(c.data_hora_solicitacao)                                    AS primeiro,
+      max(c.data_hora_solicitacao)                                    AS ultimo
     FROM machine_corridas c
     WHERE c.cidade_slug = p_cidade_slug
       AND c.data_hora_solicitacao >= date_trunc('month', now()) - ((p_meses-1) || ' months')::interval
       AND btrim(COALESCE(c.nome_passageiro,'')) <> ''
+    GROUP BY 1, 2
   ),
-  agg AS (
+  agg AS (  -- rola do (empresa,mês) pro total da empresa (conjunto pequeno)
     SELECT nome,
-      count(*)                            AS qtd,
-      count(*) FILTER (WHERE st='F')      AS fin,
-      count(*) FILTER (WHERE st='C')      AS canc,
-      sum(val) FILTER (WHERE st='F')      AS fat,
-      min(dt) AS primeiro, max(dt) AS ultimo
-    FROM base GROUP BY nome
+      sum(n)        AS qtd,
+      sum(fin)      AS fin,
+      sum(canc)     AS canc,
+      sum(fat)      AS fat,
+      min(primeiro) AS primeiro,
+      max(ultimo)   AS ultimo,
+      jsonb_agg(jsonb_build_object('ym',ym,'n',n) ORDER BY ym) AS meses
+    FROM mes GROUP BY nome
   ),
-  serie AS (
-    SELECT nome, jsonb_agg(jsonb_build_object('ym',ym,'n',n) ORDER BY ym) AS meses
-    FROM ( SELECT nome, ym, count(*) AS n FROM base GROUP BY nome, ym ) q
-    GROUP BY nome
-  ),
-  bair AS (
-    SELECT DISTINCT ON (nome) nome, bairro
-    FROM base WHERE bairro IS NOT NULL ORDER BY nome, dt DESC
-  ),
-  emp AS (  -- 1 telefone por nome (evita duplicar a linha quando ha 2 cadastros com o mesmo nome)
-    SELECT DISTINCT ON (lower(btrim(nome))) lower(btrim(nome)) AS nk, telefone
+  emp AS (  -- bairro + telefone do cadastro, 1 por nome (evita duplicar quando há 2 cadastros)
+    SELECT DISTINCT ON (lower(btrim(nome))) lower(btrim(nome)) AS nk, telefone, bairro
     FROM machine_empresas
     WHERE cidade_slug = p_cidade_slug
     ORDER BY lower(btrim(nome)), (telefone IS NULL OR btrim(telefone) = ''), nome
   )
   SELECT
     a.nome,
-    COALESCE(b.bairro,'')                                  AS bairro,
-    COALESCE(e.telefone,'')                                AS telefone,
-    a.qtd                                                  AS qtd_total,
-    a.fin                                                  AS qtd_finalizadas,
-    a.canc                                                 AS qtd_canceladas,
-    round(COALESCE(a.fat,0),2)                             AS faturamento,
+    COALESCE(NULLIF(btrim(e.bairro),''),'')  AS bairro,
+    COALESCE(e.telefone,'')                  AS telefone,
+    a.qtd                                    AS qtd_total,
+    a.fin                                    AS qtd_finalizadas,
+    a.canc                                   AS qtd_canceladas,
+    round(COALESCE(a.fat,0),2)               AS faturamento,
     round(CASE WHEN a.fin>0 THEN COALESCE(a.fat,0)/a.fin ELSE 0 END, 2) AS ticket,
     a.primeiro, a.ultimo,
-    s.meses
+    a.meses
   FROM agg a
-  LEFT JOIN serie s ON s.nome = a.nome
-  LEFT JOIN bair  b ON b.nome = a.nome
-  LEFT JOIN emp   e ON e.nk   = lower(btrim(a.nome))
+  LEFT JOIN emp e ON e.nk = lower(btrim(a.nome))
   WHERE a.qtd >= p_min_pedidos
   ORDER BY a.qtd DESC;
 $fn$;
