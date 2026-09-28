@@ -11,9 +11,9 @@ BEGIN;
 DELETE FROM machine_corridas     WHERE cidade_slug = 'vitoria';   -- ~3278
 DELETE FROM machine_empresas     WHERE cidade_slug = 'vitoria';   -- ~135
 
--- Pontuação / ranking / conquistas do gestor
+-- Pontuação / conquistas do gestor
+-- (ranking_mensal é uma VIEW sobre pontos_log — some sozinho ao apagar o pontos_log)
 DELETE FROM pontos_log           WHERE pessoa_id = 'pejeanguerra'; -- ~32
-DELETE FROM ranking_mensal       WHERE pessoa_id = 'pejeanguerra'; -- ~1
 DELETE FROM badges_desbloqueadas WHERE pessoa_id = 'pejeanguerra'; -- ~2
 
 -- Tarefas do gestor (as dele + as que ele delegou)
