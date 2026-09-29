@@ -62,9 +62,47 @@ exports.handler = async function(event){
     if(!r.ok){
       return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Erro de conexão (HTTP ' + r.status + '). Tente novamente.' }) };
     }
-    const lista = await r.json();
+    let lista = await r.json();
     if(!Array.isArray(lista) || !lista.length){
-      return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Email ou username não encontrado' }) };
+      // v32.12: AUTO-PROVISIONA o login no 1º acesso a partir do cadastro de Pessoas.
+      // Se o identificador é um EMAIL de alguém já cadastrado em `pessoas` (mas sem
+      // registro em usuarios_login), cria o acesso com o PIN inicial (gami2026) e segue.
+      // Assim o onboarding funciona só cadastrando a pessoa com email, sem SQL manual.
+      let novoUsuario = null;
+      if(identificador.indexOf('@') > 0){
+        try {
+          const rPess = await fetch(SUPA_URL + '/rest/v1/pessoas?email=ilike.' + idEnc + '&select=id,nome,email&limit=1', { headers: svcHeaders() });
+          if(rPess.ok){
+            const lp = await rPess.json();
+            if(Array.isArray(lp) && lp.length && lp[0] && lp[0].email){
+              const p = lp[0];
+              const rIns = await fetch(SUPA_URL + '/rest/v1/usuarios_login', {
+                method: 'POST',
+                headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=representation' }),
+                body: JSON.stringify([{
+                  pessoa_id: p.id,
+                  nome: p.nome,
+                  email: String(p.email || '').toLowerCase(),
+                  pin_hash: 'gami2026_init',
+                  pin_trocado: false,
+                  ativo: true,
+                  tentativas_falhas: 0
+                }])
+              });
+              if(rIns.ok){
+                const li = await rIns.json();
+                if(Array.isArray(li) && li.length) novoUsuario = li[0];
+              } else {
+                console.warn('[login] auto-provision falhou HTTP', rIns.status, (await rIns.text().catch(function(){return '';})).slice(0,150));
+              }
+            }
+          }
+        } catch(e){ console.warn('[login] auto-provision erro', e && e.message); }
+      }
+      if(!novoUsuario){
+        return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Email ou username não encontrado' }) };
+      }
+      lista = [novoUsuario];
     }
     const usuario = lista[0];
 
