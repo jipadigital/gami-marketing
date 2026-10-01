@@ -4,3 +4,6 @@
 ALTER TABLE recados ADD COLUMN IF NOT EXISTS reacoes jsonb;
 ALTER TABLE recados ADD COLUMN IF NOT EXISTS imagem  text;
 ALTER TABLE recados ADD COLUMN IF NOT EXISTS gif     text;
+
+-- v32.17: respostas (comentários) nos recados
+ALTER TABLE recados ADD COLUMN IF NOT EXISTS respostas jsonb;
