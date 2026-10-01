@@ -1,4 +1,4 @@
-<!-- v32.12 - Login: AUTO-PROVISIONA o acesso no 1o login. Cadastrar pessoa com email NAO criava usuarios_login, entao dava "Email ou username nao encontrado" (caso Ane). Agora login.js, quando nao acha o login e o identificador e um email de alguem em pessoas, cria o usuarios_login com pin gami2026_init e segue. Onboarding sem SQL - 29/09/2026 --><!-- v32.11 - Encerramento Cuiabá + desligamentos: Kelvin Felipe (pe011, gestor de Cuiabá) e Isli Stephanie (pe028, ja saiu) no PESSOAS_DESLIGADAS. Migracao de cidades encerradas agora tambem tira c10/Vitória do cache. "Cuiabá" e "Vitória" removidos dos badges (array cidade) de 9 pessoas via app. Texto do reset sem "Jean". Dados no banco via docs/remover-cuiaba-kelvin-isli.sql - 28/09/2026 --><!-- v32.10 - (1) Direcao Gami: recado antigo que nao saia mesmo com servidor vazio. loadDirecaoFromSupa agora APAGA o cache local (gami_direcao) quando o servidor esta limpo ({}) e re-renderiza, entao a mensagem teimosa some. (2) parse do valor string. - 28/09/2026 --><!-- v32.09 - FIX final do "Não consegui salvar (tarefas)" (Jheniffer): zerados TODOS os POST-upsert em tarefas. Editar tarefa passou a usar PATCH direto (_tfPatchTarefa, anon UPDATE=204) em vez de supaUpsert; a migração legada v13 usa tfSupaSalvar (rota com sessão, silenciosa). Antes o edit falhava+alarmava pro anon e a migração podia spammar toast. Nao existe mais supaUpsert('tarefas') no codigo - 28/09/2026 --><!-- v32.08 - Empresas (raio-X): tabela ENXUTA (6 meses viram 1 coluna compacta "6,8k / 8,1k...", saiu Média/mês, cabeçalhos curtos, bairros de entrega sem numeros na tabela) + novo bloco "Resumo geral" ABAIXO da tabela com os numeros da cidade toda: total, faturamento, distribuicao por segmento, top bairros de entrega e pico geral (hook r.rodape no _rlRenderResultado) - 28/09/2026 --><!-- v32.07 - Empresas (raio-X): novas colunas "Pico" (hora + dia da semana de maior movimento) e "Bairros entrega" (top 3 bairros pra onde a empresa mais entrega), e o Bairro agora vem preenchido (bairro operacional da coleta). Tudo calculado na MV mv_empresas_raiox v6 (pico via mode() de hora/dow em America/Campo_Grande, bairros de entrega via unnest das paradas) que roda em background pelo pg_cron. Fallback ao vivo tambem calcula pico/bairros. Rodar docs/rpc_empresas_raiox_cidade.sql (v6) - 28/09/2026 --><!-- v32.06 - Empresas (raio-X completo): (1) nova coluna "Segmento" deduzida do NOME da empresa (_raioxSegmento: Pizzaria, Hambúrguer, Açaí, Loja de roupa, Farmácia, etc.) — a Machine não guarda o ramo, só tipo de serviço de motoboy, então é estimativa por palavra-chave (~40% classificado, resto "Outro"). (2) A RPC empresas_raiox_cidade passou a ler de MATERIALIZED VIEW pré-calculada (mv_empresas_raiox) pra não estourar timeout (592k corridas CG davam HTTP 500 quando o cache esfriava). Rodar docs/rpc_empresas_raiox_cidade.sql (recria a MV + refresh_raiox) - 28/09/2026 --><!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v32.13 - MURAL interativo: (1) REAÇÕES COMPARTILHADAS (antes so no aparelho de quem reagia) guardadas em recados.reacoes e sincronizadas via PATCH, com mais opcoes (👍❤️🙏🔥🎉👏😂). (2) FOTO no recado (upload comprimido no cliente, data URL, coluna imagem). (3) GIF via Giphy (coluna gif guarda a URL; precisa de chave gratis em _GIPHY_KEY). _recadosSalvarSupa resiliente (posta sem os campos novos se as colunas ainda nao existirem). Rodar docs/mural-interativo.sql - 01/10/2026 --><!-- v32.12 - Login: AUTO-PROVISIONA o acesso no 1o login. Cadastrar pessoa com email NAO criava usuarios_login, entao dava "Email ou username nao encontrado" (caso Ane). Agora login.js, quando nao acha o login e o identificador e um email de alguem em pessoas, cria o usuarios_login com pin gami2026_init e segue. Onboarding sem SQL - 29/09/2026 --><!-- v32.11 - Encerramento Cuiabá + desligamentos: Kelvin Felipe (pe011, gestor de Cuiabá) e Isli Stephanie (pe028, ja saiu) no PESSOAS_DESLIGADAS. Migracao de cidades encerradas agora tambem tira c10/Vitória do cache. "Cuiabá" e "Vitória" removidos dos badges (array cidade) de 9 pessoas via app. Texto do reset sem "Jean". Dados no banco via docs/remover-cuiaba-kelvin-isli.sql - 28/09/2026 --><!-- v32.10 - (1) Direcao Gami: recado antigo que nao saia mesmo com servidor vazio. loadDirecaoFromSupa agora APAGA o cache local (gami_direcao) quando o servidor esta limpo ({}) e re-renderiza, entao a mensagem teimosa some. (2) parse do valor string. - 28/09/2026 --><!-- v32.09 - FIX final do "Não consegui salvar (tarefas)" (Jheniffer): zerados TODOS os POST-upsert em tarefas. Editar tarefa passou a usar PATCH direto (_tfPatchTarefa, anon UPDATE=204) em vez de supaUpsert; a migração legada v13 usa tfSupaSalvar (rota com sessão, silenciosa). Antes o edit falhava+alarmava pro anon e a migração podia spammar toast. Nao existe mais supaUpsert('tarefas') no codigo - 28/09/2026 --><!-- v32.08 - Empresas (raio-X): tabela ENXUTA (6 meses viram 1 coluna compacta "6,8k / 8,1k...", saiu Média/mês, cabeçalhos curtos, bairros de entrega sem numeros na tabela) + novo bloco "Resumo geral" ABAIXO da tabela com os numeros da cidade toda: total, faturamento, distribuicao por segmento, top bairros de entrega e pico geral (hook r.rodape no _rlRenderResultado) - 28/09/2026 --><!-- v32.07 - Empresas (raio-X): novas colunas "Pico" (hora + dia da semana de maior movimento) e "Bairros entrega" (top 3 bairros pra onde a empresa mais entrega), e o Bairro agora vem preenchido (bairro operacional da coleta). Tudo calculado na MV mv_empresas_raiox v6 (pico via mode() de hora/dow em America/Campo_Grande, bairros de entrega via unnest das paradas) que roda em background pelo pg_cron. Fallback ao vivo tambem calcula pico/bairros. Rodar docs/rpc_empresas_raiox_cidade.sql (v6) - 28/09/2026 --><!-- v32.06 - Empresas (raio-X completo): (1) nova coluna "Segmento" deduzida do NOME da empresa (_raioxSegmento: Pizzaria, Hambúrguer, Açaí, Loja de roupa, Farmácia, etc.) — a Machine não guarda o ramo, só tipo de serviço de motoboy, então é estimativa por palavra-chave (~40% classificado, resto "Outro"). (2) A RPC empresas_raiox_cidade passou a ler de MATERIALIZED VIEW pré-calculada (mv_empresas_raiox) pra não estourar timeout (592k corridas CG davam HTTP 500 quando o cache esfriava). Rodar docs/rpc_empresas_raiox_cidade.sql (recria a MV + refresh_raiox) - 28/09/2026 --><!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -48359,7 +48359,8 @@ function saveRecados(list){ try{ localStorage.setItem('gami_recados_v1', JSON.st
 /* 📌 MURAL DE RECADOS no Supabase (tabela `recados`) — agora é de TIME, aparece pra todos.
    localStorage 'gami_recados_v1' vira só cache de render; a fonte da verdade é a tabela. */
 function _recadosMapDoSupa(r){
-  return { id:r.id, texto:r.texto, data:r.data||r.created_at, autor:r.autor, autorId:r.autor_id, autorFoto:r.autor_foto };
+  return { id:r.id, texto:r.texto, data:r.data||r.created_at, autor:r.autor, autorId:r.autor_id, autorFoto:r.autor_foto,
+           reacoes:(r.reacoes && typeof r.reacoes==='object')?r.reacoes:{}, imagem:r.imagem||'', gif:r.gif||'' };
 }
 async function _recadosCarregarSupa(){
   try {
@@ -48379,11 +48380,15 @@ async function _recadosCarregarSupa(){
 async function _recadosSalvarSupa(recado){
   try {
     if(typeof SUPA_URL === 'undefined' || !recado) return;
-    await fetch(SUPA_URL + '/rest/v1/recados', {
-      method:'POST',
-      headers: Object.assign({}, supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
-      body: JSON.stringify([{ id:recado.id, texto:recado.texto, data:recado.data, autor:recado.autor, autor_id:recado.autorId, autor_foto:recado.autorFoto }])
-    });
+    var hdr = Object.assign({}, supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' });
+    var base = { id:recado.id, texto:recado.texto, data:recado.data, autor:recado.autor, autor_id:recado.autorId, autor_foto:recado.autorFoto };
+    var full = Object.assign({}, base, { reacoes:recado.reacoes||{}, imagem:recado.imagem||null, gif:recado.gif||null });
+    var r = await fetch(SUPA_URL + '/rest/v1/recados', { method:'POST', headers:hdr, body: JSON.stringify([full]) });
+    if(!r.ok){
+      // v32.13: colunas novas (reacoes/imagem/gif) ainda não criadas no banco → posta só o básico,
+      // pra o mural nunca quebrar antes de rodar o SQL de migração.
+      await fetch(SUPA_URL + '/rest/v1/recados', { method:'POST', headers:hdr, body: JSON.stringify([base]) });
+    }
   } catch(e){ console.warn('[Recados] salvar:', e && e.message); }
 }
 async function _recadosApagarSupa(id){
@@ -48456,7 +48461,8 @@ function salvarRecadoInline(){
   var input = document.getElementById('mural-input');
   if(!input) return;
   var texto = (input.value||'').trim();
-  if(!texto){ toast('Escreva algo antes de enviar', 'warn'); return; }
+  // v32.13: dá pra postar só com foto/GIF (sem texto).
+  if(!texto && !_muralImagemPendente && !_muralGifPendente){ toast('Escreva algo ou anexe uma foto/GIF', 'warn'); return; }
   if(texto.length > 140) texto = texto.slice(0, 140);
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var autor = u ? u.nome : 'Anônimo';
@@ -48469,7 +48475,10 @@ function salvarRecadoInline(){
     data:new Date().toISOString(),
     autor:autor,
     autorId:autorId,
-    autorFoto:autorFoto
+    autorFoto:autorFoto,
+    reacoes:{},
+    imagem:_muralImagemPendente||'',
+    gif:_muralGifPendente||''
   });
   if(lista.length > 12) lista = lista.slice(0,12);
   saveRecados(lista);
@@ -48477,6 +48486,7 @@ function salvarRecadoInline(){
   // 🆕 v31.54: PONTOS — escrever no mural da +1 (1x/dia, trava no catalogo).
   try { if(autorId && typeof atribuirPontos==='function') atribuirPontos(autorId, 'comentou_mural_de'); } catch(e){}
   input.value = '';
+  _muralImagemPendente=''; _muralGifPendente=''; _muralRenderAnexoPreview();
   var counter = document.getElementById('mural-counter');
   if(counter) counter.textContent = '0 / 140';
   _muralFecharMencao();
@@ -48569,6 +48579,136 @@ function _muralFecharMencao(){
   if(dd) dd.style.display = 'none';
 }
 
+/* ============================================================ */
+/* v32.13 — MURAL interativo: reações compartilhadas + foto + GIF */
+/* ============================================================ */
+var _MURAL_REACOES = ['👍','❤️','🙏','🔥','🎉','👏','😂'];
+var _muralImagemPendente = '';
+var _muralGifPendente = '';
+var _GIPHY_KEY = ''; // chave do Giphy (grátis em developers.giphy.com). Vazia = GIF desativado com aviso.
+
+/* Reações COMPARTILHADAS: guardadas em recados.reacoes {emoji:[idsDeQuemReagiu]} e
+   sincronizadas via PATCH (anon UPDATE em recados = 204). Antes ficavam só no localStorage
+   de cada aparelho (ninguém via a reação do outro). */
+function _muralReacoesHTML(r){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var meuId = u ? (u.id || u.nome) : null;
+  var reac = (r && r.reacoes && typeof r.reacoes==='object') ? r.reacoes : {};
+  return '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">' + _MURAL_REACOES.map(function(e){
+    var arr = Array.isArray(reac[e]) ? reac[e] : [];
+    var n = arr.length;
+    var ativo = meuId && arr.indexOf(meuId) >= 0;
+    return '<button type="button" onclick="_muralReagir(\''+r.id+'\',\''+e+'\')" '
+      + 'style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border:1px solid '+(ativo?'#1AB8F0':'var(--border)')+';border-radius:14px;background:'+(ativo?'rgba(26,184,240,.12)':'white')+';font-size:13px;cursor:pointer;line-height:1;font-family:inherit">'
+      + e + (n ? '<span style="font-size:10px;color:var(--text3);font-weight:600">'+n+'</span>' : '') + '</button>';
+  }).join('') + '</div>';
+}
+async function _muralReagir(recadoId, emoji){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  var meuId = u ? (u.id || u.nome) : null;
+  if(!meuId){ if(typeof toast==='function') toast('Faça login pra reagir','warn'); return; }
+  var lista = getRecados();
+  var r = lista.find(function(x){ return x.id === recadoId; });
+  if(!r) return;
+  if(!r.reacoes || typeof r.reacoes !== 'object') r.reacoes = {};
+  var arr = Array.isArray(r.reacoes[emoji]) ? r.reacoes[emoji] : [];
+  var i = arr.indexOf(meuId);
+  if(i >= 0) arr.splice(i,1); else arr.push(meuId);
+  if(arr.length) r.reacoes[emoji] = arr; else delete r.reacoes[emoji];
+  saveRecados(lista);
+  var cont = document.querySelector('[data-react-target="recado-'+recadoId+'"]');
+  if(cont) cont.innerHTML = _muralReacoesHTML(r);
+  try {
+    await fetch(SUPA_URL + '/rest/v1/recados?id=eq.' + encodeURIComponent(recadoId), {
+      method:'PATCH',
+      headers: Object.assign({}, supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+      body: JSON.stringify({ reacoes: r.reacoes })
+    });
+  } catch(e){ console.warn('[mural reagir]', e && e.message); }
+}
+window._muralReagir = _muralReagir;
+
+/* FOTO: comprime no cliente (canvas) e guarda como data URL no recado */
+function _muralEscolherFoto(){
+  var inp = document.createElement('input'); inp.type='file'; inp.accept='image/*';
+  inp.onchange = function(){ var f = inp.files && inp.files[0]; if(!f) return; _muralComprimirImagem(f, function(dataUrl){ _muralGifPendente=''; _muralImagemPendente = dataUrl; _muralRenderAnexoPreview(); }); };
+  inp.click();
+}
+function _muralComprimirImagem(file, cb){
+  try {
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){
+        var max = 900, w = img.width, h = img.height;
+        if(w > max || h > max){ if(w>=h){ h = Math.round(h*max/w); w = max; } else { w = Math.round(w*max/h); h = max; } }
+        try {
+          var cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+          cv.getContext('2d').drawImage(img,0,0,w,h);
+          cb(cv.toDataURL('image/jpeg', 0.72));
+        } catch(err){ cb(e.target.result); }
+      };
+      img.onerror = function(){ cb(e.target.result); };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  } catch(e){ if(typeof toast==='function') toast('Não consegui ler a imagem','warn'); }
+}
+function _muralRenderAnexoPreview(){
+  var el = document.getElementById('mural-anexo-preview'); if(!el) return;
+  var src = _muralImagemPendente || _muralGifPendente;
+  if(!src){ el.innerHTML=''; el.style.display='none'; return; }
+  el.style.display='block';
+  el.innerHTML = '<div style="position:relative;display:inline-block;margin-top:8px">'
+    + '<img src="'+src+'" style="max-height:120px;max-width:100%;border-radius:8px;border:1px solid var(--border)">'
+    + '<button type="button" onclick="_muralRemoverAnexo()" title="Remover" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;border:none;background:#E24B4A;color:white;cursor:pointer;font-size:13px;line-height:1">×</button>'
+  + '</div>';
+}
+function _muralRemoverAnexo(){ _muralImagemPendente=''; _muralGifPendente=''; _muralRenderAnexoPreview(); }
+
+/* GIF: seletor com busca no Giphy. Guarda a URL do GIF (não ocupa o banco). */
+function _muralAbrirGif(){
+  var old = document.getElementById('modal-gif'); if(old) old.remove();
+  var m = document.createElement('div'); m.id='modal-gif';
+  m.style.cssText='position:fixed;inset:0;background:rgba(11,37,66,.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:30px 14px;overflow-y:auto';
+  m.onclick=function(e){ if(e.target===m) m.remove(); };
+  m.innerHTML='<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:16px;box-shadow:0 12px 40px rgba(11,37,66,.25)" onclick="event.stopPropagation()">'
+    +'<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center"><input id="gif-busca" placeholder="Buscar GIF (ex: parabéns, festa, sucesso...)" style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" oninput="_muralBuscarGifDebounce(this.value)"><button onclick="document.getElementById(\'modal-gif\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3);line-height:1">×</button></div>'
+    +'<div id="gif-resultados" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;max-height:60vh;overflow-y:auto"><div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:24px">Digite pra buscar GIFs 🔎</div></div>'
+    +'<div style="font-size:9px;color:var(--text3);text-align:right;margin-top:6px">Powered by GIPHY</div>'
+  +'</div>';
+  document.body.appendChild(m);
+  setTimeout(function(){ var i=document.getElementById('gif-busca'); if(i) i.focus(); }, 50);
+}
+var _gifDebounceT=null;
+function _muralBuscarGifDebounce(q){ clearTimeout(_gifDebounceT); _gifDebounceT=setTimeout(function(){ _muralBuscarGif(q); }, 400); }
+async function _muralBuscarGif(q){
+  var host=document.getElementById('gif-resultados'); if(!host) return;
+  if(!_GIPHY_KEY){ host.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:24px;line-height:1.5">🔧 GIFs ainda não liberados.<br>Peça pro Cleyton ativar a chave do Giphy (grátis).</div>'; return; }
+  q=(q||'').trim();
+  if(!q){ host.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:24px">Digite pra buscar GIFs 🔎</div>'; return; }
+  host.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:24px">Buscando...</div>';
+  try{
+    var r=await fetch('https://api.giphy.com/v1/gifs/search?api_key='+_GIPHY_KEY+'&q='+encodeURIComponent(q)+'&limit=18&rating=pg');
+    var j=await r.json();
+    var gifs=(j&&j.data)||[];
+    if(!gifs.length){ host.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--text3);font-size:12px;padding:24px">Nada encontrado pra "'+tfEsc(q)+'".</div>'; return; }
+    host.innerHTML=gifs.map(function(g){
+      var im=g.images||{};
+      var prev=(im.fixed_width_small||im.fixed_height_small||im.fixed_width||im.downsized);
+      var full=(im.fixed_height||im.downsized_medium||im.fixed_width||prev);
+      var purl=prev?prev.url:''; var furl=full?full.url:purl;
+      return '<img src="'+purl+'" onclick="_muralSelecionarGif(\''+encodeURIComponent(furl)+'\')" style="width:100%;height:100px;object-fit:cover;border-radius:6px;cursor:pointer;background:var(--surface2)" loading="lazy">';
+    }).join('');
+  }catch(e){ host.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#A32D2D;font-size:12px;padding:24px">Não consegui buscar GIFs agora (pode ser a chave do Giphy). Tenta de novo ou usa foto/emoji.</div>'; }
+}
+function _muralSelecionarGif(urlEnc){ _muralImagemPendente=''; _muralGifPendente=decodeURIComponent(urlEnc); var m=document.getElementById('modal-gif'); if(m) m.remove(); _muralRenderAnexoPreview(); }
+window._muralSelecionarGif=_muralSelecionarGif;
+window._muralBuscarGifDebounce=_muralBuscarGifDebounce;
+window._muralEscolherFoto=_muralEscolherFoto;
+window._muralAbrirGif=_muralAbrirGif;
+window._muralRemoverAnexo=_muralRemoverAnexo;
+
 function renderRecados(){
   var host = document.getElementById('dash-recados');
   if(!host) return;
@@ -48595,11 +48735,14 @@ function renderRecados(){
           + 'style="width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;background:white;box-sizing:border-box"></textarea>'
         + '<div id="mural-mencao-dropdown" style="display:none;position:absolute;left:58px;right:14px;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(11,37,66,.15);z-index:100;max-height:280px;overflow-y:auto;margin-top:4px"></div>'
         + _muralEmojiPaletaHTML()
-        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">'
+        + '<div id="mural-anexo-preview" style="display:none"></div>'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;flex-wrap:wrap">'
           + '<span id="mural-counter" style="font-size:10px;color:var(--text3)">0 / 140</span>'
           + '<div style="display:flex;gap:6px;align-items:center">'
             + '<button type="button" onclick="_muralToggleEmoji()" title="Inserir emoji" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:14px;cursor:pointer;line-height:1">😊</button>'
-            + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar (Ctrl+Enter)</button>'
+            + '<button type="button" onclick="_muralEscolherFoto()" title="Anexar foto" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:14px;cursor:pointer;line-height:1">📷</button>'
+            + '<button type="button" onclick="_muralAbrirGif()" title="Buscar GIF" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:11px;font-weight:700;cursor:pointer;line-height:1;color:#854F0B">GIF</button>'
+            + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar</button>'
           + '</div>'
         + '</div>'
       + '</div>'
@@ -48635,8 +48778,10 @@ function renderRecados(){
             + '<div style="font-size:11px;color:#854F0B;font-weight:600">'+(r.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
             + (podeRemover ? '<button onclick="removerRecado(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1" title="Remover recado">×</button>' : '')
           + '</div>'
-          + '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>'
-          + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+renderReactionsHTML('recado-'+r.id)+'</div>'
+          + (textoFmt ? '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>' : '')
+          + (r.imagem ? '<div style="margin-top:8px"><img src="'+r.imagem+'" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block" alt="foto"></div>' : '')
+          + (r.gif ? '<div style="margin-top:8px"><img src="'+r.gif+'" style="max-width:100%;max-height:280px;border-radius:8px;display:block" alt="gif"></div>' : '')
+          + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+_muralReacoesHTML(r)+'</div>'
         + '</div>'
       + '</div>'
     + '</div>';
