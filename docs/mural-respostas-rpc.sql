@@ -15,9 +15,11 @@ AS $$
 DECLARE
   v_out jsonb;
 BEGIN
+  -- v32.20: aceita resposta com texto OU gif (dá pra responder só com GIF).
   IF p_resposta IS NULL OR jsonb_typeof(p_resposta) <> 'object'
-     OR coalesce(length(p_resposta->>'texto'), 0) = 0
-     OR length(p_resposta->>'texto') > 200 THEN
+     OR ( coalesce(length(p_resposta->>'texto'), 0) = 0
+          AND coalesce(length(p_resposta->>'gif'), 0) = 0 )
+     OR coalesce(length(p_resposta->>'texto'), 0) > 200 THEN
     RAISE EXCEPTION 'resposta invalida';
   END IF;
   UPDATE recados

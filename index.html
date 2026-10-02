@@ -48618,6 +48618,8 @@ var _MURAL_REACOES = ['👍','❤️','😂','🔥','🙏','👏','🎉','🥰',
 var _muralImagemPendente = '';
 var _muralGifPendente = '';
 var _GIPHY_KEY = 'FN4QzhDh0lABVarTRyrWiCE3rJb5d1vx'; // chave do Giphy (conta Gâmi, ativada 01/10/2026)
+var _muralGifCtx = 'compose';   // v32.20: onde o GIF escolhido vai ('compose' ou 'resp:<recadoId>')
+var _muralRespGif = {};         // gif pendente por recado, nas RESPOSTAS
 
 /* Reações COMPARTILHADAS: guardadas em recados.reacoes {emoji:[idsDeQuemReagiu]} e
    sincronizadas via RPC recado_reagir (v32.19; o PATCH antigo voltava 204 SEM gravar, anon não tem UPDATE). Antes ficavam só no localStorage
@@ -48656,13 +48658,18 @@ function _muralRespostasHTML(r){
     var txt = tfEsc(x.texto||'').replace(/@([\wÀ-ÿ]+)/g,'<strong style="color:var(--gami-blue)">@$1</strong>');
     return '<div style="display:flex;gap:7px;margin-top:7px">'
       + _muralAvatar(x.autor, x.autorFoto, 24)
-      + '<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#854F0B;font-weight:600">'+(x.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div><div style="font-size:11.5px;color:var(--text);line-height:1.4;overflow-wrap:break-word">'+txt+'</div></div>'
+      + '<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#854F0B;font-weight:600">'+(x.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
+        + (txt ? '<div style="font-size:11.5px;color:var(--text);line-height:1.4;overflow-wrap:break-word">'+txt+'</div>' : '')
+        + (x.gif ? '<div style="margin-top:4px"><img src="'+x.gif+'" style="max-width:100%;max-height:170px;border-radius:8px" alt="gif"></div>' : '')
+      + '</div>'
     + '</div>';
   }).join('');
   var toggle = '<button type="button" onclick="_muralToggleResponder(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);font-size:11px;cursor:pointer;padding:5px 0 2px;font-family:inherit;font-weight:600">💬 Responder'+(resp.length?' ('+resp.length+')':'')+'</button>';
   var box = '<div id="mural-resp-box-'+r.id+'" style="display:none;margin-top:6px">'
+    + '<div id="mural-resp-gifprev-'+r.id+'" style="display:none"></div>'
     + '<div style="display:flex;gap:6px;align-items:flex-end">'
     + '<textarea id="mural-resp-input-'+r.id+'" maxlength="200" placeholder="Escreva uma resposta... (@ marca alguém)" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();_muralEnviarResposta(\''+r.id+'\');}" style="flex:1;min-height:34px;max-height:90px;padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit;resize:vertical;background:white;box-sizing:border-box"></textarea>'
+    + '<button type="button" onclick="_muralAbrirGifResp(\''+r.id+'\')" title="GIF" style="padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:10px;font-weight:700;color:#854F0B;cursor:pointer;line-height:1;white-space:nowrap">GIF</button>'
     + '<button type="button" onclick="_muralEnviarResposta(\''+r.id+'\')" style="padding:7px 12px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">Enviar</button>'
     + '</div></div>';
   return '<div style="margin-top:6px;border-top:1px dashed var(--border);padding-top:2px">' + lista + toggle + box + '</div>';
@@ -48676,14 +48683,16 @@ function _muralToggleResponder(id){
 async function _muralEnviarResposta(recadoId){
   var inp=document.getElementById('mural-resp-input-'+recadoId); if(!inp) return;
   var texto=(inp.value||'').trim();
-  if(!texto){ if(typeof toast==='function') toast('Escreva uma resposta','warn'); return; }
+  var gif=_muralRespGif[recadoId]||'';
+  if(!texto && !gif){ if(typeof toast==='function') toast('Escreva uma resposta ou escolha um GIF','warn'); return; }
   if(texto.length>200) texto=texto.slice(0,200);
   var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null;
   var lista=getRecados();
   var r=lista.find(function(x){ return x.id===recadoId; });
   if(!r) return;
   if(!Array.isArray(r.respostas)) r.respostas=[];
-  r.respostas.push({ id:'rr'+Date.now(), autor:(u?u.nome:'Anônimo'), autorId:(u?u.id:null), autorFoto:(u?(u.foto_url||u.foto||''):''), texto:texto, data:new Date().toISOString() });
+  r.respostas.push({ id:'rr'+Date.now(), autor:(u?u.nome:'Anônimo'), autorId:(u?u.id:null), autorFoto:(u?(u.foto_url||u.foto||''):''), texto:texto, gif:gif, data:new Date().toISOString() });
+  delete _muralRespGif[recadoId];
   var nova = r.respostas[r.respostas.length-1];
   saveRecados(lista);
   renderRecados();
@@ -48703,7 +48712,7 @@ async function _muralEnviarResposta(recadoId){
   // notifica o autor do recado (se não for ele mesmo)
   try {
     if(r.autorId && u && r.autorId !== u.id && typeof criarNotificacao==='function'){
-      criarNotificacao(r.autorId, 'resposta_mural', (u.nome||'Alguém')+' respondeu seu recado', texto, 'recados');
+      criarNotificacao(r.autorId, 'resposta_mural', (u.nome||'Alguém')+' respondeu seu recado', (texto||'🎞️ GIF'), 'recados');
     }
   } catch(e){}
 }
@@ -48789,7 +48798,9 @@ function _muralRenderAnexoPreview(){
 function _muralRemoverAnexo(){ _muralImagemPendente=''; _muralGifPendente=''; _muralRenderAnexoPreview(); }
 
 /* GIF: seletor com busca no Giphy. Guarda a URL do GIF (não ocupa o banco). */
-function _muralAbrirGif(){
+function _muralAbrirGifResp(recadoId){ _muralAbrirGif('resp:'+recadoId); }
+function _muralAbrirGif(ctx){
+  _muralGifCtx = (typeof ctx === 'string' && ctx) ? ctx : 'compose';
   var old = document.getElementById('modal-gif'); if(old) old.remove();
   var m = document.createElement('div'); m.id='modal-gif';
   m.style.cssText='position:fixed;inset:0;background:rgba(11,37,66,.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:30px 14px;overflow-y:auto';
@@ -48824,11 +48835,31 @@ async function _muralBuscarGif(q){
     }).join('');
   }catch(e){ host.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#A32D2D;font-size:12px;padding:24px">Não consegui buscar GIFs agora (pode ser a chave do Giphy). Tenta de novo ou usa foto/emoji.</div>'; }
 }
-function _muralSelecionarGif(urlEnc){ _muralImagemPendente=''; _muralGifPendente=decodeURIComponent(urlEnc); var m=document.getElementById('modal-gif'); if(m) m.remove(); _muralRenderAnexoPreview(); }
+function _muralSelecionarGif(urlEnc){
+  var url=decodeURIComponent(urlEnc);
+  var m=document.getElementById('modal-gif'); if(m) m.remove();
+  if(_muralGifCtx && _muralGifCtx.indexOf('resp:')===0){
+    var rid=_muralGifCtx.slice(5);
+    _muralRespGif[rid]=url;
+    _muralRenderRespGifPrev(rid);
+  } else {
+    _muralImagemPendente=''; _muralGifPendente=url; _muralRenderAnexoPreview();
+  }
+}
+function _muralRenderRespGifPrev(rid){
+  var el=document.getElementById('mural-resp-gifprev-'+rid); if(!el) return;
+  var url=_muralRespGif[rid];
+  if(!url){ el.innerHTML=''; el.style.display='none'; return; }
+  el.style.display='block';
+  el.innerHTML='<div style="position:relative;display:inline-block;margin-top:6px"><img src="'+url+'" style="max-height:100px;max-width:100%;border-radius:8px;border:1px solid var(--border)"><button type="button" onclick="_muralRemoverRespGif(\''+rid+'\')" title="Remover" style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;border:none;background:#E24B4A;color:white;cursor:pointer;font-size:13px;line-height:1">×</button></div>';
+}
+function _muralRemoverRespGif(rid){ delete _muralRespGif[rid]; _muralRenderRespGifPrev(rid); }
 window._muralSelecionarGif=_muralSelecionarGif;
 window._muralBuscarGifDebounce=_muralBuscarGifDebounce;
 window._muralEscolherFoto=_muralEscolherFoto;
 window._muralAbrirGif=_muralAbrirGif;
+window._muralAbrirGifResp=_muralAbrirGifResp;
+window._muralRemoverRespGif=_muralRemoverRespGif;
 window._muralRemoverAnexo=_muralRemoverAnexo;
 
 function renderRecados(){
