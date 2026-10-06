@@ -76,14 +76,29 @@ async function getPageTokens(){
   return map;
 }
 
-// ---------- Cria container de mídia ----------
-async function criarContainer(igId, pageToken, post){
-  // 🆕 Se já tem ig_creation_id de tentativa anterior, REUSA (evita duplicar container)
-  if (post.ig_creation_id) {
-    console.log('[post '+post.id+'] reusando creation_id existente: ' + post.ig_creation_id);
-    return post.ig_creation_id;
+// ---------- Status de um container (FINISHED | IN_PROGRESS | ERROR | EXPIRED | null) ----------
+async function statusContainer(creationId, pageToken){
+  try {
+    const r = await fetch(GRAPH + '/' + creationId + '?fields=status_code&access_token=' + pageToken);
+    const d = await r.json();
+    if (d && d.error) return 'EXPIRED';      // objeto sumiu/expirou → tratar como morto
+    return d.status_code || null;             // FINISHED | IN_PROGRESS | ERROR | PUBLISHED
+  } catch(e){ return null; }
+}
+// ---------- Espera o container ficar PRONTO (curto, p/ caber no limite da function) ----------
+async function aguardarPronto(creationId, pageToken, maxMs){
+  const ini = Date.now();
+  while (Date.now() - ini < maxMs) {
+    const st = await statusContainer(creationId, pageToken);
+    if (st === 'FINISHED' || st === 'PUBLISHED') return 'FINISHED';
+    if (st === 'ERROR' || st === 'EXPIRED') return st;
+    await new Promise(r => setTimeout(r, 2000));
   }
-  
+  return 'TIMEOUT';
+}
+
+// ---------- Cria container de mídia (sempre NOVO; reúso é decidido no publicarUmPost) ----------
+async function criarContainer(igId, pageToken, post){
   const url = GRAPH + '/' + igId + '/media';
   const params = new URLSearchParams();
   params.set('access_token', pageToken);
@@ -161,15 +176,26 @@ async function publicarUmPost(post){
     try { post.midia_urls = JSON.parse(post.midia_urls); } catch(e){ post.midia_urls = [post.midia_urls]; }
   }
 
-  // 1. Cria container (reusa se já tinha de tentativa anterior)
-  const creationId = await criarContainer(post.ig_id, t.page_token, post);
-  if (creationId !== post.ig_creation_id) {
+  // 1. Reusa o container da tentativa anterior SÓ se ainda estiver vivo; senão recria do zero.
+  //    (Era isto que travava: reusava um container que deu ERROR/expirou → "Media ID is not available".)
+  let creationId = post.ig_creation_id || null;
+  if (creationId) {
+    const st = await statusContainer(creationId, t.page_token);
+    if (st === 'ERROR' || st === 'EXPIRED' || st === null) creationId = null; // morto → recria
+  }
+  if (!creationId) {
+    creationId = await criarContainer(post.ig_id, t.page_token, post);
     await supaUpdate(post.id, { ig_creation_id: creationId });
   }
 
-  // 2. Pra reels e carrossel pode demorar processar
-  if (post.tipo === 'reel' || post.tipo === 'carousel') {
-    await new Promise(r => setTimeout(r, 5000));
+  // 2. Espera o container ficar PRONTO antes de publicar (publicar cedo = "Media ID is not available").
+  const pronto = await aguardarPronto(creationId, t.page_token, 7000);
+  if (pronto !== 'FINISHED') {
+    if (pronto === 'ERROR' || pronto === 'EXPIRED') {
+      await supaUpdate(post.id, { ig_creation_id: null }); // próxima tentativa recria do zero
+      throw new Error('O Instagram não preparou a mídia (status ' + pronto + '). Confira se a imagem está acessível; o próximo "Tentar" recria do zero.');
+    }
+    throw new Error('Mídia ainda processando (status ' + pronto + '). Tenta de novo em instantes.');
   }
 
   // 3. Publica
