@@ -1,4 +1,4 @@
-<!-- v32.19 - Mural: RESPOSTAS e REAÇÕES não ficavam salvas. Causa: tabela recados sem policy de UPDATE pro anon, o PATCH voltava 204 sem gravar e sumia no próximo load. Agora usam RPCs atômicas SECURITY DEFINER (recado_responder / recado_reagir), que também evitam uma pessoa apagar a resposta da outra; erro de gravação mostra toast. Rodar docs/mural-respostas-rpc.sql - 01/10/2026 --><!-- v32.20 - Mural: GIF nas RESPOSTAS (botao GIF na caixa de resposta, reusa o seletor do Giphy via _muralGifCtx; guarda a url no campo gif). RPC recado_responder aceita resposta so com GIF (texto OU gif). Render mostra o gif. Rodar de novo docs/mural-respostas-rpc.sql pra liberar resposta so-gif - 02/10/2026 --><!-- v32.19 - Aba Projetos (Tarefas): barra de BUSCA (por nome/descricao, sem acento) + filtro de STATUS. tfRenderProjetos filtra a lista; input fora do grid (nao perde foco). Mensagem "nenhum encontrado" quando filtra - 01/10/2026 --><!-- v32.18 - Mural: recados estavam SUMINDO porque o cache local era cortado em 12 (apagava os antigos da tela mesmo estando no servidor por 2 dias). Subido pra 80, load de 30->100, e a caixa do mural de 320->560px de altura (mostra mais, rola o resto). Retenção de 2 dias mantida - 01/10/2026 --><!-- v32.17 - Mural: RESPOSTAS no recado (tipo comentario). Cada recado tem "💬 Responder"; a resposta fica embaixo, com avatar/nome/hora, sincronizada (recados.respostas jsonb, PATCH) e notifica o autor do recado. Rodar ALTER TABLE recados ADD COLUMN respostas jsonb (docs/mural-interativo.sql) - 01/10/2026 --><!-- v32.16 - Mural reações: removidos os emojis novos demais (🫶🥹🫡🥱🤍, de 2021/2022) que viravam quadradinho em aparelho/Windows antigo; lista agora so com emojis universais (ate 2018). Adicionados seguros no lugar (🥺😘😜🙄😬🤓😈👻💀🎈🎁) - 01/10/2026 --><!-- v32.15 - Mural reações: catalogo expandido pra 60+ emojis (os principais do WhatsApp) e o seletor virou um quadradinho rolavel (max-height+scroll); as pills aceitam QUALQUER emoji reagido (le as chaves de reacoes, nao so a lista fixa) - 01/10/2026 --><!-- v32.14 - Mural reações estilo Instagram: em vez dos 7 emojis grandes sempre, mostra so as reações que JA TEM (emoji + contagem, compacto) + um botao 🙂+ que abre o seletor com os 7. _muralTogglePicker. - 01/10/2026 --><!-- v32.13 - MURAL interativo: (1) REAÇÕES COMPARTILHADAS (antes so no aparelho de quem reagia) guardadas em recados.reacoes e sincronizadas via PATCH, com mais opcoes (👍❤️🙏🔥🎉👏😂). (2) FOTO no recado (upload comprimido no cliente, data URL, coluna imagem). (3) GIF via Giphy (coluna gif guarda a URL; precisa de chave gratis em _GIPHY_KEY). _recadosSalvarSupa resiliente (posta sem os campos novos se as colunas ainda nao existirem). Rodar docs/mural-interativo.sql - 01/10/2026 --><!-- v32.12 - Login: AUTO-PROVISIONA o acesso no 1o login. Cadastrar pessoa com email NAO criava usuarios_login, entao dava "Email ou username nao encontrado" (caso Ane). Agora login.js, quando nao acha o login e o identificador e um email de alguem em pessoas, cria o usuarios_login com pin gami2026_init e segue. Onboarding sem SQL - 29/09/2026 --><!-- v32.11 - Encerramento Cuiabá + desligamentos: Kelvin Felipe (pe011, gestor de Cuiabá) e Isli Stephanie (pe028, ja saiu) no PESSOAS_DESLIGADAS. Migracao de cidades encerradas agora tambem tira c10/Vitória do cache. "Cuiabá" e "Vitória" removidos dos badges (array cidade) de 9 pessoas via app. Texto do reset sem "Jean". Dados no banco via docs/remover-cuiaba-kelvin-isli.sql - 28/09/2026 --><!-- v32.10 - (1) Direcao Gami: recado antigo que nao saia mesmo com servidor vazio. loadDirecaoFromSupa agora APAGA o cache local (gami_direcao) quando o servidor esta limpo ({}) e re-renderiza, entao a mensagem teimosa some. (2) parse do valor string. - 28/09/2026 --><!-- v32.09 - FIX final do "Não consegui salvar (tarefas)" (Jheniffer): zerados TODOS os POST-upsert em tarefas. Editar tarefa passou a usar PATCH direto (_tfPatchTarefa, anon UPDATE=204) em vez de supaUpsert; a migração legada v13 usa tfSupaSalvar (rota com sessão, silenciosa). Antes o edit falhava+alarmava pro anon e a migração podia spammar toast. Nao existe mais supaUpsert('tarefas') no codigo - 28/09/2026 --><!-- v32.08 - Empresas (raio-X): tabela ENXUTA (6 meses viram 1 coluna compacta "6,8k / 8,1k...", saiu Média/mês, cabeçalhos curtos, bairros de entrega sem numeros na tabela) + novo bloco "Resumo geral" ABAIXO da tabela com os numeros da cidade toda: total, faturamento, distribuicao por segmento, top bairros de entrega e pico geral (hook r.rodape no _rlRenderResultado) - 28/09/2026 --><!-- v32.07 - Empresas (raio-X): novas colunas "Pico" (hora + dia da semana de maior movimento) e "Bairros entrega" (top 3 bairros pra onde a empresa mais entrega), e o Bairro agora vem preenchido (bairro operacional da coleta). Tudo calculado na MV mv_empresas_raiox v6 (pico via mode() de hora/dow em America/Campo_Grande, bairros de entrega via unnest das paradas) que roda em background pelo pg_cron. Fallback ao vivo tambem calcula pico/bairros. Rodar docs/rpc_empresas_raiox_cidade.sql (v6) - 28/09/2026 --><!-- v32.06 - Empresas (raio-X completo): (1) nova coluna "Segmento" deduzida do NOME da empresa (_raioxSegmento: Pizzaria, Hambúrguer, Açaí, Loja de roupa, Farmácia, etc.) — a Machine não guarda o ramo, só tipo de serviço de motoboy, então é estimativa por palavra-chave (~40% classificado, resto "Outro"). (2) A RPC empresas_raiox_cidade passou a ler de MATERIALIZED VIEW pré-calculada (mv_empresas_raiox) pra não estourar timeout (592k corridas CG davam HTTP 500 quando o cache esfriava). Rodar docs/rpc_empresas_raiox_cidade.sql (recria a MV + refresh_raiox) - 28/09/2026 --><!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v32.21 - PROSPECÇÃO EM CAMPO (nova aba 📍, Gestão): CRM de campo do Carlos + gestores. Cadastra lojas visitadas/ativadas, registra visita com relato ("como foi"), status em 4 cores: cinza=prospect, AMARELO=ativada sem 1º pedido, verde=ativa(pedindo), vermelho=perdida. Marcar "ativei" pinta de amarelo na hora. Filtros por cidade/status/período/busca, KPIs, e "Buscar empresas novas (Machine)" via RPC clientes_onboarding. Gestor vê só as cidades dele; Carlos/diretoria veem tudo. Escrita pela rota segura (supabase-write, add prospeccao_lojas/visitas na allowlist). Rodar docs/prospeccao-campo.sql. PARTE 1 (CRM); mapa geocodificado + auto verde/vermelho pela Machine vêm na Parte 2 - 16/10/2026 --><!-- v32.19 - Mural: RESPOSTAS e REAÇÕES não ficavam salvas. Causa: tabela recados sem policy de UPDATE pro anon, o PATCH voltava 204 sem gravar e sumia no próximo load. Agora usam RPCs atômicas SECURITY DEFINER (recado_responder / recado_reagir), que também evitam uma pessoa apagar a resposta da outra; erro de gravação mostra toast. Rodar docs/mural-respostas-rpc.sql - 01/10/2026 --><!-- v32.20 - Mural: GIF nas RESPOSTAS (botao GIF na caixa de resposta, reusa o seletor do Giphy via _muralGifCtx; guarda a url no campo gif). RPC recado_responder aceita resposta so com GIF (texto OU gif). Render mostra o gif. Rodar de novo docs/mural-respostas-rpc.sql pra liberar resposta so-gif - 02/10/2026 --><!-- v32.19 - Aba Projetos (Tarefas): barra de BUSCA (por nome/descricao, sem acento) + filtro de STATUS. tfRenderProjetos filtra a lista; input fora do grid (nao perde foco). Mensagem "nenhum encontrado" quando filtra - 01/10/2026 --><!-- v32.18 - Mural: recados estavam SUMINDO porque o cache local era cortado em 12 (apagava os antigos da tela mesmo estando no servidor por 2 dias). Subido pra 80, load de 30->100, e a caixa do mural de 320->560px de altura (mostra mais, rola o resto). Retenção de 2 dias mantida - 01/10/2026 --><!-- v32.17 - Mural: RESPOSTAS no recado (tipo comentario). Cada recado tem "💬 Responder"; a resposta fica embaixo, com avatar/nome/hora, sincronizada (recados.respostas jsonb, PATCH) e notifica o autor do recado. Rodar ALTER TABLE recados ADD COLUMN respostas jsonb (docs/mural-interativo.sql) - 01/10/2026 --><!-- v32.16 - Mural reações: removidos os emojis novos demais (🫶🥹🫡🥱🤍, de 2021/2022) que viravam quadradinho em aparelho/Windows antigo; lista agora so com emojis universais (ate 2018). Adicionados seguros no lugar (🥺😘😜🙄😬🤓😈👻💀🎈🎁) - 01/10/2026 --><!-- v32.15 - Mural reações: catalogo expandido pra 60+ emojis (os principais do WhatsApp) e o seletor virou um quadradinho rolavel (max-height+scroll); as pills aceitam QUALQUER emoji reagido (le as chaves de reacoes, nao so a lista fixa) - 01/10/2026 --><!-- v32.14 - Mural reações estilo Instagram: em vez dos 7 emojis grandes sempre, mostra so as reações que JA TEM (emoji + contagem, compacto) + um botao 🙂+ que abre o seletor com os 7. _muralTogglePicker. - 01/10/2026 --><!-- v32.13 - MURAL interativo: (1) REAÇÕES COMPARTILHADAS (antes so no aparelho de quem reagia) guardadas em recados.reacoes e sincronizadas via PATCH, com mais opcoes (👍❤️🙏🔥🎉👏😂). (2) FOTO no recado (upload comprimido no cliente, data URL, coluna imagem). (3) GIF via Giphy (coluna gif guarda a URL; precisa de chave gratis em _GIPHY_KEY). _recadosSalvarSupa resiliente (posta sem os campos novos se as colunas ainda nao existirem). Rodar docs/mural-interativo.sql - 01/10/2026 --><!-- v32.12 - Login: AUTO-PROVISIONA o acesso no 1o login. Cadastrar pessoa com email NAO criava usuarios_login, entao dava "Email ou username nao encontrado" (caso Ane). Agora login.js, quando nao acha o login e o identificador e um email de alguem em pessoas, cria o usuarios_login com pin gami2026_init e segue. Onboarding sem SQL - 29/09/2026 --><!-- v32.11 - Encerramento Cuiabá + desligamentos: Kelvin Felipe (pe011, gestor de Cuiabá) e Isli Stephanie (pe028, ja saiu) no PESSOAS_DESLIGADAS. Migracao de cidades encerradas agora tambem tira c10/Vitória do cache. "Cuiabá" e "Vitória" removidos dos badges (array cidade) de 9 pessoas via app. Texto do reset sem "Jean". Dados no banco via docs/remover-cuiaba-kelvin-isli.sql - 28/09/2026 --><!-- v32.10 - (1) Direcao Gami: recado antigo que nao saia mesmo com servidor vazio. loadDirecaoFromSupa agora APAGA o cache local (gami_direcao) quando o servidor esta limpo ({}) e re-renderiza, entao a mensagem teimosa some. (2) parse do valor string. - 28/09/2026 --><!-- v32.09 - FIX final do "Não consegui salvar (tarefas)" (Jheniffer): zerados TODOS os POST-upsert em tarefas. Editar tarefa passou a usar PATCH direto (_tfPatchTarefa, anon UPDATE=204) em vez de supaUpsert; a migração legada v13 usa tfSupaSalvar (rota com sessão, silenciosa). Antes o edit falhava+alarmava pro anon e a migração podia spammar toast. Nao existe mais supaUpsert('tarefas') no codigo - 28/09/2026 --><!-- v32.08 - Empresas (raio-X): tabela ENXUTA (6 meses viram 1 coluna compacta "6,8k / 8,1k...", saiu Média/mês, cabeçalhos curtos, bairros de entrega sem numeros na tabela) + novo bloco "Resumo geral" ABAIXO da tabela com os numeros da cidade toda: total, faturamento, distribuicao por segmento, top bairros de entrega e pico geral (hook r.rodape no _rlRenderResultado) - 28/09/2026 --><!-- v32.07 - Empresas (raio-X): novas colunas "Pico" (hora + dia da semana de maior movimento) e "Bairros entrega" (top 3 bairros pra onde a empresa mais entrega), e o Bairro agora vem preenchido (bairro operacional da coleta). Tudo calculado na MV mv_empresas_raiox v6 (pico via mode() de hora/dow em America/Campo_Grande, bairros de entrega via unnest das paradas) que roda em background pelo pg_cron. Fallback ao vivo tambem calcula pico/bairros. Rodar docs/rpc_empresas_raiox_cidade.sql (v6) - 28/09/2026 --><!-- v32.06 - Empresas (raio-X completo): (1) nova coluna "Segmento" deduzida do NOME da empresa (_raioxSegmento: Pizzaria, Hambúrguer, Açaí, Loja de roupa, Farmácia, etc.) — a Machine não guarda o ramo, só tipo de serviço de motoboy, então é estimativa por palavra-chave (~40% classificado, resto "Outro"). (2) A RPC empresas_raiox_cidade passou a ler de MATERIALIZED VIEW pré-calculada (mv_empresas_raiox) pra não estourar timeout (592k corridas CG davam HTTP 500 quando o cache esfriava). Rodar docs/rpc_empresas_raiox_cidade.sql (recria a MV + refresh_raiox) - 28/09/2026 --><!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -1915,7 +1915,7 @@ var MATRIZ_PERMISSOES = {
     ocultar_valores: true
   },
   super_admin: {
-    abas: ['dashboard','calendario','tarefas','marketing','cidades','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
+    abas: ['dashboard','calendario','tarefas','marketing','cidades','campo','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
     pode_editar_pessoas: true,
     pode_admin_pontos: true,
     pode_criar_desafios: true,
@@ -1925,7 +1925,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   diretoria: {
-    abas: ['dashboard','calendario','tarefas','marketing','cidades','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual'],
+    abas: ['dashboard','calendario','tarefas','marketing','cidades','campo','pessoas','ranking','culture','carreira','portal','campanhas','conteudo','relatorios','clima','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1935,7 +1935,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: true
   },
   gerencia: {
-    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
+    abas: ['dashboard','calendario','tarefas','cidades','campo','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -1945,7 +1945,7 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: false
   },
   gestor: {
-    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
+    abas: ['dashboard','calendario','tarefas','cidades','campo','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -2655,6 +2655,7 @@ window.nav = function(el, page){
         'portal':          function(){ if(typeof renderPortal==='function') renderPortal(); },
         'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
         'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
+        'campo':           function(){ if(typeof initCampo==='function') initCampo(); },
         'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); }
       };
       if(initMap[page]) setTimeout(initMap[page], 80);
@@ -2706,6 +2707,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'marketing')">📣 Marketing</div>
     <div class="nav-item" onclick="nav(this,'inbox')" style="display:none" data-feature-flag="inbox-instagram">📷 Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
+    <div class="nav-item" onclick="nav(this,'campo')">📍 Prospecção em Campo</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas</div>
     <div class="nav-item" onclick="abrirVerificarMotoristas(this)" title="Consulta de antecedentes, mandados de prisão e CNH por CPF">🚗 Verificação de Motoristas</div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
@@ -5886,6 +5888,474 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 
   </div>
 </div>
+
+<!-- ==================== PROSPECÇÃO EM CAMPO ==================== -->
+<div class="page" id="pg-campo">
+  <div class="page-header">
+    <div><div class="page-title">📍 Prospecção em Campo</div><div class="page-sub">Lojas visitadas, ativadas e o que rolou no dia</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn" onclick="_campoNovaLoja()" style="font-size:12px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;padding:9px 16px;border-radius:8px;font-weight:700;cursor:pointer">+ Nova loja / visita</button>
+    </div>
+  </div>
+  <div id="campo-root" style="padding:0 2px">
+    <div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando prospecção...</div>
+  </div>
+</div>
+<script>
+/* ============================================================ */
+/* PROSPECÇÃO EM CAMPO (v32.21) — CRM de campo do Carlos + gestores */
+/* Tabelas: prospeccao_lojas + prospeccao_visitas (docs/prospeccao-campo.sql) */
+/* Escrita via rota segura (_syncEscrever → supabase-write, service key).   */
+/* Status: prospect(cinza) ativada(amarelo) ativa(verde) perdida(vermelho) */
+/* ============================================================ */
+var _CAMPO = { lojas:[], visitas:[], carregado:false, exp:{}, montado:false,
+  filtro:{ cidade:'', status:'', de:'', ate:'', busca:'' } };
+
+var _CAMPO_STATUS = {
+  prospect: { cor:'#9AA3AF', bg:'#F1F2F4', label:'Prospect',  dot:'⚪', desc:'cadastrada, nunca ativou' },
+  ativada:  { cor:'#C98A00', bg:'#FFF6DC', label:'Ativada',   dot:'🟡', desc:'ativada, aguardando 1º pedido' },
+  ativa:    { cor:'#1D9E75', bg:'#E4F6EF', label:'Ativa',     dot:'🟢', desc:'já está pedindo' },
+  perdida:  { cor:'#E24B4A', bg:'#FDECEC', label:'Perdida',   dot:'🔴', desc:'pedia e parou' }
+};
+function _campoStMeta(s){ return _CAMPO_STATUS[s] || _CAMPO_STATUS.prospect; }
+function _campoEsc(s){ return (typeof tfEsc==='function') ? tfEsc(s==null?'':String(s)) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function _campoHoje(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _campoSlug(nome){ return (nome||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,''); }
+function _campoUID(pref){ return pref+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
+
+/* Cidades que o usuário pode ver (null = todas) */
+function _campoCidadesUser(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  try { return (typeof cidadesQueUsuarioAtende==='function') ? cidadesQueUsuarioAtende(u) : null; }
+  catch(e){ return null; }
+}
+/* Lista de nomes de cidade pro dropdown */
+function _campoListaCidades(){
+  var nomes = [];
+  try {
+    var cs = (typeof getCidadesData==='function') ? getCidadesData() : [];
+    nomes = (cs||[]).map(function(c){ return c.nome; }).filter(Boolean);
+  } catch(e){}
+  var permit = _campoCidadesUser();
+  if(permit && permit.length){
+    nomes = nomes.filter(function(n){ return permit.indexOf((n||'').toLowerCase()) >= 0; });
+  }
+  return nomes.sort();
+}
+/* Gestor só enxerga as lojas das cidades dele */
+function _campoPodeVerLoja(loja){
+  var permit = _campoCidadesUser();
+  if(!permit || !permit.length) return true; // vê todas
+  var slug = loja.cidade_slug || _campoSlug(loja.cidade);
+  return permit.some(function(n){ return _campoSlug(n) === slug; });
+}
+
+async function initCampo(){
+  var root = document.getElementById('campo-root');
+  if(!root) return;
+  if(!_CAMPO.carregado){
+    root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando prospecção...</div>';
+    await _campoFetch();
+  }
+  _campoMontarShell();
+  _campoAplicar();
+}
+
+async function _campoFetch(){
+  try {
+    var lojas = await supaSelect('prospeccao_lojas', 'ativo=eq.true&order=updated_at.desc&limit=5000');
+    var visitas = await supaSelect('prospeccao_visitas', 'order=data.desc&limit=5000');
+    _CAMPO.lojas = Array.isArray(lojas) ? lojas : [];
+    _CAMPO.visitas = Array.isArray(visitas) ? visitas : [];
+    _CAMPO.carregado = true;
+  } catch(e){ console.warn('[campo] fetch', e); _CAMPO.carregado = true; }
+}
+
+function _campoMontarShell(){
+  var root = document.getElementById('campo-root');
+  if(!root) return;
+  var cidades = _campoListaCidades();
+  var optCidades = '<option value="">Todas as cidades</option>' + cidades.map(function(n){
+    return '<option value="'+_campoEsc(_campoSlug(n))+'">'+_campoEsc(n)+'</option>';
+  }).join('');
+  var selCss = 'padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:12px;font-family:inherit';
+  root.innerHTML =
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
+    +   '<select id="campo-f-cidade" onchange="_campoAplicar()" style="'+selCss+'">'+optCidades+'</select>'
+    +   '<select id="campo-f-status" onchange="_campoAplicar()" style="'+selCss+'">'
+    +     '<option value="">Todos os status</option>'
+    +     '<option value="prospect">⚪ Prospect</option>'
+    +     '<option value="ativada">🟡 Ativada (sem 1º pedido)</option>'
+    +     '<option value="ativa">🟢 Ativa (pedindo)</option>'
+    +     '<option value="perdida">🔴 Perdida</option>'
+    +   '</select>'
+    +   '<input id="campo-f-busca" oninput="_campoAplicar()" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
+    +   '<span style="font-size:11px;color:var(--text3)">Visitas de</span>'
+    +   '<input id="campo-f-de" type="date" onchange="_campoAplicar()" style="'+selCss+'">'
+    +   '<span style="font-size:11px;color:var(--text3)">até</span>'
+    +   '<input id="campo-f-ate" type="date" onchange="_campoAplicar()" style="'+selCss+'">'
+    +   '<button onclick="_campoLimparFiltro()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px">Limpar</button>'
+    + '</div>'
+    + '<div id="campo-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:14px"></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 2px 8px;gap:8px;flex-wrap:wrap">'
+    +   '<div style="font-size:12px;font-weight:700;color:var(--text2)" id="campo-lista-titulo">Lojas</div>'
+    +   '<button onclick="_campoImportarAbrir()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Puxar cadastros recentes da Machine pra prospectar">☁️ Buscar empresas novas (Machine)</button>'
+    + '</div>'
+    + '<div id="campo-import" style="display:none;margin-bottom:12px"></div>'
+    + '<div id="campo-lista"></div>';
+  _CAMPO.montado = true;
+}
+
+function _campoLimparFiltro(){
+  ['campo-f-cidade','campo-f-status','campo-f-busca','campo-f-de','campo-f-ate'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.value='';
+  });
+  _campoAplicar();
+}
+
+function _campoLojasFiltradas(){
+  var fCidade = (document.getElementById('campo-f-cidade')||{}).value || '';
+  var fStatus = (document.getElementById('campo-f-status')||{}).value || '';
+  var fBusca  = ((document.getElementById('campo-f-busca')||{}).value || '').trim().toLowerCase();
+  var fDe     = (document.getElementById('campo-f-de')||{}).value || '';
+  var fAte    = (document.getElementById('campo-f-ate')||{}).value || '';
+  _CAMPO.filtro = { cidade:fCidade, status:fStatus, busca:fBusca, de:fDe, ate:fAte };
+
+  // Lojas com visita no período (se filtro de data ativo)
+  var lojasComVisitaNoPeriodo = null;
+  if(fDe || fAte){
+    lojasComVisitaNoPeriodo = {};
+    _CAMPO.visitas.forEach(function(v){
+      var d = (v.data||'').slice(0,10);
+      if(fDe && d < fDe) return;
+      if(fAte && d > fAte) return;
+      lojasComVisitaNoPeriodo[v.loja_id] = true;
+    });
+  }
+
+  return _CAMPO.lojas.filter(function(l){
+    if(!_campoPodeVerLoja(l)) return false;
+    if(fCidade){ var slug = l.cidade_slug || _campoSlug(l.cidade); if(slug !== fCidade) return false; }
+    if(fStatus && (l.status||'prospect') !== fStatus) return false;
+    if(lojasComVisitaNoPeriodo && !lojasComVisitaNoPeriodo[l.id]) return false;
+    if(fBusca){
+      var hay = ((l.nome||'')+' '+(l.bairro||'')+' '+(l.endereco||'')+' '+(l.cidade||'')).toLowerCase();
+      if(hay.indexOf(fBusca) < 0) return false;
+    }
+    return true;
+  });
+}
+
+function _campoAplicar(){
+  if(!_CAMPO.montado) return;
+  var lojas = _campoLojasFiltradas();
+  _campoRenderKpis(lojas);
+  _campoRenderLista(lojas);
+}
+
+function _campoRenderKpis(lojas){
+  var box = document.getElementById('campo-kpis'); if(!box) return;
+  var cont = { prospect:0, ativada:0, ativa:0, perdida:0 };
+  lojas.forEach(function(l){ var s=l.status||'prospect'; if(cont[s]!=null) cont[s]++; });
+  var f = _CAMPO.filtro;
+  var visitasPer = _CAMPO.visitas.filter(function(v){
+    var d=(v.data||'').slice(0,10);
+    if(f.de && d<f.de) return false;
+    if(f.ate && d>f.ate) return false;
+    if(f.cidade){ var slug=v.cidade_slug||_campoSlug(v.cidade); if(slug!==f.cidade) return false; }
+    return true;
+  }).length;
+  function card(num,label,cor){
+    return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center">'
+      + '<div style="font-size:22px;font-weight:800;color:'+cor+'">'+num+'</div>'
+      + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">'+label+'</div></div>';
+  }
+  box.innerHTML =
+      card(lojas.length,'Lojas','#0E7AB8')
+    + card(cont.prospect,'Prospect','#9AA3AF')
+    + card(cont.ativada,'Ativadas','#C98A00')
+    + card(cont.ativa,'Ativas','#1D9E75')
+    + card(cont.perdida,'Perdidas','#E24B4A')
+    + card(visitasPer, (f.de||f.ate)?'Visitas no período':'Visitas (total)','#5B4BB3');
+}
+
+function _campoRenderLista(lojas){
+  var box = document.getElementById('campo-lista'); if(!box) return;
+  var tit = document.getElementById('campo-lista-titulo'); if(tit) tit.textContent = 'Lojas ('+lojas.length+')';
+  if(!lojas.length){
+    box.innerHTML = '<div style="padding:34px;text-align:center;color:var(--text3);font-size:13px">Nenhuma loja aqui ainda. Clica em <b>+ Nova loja / visita</b> pra começar.</div>';
+    return;
+  }
+  box.innerHTML = lojas.map(_campoCard).join('');
+}
+
+function _campoVisitasDaLoja(lojaId){
+  return _CAMPO.visitas.filter(function(v){ return v.loja_id === lojaId; })
+    .sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
+}
+
+function _campoCard(l){
+  var m = _campoStMeta(l.status||'prospect');
+  var visitas = _campoVisitasDaLoja(l.id);
+  var ult = visitas[0];
+  var aberto = !!_CAMPO.exp[l.id];
+  var sub = [l.bairro, l.cidade].filter(Boolean).join(' · ');
+  var html = '<div style="border:1px solid var(--border);border-left:4px solid '+m.cor+';border-radius:10px;background:var(--card);margin-bottom:8px;overflow:hidden">'
+    + '<div style="display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer" onclick="_campoToggle(\''+l.id+'\')">'
+    +   '<div style="flex:1;min-width:0">'
+    +     '<div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.dot+' '+_campoEsc(l.nome)+'</div>'
+    +     '<div style="font-size:11px;color:var(--text3);margin-top:1px">'+_campoEsc(sub||'sem endereço')+(ult?' · última visita '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/')):'')+'</div>'
+    +   '</div>'
+    +   '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:12px;background:'+m.bg+';color:'+m.cor+'">'+m.label+'</span>'
+    +   '<span style="font-size:11px;color:var(--text3)">'+(visitas.length||0)+' 📝</span>'
+    +   '<span style="color:var(--text3);font-size:12px">'+(aberto?'▲':'▼')+'</span>'
+    + '</div>';
+  if(aberto){
+    html += '<div style="padding:4px 12px 12px;border-top:1px solid var(--border)">'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">'
+      +   '<button class="btn" onclick="_campoNovaVisita(\''+l.id+'\')" style="font-size:11px;background:#1AB8F0;color:#fff;border:none;padding:7px 12px;border-radius:7px;font-weight:700;cursor:pointer">+ Registrar visita</button>'
+      +   '<button class="btn btn-ghost" onclick="_campoEditarLoja(\''+l.id+'\')" style="font-size:11px;padding:7px 12px">✏️ Editar loja</button>'
+      +   _campoBotoesStatus(l)
+      + '</div>';
+    if(l.telefone) html += '<div style="font-size:11px;color:var(--text2);margin-bottom:4px">📞 '+_campoEsc(l.telefone)+'</div>';
+    if(l.obs) html += '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-style:italic">'+_campoEsc(l.obs)+'</div>';
+    if(!visitas.length){
+      html += '<div style="font-size:11px;color:var(--text3);padding:6px 0">Nenhuma visita registrada ainda.</div>';
+    } else {
+      html += '<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Histórico de visitas</div>';
+      html += visitas.map(function(v){
+        var res = { visitei:'Visitei', ativei:'✅ Ativei', sem_interesse:'❌ Sem interesse', retornar:'🔁 Retornar' }[v.resultado] || (v.resultado||'');
+        return '<div style="border-left:2px solid var(--border);padding:4px 0 6px 10px;margin-bottom:4px">'
+          + '<div style="font-size:11px;color:var(--text3)">'+_campoEsc((v.data||'').slice(0,10).split('-').reverse().join('/'))+' · '+_campoEsc(v.por_nome||'')+' · <b style="color:var(--text2)">'+_campoEsc(res)+'</b></div>'
+          + (v.relato?'<div style="font-size:12px;color:var(--text);margin-top:2px">'+_campoEsc(v.relato)+'</div>':'')
+          + (v.proxima_acao?'<div style="font-size:11px;color:#0E7AB8;margin-top:2px">▶ '+_campoEsc(v.proxima_acao)+'</div>':'')
+          + '</div>';
+      }).join('');
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _campoBotoesStatus(l){
+  var atual = l.status||'prospect';
+  return ['prospect','ativada','ativa','perdida'].filter(function(s){ return s!==atual; }).map(function(s){
+    var m=_campoStMeta(s);
+    return '<button onclick="_campoMudarStatus(\''+l.id+'\',\''+s+'\')" style="font-size:10px;padding:6px 10px;border:1px solid '+m.cor+';background:transparent;color:'+m.cor+';border-radius:7px;cursor:pointer;font-weight:700">'+m.dot+' '+m.label+'</button>';
+  }).join('');
+}
+
+function _campoToggle(id){ _CAMPO.exp[id] = !_CAMPO.exp[id]; _campoAplicar(); }
+
+async function _campoMudarStatus(id, novo){
+  var l = _CAMPO.lojas.find(function(x){ return x.id===id; }); if(!l) return;
+  var patch = { status:novo, updated_at:new Date().toISOString() };
+  if(novo==='ativada' && !l.ativada_em) patch.ativada_em = _campoHoje();
+  l.status = novo; if(patch.ativada_em) l.ativada_em = patch.ativada_em;
+  _campoAplicar();
+  try { await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:patch }); }
+  catch(e){ if(typeof toast==='function') toast('Não consegui mudar o status. Tenta de novo.','error'); }
+}
+
+/* ---------- MODAIS ---------- */
+function _campoFecharModal(){ var m=document.getElementById('campo-modal'); if(m) m.remove(); }
+function _campoModalShell(titulo, inner){
+  _campoFecharModal();
+  var h = '<div id="campo-modal" style="position:fixed;inset:0;background:rgba(11,37,66,.6);z-index:99998;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow:auto" onclick="if(event.target===this)_campoFecharModal()">'
+    + '<div style="background:var(--card,#fff);border-radius:14px;max-width:460px;width:100%;padding:20px;margin:auto" onclick="event.stopPropagation()">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><div style="font-family:Syne,sans-serif;font-size:16px;font-weight:700;color:var(--text)">'+titulo+'</div>'
+    + '<button onclick="_campoFecharModal()" style="background:none;border:none;font-size:20px;color:var(--text3);cursor:pointer">×</button></div>'
+    + inner + '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function _campoInputCss(){ return 'width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg,#fff);color:var(--text);font-size:13px;font-family:inherit;box-sizing:border-box;margin-bottom:10px'; }
+
+function _campoNovaLoja(prefill){
+  prefill = prefill || {};
+  var cidades = _campoListaCidades();
+  var optC = '<option value="">Escolha a cidade</option>' + cidades.map(function(n){
+    var sel = (prefill.cidade && _campoSlug(prefill.cidade)===_campoSlug(n)) ? ' selected' : '';
+    return '<option value="'+_campoEsc(n)+'"'+sel+'>'+_campoEsc(n)+'</option>';
+  }).join('');
+  var css=_campoInputCss();
+  var inner =
+      '<input id="campo-m-nome" placeholder="Nome da loja *" value="'+_campoEsc(prefill.nome||'')+'" style="'+css+'">'
+    + '<select id="campo-m-cidade" style="'+css+'">'+optC+'</select>'
+    + '<input id="campo-m-bairro" placeholder="Bairro" value="'+_campoEsc(prefill.bairro||'')+'" style="'+css+'">'
+    + '<input id="campo-m-endereco" placeholder="Endereço" value="'+_campoEsc(prefill.endereco||'')+'" style="'+css+'">'
+    + '<input id="campo-m-telefone" placeholder="Telefone / WhatsApp" value="'+_campoEsc(prefill.telefone||'')+'" style="'+css+'">'
+    + '<div style="display:flex;gap:8px">'
+    +   '<input id="campo-m-cnpj" placeholder="CNPJ/CPF" value="'+_campoEsc(prefill.cnpj||'')+'" style="'+css+'">'
+    +   '<input id="campo-m-segmento" placeholder="Segmento (ex: Pizzaria)" value="'+_campoEsc(prefill.segmento||'')+'" style="'+css+'">'
+    + '</div>'
+    + '<select id="campo-m-status" style="'+css+'">'
+    +   '<option value="prospect">⚪ Prospect (visitei, não ativou)</option>'
+    +   '<option value="ativada">🟡 Ativada (sem 1º pedido)</option>'
+    +   '<option value="ativa">🟢 Ativa (já pede)</option>'
+    +   '<option value="perdida">🔴 Perdida</option>'
+    + '</select>'
+    + '<textarea id="campo-m-obs" placeholder="Observação" style="'+css+';min-height:54px;resize:vertical">'+_campoEsc(prefill.obs||'')+'</textarea>'
+    + '<button onclick="_campoSalvarLojaForm()" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Salvar loja</button>';
+  _campoModalShell('Nova loja', inner);
+  if(prefill.origem) { var el=document.getElementById('campo-modal'); if(el) el.setAttribute('data-origem', prefill.origem); }
+}
+
+function _campoEditarLoja(id){
+  var l = _CAMPO.lojas.find(function(x){ return x.id===id; }); if(!l) return;
+  _campoNovaLoja(l);
+  var modal=document.getElementById('campo-modal');
+  if(modal) modal.setAttribute('data-edit', id);
+  var st=document.getElementById('campo-m-status'); if(st) st.value = l.status||'prospect';
+}
+
+async function _campoSalvarLojaForm(){
+  var nome=(document.getElementById('campo-m-nome')||{}).value||'';
+  if(!nome.trim()){ if(typeof toast==='function') toast('Põe o nome da loja.','error'); return; }
+  var cidade=(document.getElementById('campo-m-cidade')||{}).value||'';
+  var modal=document.getElementById('campo-modal');
+  var editId = modal ? modal.getAttribute('data-edit') : null;
+  var origem = (modal && modal.getAttribute('data-origem')) || 'manual';
+  var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null;
+  var status=(document.getElementById('campo-m-status')||{}).value||'prospect';
+  var base = {
+    nome:nome.trim(), cidade:cidade, cidade_slug:_campoSlug(cidade),
+    bairro:(document.getElementById('campo-m-bairro')||{}).value||'',
+    endereco:(document.getElementById('campo-m-endereco')||{}).value||'',
+    telefone:(document.getElementById('campo-m-telefone')||{}).value||'',
+    cnpj:(document.getElementById('campo-m-cnpj')||{}).value||'',
+    segmento:(document.getElementById('campo-m-segmento')||{}).value||'',
+    obs:(document.getElementById('campo-m-obs')||{}).value||'',
+    status:status, ativo:true, updated_at:new Date().toISOString()
+  };
+  if(status==='ativada') base.ativada_em = _campoHoje();
+  var loja;
+  if(editId){
+    loja = _CAMPO.lojas.find(function(x){ return x.id===editId; }) || {};
+    Object.assign(loja, base); loja.id = editId;
+  } else {
+    loja = Object.assign({ id:_campoUID('loja'), origem:origem,
+      criado_por:(u&&u.id)||'', criado_por_nome:(u&&(u.nome||u.email))||'', created_at:new Date().toISOString() }, base);
+    _CAMPO.lojas.unshift(loja);
+  }
+  _campoFecharModal();
+  _campoAplicar();
+  try { await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'upsert', dados:[loja] });
+        if(typeof toast==='function') toast('Loja salva.','success'); }
+  catch(e){ if(typeof toast==='function') toast('Não consegui salvar a loja. Tenta de novo.','error'); }
+}
+
+function _campoNovaVisita(lojaId){
+  var l = _CAMPO.lojas.find(function(x){ return x.id===lojaId; }); if(!l) return;
+  var css=_campoInputCss();
+  var inner =
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Loja: <b>'+_campoEsc(l.nome)+'</b></div>'
+    + '<label style="font-size:11px;color:var(--text3)">Data da visita</label>'
+    + '<input id="campo-v-data" type="date" value="'+_campoHoje()+'" style="'+css+'">'
+    + '<label style="font-size:11px;color:var(--text3)">Como terminou</label>'
+    + '<select id="campo-v-resultado" style="'+css+'">'
+    +   '<option value="visitei">Visitei (sem fechar)</option>'
+    +   '<option value="ativei">✅ Ativei a loja</option>'
+    +   '<option value="retornar">🔁 Preciso retornar</option>'
+    +   '<option value="sem_interesse">❌ Sem interesse</option>'
+    + '</select>'
+    + '<label style="font-size:11px;color:var(--text3)">Como foi a visita</label>'
+    + '<textarea id="campo-v-relato" placeholder="Conta como foi, o que conversou, objeções..." style="'+css+';min-height:80px;resize:vertical"></textarea>'
+    + '<label style="font-size:11px;color:var(--text3)">Próxima ação (opcional)</label>'
+    + '<input id="campo-v-proxima" placeholder="Ex: voltar semana que vem com proposta" style="'+css+'">'
+    + '<button onclick="_campoSalvarVisitaForm(\''+lojaId+'\')" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Salvar visita</button>';
+  _campoModalShell('Registrar visita', inner);
+}
+
+async function _campoSalvarVisitaForm(lojaId){
+  var l = _CAMPO.lojas.find(function(x){ return x.id===lojaId; }); if(!l) return;
+  var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null;
+  var resultado=(document.getElementById('campo-v-resultado')||{}).value||'visitei';
+  var v = {
+    id:_campoUID('vis'), loja_id:lojaId, loja_nome:l.nome,
+    cidade:l.cidade, cidade_slug:l.cidade_slug||_campoSlug(l.cidade),
+    data:(document.getElementById('campo-v-data')||{}).value||_campoHoje(),
+    resultado:resultado,
+    relato:(document.getElementById('campo-v-relato')||{}).value||'',
+    proxima_acao:(document.getElementById('campo-v-proxima')||{}).value||'',
+    por:(u&&u.id)||'', por_nome:(u&&(u.nome||u.email))||'', created_at:new Date().toISOString()
+  };
+  _CAMPO.visitas.unshift(v);
+  _CAMPO.exp[lojaId] = true;
+  // "Ativei" → loja vira amarela (ativada) se ainda não estava verde
+  var statusPatch = null;
+  if(resultado==='ativei' && (l.status==='prospect' || !l.status)){
+    l.status='ativada'; l.ativada_em=v.data;
+    statusPatch = { status:'ativada', ativada_em:v.data, updated_at:new Date().toISOString() };
+  } else if(resultado==='sem_interesse' && (l.status==='prospect' || !l.status)){
+    // mantém prospect; sem auto-mudança
+  }
+  _campoFecharModal();
+  _campoAplicar();
+  try {
+    await _syncEscrever({ tabela:'prospeccao_visitas', operacao:'upsert', dados:[v] });
+    if(statusPatch) await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(lojaId), patch:statusPatch });
+    if(typeof toast==='function') toast('Visita registrada.','success');
+  } catch(e){ if(typeof toast==='function') toast('Não consegui salvar a visita. Tenta de novo.','error'); }
+}
+
+/* ---------- IMPORTAR DA MACHINE (cadastros recentes) ---------- */
+async function _campoImportarAbrir(){
+  var box=document.getElementById('campo-import'); if(!box) return;
+  if(box.style.display==='block'){ box.style.display='none'; return; }
+  box.style.display='block';
+  var cidade=(document.getElementById('campo-f-cidade')||{}).value||'';
+  if(!cidade){
+    box.innerHTML='<div style="border:1px dashed var(--border);border-radius:10px;padding:14px;font-size:12px;color:var(--text2)">Escolha uma <b>cidade</b> no filtro acima pra puxar os cadastros recentes dela da Machine.</div>';
+    return;
+  }
+  box.innerHTML='<div style="padding:14px;font-size:12px;color:var(--text3)">Puxando cadastros recentes da Machine...</div>';
+  try {
+    var r = await fetch(SUPA_URL+'/rest/v1/rpc/clientes_onboarding',{
+      method:'POST', headers:Object.assign({},supaHeaders(),{'Content-Type':'application/json'}),
+      body:JSON.stringify({ p_cidade_slug:cidade, p_dias_max_cad:30 })
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    var rows = await r.json();
+    if(!Array.isArray(rows) || !rows.length){
+      box.innerHTML='<div style="border:1px dashed var(--border);border-radius:10px;padding:14px;font-size:12px;color:var(--text2)">Nenhum cadastro novo (últimos 30 dias) pra essa cidade no espelho da Machine. Isso é forte em Campo Grande; no Nordeste depende do sync.</div>';
+      return;
+    }
+    window._campoImportCache = rows;
+    var jaTenho = {}; _CAMPO.lojas.forEach(function(l){ jaTenho[(l.nome||'').trim().toLowerCase()]=true; });
+    box.innerHTML = '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--card)">'
+      + '<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">Cadastros novos na Machine ('+rows.length+')</div>'
+      + rows.slice(0,60).map(function(row,i){
+          var nome = row.nome || row.empresa || row.nome_empresa || row.nome_passageiro || ('Empresa '+(i+1));
+          var tel = row.telefone || row.tel || '';
+          var ja = jaTenho[(nome||'').trim().toLowerCase()];
+          return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">'
+            + '<div style="flex:1;min-width:0"><div style="font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_campoEsc(nome)+'</div>'
+            + (tel?'<div style="font-size:10px;color:var(--text3)">'+_campoEsc(tel)+'</div>':'')+'</div>'
+            + (ja?'<span style="font-size:10px;color:#1D9E75;font-weight:700">já na lista</span>'
+                 :'<button onclick="_campoImportarAdd('+i+')" style="font-size:10px;padding:5px 10px;border:1px solid #0E7AB8;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ prospectar</button>')
+            + '</div>';
+        }).join('')
+      + '</div>';
+  } catch(e){
+    box.innerHTML='<div style="border:1px dashed #E24B4A;border-radius:10px;padding:14px;font-size:12px;color:#E24B4A">Não consegui puxar da Machine agora ('+_campoEsc(e.message)+'). O cruzamento com a Machine fica 100% na Parte 2.</div>';
+  }
+}
+function _campoImportarAdd(i){
+  var rows = window._campoImportCache || [];
+  var row = rows[i]; if(!row) return;
+  var cidadeSel=(document.getElementById('campo-f-cidade')||{}).value||'';
+  var cidadeNome = _campoListaCidades().find(function(n){ return _campoSlug(n)===cidadeSel; }) || '';
+  _campoNovaLoja({
+    nome: row.nome || row.empresa || row.nome_empresa || row.nome_passageiro || '',
+    cidade: cidadeNome,
+    bairro: row.bairro || '',
+    endereco: row.endereco || '',
+    telefone: row.telefone || row.tel || '',
+    origem: 'machine'
+  });
+}
+</script>
 
 <!-- ==================== RELATÓRIOS ==================== -->
 <div class="page" id="pg-relatorios">

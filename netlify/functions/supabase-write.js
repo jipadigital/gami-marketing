@@ -39,14 +39,16 @@ const TABELAS_PERMITIDAS = [
   'configuracoes',     // configurações do dashboard
   'reconhecimentos',   // reconhecimentos da semana
   'badges_desbloqueadas', // conquistas/badges dos colaboradores (gamificação)
-  'notificacoes'       // notificações (delegação avisa o delegante, etc.)
+  'notificacoes',      // notificações (delegação avisa o delegante, etc.)
+  'prospeccao_lojas',  // CRM de campo: lojas prospectadas/ativadas (Carlos + gestores)
+  'prospeccao_visitas' // CRM de campo: log de visitas
 ];
 
 // 🆕 Tabelas de COLABORAÇÃO: qualquer usuário com SESSÃO VÁLIDA pode gravar aqui
 // (não precisa ser super_admin). Necessário pra fluxos entre colaboradores, ex.:
 // o Mazinho concluir uma tarefa que a Suzi delegou (UPDATE em tarefas) e avisá-la
 // (INSERT em notificacoes). Fora dessas, segue só super_admin.
-const TABELAS_COLAB = ['tarefas', 'notificacoes'];
+const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospeccao_visitas'];
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
