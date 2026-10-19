@@ -1,3 +1,4 @@
+<!-- v32.53 - MURAL: gravacao de voz (audio tipo WhatsApp). Botao 🎤 no compositor grava com MediaRecorder (teto 90s), mostra o cronometro, da pra Parar/Cancelar e ouvir a previa antes de postar; posta so com audio tb. Sobe pro Supabase Storage (bucket mural-audios) e guarda a URL no recado (coluna audio); se o bucket nao existir, cai pra data URL inline. Player com preload=none (so baixa quando toca). RODAR docs/mural-audio.sql (coluna + bucket + policies). - 19/10/2026 -->
 <!-- v32.52 - PROSPECCAO EM CAMPO: as bolinhas de quem CADASTROU E NUNCA PEDIU (fantasma) mudaram de cinza (#8A929E) para PRETO (#141414) no mapa, na legenda/lista e no numero do KPI. Antes o cinza se confundia com o fundo do mapa; preto destaca. Opacidade do ponto fantasma subiu p/ 0.95 pra ler solido. - 19/10/2026 -->
 <!-- v32.51 - PROSPECCAO EM CAMPO / ROTA (fix de bug no teste): o salvamento usava UM timer de debounce compartilhado, entao (a) editar a rota A e criar/editar a rota B em menos de 0,5s cancelava o save da A (perdia a parada que tinha acabado de adicionar); (b) adicionar numa rota e apagar ela logo em seguida ressuscitava a rota (o save pendente com ativa:true rodava depois do patch ativa:false). Agora o save e por FILA por id da rota (salva todas as que mudaram) e o apagar tira a rota da fila. Nenhuma perda. Testado: multi-rota, apagar, troca de gestor. - 19/10/2026 -->
 <!-- v32.50 - PROSPECCAO EM CAMPO / ROTA: (1) IMPRIMIR / PDF - botao gera folha da rota (window.print, da pra imprimir ou salvar PDF) com numero, nome, status, endereco, telefone, CNPJ, coordenada, observacao e espaco pra anotar; checkbox marcado nas ja visitadas. (2) FINALIZAR E ENVIAR AO GESTOR - Carlos/gerencia montam a rota de um gestor e clicam "Finalizar e enviar": marca status=enviada e dispara notificacao pro gestor (criarNotificacao tipo rota). Status "Rascunho/Enviada/Recebida" aparece no painel. Novas colunas em prospeccao_rotas (status/enviada_em/por) - RODAR docs/prospeccao-rotas.sql de novo (tem ALTER IF NOT EXISTS). - 19/10/2026 -->
@@ -50416,7 +50417,7 @@ function saveRecados(list){ try{ localStorage.setItem('gami_recados_v1', JSON.st
    localStorage 'gami_recados_v1' vira só cache de render; a fonte da verdade é a tabela. */
 function _recadosMapDoSupa(r){
   return { id:r.id, texto:r.texto, data:r.data||r.created_at, autor:r.autor, autorId:r.autor_id, autorFoto:r.autor_foto,
-           reacoes:(r.reacoes && typeof r.reacoes==='object')?r.reacoes:{}, imagem:r.imagem||'', gif:r.gif||'',
+           reacoes:(r.reacoes && typeof r.reacoes==='object')?r.reacoes:{}, imagem:r.imagem||'', gif:r.gif||'', audio:r.audio||'',
            respostas: Array.isArray(r.respostas)?r.respostas:[] };
 }
 async function _recadosCarregarSupa(){
@@ -50439,7 +50440,7 @@ async function _recadosSalvarSupa(recado){
     if(typeof SUPA_URL === 'undefined' || !recado) return;
     var hdr = Object.assign({}, supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' });
     var base = { id:recado.id, texto:recado.texto, data:recado.data, autor:recado.autor, autor_id:recado.autorId, autor_foto:recado.autorFoto };
-    var full = Object.assign({}, base, { reacoes:recado.reacoes||{}, imagem:recado.imagem||null, gif:recado.gif||null, respostas:Array.isArray(recado.respostas)?recado.respostas:[] });
+    var full = Object.assign({}, base, { reacoes:recado.reacoes||{}, imagem:recado.imagem||null, gif:recado.gif||null, audio:recado.audio||null, respostas:Array.isArray(recado.respostas)?recado.respostas:[] });
     var r = await fetch(SUPA_URL + '/rest/v1/recados', { method:'POST', headers:hdr, body: JSON.stringify([full]) });
     if(!r.ok){
       // v32.13: colunas novas (reacoes/imagem/gif) ainda não criadas no banco → posta só o básico,
@@ -50518,8 +50519,9 @@ function salvarRecadoInline(){
   var input = document.getElementById('mural-input');
   if(!input) return;
   var texto = (input.value||'').trim();
-  // v32.13: dá pra postar só com foto/GIF (sem texto).
-  if(!texto && !_muralImagemPendente && !_muralGifPendente){ toast('Escreva algo ou anexe uma foto/GIF', 'warn'); return; }
+  // v32.13: dá pra postar só com foto/GIF/áudio (sem texto).
+  if(!texto && !_muralImagemPendente && !_muralGifPendente && !_muralAudioPendente){ toast('Escreva algo ou anexe foto, GIF ou áudio', 'warn'); return; }
+  if(_muralMediaRec && _muralMediaRec.state==='recording'){ toast('Pare a gravação antes de postar', 'warn'); return; }
   if(texto.length > 500) texto = texto.slice(0, 500);
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var autor = u ? u.nome : 'Anônimo';
@@ -50536,6 +50538,7 @@ function salvarRecadoInline(){
     reacoes:{},
     imagem:_muralImagemPendente||'',
     gif:_muralGifPendente||'',
+    audio:_muralAudioPendente||'',
     respostas:[]
   });
   if(lista.length > 80) lista = lista.slice(0,80); // v32.18: era 12 (recados sumiam); 80 cobre 2 dias
@@ -50545,6 +50548,7 @@ function salvarRecadoInline(){
   try { if(autorId && typeof atribuirPontos==='function') atribuirPontos(autorId, 'comentou_mural_de'); } catch(e){}
   input.value = '';
   _muralImagemPendente=''; _muralGifPendente=''; _muralRenderAnexoPreview();
+  _muralAudioPendente=''; _muralRenderAudioPreview();
   var counter = document.getElementById('mural-counter');
   if(counter) counter.textContent = '0 / 500';
   _muralFecharMencao();
@@ -50825,6 +50829,84 @@ function _muralRenderAnexoPreview(){
 }
 function _muralRemoverAnexo(){ _muralImagemPendente=''; _muralGifPendente=''; _muralRenderAnexoPreview(); }
 
+/* 🎤 ÁUDIO (voz tipo WhatsApp): grava com MediaRecorder, sobe pro Storage (bucket
+   mural-audios) e guarda a URL no recado. Se o Storage falhar (bucket não criado),
+   cai pra data URL inline na mesma coluna `audio`, pra nunca quebrar. */
+var _muralMediaRec=null, _muralAudioChunks=[], _muralAudioStream=null, _muralAudioPendente='', _muralAudioMime='', _muralAudioTimer=null, _muralAudioSecs=0;
+var _MURAL_AUDIO_MAX=90; // teto de segundos por áudio
+function _muralAudioSuportado(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
+function _muralFmtSeg(s){ var m=Math.floor(s/60), r=s%60; return m+':'+(r<10?'0':'')+r; }
+async function _muralAudioToggle(){
+  if(_muralMediaRec && _muralMediaRec.state==='recording'){ _muralAudioParar(); return; }
+  if(!_muralAudioSuportado()){ if(typeof toast==='function') toast('Seu navegador não grava áudio aqui','warn'); return; }
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    _muralAudioStream=stream; _muralAudioChunks=[]; _muralAudioPendente='';
+    var mr;
+    try { mr = new MediaRecorder(stream, { mimeType:'audio/webm;codecs=opus' }); }
+    catch(e){ try{ mr = new MediaRecorder(stream, { mimeType:'audio/mp4' }); }catch(e2){ mr = new MediaRecorder(stream); } }
+    _muralMediaRec=mr; _muralAudioMime=mr.mimeType||'audio/webm';
+    mr.ondataavailable=function(ev){ if(ev.data && ev.data.size) _muralAudioChunks.push(ev.data); };
+    mr.onstop=function(){
+      try{ (_muralAudioStream.getTracks()||[]).forEach(function(t){ t.stop(); }); }catch(e){}
+      clearInterval(_muralAudioTimer); _muralAudioTimer=null;
+      var blob=new Blob(_muralAudioChunks, { type:_muralAudioMime });
+      _muralMediaRec=null;
+      if(!blob.size){ _muralAudioUIReset(); return; }
+      _muralAudioProcessar(blob);
+    };
+    mr.start();
+    _muralAudioSecs=0;
+    _muralAudioTimer=setInterval(function(){ _muralAudioSecs++; _muralAudioUIGravando(); if(_muralAudioSecs>=_MURAL_AUDIO_MAX) _muralAudioParar(); }, 1000);
+    _muralAudioUIGravando();
+  } catch(e){ if(typeof toast==='function') toast('Não consegui acessar o microfone (permita o acesso)','warn'); }
+}
+function _muralAudioParar(){ try{ if(_muralMediaRec && _muralMediaRec.state==='recording') _muralMediaRec.stop(); }catch(e){} }
+function _muralAudioCancelar(){
+  try{ if(_muralMediaRec && _muralMediaRec.state==='recording') _muralMediaRec.stop(); }catch(e){}
+  _muralAudioChunks=[]; _muralAudioPendente=''; _muralAudioUIReset();
+}
+function _muralAudioUIGravando(){
+  var el=document.getElementById('mural-audio-ui'); if(!el) return;
+  el.style.display='flex';
+  el.innerHTML='<span style="color:#E24B4A;font-size:14px">●</span>'
+    + '<span style="font-size:12px;color:#E24B4A;font-weight:700">Gravando '+_muralFmtSeg(_muralAudioSecs)+' / '+_muralFmtSeg(_MURAL_AUDIO_MAX)+'</span>'
+    + '<button type="button" onclick="_muralAudioParar()" style="margin-left:auto;padding:5px 12px;border:none;border-radius:7px;background:#1D9E75;color:#fff;font-size:11px;font-weight:700;cursor:pointer">✓ Parar</button>'
+    + '<button type="button" onclick="_muralAudioCancelar()" style="padding:5px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;font-size:11px;cursor:pointer">Cancelar</button>';
+}
+function _muralAudioUIReset(){ var el=document.getElementById('mural-audio-ui'); if(el){ el.style.display='none'; el.innerHTML=''; } }
+function _muralAudioProcessar(blob){
+  _muralAudioUIReset();
+  var prev=document.getElementById('mural-audio-preview');
+  if(prev){ prev.style.display='block'; prev.innerHTML='<div style="font-size:11px;color:var(--text3);margin-top:8px">⏳ preparando o áudio...</div>'; }
+  _muralAudioUpload(blob, function(url){ _muralAudioPendente=url||''; _muralRenderAudioPreview(); if(!url && typeof toast==='function') toast('Não consegui preparar o áudio','warn'); });
+}
+function _muralAudioExt(mime){ if(/mp4|m4a|aac/i.test(mime||'')) return 'm4a'; if(/ogg/i.test(mime||'')) return 'ogg'; return 'webm'; }
+function _muralAudioUpload(blob, cb){
+  function inline(){ var fr=new FileReader(); fr.onload=function(){ cb(fr.result); }; fr.onerror=function(){ cb(''); }; fr.readAsDataURL(blob); }
+  try {
+    if(typeof SUPA_URL==='undefined' || typeof SUPA_KEY==='undefined'){ inline(); return; }
+    var name=Date.now()+'_'+Math.random().toString(36).slice(2,8)+'.'+_muralAudioExt(blob.type||_muralAudioMime);
+    fetch(SUPA_URL+'/storage/v1/object/mural-audios/'+name, {
+      method:'POST', headers:{ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+SUPA_KEY, 'Content-Type':(blob.type||'audio/webm'), 'x-upsert':'true' }, body:blob
+    }).then(function(r){
+      if(r.ok){ cb(SUPA_URL+'/storage/v1/object/public/mural-audios/'+name); }
+      else { inline(); } // bucket/policy não configurado → cai pra inline
+    }).catch(function(){ inline(); });
+  } catch(e){ inline(); }
+}
+function _muralRenderAudioPreview(){
+  var el=document.getElementById('mural-audio-preview'); if(!el) return;
+  if(!_muralAudioPendente){ el.style.display='none'; el.innerHTML=''; return; }
+  el.style.display='block';
+  el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-top:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:6px 10px">'
+    + '<span style="font-size:16px">🎤</span>'
+    + '<audio controls src="'+_muralAudioPendente+'" style="height:34px;max-width:200px;flex:1;min-width:0"></audio>'
+    + '<button type="button" onclick="_muralAudioCancelar()" title="Remover áudio" style="width:22px;height:22px;border-radius:50%;border:none;background:#E24B4A;color:#fff;cursor:pointer;font-size:13px;line-height:1">×</button>'
+  + '</div>';
+}
+window._muralAudioToggle=_muralAudioToggle; window._muralAudioParar=_muralAudioParar; window._muralAudioCancelar=_muralAudioCancelar;
+
 /* GIF: seletor com busca no Giphy. Guarda a URL do GIF (não ocupa o banco). */
 function _muralAbrirGifResp(recadoId){ _muralAbrirGif('resp:'+recadoId); }
 function _muralAbrirGif(ctx){
@@ -50917,11 +50999,14 @@ function renderRecados(){
         + '<div id="mural-mencao-dropdown" style="display:none;position:absolute;left:58px;right:14px;background:white;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(11,37,66,.15);z-index:100;max-height:280px;overflow-y:auto;margin-top:4px"></div>'
         + _muralEmojiPaletaHTML()
         + '<div id="mural-anexo-preview" style="display:none"></div>'
+        + '<div id="mural-audio-ui" style="display:none;align-items:center;gap:8px;margin-top:8px;background:#FDECEC;border:1px solid #F5B5B5;border-radius:10px;padding:7px 10px"></div>'
+        + '<div id="mural-audio-preview" style="display:none"></div>'
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:8px;flex-wrap:wrap">'
           + '<span id="mural-counter" style="font-size:10px;color:var(--text3)">0 / 500</span>'
           + '<div style="display:flex;gap:6px;align-items:center">'
             + '<button type="button" onclick="_muralToggleEmoji()" title="Inserir emoji" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:14px;cursor:pointer;line-height:1">😊</button>'
             + '<button type="button" onclick="_muralEscolherFoto()" title="Anexar foto" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:14px;cursor:pointer;line-height:1">📷</button>'
+            + '<button type="button" onclick="_muralAudioToggle()" title="Gravar áudio" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:14px;cursor:pointer;line-height:1">🎤</button>'
             + '<button type="button" onclick="_muralAbrirGif()" title="Buscar GIF" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:white;font-size:11px;font-weight:700;cursor:pointer;line-height:1;color:#854F0B">GIF</button>'
             + '<button onclick="salvarRecadoInline()" style="padding:6px 14px;border:none;border-radius:7px;background:#854F0B;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📌 Postar</button>'
           + '</div>'
@@ -50962,6 +51047,7 @@ function renderRecados(){
           + (textoFmt ? '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>' : '')
           + (r.imagem ? '<div style="margin-top:8px"><img src="'+r.imagem+'" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block" alt="foto"></div>' : '')
           + (r.gif ? '<div style="margin-top:8px"><img src="'+r.gif+'" style="max-width:100%;max-height:280px;border-radius:8px;display:block" alt="gif"></div>' : '')
+          + (r.audio ? '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;max-width:320px"><span style="font-size:16px">🎤</span><audio controls preload="none" src="'+r.audio+'" style="height:34px;flex:1;min-width:0"></audio></div>' : '')
           + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+_muralReacoesHTML(r)+'</div>'
           + _muralRespostasHTML(r)
         + '</div>'
