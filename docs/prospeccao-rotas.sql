@@ -14,15 +14,25 @@
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS prospeccao_rotas (
-  id           text PRIMARY KEY,
-  gestor_id    text NOT NULL,
-  gestor_nome  text,
-  nome         text,
-  paradas      jsonb NOT NULL DEFAULT '[]'::jsonb,
-  ativa        boolean NOT NULL DEFAULT true,
-  criada_em    timestamptz NOT NULL DEFAULT now(),
-  updated_at   timestamptz NOT NULL DEFAULT now()
+  id                text PRIMARY KEY,
+  gestor_id         text NOT NULL,
+  gestor_nome       text,
+  nome              text,
+  paradas           jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ativa             boolean NOT NULL DEFAULT true,
+  status            text NOT NULL DEFAULT 'rascunho',  -- rascunho | enviada
+  enviada_em        timestamptz,
+  enviada_por       text,
+  enviada_por_nome  text,
+  criada_em         timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now()
 );
+
+-- Se a tabela já existia (versão anterior sem estas colunas):
+ALTER TABLE prospeccao_rotas ADD COLUMN IF NOT EXISTS status           text NOT NULL DEFAULT 'rascunho';
+ALTER TABLE prospeccao_rotas ADD COLUMN IF NOT EXISTS enviada_em       timestamptz;
+ALTER TABLE prospeccao_rotas ADD COLUMN IF NOT EXISTS enviada_por      text;
+ALTER TABLE prospeccao_rotas ADD COLUMN IF NOT EXISTS enviada_por_nome text;
 
 CREATE INDEX IF NOT EXISTS idx_rotas_gestor ON prospeccao_rotas (gestor_id, ativa);
 
