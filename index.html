@@ -1,3 +1,4 @@
+<!-- v32.51 - PROSPECCAO EM CAMPO / ROTA (fix de bug no teste): o salvamento usava UM timer de debounce compartilhado, entao (a) editar a rota A e criar/editar a rota B em menos de 0,5s cancelava o save da A (perdia a parada que tinha acabado de adicionar); (b) adicionar numa rota e apagar ela logo em seguida ressuscitava a rota (o save pendente com ativa:true rodava depois do patch ativa:false). Agora o save e por FILA por id da rota (salva todas as que mudaram) e o apagar tira a rota da fila. Nenhuma perda. Testado: multi-rota, apagar, troca de gestor. - 19/10/2026 -->
 <!-- v32.50 - PROSPECCAO EM CAMPO / ROTA: (1) IMPRIMIR / PDF - botao gera folha da rota (window.print, da pra imprimir ou salvar PDF) com numero, nome, status, endereco, telefone, CNPJ, coordenada, observacao e espaco pra anotar; checkbox marcado nas ja visitadas. (2) FINALIZAR E ENVIAR AO GESTOR - Carlos/gerencia montam a rota de um gestor e clicam "Finalizar e enviar": marca status=enviada e dispara notificacao pro gestor (criarNotificacao tipo rota). Status "Rascunho/Enviada/Recebida" aparece no painel. Novas colunas em prospeccao_rotas (status/enviada_em/por) - RODAR docs/prospeccao-rotas.sql de novo (tem ALTER IF NOT EXISTS). - 19/10/2026 -->
 <!-- v32.49 - PROSPECCAO EM CAMPO / ROTA: (1) MULTIPLAS ROTAS por gestor - seletor pra trocar entre rotas + botao "Nova rota" (nomeia) + renomear + apagar. (2) Clicar na empresa "Rota" adiciona na rota ATIVA (cria uma na hora se nao tiver). (3) OBSERVACAO por parada: o gestor anota como foi / o que fazer (loja fechada, falar com fulano, retornar terca...) no botao 📝, e ao marcar "visitei" pergunta se quer anotar. Tudo salvo no banco (prospeccao_rotas). - 19/10/2026 -->
 <!-- v32.48 - PROSPECCAO EM CAMPO: ROTA DE VISITAS. Cada gestor monta a lista de empresas que vai visitar (botao "Rota" no mapa/popup/lista e na ficha "Acompanhar"), o sistema otimiza a ordem (vizinho mais proximo a partir do GPS, ajustavel com setas) e abre a rota toda no Google Maps ou navega pra proxima parada no Waze, marcando "visitei" em cada uma. A rota pertence ao GESTOR (quem visita) e fica salva no banco por gestor (tabela prospeccao_rotas, escrita pela rota segura). O Carlos/diretoria/gerencia escolhem o gestor no seletor "Montar rota do gestor" e montam/editam a rota dele; o gestor abre e edita a sua. RODAR docs/prospeccao-rotas.sql. - 19/10/2026 -->
@@ -6913,6 +6914,7 @@ function _campoRotaApagar(){
   if(!_CAMPO.rota) return;
   if(!confirm('Apagar a rota "'+(_CAMPO.rota.nome||'')+'"? As paradas serão perdidas.')) return;
   var id=_CAMPO.rota.id;
+  if(_campoRotaSaveQ) delete _campoRotaSaveQ[id]; // cancela save pendente (senão ressuscitava a rota com ativa:true)
   try { _syncEscrever({ tabela:'prospeccao_rotas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:{ ativa:false, updated_at:new Date().toISOString() } }); } catch(e){}
   _CAMPO.rotasList=(_CAMPO.rotasList||[]).filter(function(x){ return x.id!==id; });
   _CAMPO.rota=_CAMPO.rotasList[0]||null;
@@ -6937,21 +6939,26 @@ async function _campoFetchRota(donoId, donoNome){
     }
   } catch(e){ /* sem rota salva ainda */ }
 }
-var _campoRotaSaveT=null;
+var _campoRotaSaveT=null, _campoRotaSaveQ={};
 function _campoRotaSalvar(){
   if(!_CAMPO.rota) return;
   _CAMPO.rota.updated_at = new Date().toISOString();
-  clearTimeout(_campoRotaSaveT);
-  var row = {
+  // fila por ID: editar/trocar várias rotas no mesmo intervalo não perde nenhuma
+  // (antes um clearTimeout cancelava o save da rota anterior).
+  _campoRotaSaveQ[_CAMPO.rota.id] = {
     id:_CAMPO.rota.id, gestor_id:_CAMPO.rota.gestor_id, gestor_nome:_CAMPO.rota.gestor_nome,
-    nome:_CAMPO.rota.nome, paradas:_CAMPO.rota.paradas, ativa:true,
+    nome:_CAMPO.rota.nome, paradas:(_CAMPO.rota.paradas||[]).slice(), ativa:true,
     status:_CAMPO.rota.status||'rascunho', enviada_em:_CAMPO.rota.enviada_em||null,
     enviada_por:_CAMPO.rota.enviada_por||null, enviada_por_nome:_CAMPO.rota.enviada_por_nome||null,
     criada_em:_CAMPO.rota.criada_em || new Date().toISOString(), updated_at:_CAMPO.rota.updated_at
   };
+  clearTimeout(_campoRotaSaveT);
   _campoRotaSaveT = setTimeout(function(){
-    try { _syncEscrever({ tabela:'prospeccao_rotas', operacao:'upsert', dados:[row] }); }
-    catch(e){ if(typeof toast==='function') toast('Não consegui salvar a rota. Tenta de novo.','error'); }
+    var q=_campoRotaSaveQ; _campoRotaSaveQ={};
+    Object.keys(q).forEach(function(id){
+      try { _syncEscrever({ tabela:'prospeccao_rotas', operacao:'upsert', dados:[q[id]] }); }
+      catch(e){ if(typeof toast==='function') toast('Não consegui salvar a rota. Tenta de novo.','error'); }
+    });
   }, 500);
 }
 function _campoRotaAddStop(stop){
