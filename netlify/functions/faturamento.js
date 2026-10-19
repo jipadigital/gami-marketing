@@ -61,14 +61,22 @@ exports.handler = async function(event){
     const autorizado = ehSuper || ALLOWLIST.indexOf(callerId) >= 0;
     if(!autorizado) return { statusCode: 403, headers: cors, body: JSON.stringify({ ok:false, erro:'Sem permissão para ver o faturamento' }) };
 
-    // 3) Entrega os dados (service key, bypassa RLS). MV pré-agregada por cidade/mês.
-    const rD = await fetch(SUPA_URL + '/rest/v1/mv_faturamento_mensal?select=cidade_slug,ano_mes,faturamento,pedidos&order=ano_mes.asc', { headers: svc() });
-    if(!rD.ok){
-      const t = await rD.text().catch(function(){ return ''; });
-      return { statusCode: 502, headers: cors, body: JSON.stringify({ ok:false, erro:'Falha ao ler faturamento. Rodou a MV? ' + t.slice(0,160) }) };
+    // 3) Entrega os dados (service key, bypassa RLS). MV diária, paginada (PostgREST corta em 1000).
+    let dados = [];
+    for(let off = 0; off < 40000; off += 1000){
+      const rD = await fetch(SUPA_URL + '/rest/v1/mv_faturamento_diario?select=cidade_slug,dia,faturamento,pedidos&order=dia.asc', {
+        headers: svc({ 'Range-Unit':'items', 'Range': off + '-' + (off + 999) })
+      });
+      if(!rD.ok){
+        if(off === 0){ const t = await rD.text().catch(function(){ return ''; }); return { statusCode: 502, headers: cors, body: JSON.stringify({ ok:false, erro:'Falha ao ler faturamento. Rodou a MV? ' + t.slice(0,160) }) }; }
+        break;
+      }
+      const pg = await rD.json();
+      if(!Array.isArray(pg) || !pg.length) break;
+      dados = dados.concat(pg);
+      if(pg.length < 1000) break;
     }
-    const dados = await rD.json();
-    return { statusCode: 200, headers: cors, body: JSON.stringify({ ok:true, dados: Array.isArray(dados)?dados:[] }) };
+    return { statusCode: 200, headers: cors, body: JSON.stringify({ ok:true, dados: dados }) };
 
   } catch(err){
     return { statusCode: 500, headers: cors, body: JSON.stringify({ ok:false, erro: err.message }) };
