@@ -1,3 +1,4 @@
+<!-- v32.52 - PROSPECCAO EM CAMPO: as bolinhas de quem CADASTROU E NUNCA PEDIU (fantasma) mudaram de cinza (#8A929E) para PRETO (#141414) no mapa, na legenda/lista e no numero do KPI. Antes o cinza se confundia com o fundo do mapa; preto destaca. Opacidade do ponto fantasma subiu p/ 0.95 pra ler solido. - 19/10/2026 -->
 <!-- v32.51 - PROSPECCAO EM CAMPO / ROTA (fix de bug no teste): o salvamento usava UM timer de debounce compartilhado, entao (a) editar a rota A e criar/editar a rota B em menos de 0,5s cancelava o save da A (perdia a parada que tinha acabado de adicionar); (b) adicionar numa rota e apagar ela logo em seguida ressuscitava a rota (o save pendente com ativa:true rodava depois do patch ativa:false). Agora o save e por FILA por id da rota (salva todas as que mudaram) e o apagar tira a rota da fila. Nenhuma perda. Testado: multi-rota, apagar, troca de gestor. - 19/10/2026 -->
 <!-- v32.50 - PROSPECCAO EM CAMPO / ROTA: (1) IMPRIMIR / PDF - botao gera folha da rota (window.print, da pra imprimir ou salvar PDF) com numero, nome, status, endereco, telefone, CNPJ, coordenada, observacao e espaco pra anotar; checkbox marcado nas ja visitadas. (2) FINALIZAR E ENVIAR AO GESTOR - Carlos/gerencia montam a rota de um gestor e clicam "Finalizar e enviar": marca status=enviada e dispara notificacao pro gestor (criarNotificacao tipo rota). Status "Rascunho/Enviada/Recebida" aparece no painel. Novas colunas em prospeccao_rotas (status/enviada_em/por) - RODAR docs/prospeccao-rotas.sql de novo (tem ALTER IF NOT EXISTS). - 19/10/2026 -->
 <!-- v32.49 - PROSPECCAO EM CAMPO / ROTA: (1) MULTIPLAS ROTAS por gestor - seletor pra trocar entre rotas + botao "Nova rota" (nomeia) + renomear + apagar. (2) Clicar na empresa "Rota" adiciona na rota ATIVA (cria uma na hora se nao tiver). (3) OBSERVACAO por parada: o gestor anota como foi / o que fazer (loja fechada, falar com fulano, retornar terca...) no botao 📝, e ao marcar "visitei" pergunta se quer anotar. Tudo salvo no banco (prospeccao_rotas). - 19/10/2026 -->
@@ -6111,7 +6112,7 @@ var _CAMPO_STATUS = {
   ativa:    { cor:'#1D9E75', bg:'#E4F6EF', label:'Ativa',     dot:'🟢', desc:'já está pedindo' },
   perdida:  { cor:'#E24B4A', bg:'#FDECEC', label:'Perdida',   dot:'🔴', desc:'pedia e parou' },
   // só pra base da Machine: cadastrou na Machine e nunca fez pedido (fantasma)
-  fantasma: { cor:'#8A929E', bg:'#EEF0F2', label:'Nunca pediu', dot:'👻', desc:'cadastrou na Machine e nunca pediu' }
+  fantasma: { cor:'#141414', bg:'#EEF0F2', label:'Nunca pediu', dot:'👻', desc:'cadastrou na Machine e nunca pediu' }
 };
 function _campoStMeta(s){ return _CAMPO_STATUS[s] || _CAMPO_STATUS.prospect; }
 function _campoEsc(s){ return (typeof tfEsc==='function') ? tfEsc(s==null?'':String(s)) : String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -6357,7 +6358,7 @@ function _campoRenderKpis(lojas, emp){
     + card((cont.perdida+empPerdida),'🔴 Pararam','#E24B4A')
     + card(cont.ativada,'🟡 Ativadas','#C98A00')
     + card(cont.prospect,'⚪ Prospect','#9AA3AF')
-    + card(empFantasma,'👻 Nunca pediram','#8A929E')
+    + card(empFantasma,'👻 Nunca pediram','#141414')
     + card(emp.length,'Base Machine','#0E7AB8')
     + card(lojas.length,'Em prospecção','#5B4BB3');
 }
@@ -7739,7 +7740,7 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     var m=_campoStMeta(e._status||'ativa');
     var ehF=e._status==='fantasma';
     var q=parseInt(e.qtd_pedidos)||0; var rad=ehF?5:(5+Math.min(10, Math.round(Math.sqrt(q)/3)));
-    var op=ehF?0.8:0.7;
+    var op=ehF?0.95:0.7;
     var mk=L.circleMarker([parseFloat(e.lat),parseFloat(e.lng)], { radius:rad, color:'#fff', weight:1, fillColor:m.cor, fillOpacity:op });
     mk.on('mouseover', function(){ mk.setStyle({ weight:2, fillOpacity:0.95 }); mk.bringToFront(); });
     mk.on('mouseout',  function(){ mk.setStyle({ weight:1, fillOpacity:op }); });
