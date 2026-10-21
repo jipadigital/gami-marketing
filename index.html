@@ -1,3 +1,4 @@
+<!-- v32.84 - PROSPECCAO EM CAMPO (FALSO "parou de pedir"): o painel agrupava pedidos por NOME EXATO, entao a mesma loja digitada de 2 jeitos (abreviacao, no da unidade, acento, erro) virava 2 empresas e uma parecia "parada". Agora VINCULA POR ENDERECO: (1) cadastro casado por coordenada quando o nome nao bate (so se ha 1 cadastro no ponto, p/ nao errar em shopping); (2) buckets de pedido na MESMA coordenada + nome de MARCA (token raro na cidade, DF global<=6, ou um nome contido no outro) sao fundidos numa loja so, com o ultimo pedido correto. Shopping NAO funde (campo/grande/praia tem DF alto). Ex: Delicati(1087, "parou") junta com a Rua Bahia e volta a 100 ATIVA. Auditado: ~74 lojas / 18k pedidos mal atribuidos nas 9 cidades. Ficha mostra nota de vinculo. - 21/10/2026 -->
 <!-- v32.83 - PROSPECCAO EM CAMPO: nova aba/botao "⭐ Minhas prospeccoes" (campo-btn-minhas) que mostra SO as lojas que a pessoa acompanha (criado_por = eu), sem a base da Machine, agrupadas por cidade, valendo em qualquer nivel (Brasil ou cidade). Badge com o total. _campoToggleMinhas + filtro em _campoLojasFiltradas + branch em _campoRenderLista. - 21/10/2026 -->
 <!-- v32.82 - PROSPECCAO: cor da suspensa trocada para MARROM (#7B3F00) no mapa/legenda/filtro/tooltip/popup/ficha (amarelo batia com Ativada, roxo e preto ja usados). - 21/10/2026 -->
 <!-- v32.81 - PROSPECCAO: suspensa agora com ANEL AMARELO (antes roxo) no mapa/legenda/tooltip/popup; legenda mostra um aro amarelo de verdade; ficha em texto limpo (sem HTML escapado). - 21/10/2026 -->
@@ -6634,6 +6635,8 @@ function _campoFichaEmpresa(e, inline){
     h+=linha('🕒','Último pedido', e.ultimo?(new Date(e.ultimo).toLocaleDateString('pt-BR')+(du!=null?' (há '+du+' dia'+(du===1?'':'s')+')':'')):'');
   }
   if(!e._temCadastro && !fant) h+='<div style="color:#999;font-size:10px;padding-top:4px">Sem cadastro da Machine com esse nome exato (o pedido entrou por outro nome).</div>';
+  if(e._mergeNomes && e._mergeNomes.length) h+='<div style="color:#0E7AB8;font-size:10px;padding-top:4px">🔗 Mesma loja (mesmo endereço): os pedidos também entraram como <b>'+_campoEsc(e._mergeNomes.slice(0,4).join(', '))+(e._mergeNomes.length>4?'…':'')+'</b>. Contagem e último pedido já somados.</div>';
+  if(e._cadViaCoord && e._nomeCad) h+='<div style="color:#0E7AB8;font-size:10px;padding-top:4px">🔗 Cadastro vinculado pelo endereço: <b>'+_campoEsc(e._nomeCad)+'</b>.</div>';
   var naRota=_campoRotaTem(_campoEmpKey(e));
   var btnRota='<button onclick="_campoRotaToggleEmp(\''+e._slug+'\',\''+encodeURIComponent(e.nome)+'\')" style="flex:1;font-size:11px;padding:6px;border:1px solid '+(naRota?'#1D9E75':'#0E7AB8')+';background:'+(naRota?'#1D9E75':(inline?'transparent':'#fff'))+';color:'+(naRota?'#fff':'#0E7AB8')+';border-radius:6px;cursor:pointer;font-weight:700">'+(naRota?'✔ Na rota':'🚗 + Rota')+'</button>';
   var btnPros='<button onclick="_campoProspectarEmpresa(\''+e._slug+'\',\''+encodeURIComponent(e.nome)+'\')" style="flex:1;font-size:11px;padding:6px;border:1px solid #0E7AB8;background:'+(inline?'transparent':'#fff')+';color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Acompanhar</button>';
@@ -7463,6 +7466,50 @@ async function _campoFetchTodos(url, opts){
 }
 var _CAMPO_CAD_SELECT = 'id,nome,telefone,bairro,status_empresa,lat:raw->>lat,lng:raw->>lng,endereco:raw->>endereco,complemento:raw->>complemento,cep:raw->>cep,uf:raw->>uf,documento:raw->>documento,tipo_doc:raw->>tipo_documento,contrato:raw->>numero_contrato,cadastro:raw->>data_hora_cadastro,admins:raw->admins';
 function _campoCoordOk(lat,lng){ var a=parseFloat(lat), b=parseFloat(lng); return isFinite(a) && isFinite(b) && (a!==0 || b!==0); }
+/* VÍNCULO POR ENDEREÇO: junta buckets de pedido que são a MESMA loja mas entraram com nomes
+   diferentes (abreviação, nº da unidade, acento, erro de digitação, corte do nome). Resolve o
+   FALSO "parou de pedir": pedido antigo "Delicati" + recente "Casa de bolo Delicati Rua Bah" na
+   MESMA coordenada = 1 loja só, com o último pedido correto. Coordenada = ponto de coleta = o endereço. */
+function _campoCoordKey5(la,lo){ var a=parseFloat(la), b=parseFloat(lo); if(!isFinite(a)||!isFinite(b)||(a===0&&b===0)) return null; return a.toFixed(5)+','+b.toFixed(5); } // ~1m
+var _CAMPO_NOME_STOP={loja:1,lojas:1,online:1,shop:1,ltda:1,filial:1,matriz:1,rua:1,avenida:1,center:1,shopping:1,unidade:1,kiosko:1,kiosk:1,quiosque:1};
+function _campoNomeToks(n){ return (n||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/&amp;/g,' ').replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(function(w){ return w.length>=4 && !_CAMPO_NOME_STOP[w] && !/^\d+$/.test(w); }); }
+function _campoNomeFlat(n){ return (n||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,''); }
+function _campoFundirBuckets(cl){
+  var base=null, i;
+  for(i=0;i<cl.length;i++){ if(cl[i]._temCadastro){ base=cl[i]; break; } } // prefere a que casou com cadastro
+  if(!base) base=cl.slice().sort(function(a,b){ return (parseInt(b.qtd_pedidos)||0)-(parseInt(a.qtd_pedidos)||0); })[0]; // senão a de mais pedidos
+  var m=Object.assign({}, base), somaP=0, somaF=0, ult=0, nomes=[];
+  cl.forEach(function(e){ somaP+=(parseInt(e.qtd_pedidos)||0); somaF+=(parseInt(e.qtd_finalizadas)||0); var t=e.ultimo?Date.parse(e.ultimo):0; if(t>ult){ ult=t; m.ultimo=e.ultimo; } if((e.nome||'')!==(base.nome||'')) nomes.push(e.nome); });
+  m.qtd_pedidos=somaP; m.qtd_finalizadas=somaF; m._status=_campoStatusMachine(m);
+  if(nomes.length) m._mergeNomes=nomes;
+  return m;
+}
+var _CAMPO_TOK_GCAP = 6; // token que aparece em >6 lojas da CIDADE = bairro/cidade/genérico (não liga marca)
+function _campoVincularPorEndereco(arr){
+  // frequência de cada token na CIDADE TODA: "campo/grande/praia/leticia" aparecem em dezenas (bairro/nome
+  // comum, NÃO liga); "delicati/massa" aparecem em 2-4 (marca, liga). Isso evita fundir shopping inteiro.
+  var gdf={}; arr.forEach(function(e){ var vis={}; _campoNomeToks(e.nome).forEach(function(t){ if(!vis[t]){ vis[t]=1; gdf[t]=(gdf[t]||0)+1; } }); });
+  function casa(a,b){
+    var fa=_campoNomeFlat(a), fb=_campoNomeFlat(b);
+    if(fa&&fb&&(fa.indexOf(fb)>=0||fb.indexOf(fa)>=0)) return true; // um nome contém o outro (variação limpa de grafia)
+    var ta={}; _campoNomeToks(a).forEach(function(t){ta[t]=1;}); var tb=_campoNomeToks(b);
+    for(var i=0;i<tb.length;i++){ if(ta[tb[i]] && (gdf[tb[i]]||0)<=_CAMPO_TOK_GCAP) return true; } // token de MARCA (raro na cidade)
+    return false;
+  }
+  var grupos={}, soltos=[];
+  arr.forEach(function(e){ var k=_campoCoordKey5(e.lat,e.lng); if(k==null){ soltos.push(e); return; } (grupos[k]=grupos[k]||[]).push(e); });
+  var out=soltos.slice();
+  Object.keys(grupos).forEach(function(k){
+    var g=grupos[k];
+    if(g.length<2){ out.push(g[0]); return; }
+    var usados=[]; // single-link, só por nome contido ou token de marca (não funde lojas diferentes do mesmo shopping)
+    for(var i=0;i<g.length;i++){ if(usados[i]) continue; var cl=[g[i]]; usados[i]=true;
+      for(var j=i+1;j<g.length;j++){ if(usados[j]) continue; var ok=false; for(var x=0;x<cl.length;x++){ if(casa(cl[x].nome,g[j].nome)){ ok=true; break; } } if(ok){ cl.push(g[j]); usados[j]=true; } }
+      out.push(cl.length===1 ? cl[0] : _campoFundirBuckets(cl));
+    }
+  });
+  return out;
+}
 // empresas que pediram + coord: MV pré-agregada (rápida, não dá timeout em Campo Grande); fallback RPC ao vivo
 // usa _campoFetchTodos pra PAGINAR (o Supabase corta em 1000/req; CG tem ~2600 empresas)
 function _campoFetchEmpresasMapa(slug){
@@ -7495,11 +7542,19 @@ async function _campoCarregarMachine(slug){
     var cadPorNome={};
     cads.forEach(function(c){ var k=nk(c.nome); if(!k) return; if(!cadPorNome[k] || (!_campoCoordOk(cadPorNome[k].lat,cadPorNome[k].lng) && _campoCoordOk(c.lat,c.lng))) cadPorNome[k]=c; });
     var CAMPOS=['telefone','status_empresa','endereco','complemento','cep','uf','documento','tipo_doc','contrato','cadastro','admins'];
+    // cadastro por COORDENADA (fallback do nome): só quando há EXATAMENTE 1 cadastro no ponto
+    // (num shopping/galeria há vários cadastros na mesma coord → aí não arrisca vincular por coord)
+    var cadByCoord={}, cadCoordN={};
+    cads.forEach(function(c){ var k=_campoCoordKey5(c.lat,c.lng); if(k==null) return; cadCoordN[k]=(cadCoordN[k]||0)+1; cadByCoord[k]=c; });
+    Object.keys(cadCoordN).forEach(function(k){ if(cadCoordN[k]!==1) delete cadByCoord[k]; });
     arr.forEach(function(e){
       e._slug=slug; e._cidade=cidNome; e._status=_campoStatusMachine(e); e._machine=true;
       var c=cadPorNome[nk(e.nome)];
-      if(c){ e._temCadastro=true; CAMPOS.forEach(function(f){ if(e[f]==null || e[f]==='') e[f]=c[f]; }); if(!e.bairro) e.bairro=c.bairro; }
+      if(!c){ var _ck=_campoCoordKey5(e.lat,e.lng); if(_ck && cadByCoord[_ck]){ c=cadByCoord[_ck]; e._cadViaCoord=true; } } // vínculo por endereço quando o nome não casa
+      if(c){ e._temCadastro=true; CAMPOS.forEach(function(f){ if(e[f]==null || e[f]==='') e[f]=c[f]; }); if(!e.bairro) e.bairro=c.bairro; if(e._cadViaCoord && c.nome) e._nomeCad=c.nome; }
     });
+    // junta os buckets que são a MESMA loja (mesma coord + nome parecido) → mata o falso "parou de pedir"
+    arr = _campoVincularPorEndereco(arr);
     // fantasmas: cadastraram e nunca pediram (coordenada vem do cadastro)
     var ja={}; arr.forEach(function(e){ ja[nk(e.nome)]=true; });
     nunca.forEach(function(o){
