@@ -1,3 +1,4 @@
+<!-- v32.62 - PROSPECCAO EM CAMPO, acesso por papel: (1) GESTORES ja viam so a cidade deles (mantido). (2) Novo nivel VENDEDOR: ve o campo so da cidade dele (cargo "Vendedor"/"Vendas" ou nivel_permissao=vendedor + campo cidade). (3) BDRs (Vanessa, Anna Julia, Micaelle, Suzislaine) veem o MAPA GERAL via allowlist CAMPO_BDR_IDS + gate _podeVerCampo (igual padrao do faturamento), sem dar acesso pros outros de prospeccao/suporte. Paola Elias: cadastrar e adicionar o id. - 21/10/2026 -->
 <!-- v32.61 - CIDADES: São Luís trocou o gestor do card de Cláudio Martins para Bruno Pinto Cutrim (+ WhatsApp pro tel do Bruno 98981955252). Atualizado no array CIDADES_DATA_DEFAULT (o getCidadesData ja forca o gestor do default, entao vale pra todos sem limpar cache), na lista de gestores reais e no manual. Claudio ja tinha saido de pessoas/login/pontos (v32.41). - 21/10/2026 -->
 <!-- v32.60 - MURAL: as bolinhas de quem reagiu foram pra logo DEPOIS do emoji (antes do botao 🙂+), nao mais no fim da linha. - 21/10/2026 -->
 <!-- v32.59 - MURAL: "quem reagiu" agora mostra a FOTINHA (bolinha) de quem reagiu, no lugar do balao de texto "👁 quem reagiu". 1 pessoa = 1 bolinha; varias = empilhadas + "+N". Clicar nas bolinhas abre a lista completa. Helper _muralPessoaReagiu (nome+foto via getPessoas). - 20/10/2026 -->
@@ -1875,7 +1876,7 @@ function detectarNivelPermissao(usuario){
   // 🆕 P0.2 — CAMPO CANÔNICO. Quando `nivel_permissao` está preenchido em
   // `pessoas`, ele manda — acaba a adivinhação por texto livre do cargo
   // (que jogava gente pra colaborador em silêncio).
-  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','financeiro','prospeccao','colaborador','visitante'];
+  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','vendedor','financeiro','prospeccao','colaborador','visitante'];
   var _np = String(usuario.nivel_permissao || '').toLowerCase().trim();
   if(_np && NIVEIS_VALIDOS.indexOf(_np) !== -1) return _np;
 
@@ -1892,7 +1893,10 @@ function detectarNivelPermissao(usuario){
   
   // Gestor de Cidade
   if(cargo.includes('gestor')) return 'gestor';
-  
+
+  // 🆕 Vendedor (prospecção em campo, restrito à cidade dele)
+  if(cargo.includes('vendedor') || cargo.includes('vendas')) return 'vendedor';
+
   // 🆕 Financeiro — colaborador que pode editar pessoas (Leomara e equipe)
   if(cargo.includes('financ') || categoria === 'financeiro') return 'financeiro';
   
@@ -1971,6 +1975,18 @@ var MATRIZ_PERMISSOES = {
     filtra_cidade: true,
     filtra_inbox: true
   },
+  vendedor: {
+    abas: ['dashboard','calendario','tarefas','campo','ranking','culture','carreira','portal','manual'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false,
+    filtra_cidade: true,
+    ocultar_valores: true
+  },
   colaborador: {
     abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','manual'],
     pode_editar_pessoas: false,
@@ -2038,6 +2054,27 @@ function _podeVerFaturamento(){
   return FATURAMENTO_IDS.indexOf(u.id) >= 0;
 }
 
+/* 📍 PROSPECÇÃO EM CAMPO — quem vê a aba:
+   - gestor/vendedor: pela MATRIZ (campo na aba) + restrito à CIDADE dele (cidadesQueUsuarioAtende)
+   - diretoria/gerência/super: MATRIZ, mapa GERAL
+   - BDRs (lista abaixo, por id): mapa GERAL, sem precisar mudar o nível deles */
+var CAMPO_BDR_IDS = [
+  'pe030',        // Vanessa Frank Lopes
+  'peannajulia',  // Anna Julia Lisboa da Rocha Baltar
+  'pempy5qbb0',   // Micaelle Oliveira Silva
+  'pemrarieka'    // Suzislaine Diniz Gomes
+  // Paola Elias: cadastrar em Pessoas e adicionar o id aqui
+];
+function _podeVerCampo(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  if(!u) return false;
+  if(u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com') return true;
+  var nivel = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : 'visitante';
+  var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
+  if(perms.abas.indexOf('campo') !== -1) return true; // níveis que já têm (gestor, vendedor, diretoria, gerência, super)
+  return CAMPO_BDR_IDS.indexOf(u.id) >= 0;             // BDRs específicos → mapa geral
+}
+
 /* Aplica permissões visualmente (esconde itens do sidebar) */
 /* ============================================================== */
 /* FILTROS POR PERMISSÃO (FASE 2)                                 */
@@ -2097,9 +2134,9 @@ function cidadesQueUsuarioAtende(u){
   // 👤 Prospecção genérica (cargo "Prospecção") → todas
   if(cargo.indexOf('prospec') >= 0) return null;
   
-  // 🆕 v27.23: REGRA — só GESTOR fica restrito à própria cidade.
-  // Colaborador, financeiro e demais não-gestores vêem TODAS as cidades (aba "Cidades").
-  if(nivel !== 'gestor') return null;
+  // 🆕 v27.23: REGRA — só GESTOR (e agora VENDEDOR) ficam restritos à própria cidade.
+  // Colaborador, financeiro, prospecção/BDR e demais vêem TODAS as cidades.
+  if(nivel !== 'gestor' && nivel !== 'vendedor') return null;
   
   // Se cidade é array → vê as do array
   if(Array.isArray(cidade)){
@@ -2457,6 +2494,7 @@ function aplicarPermissoesVisuais(){
     if(!match) return;
     var aba = match[1];
     if(aba === 'faturamento') return; // gate próprio (data-perm-faturamento), não pela MATRIZ de cargos
+    if(aba === 'campo'){ item.style.display = (typeof _podeVerCampo==='function' && _podeVerCampo()) ? '' : 'none'; return; } // gate próprio (gestor/vendedor/diretoria/gerência + BDRs)
     if(perms.abas.indexOf(aba) === -1){
       item.style.display = 'none';
     } else {
@@ -2542,6 +2580,7 @@ function bloquearAcessoAba(aba){
   if(!u){ mostrarTelaLogin(); return true; }
   // 🔒 Faturamento: gate próprio (allowlist + super_admin), não pela MATRIZ de cargos
   if(aba === 'faturamento'){ return _podeVerFaturamento() ? false : _blocoRestrito(); }
+  if(aba === 'campo'){ return _podeVerCampo() ? false : _blocoRestrito(); }
   if(!temPermissao('aba:' + aba)){
     var nivel = detectarNivelPermissao(u);
     // Mostra modal amigável
