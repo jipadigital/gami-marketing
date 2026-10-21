@@ -1,3 +1,4 @@
+<!-- v32.81 - PROSPECCAO: suspensa agora com ANEL AMARELO (antes roxo) no mapa/legenda/tooltip/popup; legenda mostra um aro amarelo de verdade; ficha em texto limpo (sem HTML escapado). - 21/10/2026 -->
 <!-- v32.80 - PROSPECCAO: rotulo da suspensa agora e so "Suspensa" (tirado o "(nos devendo)") no filtro, legenda, ficha e popup. - 21/10/2026 -->
 <!-- v32.79 - PROSPECCAO EM CAMPO: empresa SUSPENSA (status_empresa=S, ou seja, nos devendo) agora aparece destacada no mapa com ANEL ROXO (#9333EA) grosso em volta da bolinha (mantem a cor do status de pedido por dentro). Novo filtro "🟣 Suspensa", legenda, e a ficha mostra a situacao em destaque. Tooltip/popup indicam SUSPENSA. - 21/10/2026 -->
 <!-- v32.78 - MENU: voltou os EMOJIS (como era antes), a pedido. Removidos os icones SVG do nav e do rename de Cidades. Mantida a cor cinza-azulado (#9DB4D6) em NEGRITO (font-weight 600). - 21/10/2026 -->
@@ -6255,7 +6256,7 @@ async function _campoFetch(){
 function _campoMapaWrapHTML(){
   return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--card)">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
-    +   '<div style="font-size:11px;color:var(--text2)">🟢 Pedindo &nbsp; 🔴 Parou &nbsp; 🟡 Ativada &nbsp; ⚪ Prospect &nbsp; <span style="color:#9333EA;font-weight:700">🟣 Suspensa</span> <span style="color:var(--text3)">· ponto pequeno = Machine, grande = prospecção · anel roxo = suspensa</span></div>'
+    +   '<div style="font-size:11px;color:var(--text2)">🟢 Pedindo &nbsp; 🔴 Parou &nbsp; 🟡 Ativada &nbsp; ⚪ Prospect &nbsp; <span style="color:#B8860B;font-weight:700"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:2px solid #F1C40F;vertical-align:middle;margin-right:2px"></span>Suspensa</span> <span style="color:var(--text3)">· ponto pequeno = Machine, grande = prospecção · anel amarelo = suspensa</span></div>'
     +   '<div style="display:flex;gap:6px;flex-wrap:wrap">'
     +     '<button onclick="_campoMapaBrasil()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Voltar o mapa pro Brasil inteiro">🇧🇷 Brasil</button>'
     +     '<button onclick="_campoGeocodificarFaltantes()" id="campo-geo-btn" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Converter os endereços em pontos no mapa">📍 Geocodificar faltantes</button>'
@@ -6328,7 +6329,7 @@ function _campoMontarShell(){
     +     '<option value="ativa">🟢 Ativa (pedindo)</option>'
     +     '<option value="perdida">🔴 Perdida</option>'
     +     '<option value="fantasma">👻 Cadastrou e nunca pediu</option>'
-    +     '<option value="suspensa">🟣 Suspensa</option>'
+    +     '<option value="suspensa">🟡 Suspensa</option>'
     +   '</select>'
     +   '<input id="campo-f-busca" oninput="_campoAplicar()" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
     +   '<span style="font-size:11px;color:var(--text3)">Visitas de</span>'
@@ -6569,7 +6570,7 @@ function _campoFichaEmpresa(e, inline){
   var telHtml = tel ? (_campoEsc(tel)+(telLimpo.length>=10?' <a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;font-weight:700;text-decoration:none">📱 WhatsApp</a>':'')) : '';
   var email=(Array.isArray(e.admins) && e.admins[0] && e.admins[0].email) ? e.admins[0].email : '';
   var adm=(Array.isArray(e.admins) && e.admins[0] && e.admins[0].nome && e.admins[0].nome.trim().toLowerCase()!==(e.nome||'').trim().toLowerCase()) ? e.admins[0].nome : '';
-  var sit = e.status_empresa==='A' ? 'Ativo' : (e.status_empresa==='S' ? '<b style="color:#9333EA">🟣 Suspensa</b>' : (e.status_empresa==='G' ? 'Aguardando ativação' : (e.status_empresa==='I' ? 'Inativo' : (e.status_empresa||''))));
+  var sit = e.status_empresa==='A' ? 'Ativo' : (e.status_empresa==='S' ? '🟡 Suspensa' : (e.status_empresa==='G' ? 'Aguardando ativação' : (e.status_empresa==='I' ? 'Inativo' : (e.status_empresa||''))));
   var diasCad=_campoDiasDesde(e.cadastro);
   var cad = e.cadastro ? (_campoDataBR(e.cadastro)+(diasCad!=null?' (há '+diasCad+' dia'+(diasCad===1?'':'s')+')':'')) : '';
   var h='';
@@ -7870,12 +7871,12 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     var q=parseInt(e.qtd_pedidos)||0; var rad=ehF?5:(5+Math.min(10, Math.round(Math.sqrt(q)/3)));
     if(susp) rad=Math.max(rad,7);
     var op=ehF?0.95:0.7;
-    var bCor=susp?'#9333EA':'#fff', bW=susp?3:1; // anel roxo grosso nas suspensas
+    var bCor=susp?'#F1C40F':'#fff', bW=susp?3:1; // anel amarelo grosso nas suspensas
     var mk=L.circleMarker([parseFloat(e.lat),parseFloat(e.lng)], { radius:rad, color:bCor, weight:bW, fillColor:m.cor, fillOpacity:op });
     mk.on('mouseover', function(){ mk.setStyle({ weight:susp?4:2, fillOpacity:0.95 }); mk.bringToFront(); });
     mk.on('mouseout',  function(){ mk.setStyle({ weight:bW, fillOpacity:op }); });
-    mk.bindTooltip(m.dot+' '+_campoEsc(e.nome)+(susp?' · 🟣 SUSPENSA':'')+(e.bairro?(' · '+_campoEsc(e.bairro)):''), { direction:'top', offset:[0,-5] });
-    var stTxt = (e._status==='ativa' ? '🟢 Pedindo' : (ehF ? '👻 Cadastrou e nunca pediu' : '🔴 Parou de pedir')) + (susp?' · <span style="color:#9333EA">🟣 SUSPENSA</span>':'');
+    mk.bindTooltip(m.dot+' '+_campoEsc(e.nome)+(susp?' · 🟡 SUSPENSA':'')+(e.bairro?(' · '+_campoEsc(e.bairro)):''), { direction:'top', offset:[0,-5] });
+    var stTxt = (e._status==='ativa' ? '🟢 Pedindo' : (ehF ? '👻 Cadastrou e nunca pediu' : '🔴 Parou de pedir')) + (susp?' · <span style="color:#B8860B;font-weight:700">🟡 SUSPENSA</span>':'');
     mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:240px;max-width:290px">'
       +'<div style="font-weight:700;color:#0B2542;font-size:13px">'+m.dot+' '+_campoEsc(e.nome)+'</div>'
       +'<div style="margin:2px 0 6px;color:'+m.cor+';font-weight:700">'+stTxt+'</div>'
