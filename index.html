@@ -1,3 +1,4 @@
+<!-- v32.66 - (1) CIDADES/empresas: "Exportar CSV" virou "Exportar Excel" (.xls tabela HTML, abre direto no Excel com colunas/acentos certos, CNPJ e telefone como texto). (2) PROSPECCAO EM CAMPO: quem atende SO 1 cidade (gestor/vendedor) agora abre o mapa DIRETO na cidade dele (antes ficava no Brasil e nada abria). (3) fix de acento: comparacao de cidade por SLUG (maceio casa com Maceio), que travava os perfis de teste e qualquer cidade sem acento. - 21/10/2026 -->
 <!-- v32.65 - MODO TESTE (super_admin): adicionados os perfis novos pra ver o dashboard como cada um: "🛒 Vendedor - Maceió" (campo so da cidade dele, sem R$) e "📍 BDR - mapa geral" (campo de todas as cidades, via id de teste na allowlist CAMPO_BDR_IDS). Corrigido o perfil "Prospecção" (dizia "so Maceió" mas ve todas, e sem a allowlist nao ve o mapa de Campo). - 21/10/2026 -->
 <!-- v32.64 - PESSOAS: separadas as categorias dos colaboradores. Antes todos (Prospeccao, Sucesso do Cliente, Marketing, Suporte Home) caiam em COLABORADOR por causa do campo categoria fixado. Agora CARGO_CATS tem categorias proprias: Prospeccao (BDRs), Sucesso do Cliente; Colaborador fica so Marketing/Administrativo; Suporte Home volta pra Suporte. Precisa rodar o SQL que limpa o categoria fixo (passa a derivar do cargo). - 21/10/2026 -->
 <!-- v32.63 - PESSOAS: nova categoria VENDEDORES (CARGO_CATS + cor do chip Vendedor). Paola Elias Correa de Moraes adicionada na allowlist CAMPO_BDR_IDS (mapa geral). Cadastro das pessoas novas (Paola BDR + Arthur/Carla vendedores) via SQL, login auto-provisiona no 1o acesso (email + gami2026). - 21/10/2026 -->
@@ -6187,7 +6188,8 @@ function _campoListaCidades(){
   } catch(e){}
   var permit = _campoCidadesUser();
   if(permit && permit.length){
-    nomes = nomes.filter(function(n){ return permit.indexOf((n||'').toLowerCase()) >= 0; });
+    var _pslugs = permit.map(function(p){ return _campoSlug(p); }); // compara por SLUG (ignora acento: "maceio" casa com "Maceió")
+    nomes = nomes.filter(function(n){ return _pslugs.indexOf(_campoSlug(n)) >= 0; });
   }
   return nomes.sort();
 }
@@ -6286,7 +6288,15 @@ function _campoMontarShell(){
   if(!root) return;
   // o innerHTML recria o #campo-mapa, então descarta o mapa antigo (ficaria órfão)
   if(_campoMapaInst){ try{ _campoMapaInst.remove(); }catch(e){} _campoMapaInst=null; _campoMapaLayer=null; _campoGeoLayer=null; }
-  _CAMPO.cidadeSel = ''; // abre a aba no nível Brasil
+  _CAMPO.cidadeSel = ''; // abre a aba no nível Brasil...
+  // ...MAS se o usuário atende só 1 cidade (gestor/vendedor), abre DIRETO nela
+  try {
+    var _permit1 = _campoCidadesUser();
+    if(_permit1 && _permit1.length === 1){
+      var _l1 = _campoListaCidades();
+      if(_l1.length) _CAMPO.cidadeSel = _campoSlug(_l1[0]);
+    }
+  } catch(e){}
   var cidades = _campoListaCidades();
   var optCidades = '<option value="">Todas as cidades</option>' + cidades.map(function(n){
     return '<option value="'+_campoEsc(_campoSlug(n))+'">'+_campoEsc(n)+'</option>';
@@ -7684,7 +7694,10 @@ function _campoRenderMapa(){
       _campoMapaInst.fitBounds(_CAMPO_BR_BOUNDS); // começa focado no Brasil
     }
     _campoDrawMarkers(_campoLojasFiltradas());
-    setTimeout(function(){ try{ _campoMapaInst.invalidateSize(); _campoDrawMarkers(_campoLojasFiltradas()); }catch(e){} }, 160);
+    // se já entrou com uma cidade selecionada (gestor/vendedor de 1 cidade), abre o mapa NELA
+    var _csInit = _campoCidadeSel();
+    if(_csInit){ var _ccInit = _campoCentroide(_csInit); if(_ccInit){ try{ _campoSetTiles(true); _campoMapaInst.setView(_ccInit, 12); }catch(e){} } }
+    setTimeout(function(){ try{ _campoMapaInst.invalidateSize(); _campoDrawMarkers(_campoLojasFiltradas()); var _cs2=_campoCidadeSel(); if(_cs2){ var _cc2=_campoCentroide(_cs2); if(_cc2) _campoMapaInst.setView(_cc2, 12); } }catch(e){} }, 160);
   }).catch(function(){ if(st) st.textContent='Não consegui carregar o mapa.'; });
 }
 
@@ -32076,7 +32089,7 @@ function empRenderLista(corridasMes, empresasGeral, hojeStr){
       + '<div class="card-title" style="margin:0">🔍 Lista completa de empresas</div>'
       + '<div style="display:flex;align-items:center;gap:8px">'
         + '<span style="font-size:10px;color:var(--text3)">'+filtrada.length+' encontradas</span>'
-        + '<button onclick="empExportarCSV()" style="padding:5px 10px;border:none;border-radius:6px;background:#1D9E75;color:white;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Exporta as empresas filtradas em CSV (abre no Excel)">📥 Exportar CSV</button>'
+        + '<button onclick="empExportarCSV()" style="padding:5px 10px;border:none;border-radius:6px;background:#1D7A3E;color:white;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit" title="Exporta as empresas filtradas em Excel (.xls, abre direto com as colunas certas)">📊 Exportar Excel</button>'
       + '</div>'
     + '</div>'
     // Linha de filtros
@@ -32835,10 +32848,14 @@ function empExportarCSV(){
   headers.push('Responsável');
   var _respEmp = _responsavelCidade(c.nome); // 1 cidade por export -> repete nas linhas
 
-  var escapeCSV = function(v){
-    return csvCel(csvLimpar(v), ',');
-  };
-  var linhas = [headers.map(escapeCSV).join(',')];
+  // Gera um .xls (tabela HTML) que abre DIRETO no Excel: colunas certas, acentos ok,
+  // sem a bagun\u00E7a do CSV (separador v\u00EDrgula x ; do Excel BR, decimal com v\u00EDrgula, etc).
+  function _xe(v){ return String(v==null?'':v).replace(/[&<>]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch];}); }
+  var stNum = 'border:1px solid #cdd;padding:3px 8px';
+  var stTxt = "mso-number-format:'\\@';border:1px solid #cdd;padding:3px 8px"; // for\u00E7a TEXTO (CNPJ/telefone n\u00E3o viram nota\u00E7\u00E3o cient\u00EDfica)
+  var idxTexto = {}; headers.forEach(function(h,i){ if(/CNPJ|CPF|Telefone/i.test(h)) idxTexto[i]=1; });
+  var ths = headers.map(function(h){ return '<th style="background:#0E7AB8;color:#fff;border:1px solid #9bb;padding:5px 8px;text-align:left">'+_xe(h)+'</th>'; }).join('');
+  var trs = '';
   filtrada.forEach(function(m){
     var row = [
       m.nome, statusLbl[m.status]||m.status, m.documento, m.tel, m.bairro, m.endereco, m.categorias,
@@ -32851,15 +32868,17 @@ function empExportarCSV(){
     row.push(m.ultima ? m.ultima.split('-').reverse().join('/') : '-');
     row.push(m.diasInativo === 999 ? '-' : m.diasInativo);
     row.push(_respEmp);
-    linhas.push(row.map(escapeCSV).join(','));
+    trs += '<tr>' + row.map(function(v,i){ return '<td style="'+(idxTexto[i]?stTxt:stNum)+'">'+_xe(v)+'</td>'; }).join('') + '</tr>';
   });
-  var csv = '\uFEFF' + linhas.join('\n'); // BOM pra Excel reconhecer UTF-8
+  var html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head>'
+    + '<body><table border="1" style="border-collapse:collapse;font-family:Arial;font-size:12px">'
+    + '<thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table></body></html>';
 
-  // Download
-  var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  // Download como .xls (abre no Excel como planilha, n\u00E3o como texto)
+  var blob = new Blob(['\uFEFF' + html], {type:'application/vnd.ms-excel;charset=utf-8;'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
-  var fname = 'empresas_'+_vgSlug(c.nome)+'_'+d.hojeStr+'.csv';
+  var fname = 'empresas_'+_vgSlug(c.nome)+'_'+d.hojeStr+'.xls';
   a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){URL.revokeObjectURL(url);}, 100);
