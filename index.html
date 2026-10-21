@@ -1,3 +1,4 @@
+<!-- v32.71 - ONLINE/PRESENCA fix: o heartbeat de last_seen so iniciava apos login NOVO. Quem abre o app com a sessao salva (7 dias) nunca atualizava o last_seen e sumia do "online 24h"/"online agora" mesmo ativo (ganhando ponto: Jhennifer, Estefania...). Agora o heartbeat liga tambem na SESSAO RESTAURADA (checarLoginInicial), entao o online passa a refletir quem esta usando de verdade. - 21/10/2026 -->
 <!-- v32.70 - PROSPECCAO EM CAMPO: botao "📊 Exportar Excel" na barra. Exporta as empresas FILTRADAS (cidade+status+busca) com todos os campos da ficha: nome, status, endereco, bairro, cidade, UF, CEP, telefone, email, responsavel, CNPJ, contrato, cadastro, situacao, pedidos/finalizados/cancelados, (faturamento/ticket se puder ver R$), ultimo pedido, lat, lng. Arquivo .xls que abre direto no Excel; CNPJ/telefone/CEP/lat/lng como texto. - 21/10/2026 -->
 <!-- v32.69 - PROSPECCAO EM CAMPO: toda a Prospeccao (cargo contem "prospec") passa a ver o mapa, TODAS as cidades (nao so os 5 BDRs da allowlist). _podeVerCampo libera por cargo. Qualquer pessoa de prospeccao, atual ou futura, ja ve automaticamente. A allowlist CAMPO_BDR_IDS segue pra quem nao e cargo prospeccao (ex: Micaelle, Sucesso do Cliente). - 21/10/2026 -->
 <!-- v32.68 - GERENCIA: liberada a aba "💙 Clima do time" pro nivel gerencia (abas +clima). Vale pras duas gerencias (Operacoes e Financeiro, ambas caem em nivel gerencia). Gestor NAO recebeu. - 21/10/2026 -->
@@ -15467,6 +15468,10 @@ function checarLoginInicial(){
     if(_pid && typeof hookLoginDiario === 'function') hookLoginDiario(_pid);
     else if(_pid && typeof sincronizarPontosPessoa === 'function') sincronizarPontosPessoa(_pid);
   } catch(e){}
+  // 🆕 v32.x: liga o HEARTBEAT de presença também na SESSÃO RESTAURADA (refresh/sessão salva).
+  // Antes só iniciava após login NOVO, então quem fica logado (sessão de 7 dias) nunca
+  // atualizava o last_seen e sumia do "online 24h" mesmo estando ativo (ganhando ponto).
+  try { if(typeof _pmIniciarHeartbeat === 'function') _pmIniciarHeartbeat(); } catch(e){}
   return true;
 }
 
