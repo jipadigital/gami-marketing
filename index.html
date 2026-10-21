@@ -1,3 +1,4 @@
+<!-- v32.70 - PROSPECCAO EM CAMPO: botao "📊 Exportar Excel" na barra. Exporta as empresas FILTRADAS (cidade+status+busca) com todos os campos da ficha: nome, status, endereco, bairro, cidade, UF, CEP, telefone, email, responsavel, CNPJ, contrato, cadastro, situacao, pedidos/finalizados/cancelados, (faturamento/ticket se puder ver R$), ultimo pedido, lat, lng. Arquivo .xls que abre direto no Excel; CNPJ/telefone/CEP/lat/lng como texto. - 21/10/2026 -->
 <!-- v32.69 - PROSPECCAO EM CAMPO: toda a Prospeccao (cargo contem "prospec") passa a ver o mapa, TODAS as cidades (nao so os 5 BDRs da allowlist). _podeVerCampo libera por cargo. Qualquer pessoa de prospeccao, atual ou futura, ja ve automaticamente. A allowlist CAMPO_BDR_IDS segue pra quem nao e cargo prospeccao (ex: Micaelle, Sucesso do Cliente). - 21/10/2026 -->
 <!-- v32.68 - GERENCIA: liberada a aba "💙 Clima do time" pro nivel gerencia (abas +clima). Vale pras duas gerencias (Operacoes e Financeiro, ambas caem em nivel gerencia). Gestor NAO recebeu. - 21/10/2026 -->
 <!-- v32.67 - VENDEDOR: liberada a aba Cidades pro nivel vendedor (abas +cidades). Ele ve SO a cidade dele (cidadesQueUsuarioAtende ja restringe vendedor) e SEM valores R$ (podeVerFaturamentoCidade nao inclui vendedor + ocultar_valores). Nav vira "Minha Cidade (X)". - 21/10/2026 -->
@@ -6334,6 +6335,7 @@ function _campoMontarShell(){
     +     '<button onclick="_campoToggleMapa()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" id="campo-btn-mapa" title="Ver as lojas no mapa">🗺️ Mapa</button>'
     +     '<button onclick="_campoCruzarMachine()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Atualiza o status cruzando com os pedidos reais da Machine (amarelo→verde no 1º pedido, verde→vermelho se parou)">🔄 Status pela Machine</button>'
     +     '<button onclick="_campoImportarAbrir()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Puxar cadastros recentes da Machine pra prospectar">☁️ Buscar empresas novas (Machine)</button>'
+    +     '<button onclick="_campoExportarExcel()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px;border-color:#1D7A3E;color:#1D7A3E;font-weight:700" title="Exporta as empresas filtradas (endereço, CNPJ, telefone, pedidos, etc.) em Excel">📊 Exportar Excel</button>'
     +   '</div>'
     + '</div>'
     + '<div id="campo-rota" style="display:none;margin-bottom:12px"></div>'
@@ -7497,6 +7499,47 @@ function _campoMachineFiltrada(){
     out.push(e);
   }); });
   return out;
+}
+
+/* Exporta as empresas FILTRADAS (cidade + status + busca) pra Excel (.xls),
+   com todos os campos da ficha. Abre direto no Excel (colunas/acentos certos). */
+function _campoExportarExcel(){
+  var emp = _campoMachineFiltrada();
+  if(!emp.length){ if(typeof toast==='function') toast('Nenhuma empresa pra exportar com os filtros atuais','warn'); return; }
+  var oculta = (typeof _campoOcultaValores==='function') ? _campoOcultaValores() : false;
+  function _xe(v){ return String(v==null?'':v).replace(/[&<>]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch];}); }
+  function _em(e){ return (Array.isArray(e.admins)&&e.admins[0]&&e.admins[0].email)?e.admins[0].email:''; }
+  function _resp(e){ return (Array.isArray(e.admins)&&e.admins[0]&&e.admins[0].nome)?e.admins[0].nome:''; }
+  var stLbl = {ativa:'Pedindo', perdida:'Parou de pedir', fantasma:'Cadastrou e nunca pediu', ativada:'Ativada', prospect:'Prospect'};
+  var sitLbl = {A:'Ativo', I:'Inativo', S:'Suspenso'};
+  var headers = ['Nome','Status','Endereço','Bairro','Cidade','UF','CEP','Telefone','E-mail','Responsável','CNPJ/CPF','Contrato','Cadastro','Situação','Pedidos (120d)','Finalizados','Cancelados'];
+  if(!oculta){ headers.push('Faturamento (R$)'); headers.push('Ticket médio (R$)'); }
+  headers.push('Último pedido','Lat','Lng');
+  var idxTexto = {}; headers.forEach(function(h,i){ if(/CNPJ|CPF|Telefone|CEP|Contrato|Lat|Lng/i.test(h)) idxTexto[i]=1; });
+  var rows = emp.map(function(e){
+    var q=parseInt(e.qtd_pedidos)||0, fin=parseInt(e.qtd_finalizadas)||0, can=parseInt(e.qtd_canceladas)||0, val=parseFloat(e.valor_total)||0;
+    var row = [ e.nome||'', stLbl[e._status]||e._status||'', [e.endereco,e.complemento].filter(Boolean).join(', '),
+      e.bairro||'', e._cidade||'', e.uf||'', e.cep||'', e.telefone||'', _em(e), _resp(e),
+      e.documento||'', (e.contrato?('nº '+e.contrato):''), (e.cadastro?_campoDataBR(e.cadastro):''), (sitLbl[e.status_empresa]||e.status_empresa||''),
+      q, fin, can ];
+    if(!oculta){ row.push(val.toFixed(2).replace('.',',')); row.push(fin>0?(val/fin).toFixed(2).replace('.',','):'0,00'); }
+    row.push(e.ultimo?_campoDataBR(e.ultimo):'', (e.lat||''), (e.lng||''));
+    return row;
+  });
+  var stNum='border:1px solid #cdd;padding:3px 8px';
+  var stTxt="mso-number-format:'\\@';border:1px solid #cdd;padding:3px 8px"; // CNPJ/telefone/CEP/lat/lng como TEXTO
+  var ths = headers.map(function(h){ return '<th style="background:#0E7AB8;color:#fff;border:1px solid #9bb;padding:5px 8px;text-align:left">'+_xe(h)+'</th>'; }).join('');
+  var trs = rows.map(function(r){ return '<tr>'+r.map(function(v,i){ return '<td style="'+(idxTexto[i]?stTxt:stNum)+'">'+_xe(v)+'</td>'; }).join('')+'</tr>'; }).join('');
+  var html='<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head>'
+    + '<body><table border="1" style="border-collapse:collapse;font-family:Arial;font-size:12px">'
+    + '<thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table></body></html>';
+  var blob = new Blob(['﻿'+html], {type:'application/vnd.ms-excel;charset=utf-8;'});
+  var url=URL.createObjectURL(blob); var a=document.createElement('a');
+  var cid=_campoCidadeSel()||'todas';
+  a.href=url; a.download='empresas_campo_'+cid+'_'+_campoHoje()+'.xls';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},100);
+  if(typeof toast==='function') toast('Exportando '+emp.length+' empresas 📊');
 }
 
 /* ---------- MAPA (Parte 2) — pontos geocodificados por status ---------- */
