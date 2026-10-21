@@ -1,3 +1,4 @@
+<!-- v32.69 - PROSPECCAO EM CAMPO: toda a Prospeccao (cargo contem "prospec") passa a ver o mapa, TODAS as cidades (nao so os 5 BDRs da allowlist). _podeVerCampo libera por cargo. Qualquer pessoa de prospeccao, atual ou futura, ja ve automaticamente. A allowlist CAMPO_BDR_IDS segue pra quem nao e cargo prospeccao (ex: Micaelle, Sucesso do Cliente). - 21/10/2026 -->
 <!-- v32.68 - GERENCIA: liberada a aba "💙 Clima do time" pro nivel gerencia (abas +clima). Vale pras duas gerencias (Operacoes e Financeiro, ambas caem em nivel gerencia). Gestor NAO recebeu. - 21/10/2026 -->
 <!-- v32.67 - VENDEDOR: liberada a aba Cidades pro nivel vendedor (abas +cidades). Ele ve SO a cidade dele (cidadesQueUsuarioAtende ja restringe vendedor) e SEM valores R$ (podeVerFaturamentoCidade nao inclui vendedor + ocultar_valores). Nav vira "Minha Cidade (X)". - 21/10/2026 -->
 <!-- v32.66 - (1) CIDADES/empresas: "Exportar CSV" virou "Exportar Excel" (.xls tabela HTML, abre direto no Excel com colunas/acentos certos, CNPJ e telefone como texto). (2) PROSPECCAO EM CAMPO: quem atende SO 1 cidade (gestor/vendedor) agora abre o mapa DIRETO na cidade dele (antes ficava no Brasil e nada abria). (3) fix de acento: comparacao de cidade por SLUG (maceio casa com Maceio), que travava os perfis de teste e qualquer cidade sem acento. - 21/10/2026 -->
@@ -2079,7 +2080,8 @@ function _podeVerCampo(){
   var nivel = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : 'visitante';
   var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
   if(perms.abas.indexOf('campo') !== -1) return true; // níveis que já têm (gestor, vendedor, diretoria, gerência, super)
-  return CAMPO_BDR_IDS.indexOf(u.id) >= 0;             // BDRs específicos → mapa geral
+  if(/prospec/i.test(u.cargo||'')) return true;        // TODA a Prospecção vê o mapa (todas as cidades)
+  return CAMPO_BDR_IDS.indexOf(u.id) >= 0;             // outros BDRs específicos (ex: Sucesso do Cliente) → mapa geral
 }
 
 /* Aplica permissões visualmente (esconde itens do sidebar) */
