@@ -1,3 +1,4 @@
+<!-- v32.83 - PROSPECCAO EM CAMPO: nova aba/botao "⭐ Minhas prospeccoes" (campo-btn-minhas) que mostra SO as lojas que a pessoa acompanha (criado_por = eu), sem a base da Machine, agrupadas por cidade, valendo em qualquer nivel (Brasil ou cidade). Badge com o total. _campoToggleMinhas + filtro em _campoLojasFiltradas + branch em _campoRenderLista. - 21/10/2026 -->
 <!-- v32.82 - PROSPECCAO: cor da suspensa trocada para MARROM (#7B3F00) no mapa/legenda/filtro/tooltip/popup/ficha (amarelo batia com Ativada, roxo e preto ja usados). - 21/10/2026 -->
 <!-- v32.81 - PROSPECCAO: suspensa agora com ANEL AMARELO (antes roxo) no mapa/legenda/tooltip/popup; legenda mostra um aro amarelo de verdade; ficha em texto limpo (sem HTML escapado). - 21/10/2026 -->
 <!-- v32.80 - PROSPECCAO: rotulo da suspensa agora e so "Suspensa" (tirado o "(nos devendo)") no filtro, legenda, ficha e popup. - 21/10/2026 -->
@@ -6344,6 +6345,7 @@ function _campoMontarShell(){
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 2px 8px;gap:8px;flex-wrap:wrap">'
     +   '<div style="font-size:12px;font-weight:700;color:var(--text2)" id="campo-lista-titulo">Lojas</div>'
     +   '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +     '<button onclick="_campoToggleMinhas()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" id="campo-btn-minhas" title="Ver só as lojas que VOCÊ acompanha (sem a base da Machine), de todas as cidades">⭐ Minhas prospecções <span id="campo-minhas-badge" style="display:none;background:#5B4BB3;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;margin-left:2px">0</span></button>'
     +     '<button onclick="_campoToggleRota()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" id="campo-btn-rota" title="Monte a lista de visitas e abra a rota no Google Maps / Waze">🚗 Minha rota <span id="campo-rota-badge" style="display:none;background:#0E7AB8;color:#fff;border-radius:10px;padding:0 6px;font-size:10px;margin-left:2px">0</span></button>'
     +     '<button onclick="_campoToggleNumeros()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" id="campo-btn-numeros" title="Funil de conversão e ranking por prospector">📊 Números</button>'
     +     '<button onclick="_campoToggleMapa()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" id="campo-btn-mapa" title="Ver as lojas no mapa">🗺️ Mapa</button>'
@@ -6358,7 +6360,15 @@ function _campoMontarShell(){
     + '<div id="campo-lista"></div>';
   _CAMPO.montado = true;
   _CAMPO.mapaAberto = true;
+  _CAMPO.soMinhas = false;
   var btnMapa = document.getElementById('campo-btn-mapa'); if(btnMapa) btnMapa.classList.add('active');
+}
+
+/* ⭐ Minhas prospecções: liga/desliga o modo que mostra SÓ as lojas que o usuário acompanha */
+function _campoToggleMinhas(){
+  _CAMPO.soMinhas = !_CAMPO.soMinhas;
+  var b = document.getElementById('campo-btn-minhas'); if(b) b.classList.toggle('active', !!_CAMPO.soMinhas);
+  _campoRepintar();
 }
 
 function _campoLimparFiltro(){
@@ -6377,6 +6387,7 @@ function _campoLojasFiltradas(){
   var fDe     = (document.getElementById('campo-f-de')||{}).value || '';
   var fAte    = (document.getElementById('campo-f-ate')||{}).value || '';
   _CAMPO.filtro = { cidade:fCidade, status:fStatus, busca:fBusca, de:fDe, ate:fAte };
+  var meuId = ''; try{ var _mu=getUsuarioLogado(); meuId=(_mu&&_mu.id)||''; }catch(e){}
 
   // Lojas com visita no período (se filtro de data ativo)
   var lojasComVisitaNoPeriodo = null;
@@ -6392,6 +6403,7 @@ function _campoLojasFiltradas(){
 
   return _CAMPO.lojas.filter(function(l){
     if(!_campoPodeVerLoja(l)) return false;
+    if(_CAMPO.soMinhas){ if(!meuId || (l.criado_por||'') !== meuId) return false; } // só as que EU acompanho
     if(fCidade){ var slug = l.cidade_slug || _campoSlug(l.cidade); if(slug !== fCidade) return false; }
     if(fStatus && (l.status||'prospect') !== fStatus) return false;
     if(lojasComVisitaNoPeriodo && !lojasComVisitaNoPeriodo[l.id]) return false;
@@ -6417,6 +6429,11 @@ function _campoRepintar(){
   _campoRenderKpis(lojas, emp);
   _campoRenderLista(lojas, emp);
   if(_CAMPO.mapaAberto && _campoMapaInst){ try{ _campoDrawMarkers(lojas); }catch(e){} }
+  try{ // badge "⭐ Minhas prospecções": total das lojas que EU acompanho (todas as cidades)
+    var _mu2=getUsuarioLogado(); var _mid=(_mu2&&_mu2.id)||'';
+    var _nMin=_mid ? _CAMPO.lojas.filter(function(l){ return (l.criado_por||'')===_mid && _campoPodeVerLoja(l); }).length : 0;
+    var _bd=document.getElementById('campo-minhas-badge'); if(_bd){ _bd.textContent=_nMin; _bd.style.display=_nMin?'inline-block':'none'; }
+  }catch(e){}
   var nb=document.getElementById('campo-numeros'); if(nb && nb.style.display==='block'){ try{ _campoRenderNumeros(); }catch(e){} }
   try{ _campoRotaAtualizarBadge(); }catch(e){}
   var rb=document.getElementById('campo-rota'); if(rb && rb.style.display==='block'){ try{ _campoRenderRota(); }catch(e){} }
@@ -6449,6 +6466,22 @@ function _campoRenderKpis(lojas, emp){
 function _campoRenderLista(lojas, emp){
   var box = document.getElementById('campo-lista'); if(!box) return;
   emp = emp || [];
+  // ⭐ MODO "MINHAS PROSPECÇÕES": só as lojas que EU acompanho (lojas já vem filtrada por criado_por),
+  // sem a base da Machine, agrupadas por cidade, valendo em qualquer nível (Brasil ou cidade aberta)
+  if(_CAMPO.soMinhas){
+    var titM=document.getElementById('campo-lista-titulo'); if(titM) titM.textContent='⭐ Minhas prospecções';
+    if(!lojas.length){
+      box.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">Você ainda não acompanha nenhuma loja.<br>Abra uma cidade no mapa, clique numa empresa e toque em <b>+ Acompanhar</b>.</div>';
+      return;
+    }
+    var grpM={}; lojas.forEach(function(l){ var c=l.cidade||'(sem cidade)'; (grpM[c]=grpM[c]||[]).push(l); });
+    var hbM='';
+    Object.keys(grpM).sort().forEach(function(c){
+      hbM+='<div style="margin:12px 0 6px;display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px">🏙️ '+_campoEsc(c)+'</span><span style="font-size:10px;padding:1px 8px;border-radius:10px;background:var(--border);color:var(--text2)">'+grpM[c].length+'</span><div style="flex:1;height:1px;background:var(--border)"></div></div>';
+      grpM[c].forEach(function(l){ hbM+=_campoCard(l); });
+    });
+    box.innerHTML=hbM; return;
+  }
   var porBairro = !!_campoCidadeSel(); // cidade aberta → agrupa por bairro
   var tit = document.getElementById('campo-lista-titulo'); if(tit) tit.textContent = porBairro ? 'Por bairro' : 'Prospecção';
   // NÍVEL BRASIL: não lista as empresas da Machine aqui (só ao abrir a cidade). Mostra aviso + lojas de prospecção.
