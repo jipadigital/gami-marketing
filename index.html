@@ -1,3 +1,4 @@
+<!-- v32.85 - PROSPECCAO EM CAMPO: tira o marrom (suspensa/devendo) das empresas que NUNCA ativaram (fantasma, 👻). Elas foram suspensas so por tempo de cadastro sem ativar, nao por divida, entao o marrom enganava o vendedor. Agora susp so vale pra quem PEDIU; no mapa/tooltip/popup/filtro o fantasma nao marca suspensa, e a ficha mostra "Cadastrada (nunca ativou)" no lugar. - 22/10/2026 -->
 <!-- v32.84 - PROSPECCAO EM CAMPO (FALSO "parou de pedir"): o painel agrupava pedidos por NOME EXATO, entao a mesma loja digitada de 2 jeitos (abreviacao, no da unidade, acento, erro) virava 2 empresas e uma parecia "parada". Agora VINCULA POR ENDERECO: (1) cadastro casado por coordenada quando o nome nao bate (so se ha 1 cadastro no ponto, p/ nao errar em shopping); (2) buckets de pedido na MESMA coordenada + nome de MARCA (token raro na cidade, DF global<=6, ou um nome contido no outro) sao fundidos numa loja so, com o ultimo pedido correto. Shopping NAO funde (campo/grande/praia tem DF alto). Ex: Delicati(1087, "parou") junta com a Rua Bahia e volta a 100 ATIVA. Auditado: ~74 lojas / 18k pedidos mal atribuidos nas 9 cidades. Ficha mostra nota de vinculo. - 21/10/2026 -->
 <!-- v32.83 - PROSPECCAO EM CAMPO: nova aba/botao "⭐ Minhas prospeccoes" (campo-btn-minhas) que mostra SO as lojas que a pessoa acompanha (criado_por = eu), sem a base da Machine, agrupadas por cidade, valendo em qualquer nivel (Brasil ou cidade). Badge com o total. _campoToggleMinhas + filtro em _campoLojasFiltradas + branch em _campoRenderLista. - 21/10/2026 -->
 <!-- v32.82 - PROSPECCAO: cor da suspensa trocada para MARROM (#7B3F00) no mapa/legenda/filtro/tooltip/popup/ficha (amarelo batia com Ativada, roxo e preto ja usados). - 21/10/2026 -->
@@ -6605,7 +6606,7 @@ function _campoFichaEmpresa(e, inline){
   var telHtml = tel ? (_campoEsc(tel)+(telLimpo.length>=10?' <a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" style="color:#25D366;font-weight:700;text-decoration:none">📱 WhatsApp</a>':'')) : '';
   var email=(Array.isArray(e.admins) && e.admins[0] && e.admins[0].email) ? e.admins[0].email : '';
   var adm=(Array.isArray(e.admins) && e.admins[0] && e.admins[0].nome && e.admins[0].nome.trim().toLowerCase()!==(e.nome||'').trim().toLowerCase()) ? e.admins[0].nome : '';
-  var sit = e.status_empresa==='A' ? 'Ativo' : (e.status_empresa==='S' ? '🟤 Suspensa' : (e.status_empresa==='G' ? 'Aguardando ativação' : (e.status_empresa==='I' ? 'Inativo' : (e.status_empresa||''))));
+  var sit = e.status_empresa==='A' ? 'Ativo' : (e.status_empresa==='S' ? (fant ? 'Cadastrada (nunca ativou)' : '🟤 Suspensa') : (e.status_empresa==='G' ? 'Aguardando ativação' : (e.status_empresa==='I' ? 'Inativo' : (e.status_empresa||''))));
   var diasCad=_campoDiasDesde(e.cadastro);
   var cad = e.cadastro ? (_campoDataBR(e.cadastro)+(diasCad!=null?' (há '+diasCad+' dia'+(diasCad===1?'':'s')+')':'')) : '';
   var h='';
@@ -7597,7 +7598,7 @@ function _campoMachineFiltrada(){
   slugs.forEach(function(s){ (_CAMPO.machineCache[s]||[]).forEach(function(e){
     if(prosp[s+'|'+(e.nome||'').trim().toLowerCase()]) return; // já é loja de prospecção
     if(fStatus){
-      if(fStatus==='suspensa'){ if(String(e.status_empresa||'').toUpperCase()!=='S') return; } // suspensa = nos devendo
+      if(fStatus==='suspensa'){ if(String(e.status_empresa||'').toUpperCase()!=='S' || e._status==='fantasma') return; } // suspensa = nos devendo (só quem pediu; fantasma fora)
       else if(e._status!==fStatus) return;
     }
     if(fBusca && ((e.nome||'')+' '+(e.bairro||'')).toLowerCase().indexOf(fBusca)<0) return;
@@ -7956,7 +7957,7 @@ function _campoDrawPontos(lojas, comGeo, empAll){
   emp.forEach(function(e){
     var m=_campoStMeta(e._status||'ativa');
     var ehF=e._status==='fantasma';
-    var susp=String(e.status_empresa||'').toUpperCase()==='S'; // suspensa no cadastro = nos devendo
+    var susp=String(e.status_empresa||'').toUpperCase()==='S' && !ehF; // suspensa (devendo) só pra quem PEDIU; fantasma (nunca ativou) não "deve", não marca
     var q=parseInt(e.qtd_pedidos)||0; var rad=ehF?5:(5+Math.min(10, Math.round(Math.sqrt(q)/3)));
     if(susp) rad=Math.max(rad,7);
     var op=ehF?0.95:0.7;
