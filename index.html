@@ -1,3 +1,4 @@
+<!-- v32.86 - RANKING: card "Top 20 do mes" vira "Ranking do mes" e lista TODOS do 4o ao ultimo (antes cortava no 20o, slice(3,20)->slice(3)). Removido o append "sua posicao" (todos ja aparecem). Pedido: tem que aparecer todo mundo. - 22/10/2026 -->
 <!-- v32.85 - PROSPECCAO EM CAMPO: tira o marrom (suspensa/devendo) das empresas que NUNCA ativaram (fantasma, 👻). Elas foram suspensas so por tempo de cadastro sem ativar, nao por divida, entao o marrom enganava o vendedor. Agora susp so vale pra quem PEDIU; no mapa/tooltip/popup/filtro o fantasma nao marca suspensa, e a ficha mostra "Cadastrada (nunca ativou)" no lugar. - 22/10/2026 -->
 <!-- v32.84 - PROSPECCAO EM CAMPO (FALSO "parou de pedir"): o painel agrupava pedidos por NOME EXATO, entao a mesma loja digitada de 2 jeitos (abreviacao, no da unidade, acento, erro) virava 2 empresas e uma parecia "parada". Agora VINCULA POR ENDERECO: (1) cadastro casado por coordenada quando o nome nao bate (so se ha 1 cadastro no ponto, p/ nao errar em shopping); (2) buckets de pedido na MESMA coordenada + nome de MARCA (token raro na cidade, DF global<=6, ou um nome contido no outro) sao fundidos numa loja so, com o ultimo pedido correto. Shopping NAO funde (campo/grande/praia tem DF alto). Ex: Delicati(1087, "parou") junta com a Rua Bahia e volta a 100 ATIVA. Auditado: ~74 lojas / 18k pedidos mal atribuidos nas 9 cidades. Ficha mostra nota de vinculo. - 21/10/2026 -->
 <!-- v32.83 - PROSPECCAO EM CAMPO: nova aba/botao "⭐ Minhas prospeccoes" (campo-btn-minhas) que mostra SO as lojas que a pessoa acompanha (criado_por = eu), sem a base da Machine, agrupadas por cidade, valendo em qualquer nivel (Brasil ou cidade). Badge com o total. _campoToggleMinhas + filtro em _campoLojasFiltradas + branch em _campoRenderLista. - 21/10/2026 -->
@@ -9165,8 +9166,8 @@ async function _campoCruzarMachine(){
     <div class="card" data-perm-ranking-geral="true" style="margin-bottom:14px;padding:14px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px">
         <div>
-          <div class="card-title" style="margin:0">🎯 Top 20 do mês</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">Posições 4º a 20º · sua linha em destaque</div>
+          <div class="card-title" style="margin:0">🎯 Ranking do mês</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Do 4º ao último · sua linha em destaque</div>
         </div>
         <select id="rank-individual-filtro" class="sel" style="font-size:11px;padding:4px 8px" onchange="renderRankingIndividual()">
           <option value="mensal">Mês atual</option>
@@ -47515,11 +47516,11 @@ async function renderRankingIndividual(){
   // Pega posição do usuário logado (se estiver em algum lugar)
   var minhaPos = ranking.findIndex(function(r){ return r.pessoa_id === meuId; });
   
-  // Lista do 4º ao 20º (v31.51: era ate o 10º — subimos pra 20 pra aparecer mais gente)
-  var lista = ranking.slice(3, 20);
+  // Lista do 4º ao ÚLTIMO (v32.86: mostra TODOS; antes cortava no 20º)
+  var lista = ranking.slice(3);
 
-  // Se você está fora do top 20, adiciona sua linha no final com separador
-  var voceForaTop10 = minhaPos >= 20;
+  // mostra todos → sua linha já aparece na lista (não precisa do append "sua posição")
+  var voceForaTop10 = false;
 
   if(!lista.length){
     el.innerHTML = '<div style="text-align:center;padding:18px;color:var(--text3);font-size:11px">Pódio completo! Não há mais posições no ranking.</div>';
