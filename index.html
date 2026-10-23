@@ -1,3 +1,4 @@
+<!-- v32.87 - PERMISSAO VENDEDOR: agora so ve Calendario, Tarefas e Prospeccao em Campo (abas reduzidas de 10 p/ 3). Como perderam o dashboard, o login E o restore de sessao passam a levar pra 1a aba permitida (_abaHomePermitida/_irParaHome) - vendedor cai direto na Prospeccao em Campo em vez de bater num "acesso restrito". - 22/10/2026 -->
 <!-- v32.86 - RANKING: card "Top 20 do mes" vira "Ranking do mes" e lista TODOS do 4o ao ultimo (antes cortava no 20o, slice(3,20)->slice(3)). Removido o append "sua posicao" (todos ja aparecem). Pedido: tem que aparecer todo mundo. - 22/10/2026 -->
 <!-- v32.85 - PROSPECCAO EM CAMPO: tira o marrom (suspensa/devendo) das empresas que NUNCA ativaram (fantasma, 👻). Elas foram suspensas so por tempo de cadastro sem ativar, nao por divida, entao o marrom enganava o vendedor. Agora susp so vale pra quem PEDIU; no mapa/tooltip/popup/filtro o fantasma nao marca suspensa, e a ficha mostra "Cadastrada (nunca ativou)" no lugar. - 22/10/2026 -->
 <!-- v32.84 - PROSPECCAO EM CAMPO (FALSO "parou de pedir"): o painel agrupava pedidos por NOME EXATO, entao a mesma loja digitada de 2 jeitos (abreviacao, no da unidade, acento, erro) virava 2 empresas e uma parecia "parada". Agora VINCULA POR ENDERECO: (1) cadastro casado por coordenada quando o nome nao bate (so se ha 1 cadastro no ponto, p/ nao errar em shopping); (2) buckets de pedido na MESMA coordenada + nome de MARCA (token raro na cidade, DF global<=6, ou um nome contido no outro) sao fundidos numa loja so, com o ultimo pedido correto. Shopping NAO funde (campo/grande/praia tem DF alto). Ex: Delicati(1087, "parou") junta com a Rua Bahia e volta a 100 ATIVA. Auditado: ~74 lojas / 18k pedidos mal atribuidos nas 9 cidades. Ficha mostra nota de vinculo. - 21/10/2026 -->
@@ -2001,7 +2002,7 @@ var MATRIZ_PERMISSOES = {
     filtra_inbox: true
   },
   vendedor: {
-    abas: ['dashboard','calendario','tarefas','cidades','campo','ranking','culture','carreira','portal','manual'],
+    abas: ['calendario','tarefas','campo'], // v32.87: vendedor só vê Calendário, Tarefas e Prospecção em Campo
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -2634,6 +2635,29 @@ function _blocoRestrito(){
     + '</div></div>';
   document.body.insertAdjacentHTML('beforeend', html);
   return true;
+}
+
+/* Aba inicial (home) do usuário: a 1ª permitida. Quem não tem dashboard (ex: vendedor)
+   cai na melhor aba disponível em vez de bater num "acesso restrito". */
+function _abaHomePermitida(u){
+  u = u || (typeof getUsuarioLogado==='function' ? getUsuarioLogado() : null);
+  var nivel = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : 'visitante';
+  var perms = MATRIZ_PERMISSOES[nivel] || MATRIZ_PERMISSOES.visitante;
+  var ordem = ['dashboard','campo','tarefas','calendario','cidades','ranking'];
+  for(var i=0;i<ordem.length;i++){
+    var a=ordem[i];
+    if(a==='campo'){ if(typeof _podeVerCampo==='function' && _podeVerCampo()) return 'campo'; continue; }
+    if(perms.abas.indexOf(a) >= 0) return a;
+  }
+  return perms.abas[0] || 'calendario';
+}
+function _irParaHome(u){
+  try {
+    var home = _abaHomePermitida(u);
+    var navH = document.querySelector('.nav-item[onclick*="\'' + home + '\'"]') || document.querySelector('[onclick*="' + home + '"]');
+    if(navH){ window.nav(navH, home); return true; }
+  } catch(e){}
+  return false;
 }
 
 /* Re-aplica permissões periodicamente (caso DOM mude) */
@@ -14995,8 +15019,9 @@ async function handleLoginSubmit(ev){
   if(!resultado.usuario.pin_trocado || !resultado.usuario.username_escolhido){
     setTimeout(function(){ abrirPrimeiroAcesso(resultado.usuario); }, 400);
   } else {
-    // Acesso normal — volta pro dashboard
+    // Acesso normal — vai pra aba inicial permitida (dashboard p/ a maioria; vendedor cai em Campo)
     setTimeout(function(){
+      if(_irParaHome(resultado.usuario)) return;
       var navDash = document.querySelector('[onclick*="dashboard"]');
       if(navDash) window.nav(navDash, 'dashboard');
       else location.reload();
@@ -15581,6 +15606,14 @@ function checarLoginInicial(){
   // Antes só iniciava após login NOVO, então quem fica logado (sessão de 7 dias) nunca
   // atualizava o last_seen e sumia do "online 24h" mesmo estando ativo (ganhando ponto).
   try { if(typeof _pmIniciarHeartbeat === 'function') _pmIniciarHeartbeat(); } catch(e){}
+  // quem NÃO tem dashboard (ex: vendedor) é levado pra 1ª aba permitida; senão veria a dashboard estática
+  try {
+    var _nv = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : null;
+    var _pm = _nv && MATRIZ_PERMISSOES[_nv];
+    if(_pm && _pm.abas.indexOf('dashboard') === -1){
+      setTimeout(function(){ try{ _irParaHome(u); }catch(e){} }, 300);
+    }
+  } catch(e){}
   return true;
 }
 
