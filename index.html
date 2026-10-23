@@ -1,3 +1,4 @@
+<!-- v32.89 - PROSPECCAO EM CAMPO (mapa): com milhares de prospects (iFood) o mapa virou massa cinza tapando as 🟢/🔴. Agora prospect e fantasma viram BOLINHA PEQUENA SEM BORDA e translucida (recuam); as ATIVAS e PARARAM ficam opacas e sao trazidas pra FRENTE (bringToFront via _frente) pra sobressair. - 23/10/2026 -->
 <!-- v32.88 - PROSPECCAO EM CAMPO: nova opcao no filtro de status "⚪👻 Prospect + nunca pediu" (value=frios) que mostra de uma vez as lojas prospect (ex: importadas do iFood) + as empresas da Machine que cadastraram e nunca pediram (fantasma). Tratado em _campoLojasFiltradas (prospect) e _campoMachineFiltrada (fantasma). - 23/10/2026 -->
 <!-- v32.87 - PERMISSAO VENDEDOR: agora so ve Calendario, Tarefas e Prospeccao em Campo (abas reduzidas de 10 p/ 3). Como perderam o dashboard, o login E o restore de sessao passam a levar pra 1a aba permitida (_abaHomePermitida/_irParaHome) - vendedor cai direto na Prospeccao em Campo em vez de bater num "acesso restrito". - 22/10/2026 -->
 <!-- v32.86 - RANKING: card "Top 20 do mes" vira "Ranking do mes" e lista TODOS do 4o ao ultimo (antes cortava no 20o, slice(3,20)->slice(3)). Removido o append "sua posicao" (todos ja aparecem). Pedido: tem que aparecer todo mundo. - 22/10/2026 -->
@@ -7985,14 +7986,15 @@ function _campoDrawPontos(lojas, comGeo, empAll){
   var ped  = empAll.filter(function(e){ return e._status!=='fantasma'; }).sort(function(a,b){ return (parseInt(b.qtd_pedidos)||0)-(parseInt(a.qtd_pedidos)||0); }).slice(0,5000);
   var emp = fant.concat(ped);
   _CAMPO.empMarkers = {};
+  var _frente = []; // 🟢 ativas e 🔴 pararam vão por cima da massa de prospects/fantasmas
   emp.forEach(function(e){
     var m=_campoStMeta(e._status||'ativa');
     var ehF=e._status==='fantasma';
     var susp=String(e.status_empresa||'').toUpperCase()==='S' && !ehF; // suspensa (devendo) só pra quem PEDIU; fantasma (nunca ativou) não "deve", não marca
-    var q=parseInt(e.qtd_pedidos)||0; var rad=ehF?5:(5+Math.min(10, Math.round(Math.sqrt(q)/3)));
+    var q=parseInt(e.qtd_pedidos)||0; var rad=ehF?4:(6+Math.min(10, Math.round(Math.sqrt(q)/3)));
     if(susp) rad=Math.max(rad,7);
-    var op=ehF?0.95:0.7;
-    var bCor=susp?'#7B3F00':'#fff', bW=susp?3:1; // anel marrom grosso nas suspensas
+    var op=ehF?0.5:0.9; // fantasma recua (translúcido); pedindo/parou opaco pra sobressair
+    var bCor=susp?'#7B3F00':'#fff', bW=susp?3:(ehF?0:1.5); // fantasma = bolinha sem borda; pedindo/parou com borda branca
     var mk=L.circleMarker([parseFloat(e.lat),parseFloat(e.lng)], { radius:rad, color:bCor, weight:bW, fillColor:m.cor, fillOpacity:op });
     mk.on('mouseover', function(){ mk.setStyle({ weight:susp?4:2, fillOpacity:0.95 }); mk.bringToFront(); });
     mk.on('mouseout',  function(){ mk.setStyle({ weight:bW, fillOpacity:op }); });
@@ -8005,10 +8007,13 @@ function _campoDrawPontos(lojas, comGeo, empAll){
       +'</div>', { maxWidth:300 });
     _CAMPO.empMarkers[_campoEmpKey(e)] = mk;
     if(_campoEmpLayer) _campoEmpLayer.addLayer(mk);
+    if(!ehF && (e._status==='ativa' || e._status==='perdida')) _frente.push(mk); // pedindo/parou pra frente
   });
   comGeo.forEach(function(l){
     var m = _campoStMeta(l.status||'prospect');
-    var mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:9, color:'#fff', weight:2, fillColor:m.cor, fillOpacity:0.95 });
+    var ehP = (l.status||'prospect')==='prospect'; // prospect "frio" = bolinha pequena SEM borda, translúcida
+    var rad = ehP?4:9, bW = ehP?0:2, op = ehP?0.55:0.95;
+    var mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
     var ult = _campoVisitasDaLoja(l.id)[0];
     mk.bindTooltip(m.dot+' '+_campoEsc(l.nome), { direction:'top', offset:[0,-6] });
     mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:180px">'
@@ -8022,10 +8027,12 @@ function _campoDrawPontos(lojas, comGeo, empAll){
       +   '<button onclick="_campoNovaVisita(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1AB8F0;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Visita</button>'
       + '</div>'
       + '</div>');
-    mk.on('mouseover', function(){ mk.setStyle({ radius:12, weight:3 }); });
-    mk.on('mouseout',  function(){ mk.setStyle({ radius:9, weight:2 }); });
+    mk.on('mouseover', function(){ mk.setStyle({ radius:ehP?8:12, weight:ehP?1:3, fillOpacity:0.95 }); mk.bringToFront(); });
+    mk.on('mouseout',  function(){ mk.setStyle({ radius:rad, weight:bW, fillOpacity:op }); });
     _campoMapaLayer.addLayer(mk);
+    if(!ehP) _frente.push(mk); // lojas que avançaram (ativada/ativa/perdida) também pra frente
   });
+  try { _frente.forEach(function(mk){ mk.bringToFront(); }); } catch(e){} // 🟢/🔴 por cima da massa de prospects
   var st = document.getElementById('campo-mapa-status');
   if(st){
     if(_campoLoadingMachine){ st.textContent='Carregando a cidade...'; }
