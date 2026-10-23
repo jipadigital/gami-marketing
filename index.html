@@ -1,3 +1,4 @@
+<!-- v32.94 - PROSPECCAO mapa: emoji da categoria agora aparece NA BOLINHA do prospect (pequeno, numa bolinha branca de 16px pra nao poluir), mas SO nos que estao dentro da tela (viewport) e com teto de 450 (_campoRenderEmojis em _campoEmojiLayer, redesenha no pan/zoom via moveend/zoomend). Zoom aberto (muitos) = bolinhas cinza, leve; zoom no bairro = emoji. Nunca cria milhares de DOM. - 23/10/2026 -->
 <!-- v32.93 - PROSPECCAO perf: ficou lento com 3.4k prospects. (1) POPUPS PREGUICOSOS: antes montava o popup/ficha de TODOS os marcadores (lojas+Machine) a cada repaint; agora bindPopup(fn) monta so ao abrir (_campoEmpPopupHTML/_campoLojaPopupHTML). (2) LISTA limitada a 150 por grupo (aviso "150 de N, filtre"); no mapa continuam todos. - 23/10/2026 -->
 <!-- v32.92 - PROSPECCAO EM CAMPO: (1) filtro de STATUS virou multi-selecao por chips (marca varios: ex Perdida + Nunca pediu; nenhum = todos; saiu o combo "frios"). (2) FIX: prospects carregavam truncados em 1000 (teto PostgREST) -> agora pagina via _campoFetchTodos e traz TODOS (3.4k em Maceio). (3) novo filtro por CATEGORIA (dropdown, segmento). (4) EMOJI da categoria nos prospects SO quando o filtro deixa <=400 na tela (senao canvas, sem travar celular). - 23/10/2026 -->
 <!-- v32.91 - PROSPECCAO mapa: o popup da LOJA de prospecção (prospect) mostrava só nome/bairro/status. Agora exibe tambem ENDERECO, TELEFONE (com link WhatsApp), CATEGORIA e CNPJ (dados que vieram do cadastro/importacao iFood). - 23/10/2026 -->
@@ -6340,7 +6341,7 @@ function _campoMontarShell(){
   var root = document.getElementById('campo-root');
   if(!root) return;
   // o innerHTML recria o #campo-mapa, então descarta o mapa antigo (ficaria órfão)
-  if(_campoMapaInst){ try{ _campoMapaInst.remove(); }catch(e){} _campoMapaInst=null; _campoMapaLayer=null; _campoGeoLayer=null; }
+  if(_campoMapaInst){ try{ _campoMapaInst.remove(); }catch(e){} _campoMapaInst=null; _campoMapaLayer=null; _campoEmojiLayer=null; _campoGeoLayer=null; }
   _CAMPO.cidadeSel = ''; // abre a aba no nível Brasil...
   // ...MAS se o usuário atende só 1 cidade (gestor/vendedor), abre DIRETO nela
   try {
@@ -7738,7 +7739,7 @@ function _campoExportarExcel(){
 }
 
 /* ---------- MAPA (Parte 2) — pontos geocodificados por status ---------- */
-var _campoMapaInst = null, _campoMapaLayer = null, _campoEmpLayer = null, _campoUFStats = {}, _campoTileLayer = null;
+var _campoMapaInst = null, _campoMapaLayer = null, _campoEmpLayer = null, _campoEmojiLayer = null, _campoUFStats = {}, _campoTileLayer = null;
 // nível cidade = mapa de ruas (OSM, mostra bairros); nível Brasil = vetorial dos estados
 function _campoSetTiles(on){
   if(!_campoMapaInst) return;
@@ -7933,6 +7934,8 @@ function _campoRenderMapa(){
       }
       _campoEmpLayer = L.layerGroup().addTo(_campoMapaInst);   // base da Machine (embaixo)
       _campoMapaLayer = L.layerGroup().addTo(_campoMapaInst);  // lojas de prospecção (em cima)
+      _campoEmojiLayer = L.layerGroup().addTo(_campoMapaInst); // emoji de categoria (só os visíveis)
+      _campoMapaInst.on('moveend zoomend', _campoEmojiAgendar); // redesenha os emojis ao mover/zoom
       _campoMapaInst.fitBounds(_CAMPO_BR_BOUNDS); // começa focado no Brasil
     }
     _campoDrawMarkers(_campoLojasFiltradas());
@@ -7981,6 +7984,7 @@ function _campoDrawMarkers(lojas){
   if(!_campoMapaLayer || !window.L) return;
   _campoMapaLayer.clearLayers();
   if(_campoEmpLayer) _campoEmpLayer.clearLayers();
+  if(_campoEmojiLayer) _campoEmojiLayer.clearLayers();
   var cidadeSel=_campoCidadeSel();
   var comGeo = lojas.filter(function(l){ return l.lat && l.lng; });
   var empAll = _campoMachineFiltrada().filter(function(e){ return e.lat && e.lng; });
@@ -8070,6 +8074,37 @@ function _campoLojaPopupHTML(l){
     +   '<button onclick="_campoNovaVisita(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1AB8F0;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Visita</button>'
     + '</div></div>';
 }
+// OVERLAY de EMOJI por categoria: desenha o emoji (pequeno, na bolinha) SÓ nos prospects dentro da
+// tela (viewport), com teto. Zoom aberto (muitos na tela) = fica nas bolinhas cinza, sem emoji (leve).
+// Zoom no bairro (poucos) = emoji. Atualiza no pan/zoom. Nunca cria milhares de elementos.
+var _CAMPO_EMOJI_CAP = 450;
+function _campoRenderEmojis(){
+  try{
+    if(!_campoMapaInst) return;
+    if(!_campoEmojiLayer){ _campoEmojiLayer = L.layerGroup().addTo(_campoMapaInst); }
+    _campoEmojiLayer.clearLayers();
+    if(!_campoCidadeSel()) return; // só no nível cidade
+    var pool=_CAMPO._emojiPool||[]; if(!pool.length) return;
+    var b=_campoMapaInst.getBounds(), vis=[];
+    for(var i=0;i<pool.length;i++){
+      var l=pool[i], la=parseFloat(l.lat), lo=parseFloat(l.lng);
+      if(!la||!lo) continue;
+      if(b.contains([la,lo])){ vis.push(l); if(vis.length>_CAMPO_EMOJI_CAP) return; } // muitos na tela → só bolinhas (sem emoji)
+    }
+    vis.forEach(function(l){
+      var em=_campoCatEmoji(l.segmento); if(!em) return;
+      var mk=L.marker([parseFloat(l.lat),parseFloat(l.lng)], { interactive:true, keyboard:false, icon:L.divIcon({
+        className:'', iconSize:[16,16], iconAnchor:[8,8],
+        html:'<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:1px solid rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:9px;line-height:16px;box-shadow:0 1px 1px rgba(0,0,0,.2)">'+em+'</div>'
+      }) });
+      mk.bindTooltip(em+' '+_campoEsc(l.nome)+(l.segmento?(' · '+_campoEsc(l.segmento)):''), { direction:'top', offset:[0,-9] });
+      mk.bindPopup(function(){ return _campoLojaPopupHTML(l); }, { maxWidth:300 });
+      _campoEmojiLayer.addLayer(mk);
+    });
+  }catch(e){}
+}
+var _campoEmojiTO=null;
+function _campoEmojiAgendar(){ clearTimeout(_campoEmojiTO); _campoEmojiTO=setTimeout(_campoRenderEmojis, 140); }
 // NÍVEL CIDADE: mapa de RUAS (bairros) + pontos individuais (empresas Machine + lojas)
 function _campoDrawPontos(lojas, comGeo, empAll){
   _campoSetTiles(true); // fundo vira mapa de ruas, mostra os bairros
@@ -8098,28 +8133,21 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     if(_campoEmpLayer) _campoEmpLayer.addLayer(mk);
     if(!ehF && (e._status==='ativa' || e._status==='perdida')) _frente.push(mk); // pedindo/parou pra frente
   });
-  // EMOJI por categoria SÓ quando sobraram poucos prospects na tela (filtrado) — senão canvas, pra não travar
-  var usaEmoji = comGeo.length <= 400;
+  _CAMPO._emojiPool = []; // prospects com emoji de categoria → o overlay desenha só os VISÍVEIS (viewport), leve
   comGeo.forEach(function(l){
     var m = _campoStMeta(l.status||'prospect');
-    var ehP = (l.status||'prospect')==='prospect'; // prospect "frio" = bolinha pequena SEM borda, translúcida
+    var ehP = (l.status||'prospect')==='prospect'; // prospect "frio" = bolinha pequena SEM borda
     var rad = ehP?6:9, bW = ehP?0:2, op = ehP?0.9:0.95;
-    var em = (usaEmoji && ehP) ? _campoCatEmoji(l.segmento) : ''; // emoji da categoria (quando poucos)
-    var mk;
-    if(em){
-      mk = L.marker([parseFloat(l.lat),parseFloat(l.lng)], { riseOnHover:true, icon: L.divIcon({ className:'', iconSize:[20,20], iconAnchor:[10,10], html:'<div style="font-size:15px;line-height:20px;text-align:center;filter:drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px rgba(0,0,0,.35))">'+em+'</div>' }) });
-    } else {
-      mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
-    }
-    mk.bindTooltip((em||m.dot)+' '+_campoEsc(l.nome)+(l.segmento?(' · '+_campoEsc(l.segmento)):''), { direction:'top', offset:[0,-6] });
+    var mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
+    mk.bindTooltip(m.dot+' '+_campoEsc(l.nome)+(l.segmento?(' · '+_campoEsc(l.segmento)):''), { direction:'top', offset:[0,-6] });
     mk.bindPopup(function(){ return _campoLojaPopupHTML(l); }, { maxWidth:300 }); // popup preguiçoso (só monta ao abrir)
-    if(!em){ // hover de destaque só na bolinha (o marcador de emoji é DOM, não tem setStyle)
-      mk.on('mouseover', function(){ mk.setStyle({ radius:ehP?8:12, weight:ehP?1:3, fillOpacity:0.95 }); mk.bringToFront(); });
-      mk.on('mouseout',  function(){ mk.setStyle({ radius:rad, weight:bW, fillOpacity:op }); });
-    }
+    mk.on('mouseover', function(){ mk.setStyle({ radius:ehP?8:12, weight:ehP?1:3, fillOpacity:0.95 }); mk.bringToFront(); });
+    mk.on('mouseout',  function(){ mk.setStyle({ radius:rad, weight:bW, fillOpacity:op }); });
     _campoMapaLayer.addLayer(mk);
-    if(!ehP && !em) _frente.push(mk); // lojas que avançaram (ativada/ativa/perdida) também pra frente
+    if(!ehP) _frente.push(mk); // lojas que avançaram (ativada/ativa/perdida) também pra frente
+    if(ehP && _campoCatEmoji(l.segmento)) _CAMPO._emojiPool.push(l); // candidato a emoji
   });
+  _campoRenderEmojis(); // sobrepõe o emoji pequeno só nos prospects dentro da tela
   try { _frente.forEach(function(mk){ mk.bringToFront(); }); } catch(e){} // 🟢/🔴 por cima da massa de prospects
   var st = document.getElementById('campo-mapa-status');
   if(st){
