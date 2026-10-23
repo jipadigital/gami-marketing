@@ -1,3 +1,4 @@
+<!-- v32.92 - PROSPECCAO EM CAMPO: (1) filtro de STATUS virou multi-selecao por chips (marca varios: ex Perdida + Nunca pediu; nenhum = todos; saiu o combo "frios"). (2) FIX: prospects carregavam truncados em 1000 (teto PostgREST) -> agora pagina via _campoFetchTodos e traz TODOS (3.4k em Maceio). (3) novo filtro por CATEGORIA (dropdown, segmento). (4) EMOJI da categoria nos prospects SO quando o filtro deixa <=400 na tela (senao canvas, sem travar celular). - 23/10/2026 -->
 <!-- v32.91 - PROSPECCAO mapa: o popup da LOJA de prospecção (prospect) mostrava só nome/bairro/status. Agora exibe tambem ENDERECO, TELEFONE (com link WhatsApp), CATEGORIA e CNPJ (dados que vieram do cadastro/importacao iFood). - 23/10/2026 -->
 <!-- v32.90 - PROSPECCAO mapa: prospects/fantasmas tinham ficado APAGADOS demais. Aumentados e mais opacos (prospect r6 op0.9 sem borda; fantasma r5 op0.75 sem borda), continuam menores que as ativas/pararam e atras delas. - 23/10/2026 -->
 <!-- v32.89 - PROSPECCAO EM CAMPO (mapa): com milhares de prospects (iFood) o mapa virou massa cinza tapando as 🟢/🔴. Agora prospect e fantasma viram BOLINHA PEQUENA SEM BORDA e translucida (recuam); as ATIVAS e PARARAM ficam opacas e sao trazidas pra FRENTE (bringToFront via _frente) pra sobressair. - 23/10/2026 -->
@@ -6278,7 +6279,8 @@ async function initCampo(){
 
 async function _campoFetch(){
   try {
-    var lojas = await supaSelect('prospeccao_lojas', 'ativo=eq.true&order=updated_at.desc&limit=5000');
+    // PAGINADO: o PostgREST corta em 1000/req; Maceió tem 3.4k+ prospects, então pagina pra trazer TODAS
+    var lojas = await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&order=updated_at.desc&select=*');
     var visitas = await supaSelect('prospeccao_visitas', 'order=data.desc&limit=5000');
     _CAMPO.lojas = Array.isArray(lojas) ? lojas : [];
     _CAMPO.visitas = Array.isArray(visitas) ? visitas : [];
@@ -6355,16 +6357,10 @@ function _campoMontarShell(){
   root.innerHTML =
     '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
     +   '<select id="campo-f-cidade" onchange="_campoSetCidade(this.value)" style="'+selCss+'">'+optCidades+'</select>'
-    +   '<select id="campo-f-status" onchange="_campoAplicar()" style="'+selCss+'">'
-    +     '<option value="">Todos os status</option>'
-    +     '<option value="prospect">⚪ Prospect</option>'
-    +     '<option value="ativada">🟡 Ativada (sem 1º pedido)</option>'
-    +     '<option value="ativa">🟢 Ativa (pedindo)</option>'
-    +     '<option value="perdida">🔴 Perdida</option>'
-    +     '<option value="fantasma">👻 Cadastrou e nunca pediu</option>'
-    +     '<option value="frios">⚪👻 Prospect + nunca pediu</option>'
-    +     '<option value="suspensa">🟤 Suspensa</option>'
-    +   '</select>'
+    +   '<div id="campo-f-status-chips" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" title="Marque um ou vários status (ex: Perdida + Nunca pediu). Nenhum marcado = mostra todos.">'
+    +     [['prospect','⚪ Prospect'],['ativada','🟡 Ativada'],['ativa','🟢 Ativa'],['perdida','🔴 Perdida'],['fantasma','👻 Nunca pediu'],['suspensa','🟤 Suspensa']].map(function(s){ return '<button type="button" data-st="'+s[0]+'" onclick="_campoStatusToggle(\''+s[0]+'\')" class="campo-stchip" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:16px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">'+s[1]+'</button>'; }).join('')
+    +   '</div>'
+    +   '<select id="campo-f-categoria" onchange="_campoAplicar()" title="Filtra os prospects por categoria" style="'+selCss+'"><option value="">Todas as categorias</option></select>'
     +   '<input id="campo-f-busca" oninput="_campoAplicar()" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
     +   '<span style="font-size:11px;color:var(--text3)">Visitas de</span>'
     +   '<input id="campo-f-de" type="date" onchange="_campoAplicar()" style="'+selCss+'">'
@@ -6393,7 +6389,30 @@ function _campoMontarShell(){
   _CAMPO.montado = true;
   _CAMPO.mapaAberto = true;
   _CAMPO.soMinhas = false;
+  _CAMPO.statusSel = _CAMPO.statusSel || []; // status marcados (vazio = todos)
+  _campoStatusChipsUI();
   var btnMapa = document.getElementById('campo-btn-mapa'); if(btnMapa) btnMapa.classList.add('active');
+}
+
+/* Filtro de STATUS por chips (multi-seleção): marque os status que quer ver no mapa/lista.
+   Nenhum marcado = mostra todos. Ex: Perdida + Nunca pediu = marca os dois. */
+function _campoStatusToggle(v){
+  _CAMPO.statusSel = _CAMPO.statusSel || [];
+  var i=_CAMPO.statusSel.indexOf(v);
+  if(i>=0) _CAMPO.statusSel.splice(i,1); else _CAMPO.statusSel.push(v);
+  _campoStatusChipsUI();
+  _campoAplicar();
+}
+function _campoStatusChipsUI(){
+  var sel=_CAMPO.statusSel||[];
+  var chips=document.querySelectorAll('#campo-f-status-chips .campo-stchip');
+  chips.forEach(function(b){
+    var on=sel.indexOf(b.getAttribute('data-st'))>=0;
+    b.style.background=on?'#0E7AB8':'var(--card)';
+    b.style.color=on?'#fff':'var(--text2)';
+    b.style.borderColor=on?'#0E7AB8':'var(--border)';
+    b.style.fontWeight=on?'700':'400';
+  });
 }
 
 /* ⭐ Minhas prospecções: liga/desliga o modo que mostra SÓ as lojas que o usuário acompanha */
@@ -6404,21 +6423,47 @@ function _campoToggleMinhas(){
 }
 
 function _campoLimparFiltro(){
-  ['campo-f-cidade','campo-f-status','campo-f-busca','campo-f-de','campo-f-ate'].forEach(function(id){
+  ['campo-f-cidade','campo-f-categoria','campo-f-busca','campo-f-de','campo-f-ate'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.value='';
   });
+  _CAMPO.statusSel = []; _campoStatusChipsUI(); // zera os chips de status
   _CAMPO.cidadeSel = '';
   _campoSetTiles(false);
   _campoAplicar();
 }
 
+// emoji por categoria (iFood/segmento). Só usado quando o filtro deixa POUCOS pontos (não trava).
+var _CAMPO_CAT_EMOJI = {
+  'Brasileira':'🍛','Lanches':'🍔','Hambúrguer':'🍔','Hamburgueria':'🍔','Açaí':'🍧','Doces & Bolos':'🍰','Doces':'🍰',
+  'Pizza':'🍕','Pizzaria':'🍕','Marmita':'🍱','Salgados':'🥟','Pastel':'🥟','Japonesa':'🍣','Sorvetes':'🍨','Saudável':'🥗',
+  'Italiana':'🍝','Nordestina':'🍲','Carnes':'🥩','Cafeteria':'☕','Café':'☕','Chinesa':'🥡','Variada':'🍴','Variados':'🍴',
+  'Cozinha Rápida':'🌭','Padaria':'🥖','Árabe':'🥙','Vegetariana':'🥗','Vegana':'🥗','Mexicana':'🌮','Frango':'🍗',
+  'Peixe':'🐟','Frutos do Mar':'🦐','Sopas':'🍲','Bebidas':'🥤','Sucos':'🥤','Tapioca':'🫓','Crepe':'🥞','Esfiha':'🥙'
+};
+function _campoCatEmoji(seg){ return _CAMPO_CAT_EMOJI[(seg||'').trim()] || ''; }
+// preenche o dropdown de categoria com as que existem nas lojas (ordenado por qtd), preservando a seleção
+function _campoPreencherCategorias(){
+  var sel=document.getElementById('campo-f-categoria'); if(!sel) return;
+  var cnt={}; _CAMPO.lojas.forEach(function(l){ if(!_campoPodeVerLoja(l)) return; var s=(l.segmento||'').trim(); if(s) cnt[s]=(cnt[s]||0)+1; });
+  var cats=Object.keys(cnt).sort(function(a,b){ return cnt[b]-cnt[a] || a.localeCompare(b); });
+  var sig=cats.join('|');
+  if(sig===_CAMPO._catSig) return; // mesma lista → não reconstrói (não perde a seleção)
+  _CAMPO._catSig=sig;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">Todas as categorias</option>'+cats.map(function(c){
+    return '<option value="'+_campoEsc(c)+'">'+(_campoCatEmoji(c)?_campoCatEmoji(c)+' ':'')+_campoEsc(c)+' ('+cnt[c]+')</option>';
+  }).join('');
+  sel.value = (cats.indexOf(cur)>=0) ? cur : '';
+}
+
 function _campoLojasFiltradas(){
   var fCidade = _campoCidadeSel();
-  var fStatus = (document.getElementById('campo-f-status')||{}).value || '';
+  var selSt   = _CAMPO.statusSel || [];
+  var fCat    = (document.getElementById('campo-f-categoria')||{}).value || '';
   var fBusca  = ((document.getElementById('campo-f-busca')||{}).value || '').trim().toLowerCase();
   var fDe     = (document.getElementById('campo-f-de')||{}).value || '';
   var fAte    = (document.getElementById('campo-f-ate')||{}).value || '';
-  _CAMPO.filtro = { cidade:fCidade, status:fStatus, busca:fBusca, de:fDe, ate:fAte };
+  _CAMPO.filtro = { cidade:fCidade, status:selSt, categoria:fCat, busca:fBusca, de:fDe, ate:fAte };
   var meuId = ''; try{ var _mu=getUsuarioLogado(); meuId=(_mu&&_mu.id)||''; }catch(e){}
 
   // Lojas com visita no período (se filtro de data ativo)
@@ -6437,10 +6482,8 @@ function _campoLojasFiltradas(){
     if(!_campoPodeVerLoja(l)) return false;
     if(_CAMPO.soMinhas){ if(!meuId || (l.criado_por||'') !== meuId) return false; } // só as que EU acompanho
     if(fCidade){ var slug = l.cidade_slug || _campoSlug(l.cidade); if(slug !== fCidade) return false; }
-    if(fStatus){
-      if(fStatus==='frios'){ if((l.status||'prospect')!=='prospect') return false; } // combinado: lojas prospect + (machine fantasma, tratado no outro filtro)
-      else if((l.status||'prospect') !== fStatus) return false;
-    }
+    if(fCat && (l.segmento||'').trim() !== fCat) return false; // filtro por categoria (segmento)
+    if(selSt.length && selSt.indexOf(l.status||'prospect') < 0) return false; // status marcados (lojas: prospect/ativada/ativa/perdida)
     if(lojasComVisitaNoPeriodo && !lojasComVisitaNoPeriodo[l.id]) return false;
     if(fBusca){
       var hay = ((l.nome||'')+' '+(l.bairro||'')+' '+(l.endereco||'')+' '+(l.cidade||'')).toLowerCase();
@@ -6458,6 +6501,7 @@ function _campoAplicar(){
 // re-renderiza KPIs/lista/mapa com o que já tem (sem re-disparar carga)
 function _campoRepintar(){
   if(!_CAMPO.montado) return;
+  try{ _campoPreencherCategorias(); }catch(e){}
   _campoRenderChips();
   var lojas = _campoLojasFiltradas();
   var emp = _campoMachineFiltrada();
@@ -7623,18 +7667,25 @@ function _campoGarantirMachine(){
 // empresas da Machine já em cache pro filtro atual (tira as que viraram loja de prospecção)
 function _campoMachineFiltrada(){
   var slug=_campoCidadeSel();
-  var fStatus=(document.getElementById('campo-f-status')||{}).value||'';
+  var selSt=_CAMPO.statusSel||[];
+  var fCat=(document.getElementById('campo-f-categoria')||{}).value||'';
   var fBusca=((document.getElementById('campo-f-busca')||{}).value||'').trim().toLowerCase();
+  if(fCat) return []; // filtrou por categoria → só prospects (a base Machine não tem categoria)
   var slugs = slug ? [slug] : _campoCidadesAtivasSlugs();
   var prosp={}; _CAMPO.lojas.forEach(function(l){ if(l.ativo!==false) prosp[(l.cidade_slug||_campoSlug(l.cidade))+'|'+(l.nome||'').trim().toLowerCase()]=true; });
+  function _machineBate(e){ // empresa Machine casa com algum status marcado?
+    return selSt.some(function(v){
+      if(v==='fantasma') return e._status==='fantasma';
+      if(v==='ativa')    return e._status==='ativa';
+      if(v==='perdida')  return e._status==='perdida';
+      if(v==='suspensa') return String(e.status_empresa||'').toUpperCase()==='S' && e._status!=='fantasma';
+      return false; // prospect/ativada são status só de loja de prospecção
+    });
+  }
   var out=[];
   slugs.forEach(function(s){ (_CAMPO.machineCache[s]||[]).forEach(function(e){
     if(prosp[s+'|'+(e.nome||'').trim().toLowerCase()]) return; // já é loja de prospecção
-    if(fStatus){
-      if(fStatus==='suspensa'){ if(String(e.status_empresa||'').toUpperCase()!=='S' || e._status==='fantasma') return; } // suspensa = nos devendo (só quem pediu; fantasma fora)
-      else if(fStatus==='frios'){ if(e._status!=='fantasma') return; } // combinado: machine fantasma + (lojas prospect, no outro filtro)
-      else if(e._status!==fStatus) return;
-    }
+    if(selSt.length && !_machineBate(e)) return; // status marcados
     if(fBusca && ((e.nome||'')+' '+(e.bairro||'')).toLowerCase().indexOf(fBusca)<0) return;
     out.push(e);
   }); });
@@ -8011,11 +8062,19 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     if(_campoEmpLayer) _campoEmpLayer.addLayer(mk);
     if(!ehF && (e._status==='ativa' || e._status==='perdida')) _frente.push(mk); // pedindo/parou pra frente
   });
+  // EMOJI por categoria SÓ quando sobraram poucos prospects na tela (filtrado) — senão canvas, pra não travar
+  var usaEmoji = comGeo.length <= 400;
   comGeo.forEach(function(l){
     var m = _campoStMeta(l.status||'prospect');
     var ehP = (l.status||'prospect')==='prospect'; // prospect "frio" = bolinha pequena SEM borda, translúcida
     var rad = ehP?6:9, bW = ehP?0:2, op = ehP?0.9:0.95;
-    var mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
+    var em = (usaEmoji && ehP) ? _campoCatEmoji(l.segmento) : ''; // emoji da categoria (quando poucos)
+    var mk;
+    if(em){
+      mk = L.marker([parseFloat(l.lat),parseFloat(l.lng)], { riseOnHover:true, icon: L.divIcon({ className:'', iconSize:[20,20], iconAnchor:[10,10], html:'<div style="font-size:15px;line-height:20px;text-align:center;filter:drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px rgba(0,0,0,.35))">'+em+'</div>' }) });
+    } else {
+      mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
+    }
     var ult = _campoVisitasDaLoja(l.id)[0];
     // detalhes da empresa (endereço, telefone+WhatsApp, categoria, CNPJ) — vindos do cadastro/importação
     var _telL=(l.telefone||'').toString().replace(/\D/g,'');
@@ -8027,7 +8086,7 @@ function _campoDrawPontos(lojas, comGeo, empAll){
             + (_telHtml?('<div style="color:#555;font-size:11px;margin-top:2px">📞 '+_telHtml+'</div>'):'')
             + _ln('🏷️', l.segmento?_campoEsc(l.segmento):'')
             + _ln('🧾', _cnpjF?_campoEsc(_cnpjF):'');
-    mk.bindTooltip(m.dot+' '+_campoEsc(l.nome), { direction:'top', offset:[0,-6] });
+    mk.bindTooltip((em||m.dot)+' '+_campoEsc(l.nome)+(l.segmento?(' · '+_campoEsc(l.segmento)):''), { direction:'top', offset:[0,-6] });
     mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:200px;max-width:270px">'
       + '<div style="font-weight:700;color:#0B2542;margin-bottom:2px">'+m.dot+' '+_campoEsc(l.nome)+'</div>'
       + '<div style="color:#555">'+_campoEsc([l.bairro,l.cidade].filter(Boolean).join(' · ')||'')+'</div>'
@@ -8040,10 +8099,12 @@ function _campoDrawPontos(lojas, comGeo, empAll){
       +   '<button onclick="_campoNovaVisita(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1AB8F0;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Visita</button>'
       + '</div>'
       + '</div>');
-    mk.on('mouseover', function(){ mk.setStyle({ radius:ehP?8:12, weight:ehP?1:3, fillOpacity:0.95 }); mk.bringToFront(); });
-    mk.on('mouseout',  function(){ mk.setStyle({ radius:rad, weight:bW, fillOpacity:op }); });
+    if(!em){ // hover de destaque só na bolinha (o marcador de emoji é DOM, não tem setStyle)
+      mk.on('mouseover', function(){ mk.setStyle({ radius:ehP?8:12, weight:ehP?1:3, fillOpacity:0.95 }); mk.bringToFront(); });
+      mk.on('mouseout',  function(){ mk.setStyle({ radius:rad, weight:bW, fillOpacity:op }); });
+    }
     _campoMapaLayer.addLayer(mk);
-    if(!ehP) _frente.push(mk); // lojas que avançaram (ativada/ativa/perdida) também pra frente
+    if(!ehP && !em) _frente.push(mk); // lojas que avançaram (ativada/ativa/perdida) também pra frente
   });
   try { _frente.forEach(function(mk){ mk.bringToFront(); }); } catch(e){} // 🟢/🔴 por cima da massa de prospects
   var st = document.getElementById('campo-mapa-status');
