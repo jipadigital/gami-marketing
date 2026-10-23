@@ -1,3 +1,4 @@
+<!-- v32.91 - PROSPECCAO mapa: o popup da LOJA de prospecção (prospect) mostrava só nome/bairro/status. Agora exibe tambem ENDERECO, TELEFONE (com link WhatsApp), CATEGORIA e CNPJ (dados que vieram do cadastro/importacao iFood). - 23/10/2026 -->
 <!-- v32.90 - PROSPECCAO mapa: prospects/fantasmas tinham ficado APAGADOS demais. Aumentados e mais opacos (prospect r6 op0.9 sem borda; fantasma r5 op0.75 sem borda), continuam menores que as ativas/pararam e atras delas. - 23/10/2026 -->
 <!-- v32.89 - PROSPECCAO EM CAMPO (mapa): com milhares de prospects (iFood) o mapa virou massa cinza tapando as 🟢/🔴. Agora prospect e fantasma viram BOLINHA PEQUENA SEM BORDA e translucida (recuam); as ATIVAS e PARARAM ficam opacas e sao trazidas pra FRENTE (bringToFront via _frente) pra sobressair. - 23/10/2026 -->
 <!-- v32.88 - PROSPECCAO EM CAMPO: nova opcao no filtro de status "⚪👻 Prospect + nunca pediu" (value=frios) que mostra de uma vez as lojas prospect (ex: importadas do iFood) + as empresas da Machine que cadastraram e nunca pediram (fantasma). Tratado em _campoLojasFiltradas (prospect) e _campoMachineFiltrada (fantasma). - 23/10/2026 -->
@@ -8016,12 +8017,23 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     var rad = ehP?6:9, bW = ehP?0:2, op = ehP?0.9:0.95;
     var mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
     var ult = _campoVisitasDaLoja(l.id)[0];
+    // detalhes da empresa (endereço, telefone+WhatsApp, categoria, CNPJ) — vindos do cadastro/importação
+    var _telL=(l.telefone||'').toString().replace(/\D/g,'');
+    var _telHtml=l.telefone?(_campoEsc(l.telefone)+(_telL.length>=10?' <a href="https://wa.me/55'+_telL+'" target="_blank" rel="noopener" style="color:#25D366;font-weight:700;text-decoration:none">WhatsApp</a>':'')):'';
+    var _cnpjD=(l.cnpj||'').toString().replace(/\D/g,'');
+    var _cnpjF=_cnpjD.length===14?(_cnpjD.slice(0,2)+'.'+_cnpjD.slice(2,5)+'.'+_cnpjD.slice(5,8)+'/'+_cnpjD.slice(8,12)+'-'+_cnpjD.slice(12)):_cnpjD;
+    var _ln=function(ic,v){ return v?('<div style="color:#555;font-size:11px;margin-top:2px">'+ic+' '+v+'</div>'):''; };
+    var det = _ln('📍', l.endereco?_campoEsc(l.endereco):'')
+            + (_telHtml?('<div style="color:#555;font-size:11px;margin-top:2px">📞 '+_telHtml+'</div>'):'')
+            + _ln('🏷️', l.segmento?_campoEsc(l.segmento):'')
+            + _ln('🧾', _cnpjF?_campoEsc(_cnpjF):'');
     mk.bindTooltip(m.dot+' '+_campoEsc(l.nome), { direction:'top', offset:[0,-6] });
-    mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:180px">'
+    mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:200px;max-width:270px">'
       + '<div style="font-weight:700;color:#0B2542;margin-bottom:2px">'+m.dot+' '+_campoEsc(l.nome)+'</div>'
       + '<div style="color:#555">'+_campoEsc([l.bairro,l.cidade].filter(Boolean).join(' · ')||'')+'</div>'
       + '<div style="margin-top:3px;color:'+m.cor+';font-weight:700">'+m.label+'</div>'
-      + (ult?'<div style="color:#888;font-size:11px">última visita: '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/'))+'</div>':'')
+      + det
+      + (ult?'<div style="color:#888;font-size:11px;margin-top:2px">última visita: '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/'))+'</div>':'')
       + '<div style="display:flex;gap:6px;margin-top:7px">'
       +   '<button onclick="_campoAbrirDoMapa(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:6px;cursor:pointer;font-weight:700">Abrir loja</button>'
       +   '<button onclick="_campoRotaToggleLoja(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1D9E75;background:transparent;color:#1D9E75;border-radius:6px;cursor:pointer;font-weight:700">🚗 Rota</button>'
