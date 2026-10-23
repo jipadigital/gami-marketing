@@ -1,3 +1,4 @@
+<!-- v32.88 - PROSPECCAO EM CAMPO: nova opcao no filtro de status "⚪👻 Prospect + nunca pediu" (value=frios) que mostra de uma vez as lojas prospect (ex: importadas do iFood) + as empresas da Machine que cadastraram e nunca pediram (fantasma). Tratado em _campoLojasFiltradas (prospect) e _campoMachineFiltrada (fantasma). - 23/10/2026 -->
 <!-- v32.87 - PERMISSAO VENDEDOR: agora so ve Calendario, Tarefas e Prospeccao em Campo (abas reduzidas de 10 p/ 3). Como perderam o dashboard, o login E o restore de sessao passam a levar pra 1a aba permitida (_abaHomePermitida/_irParaHome) - vendedor cai direto na Prospeccao em Campo em vez de bater num "acesso restrito". - 22/10/2026 -->
 <!-- v32.86 - RANKING: card "Top 20 do mes" vira "Ranking do mes" e lista TODOS do 4o ao ultimo (antes cortava no 20o, slice(3,20)->slice(3)). Removido o append "sua posicao" (todos ja aparecem). Pedido: tem que aparecer todo mundo. - 22/10/2026 -->
 <!-- v32.85 - PROSPECCAO EM CAMPO: tira o marrom (suspensa/devendo) das empresas que NUNCA ativaram (fantasma, 👻). Elas foram suspensas so por tempo de cadastro sem ativar, nao por divida, entao o marrom enganava o vendedor. Agora susp so vale pra quem PEDIU; no mapa/tooltip/popup/filtro o fantasma nao marca suspensa, e a ficha mostra "Cadastrada (nunca ativou)" no lugar. - 22/10/2026 -->
@@ -6358,6 +6359,7 @@ function _campoMontarShell(){
     +     '<option value="ativa">🟢 Ativa (pedindo)</option>'
     +     '<option value="perdida">🔴 Perdida</option>'
     +     '<option value="fantasma">👻 Cadastrou e nunca pediu</option>'
+    +     '<option value="frios">⚪👻 Prospect + nunca pediu</option>'
     +     '<option value="suspensa">🟤 Suspensa</option>'
     +   '</select>'
     +   '<input id="campo-f-busca" oninput="_campoAplicar()" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
@@ -6432,7 +6434,10 @@ function _campoLojasFiltradas(){
     if(!_campoPodeVerLoja(l)) return false;
     if(_CAMPO.soMinhas){ if(!meuId || (l.criado_por||'') !== meuId) return false; } // só as que EU acompanho
     if(fCidade){ var slug = l.cidade_slug || _campoSlug(l.cidade); if(slug !== fCidade) return false; }
-    if(fStatus && (l.status||'prospect') !== fStatus) return false;
+    if(fStatus){
+      if(fStatus==='frios'){ if((l.status||'prospect')!=='prospect') return false; } // combinado: lojas prospect + (machine fantasma, tratado no outro filtro)
+      else if((l.status||'prospect') !== fStatus) return false;
+    }
     if(lojasComVisitaNoPeriodo && !lojasComVisitaNoPeriodo[l.id]) return false;
     if(fBusca){
       var hay = ((l.nome||'')+' '+(l.bairro||'')+' '+(l.endereco||'')+' '+(l.cidade||'')).toLowerCase();
@@ -7624,6 +7629,7 @@ function _campoMachineFiltrada(){
     if(prosp[s+'|'+(e.nome||'').trim().toLowerCase()]) return; // já é loja de prospecção
     if(fStatus){
       if(fStatus==='suspensa'){ if(String(e.status_empresa||'').toUpperCase()!=='S' || e._status==='fantasma') return; } // suspensa = nos devendo (só quem pediu; fantasma fora)
+      else if(fStatus==='frios'){ if(e._status!=='fantasma') return; } // combinado: machine fantasma + (lojas prospect, no outro filtro)
       else if(e._status!==fStatus) return;
     }
     if(fBusca && ((e.nome||'')+' '+(e.bairro||'')).toLowerCase().indexOf(fBusca)<0) return;
