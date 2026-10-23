@@ -1,3 +1,4 @@
+<!-- v32.95 - PROSPECCAO mapa: a bolinha do emoji era branca e apagava o cinza do prospect (perdia o status). Agora a bolinha do emoji fica na COR DO PROSPECT (cinza) com borda branca fininha; o emoji so diferencia a categoria, a cor continua sinalizando o status. - 23/10/2026 -->
 <!-- v32.94 - PROSPECCAO mapa: emoji da categoria agora aparece NA BOLINHA do prospect (pequeno, numa bolinha branca de 16px pra nao poluir), mas SO nos que estao dentro da tela (viewport) e com teto de 450 (_campoRenderEmojis em _campoEmojiLayer, redesenha no pan/zoom via moveend/zoomend). Zoom aberto (muitos) = bolinhas cinza, leve; zoom no bairro = emoji. Nunca cria milhares de DOM. - 23/10/2026 -->
 <!-- v32.93 - PROSPECCAO perf: ficou lento com 3.4k prospects. (1) POPUPS PREGUICOSOS: antes montava o popup/ficha de TODOS os marcadores (lojas+Machine) a cada repaint; agora bindPopup(fn) monta so ao abrir (_campoEmpPopupHTML/_campoLojaPopupHTML). (2) LISTA limitada a 150 por grupo (aviso "150 de N, filtre"); no mapa continuam todos. - 23/10/2026 -->
 <!-- v32.92 - PROSPECCAO EM CAMPO: (1) filtro de STATUS virou multi-selecao por chips (marca varios: ex Perdida + Nunca pediu; nenhum = todos; saiu o combo "frios"). (2) FIX: prospects carregavam truncados em 1000 (teto PostgREST) -> agora pagina via _campoFetchTodos e traz TODOS (3.4k em Maceio). (3) novo filtro por CATEGORIA (dropdown, segmento). (4) EMOJI da categoria nos prospects SO quando o filtro deixa <=400 na tela (senao canvas, sem travar celular). - 23/10/2026 -->
@@ -8091,11 +8092,12 @@ function _campoRenderEmojis(){
       if(!la||!lo) continue;
       if(b.contains([la,lo])){ vis.push(l); if(vis.length>_CAMPO_EMOJI_CAP) return; } // muitos na tela → só bolinhas (sem emoji)
     }
+    var _pcor=_campoStMeta('prospect').cor; // bolinha fica na COR do prospect (cinza) → não perde o status; emoji só diferencia a categoria
     vis.forEach(function(l){
       var em=_campoCatEmoji(l.segmento); if(!em) return;
       var mk=L.marker([parseFloat(l.lat),parseFloat(l.lng)], { interactive:true, keyboard:false, icon:L.divIcon({
-        className:'', iconSize:[16,16], iconAnchor:[8,8],
-        html:'<div style="width:16px;height:16px;border-radius:50%;background:#fff;border:1px solid rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:9px;line-height:16px;box-shadow:0 1px 1px rgba(0,0,0,.2)">'+em+'</div>'
+        className:'', iconSize:[17,17], iconAnchor:[8,8],
+        html:'<div style="width:17px;height:17px;border-radius:50%;background:'+_pcor+';border:1px solid #fff;display:flex;align-items:center;justify-content:center;font-size:9px;line-height:17px;box-shadow:0 1px 1px rgba(0,0,0,.25)">'+em+'</div>'
       }) });
       mk.bindTooltip(em+' '+_campoEsc(l.nome)+(l.segmento?(' · '+_campoEsc(l.segmento)):''), { direction:'top', offset:[0,-9] });
       mk.bindPopup(function(){ return _campoLojaPopupHTML(l); }, { maxWidth:300 });
