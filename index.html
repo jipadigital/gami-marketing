@@ -1,3 +1,4 @@
+<!-- v32.93 - PROSPECCAO perf: ficou lento com 3.4k prospects. (1) POPUPS PREGUICOSOS: antes montava o popup/ficha de TODOS os marcadores (lojas+Machine) a cada repaint; agora bindPopup(fn) monta so ao abrir (_campoEmpPopupHTML/_campoLojaPopupHTML). (2) LISTA limitada a 150 por grupo (aviso "150 de N, filtre"); no mapa continuam todos. - 23/10/2026 -->
 <!-- v32.92 - PROSPECCAO EM CAMPO: (1) filtro de STATUS virou multi-selecao por chips (marca varios: ex Perdida + Nunca pediu; nenhum = todos; saiu o combo "frios"). (2) FIX: prospects carregavam truncados em 1000 (teto PostgREST) -> agora pagina via _campoFetchTodos e traz TODOS (3.4k em Maceio). (3) novo filtro por CATEGORIA (dropdown, segmento). (4) EMOJI da categoria nos prospects SO quando o filtro deixa <=400 na tela (senao canvas, sem travar celular). - 23/10/2026 -->
 <!-- v32.91 - PROSPECCAO mapa: o popup da LOJA de prospecção (prospect) mostrava só nome/bairro/status. Agora exibe tambem ENDERECO, TELEFONE (com link WhatsApp), CATEGORIA e CNPJ (dados que vieram do cadastro/importacao iFood). - 23/10/2026 -->
 <!-- v32.90 - PROSPECCAO mapa: prospects/fantasmas tinham ficado APAGADOS demais. Aumentados e mais opacos (prospect r6 op0.9 sem borda; fantasma r5 op0.75 sem borda), continuam menores que as ativas/pararam e atras delas. - 23/10/2026 -->
@@ -6557,7 +6558,8 @@ function _campoRenderLista(lojas, emp){
     var hbM='';
     Object.keys(grpM).sort().forEach(function(c){
       hbM+='<div style="margin:12px 0 6px;display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px">🏙️ '+_campoEsc(c)+'</span><span style="font-size:10px;padding:1px 8px;border-radius:10px;background:var(--border);color:var(--text2)">'+grpM[c].length+'</span><div style="flex:1;height:1px;background:var(--border)"></div></div>';
-      grpM[c].forEach(function(l){ hbM+=_campoCard(l); });
+      grpM[c].slice(0,150).forEach(function(l){ hbM+=_campoCard(l); });
+      if(grpM[c].length>150) hbM+='<div style="padding:6px;text-align:center;color:var(--text3);font-size:11px">+ '+(grpM[c].length-150)+' (filtre pra ver)</div>';
     });
     box.innerHTML=hbM; return;
   }
@@ -6570,7 +6572,8 @@ function _campoRenderLista(lojas, emp){
       var grpB={}; lojas.forEach(function(l){ var c=l.cidade||'(sem cidade)'; (grpB[c]=grpB[c]||[]).push(l); });
       Object.keys(grpB).sort().forEach(function(c){
         hb+='<div style="margin:12px 0 6px;display:flex;align-items:center;gap:8px"><span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px">🏙️ '+_campoEsc(c)+'</span><span style="font-size:10px;padding:1px 8px;border-radius:10px;background:var(--border);color:var(--text2)">'+grpB[c].length+'</span><div style="flex:1;height:1px;background:var(--border)"></div></div>';
-        grpB[c].forEach(function(l){ hb+=_campoCard(l); });
+        grpB[c].slice(0,150).forEach(function(l){ hb+=_campoCard(l); });
+        if(grpB[c].length>150) hb+='<div style="padding:6px;text-align:center;color:var(--text3);font-size:11px">+ '+(grpB[c].length-150)+' (abra a cidade ou filtre pra ver)</div>';
       });
     }
     box.innerHTML=hb; return;
@@ -6592,8 +6595,9 @@ function _campoRenderLista(lojas, emp){
       + '<span style="font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.5px">🏙️ '+_campoEsc(c)+'</span>'
       + '<span style="font-size:10px;padding:1px 8px;border-radius:10px;background:var(--border);color:var(--text2)">'+n+'</span>'
       + '<div style="flex:1;height:1px;background:var(--border)"></div></div>';
-    // lojas de prospecção (card completo, expansível)
-    g.lojas.forEach(function(l){ html+=_campoCard(l); });
+    // lojas de prospecção (card completo, expansível) — limita a 150 pra não pesar a lista com milhares
+    g.lojas.slice(0,150).forEach(function(l){ html+=_campoCard(l); });
+    if(g.lojas.length>150) html+='<div style="padding:8px;text-align:center;color:var(--text3);font-size:11px;background:var(--surface2,#f7f9fc);border:1px dashed var(--border);border-radius:8px;margin:4px 0">Mostrando 150 de '+g.lojas.length+' prospects. Use os filtros (status, categoria, 🔎 busca) pra refinar. No mapa aparecem todos.</div>';
     // empresas da Machine (linha compacta), ordenadas por nº de pedidos
     if(g.emp.length){
       g.emp.sort(function(a,b){ return (parseInt(b.qtd_pedidos)||0)-(parseInt(a.qtd_pedidos)||0); });
@@ -8029,6 +8033,43 @@ function _campoDrawCidades(){
   else { try{ _campoMapaInst.fitBounds(_CAMPO_BR_BOUNDS); }catch(e){} }
 }
 
+// POPUP preguiçoso da empresa da Machine (só monta ao abrir → não pesa com milhares de marcadores)
+function _campoEmpPopupHTML(e){
+  var m=_campoStMeta(e._status||'ativa');
+  var ehF=e._status==='fantasma';
+  var susp=String(e.status_empresa||'').toUpperCase()==='S' && !ehF;
+  var stTxt=(e._status==='ativa'?'🟢 Pedindo':(ehF?'👻 Cadastrou e nunca pediu':'🔴 Parou de pedir'))+(susp?' · <span style="color:#7B3F00;font-weight:700">🟤 SUSPENSA</span>':'');
+  return '<div style="font-family:sans-serif;font-size:12px;min-width:240px;max-width:290px">'
+    +'<div style="font-weight:700;color:#0B2542;font-size:13px">'+m.dot+' '+_campoEsc(e.nome)+'</div>'
+    +'<div style="margin:2px 0 6px;color:'+m.cor+';font-weight:700">'+stTxt+'</div>'
+    +'<div style="max-height:300px;overflow:auto">'+_campoFichaEmpresa(e, false)+'</div>'
+    +'</div>';
+}
+// POPUP preguiçoso da loja de prospecção (endereço/telefone/categoria/CNPJ só montam ao abrir)
+function _campoLojaPopupHTML(l){
+  var m=_campoStMeta(l.status||'prospect');
+  var ult=_campoVisitasDaLoja(l.id)[0];
+  var _telL=(l.telefone||'').toString().replace(/\D/g,'');
+  var _telHtml=l.telefone?(_campoEsc(l.telefone)+(_telL.length>=10?' <a href="https://wa.me/55'+_telL+'" target="_blank" rel="noopener" style="color:#25D366;font-weight:700;text-decoration:none">WhatsApp</a>':'')):'';
+  var _cnpjD=(l.cnpj||'').toString().replace(/\D/g,'');
+  var _cnpjF=_cnpjD.length===14?(_cnpjD.slice(0,2)+'.'+_cnpjD.slice(2,5)+'.'+_cnpjD.slice(5,8)+'/'+_cnpjD.slice(8,12)+'-'+_cnpjD.slice(12)):_cnpjD;
+  var _ln=function(ic,v){ return v?('<div style="color:#555;font-size:11px;margin-top:2px">'+ic+' '+v+'</div>'):''; };
+  var det=_ln('📍', l.endereco?_campoEsc(l.endereco):'')
+        + (_telHtml?('<div style="color:#555;font-size:11px;margin-top:2px">📞 '+_telHtml+'</div>'):'')
+        + _ln('🏷️', l.segmento?_campoEsc(l.segmento):'')
+        + _ln('🧾', _cnpjF?_campoEsc(_cnpjF):'');
+  return '<div style="font-family:sans-serif;font-size:12px;min-width:200px;max-width:270px">'
+    + '<div style="font-weight:700;color:#0B2542;margin-bottom:2px">'+m.dot+' '+_campoEsc(l.nome)+'</div>'
+    + '<div style="color:#555">'+_campoEsc([l.bairro,l.cidade].filter(Boolean).join(' · ')||'')+'</div>'
+    + '<div style="margin-top:3px;color:'+m.cor+';font-weight:700">'+m.label+'</div>'
+    + det
+    + (ult?'<div style="color:#888;font-size:11px;margin-top:2px">última visita: '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/'))+'</div>':'')
+    + '<div style="display:flex;gap:6px;margin-top:7px">'
+    +   '<button onclick="_campoAbrirDoMapa(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:6px;cursor:pointer;font-weight:700">Abrir loja</button>'
+    +   '<button onclick="_campoRotaToggleLoja(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1D9E75;background:transparent;color:#1D9E75;border-radius:6px;cursor:pointer;font-weight:700">🚗 Rota</button>'
+    +   '<button onclick="_campoNovaVisita(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1AB8F0;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Visita</button>'
+    + '</div></div>';
+}
 // NÍVEL CIDADE: mapa de RUAS (bairros) + pontos individuais (empresas Machine + lojas)
 function _campoDrawPontos(lojas, comGeo, empAll){
   _campoSetTiles(true); // fundo vira mapa de ruas, mostra os bairros
@@ -8052,12 +8093,7 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     mk.on('mouseover', function(){ mk.setStyle({ weight:susp?4:2, fillOpacity:0.95 }); mk.bringToFront(); });
     mk.on('mouseout',  function(){ mk.setStyle({ weight:bW, fillOpacity:op }); });
     mk.bindTooltip(m.dot+' '+_campoEsc(e.nome)+(susp?' · 🟤 SUSPENSA':'')+(e.bairro?(' · '+_campoEsc(e.bairro)):''), { direction:'top', offset:[0,-5] });
-    var stTxt = (e._status==='ativa' ? '🟢 Pedindo' : (ehF ? '👻 Cadastrou e nunca pediu' : '🔴 Parou de pedir')) + (susp?' · <span style="color:#7B3F00;font-weight:700">🟤 SUSPENSA</span>':'');
-    mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:240px;max-width:290px">'
-      +'<div style="font-weight:700;color:#0B2542;font-size:13px">'+m.dot+' '+_campoEsc(e.nome)+'</div>'
-      +'<div style="margin:2px 0 6px;color:'+m.cor+';font-weight:700">'+stTxt+'</div>'
-      +'<div style="max-height:300px;overflow:auto">'+_campoFichaEmpresa(e, false)+'</div>'
-      +'</div>', { maxWidth:300 });
+    mk.bindPopup(function(){ return _campoEmpPopupHTML(e); }, { maxWidth:300 }); // popup preguiçoso (não monta a ficha de todos)
     _CAMPO.empMarkers[_campoEmpKey(e)] = mk;
     if(_campoEmpLayer) _campoEmpLayer.addLayer(mk);
     if(!ehF && (e._status==='ativa' || e._status==='perdida')) _frente.push(mk); // pedindo/parou pra frente
@@ -8075,30 +8111,8 @@ function _campoDrawPontos(lojas, comGeo, empAll){
     } else {
       mk = L.circleMarker([parseFloat(l.lat),parseFloat(l.lng)], { radius:rad, color:'#fff', weight:bW, fillColor:m.cor, fillOpacity:op });
     }
-    var ult = _campoVisitasDaLoja(l.id)[0];
-    // detalhes da empresa (endereço, telefone+WhatsApp, categoria, CNPJ) — vindos do cadastro/importação
-    var _telL=(l.telefone||'').toString().replace(/\D/g,'');
-    var _telHtml=l.telefone?(_campoEsc(l.telefone)+(_telL.length>=10?' <a href="https://wa.me/55'+_telL+'" target="_blank" rel="noopener" style="color:#25D366;font-weight:700;text-decoration:none">WhatsApp</a>':'')):'';
-    var _cnpjD=(l.cnpj||'').toString().replace(/\D/g,'');
-    var _cnpjF=_cnpjD.length===14?(_cnpjD.slice(0,2)+'.'+_cnpjD.slice(2,5)+'.'+_cnpjD.slice(5,8)+'/'+_cnpjD.slice(8,12)+'-'+_cnpjD.slice(12)):_cnpjD;
-    var _ln=function(ic,v){ return v?('<div style="color:#555;font-size:11px;margin-top:2px">'+ic+' '+v+'</div>'):''; };
-    var det = _ln('📍', l.endereco?_campoEsc(l.endereco):'')
-            + (_telHtml?('<div style="color:#555;font-size:11px;margin-top:2px">📞 '+_telHtml+'</div>'):'')
-            + _ln('🏷️', l.segmento?_campoEsc(l.segmento):'')
-            + _ln('🧾', _cnpjF?_campoEsc(_cnpjF):'');
     mk.bindTooltip((em||m.dot)+' '+_campoEsc(l.nome)+(l.segmento?(' · '+_campoEsc(l.segmento)):''), { direction:'top', offset:[0,-6] });
-    mk.bindPopup('<div style="font-family:sans-serif;font-size:12px;min-width:200px;max-width:270px">'
-      + '<div style="font-weight:700;color:#0B2542;margin-bottom:2px">'+m.dot+' '+_campoEsc(l.nome)+'</div>'
-      + '<div style="color:#555">'+_campoEsc([l.bairro,l.cidade].filter(Boolean).join(' · ')||'')+'</div>'
-      + '<div style="margin-top:3px;color:'+m.cor+';font-weight:700">'+m.label+'</div>'
-      + det
-      + (ult?'<div style="color:#888;font-size:11px;margin-top:2px">última visita: '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/'))+'</div>':'')
-      + '<div style="display:flex;gap:6px;margin-top:7px">'
-      +   '<button onclick="_campoAbrirDoMapa(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:6px;cursor:pointer;font-weight:700">Abrir loja</button>'
-      +   '<button onclick="_campoRotaToggleLoja(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1D9E75;background:transparent;color:#1D9E75;border-radius:6px;cursor:pointer;font-weight:700">🚗 Rota</button>'
-      +   '<button onclick="_campoNovaVisita(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1AB8F0;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Visita</button>'
-      + '</div>'
-      + '</div>');
+    mk.bindPopup(function(){ return _campoLojaPopupHTML(l); }, { maxWidth:300 }); // popup preguiçoso (só monta ao abrir)
     if(!em){ // hover de destaque só na bolinha (o marcador de emoji é DOM, não tem setStyle)
       mk.on('mouseover', function(){ mk.setStyle({ radius:ehP?8:12, weight:ehP?1:3, fillOpacity:0.95 }); mk.bringToFront(); });
       mk.on('mouseout',  function(){ mk.setStyle({ radius:rad, weight:bW, fillOpacity:op }); });
