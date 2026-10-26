@@ -1,3 +1,4 @@
+<!-- v33.15 - CRM: botao "Iniciar o dia" na aba Hoje. Vendedor escolhe quantidade, tipo (Novos / Cadastrados e nao ativos), segmento e ate 2 cidades (ou todas as praças dele). O sistema puxa de prospeccao_lojas, EXCLUI qualquer loja ja no CRM de qualquer vendedor, e entrega as mais PROXIMAS de lojas ativas (haversine ate a loja status=ativa mais perto), atribui ao vendedor (dono_id), gera cadencia e loga. Funcoes _crmIniciarDiaModal/_crmIniciarDiaConfirmar/_crmIdiaLimite/_crmDist. - 26/10/2026 -->
 <!-- v33.14 - Central Gami (Marketing): layout estilo "Jipa Central" - barra compacta no topo (badges + SISTEMA ONLINE + relogio ao vivo), reator menor e contido (altura limitada) com a LOGO da Gami no centro (img/icon-symbol-transparent.png) no lugar do emoji, e paineis laterais: Instagram (seguidores), Campanhas ativas (le gami_campanhas do localStorage), Site & Blog (posts WP), Comercial (leads+prospects). Removido o grid de 6 KPIs (migrou pros paineis). Funcoes mvRenderCampanhas/mvClock. - 26/10/2026 -->
 <!-- v33.13 - Marketing/Visao Geral: "Reator Gami" ao vivo (ecossistema SVG animado) + KPIs REAIS substituindo os mock: seguidores/posts/cidades do Instagram-Meta (list_accounts), leads e prospects do Supabase (count), posts do blog via WordPress REST; novo painel "Instagram por cidade" com ranking real de seguidores. mvCarregarDados() em paralelo, cache 5min, badges de conexao. - 26/10/2026 -->
 <!-- v33.12 - CRM Carteira: botao "Reativar" renomeado pra "Virar lead" (mais claro: transforma o cliente em alerta num lead no funil). - 26/10/2026 -->
@@ -6409,10 +6410,11 @@ function _crmRenderHoje(b){
   var u=_crmUser(); var meuId=u?u.id:'';
   var hoje=new Date(); hoje.setHours(23,59,59,999);
   var temRota=_CRM.leads.some(function(l){ return l.dono_id===meuId && l.status==='ativo' && l.pipeline==='field' && l.lat && l.lng; });
+  var iniciarBtn = '<button onclick="_crmIniciarDiaModal()" style="width:100%;font-size:13.5px;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;font-weight:800;cursor:pointer;margin-bottom:10px;box-shadow:0 8px 20px -8px #0E7AB8;font-family:inherit">🚀 Iniciar o dia</button>';
   var rotaBtn = temRota ? '<button onclick="_crmRotaDia()" style="width:100%;font-size:13px;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#1D9E75,#56C597);color:#fff;font-weight:700;cursor:pointer;margin-bottom:10px">🗺️ Abrir rota do dia no Google Maps</button>' : '';
   var fila=_CRM.tarefas.filter(function(t){ return t.dono_id===meuId && !t.feita && !t.pulada && new Date(t.vence_em)<=hoje; }).sort(function(a,x){ return new Date(a.vence_em)-new Date(x.vence_em); });
-  if(!fila.length){ b.innerHTML=rotaBtn+'<div style="padding:34px;text-align:center;color:var(--text3);font-size:13px">🎉 Sem tarefas vencendo hoje. Pegue leads no mapa (Prospecção em Campo) ou no seu funil.</div>'; return; }
-  b.innerHTML=rotaBtn+fila.map(function(t){
+  if(!fila.length){ b.innerHTML=iniciarBtn+rotaBtn+'<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">🎉 Sem tarefas vencendo hoje.<br>Clique em <b>🚀 Iniciar o dia</b> pra montar sua lista, ou pegue leads no mapa.</div>'; return; }
+  b.innerHTML=iniciarBtn+rotaBtn+fila.map(function(t){
     var l=_CRM.leads.find(function(x){ return x.id===t.lead_id; })||{};
     var atras=new Date(t.vence_em)<new Date();
     return '<div style="display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--card)">'
@@ -6519,6 +6521,104 @@ async function _crmLog(leadId, tipo, descricao, silent){
   try{ await _crmEscrever('crm_atividades','upsert',{ dados:[at] });
        if(l) await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(leadId), patch:{ ultima_atividade_em:at.criado_em, atualizado_em:at.criado_em } });
   }catch(e){ if(!silent && typeof toast==='function') toast('Não consegui registrar.','error'); }
+}
+
+/* ============================================================ */
+/* 🚀 INICIAR O DIA — monta a lista de prospecção do vendedor    */
+/* Entrega os leads mais próximos de lojas ATIVAS e que não       */
+/* estão no CRM de ninguém, pelo critério escolhido.              */
+/* ============================================================ */
+function _crmDist(aLat,aLng,bLat,bLng){
+  var R=6371, dLat=(bLat-aLat)*Math.PI/180, dLng=(bLng-aLng)*Math.PI/180;
+  var la1=aLat*Math.PI/180, la2=bLat*Math.PI/180;
+  var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.sin(dLng/2)*Math.sin(dLng/2)*Math.cos(la1)*Math.cos(la2);
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+function _crmIniciarDiaModal(){
+  var cids=(typeof _campoCidadesUser==='function')?(_campoCidadesUser()||[]):[];
+  var segs=(_CRM.config&&_CRM.config.segmentos)||[];
+  var inp='padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface2,#f7f9fc);color:var(--text);font-size:13px;font-family:inherit;width:100%';
+  var inner=''
+    +'<div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:14px">Monte sua lista do dia. O sistema entrega os leads <b>mais próximos de lojas já ativas</b> e que <b>ninguém está trabalhando</b>.</div>'
+    +'<div style="display:flex;flex-direction:column;gap:13px">'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Quantos leads você quer hoje?</div><input id="idia-qtd" type="number" value="10" min="1" max="50" style="'+inp+'"></div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Tipo de lead</div>'
+        +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:5px;cursor:pointer"><input type="radio" name="idia-tipo" value="novo" checked> 🆕 Novos leads <span style="color:var(--text3);font-size:11px">(nunca ativados)</span></label>'
+        +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer"><input type="radio" name="idia-tipo" value="cadastrado_nao_ativado"> 👻 Cadastrados e não ativos</label>'
+      +'</div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Segmento</div>'
+        +'<select id="idia-seg" style="'+inp+'"><option value="">Todos os segmentos</option>'+segs.map(function(s){ return '<option value="'+_crmEsc(s)+'">'+_crmEsc(s)+'</option>'; }).join('')+'</select></div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Cidade <span style="color:var(--text3);font-weight:400">(até 2)</span></div>'
+        +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 8px;cursor:pointer;color:#0E7AB8;font-weight:700"><input type="checkbox" id="idia-cid-todas" onchange="_crmIdiaLimite(this)"> Todas as minhas praças</label>'
+        +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:150px;overflow:auto;margin-top:4px">'
+        + (cids.length? cids.map(function(c){ return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 7px;cursor:pointer"><input type="checkbox" class="idia-cid" value="'+_crmEsc(c)+'" onchange="_crmIdiaLimite(this)"> '+_crmEsc(c)+'</label>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:6px">Sem praça definida pra você.</div>')
+        +'</div></div>'
+      +'<button onclick="_crmIniciarDiaConfirmar()" style="font-size:14px;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;font-weight:800;cursor:pointer;font-family:inherit">Iniciar o dia →</button>'
+      +'<div id="idia-res"></div>'
+    +'</div>';
+  _crmModal2('🚀 Iniciar o dia', inner);
+}
+function _crmIdiaLimite(el){
+  var todas=document.getElementById('idia-cid-todas');
+  var checks=Array.prototype.slice.call(document.querySelectorAll('.idia-cid'));
+  if(el && el.id==='idia-cid-todas'){
+    if(el.checked){ checks.forEach(function(c){ c.checked=false; c.disabled=true; }); return; }
+    checks.forEach(function(c){ c.disabled=false; }); return;
+  }
+  if(todas && todas.checked){ todas.checked=false; checks.forEach(function(c){ c.disabled=false; }); }
+  var sel=checks.filter(function(c){ return c.checked; });
+  checks.forEach(function(c){ if(!c.checked) c.disabled = sel.length>=2; });
+}
+async function _crmIniciarDiaConfirmar(){
+  var u=_crmUser(); if(!u){ if(typeof toast==='function') toast('Faça login.','error'); return; }
+  var qtd=Math.max(1, Math.min(50, parseInt((document.getElementById('idia-qtd')||{}).value)||10));
+  var tipo=(document.querySelector('input[name=idia-tipo]:checked')||{}).value||'novo';
+  var seg=((document.getElementById('idia-seg')||{}).value||'').trim();
+  var todas=(document.getElementById('idia-cid-todas')||{}).checked;
+  var nomes = todas ? ((typeof _campoCidadesUser==='function')?_campoCidadesUser():[])
+                    : Array.prototype.slice.call(document.querySelectorAll('.idia-cid:checked')).map(function(c){ return c.value; });
+  var res=document.getElementById('idia-res');
+  if(!nomes || !nomes.length){ if(res) res.innerHTML='<div style="padding:8px;text-align:center;color:#E24B4A;font-size:12px">Escolha ao menos 1 cidade.</div>'; return; }
+  var slugs=nomes.map(function(n){ return _campoSlug(n); });
+  if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:var(--text3);font-size:12px">⏳ Buscando os melhores leads…</div>';
+  try{
+    var pool=[];
+    for(var i=0;i<slugs.length;i++){
+      var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&cidade_slug=eq.'+encodeURIComponent(slugs[i])+'&select=id,nome,lat,lng,bairro,endereco,cnpj,telefone,segmento,categoria,status,status_empresa,cidade_slug,qtd_pedidos');
+      if(Array.isArray(rows)) pool=pool.concat(rows);
+    }
+    // exclusão: qualquer lead já no CRM (de qualquer vendedor)
+    var existentes=await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=loja_id,empresa_nome,cidade_slug');
+    var exLoja={}, exNome={};
+    (existentes||[]).forEach(function(l){ if(l.loja_id) exLoja[l.loja_id]=1; exNome[((l.empresa_nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]=1; });
+    var ativas=pool.filter(function(l){ return l.status==='ativa' && l.lat && l.lng; });
+    function segOk(l){ if(!seg) return true; var s=((l.segmento||l.categoria||'')+'').toLowerCase(); return s.indexOf(seg.toLowerCase())>=0; }
+    function livre(l){ return !exLoja[l.id] && !exNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]; }
+    function tipoOk(l){
+      if(l.status==='ativa') return false; // nunca entrega loja ativa
+      if(tipo==='novo') return (!l.status || l.status==='prospect');
+      return (!!l.status_empresa || !!l.cnpj) && l.status!=='ativa'; // cadastrada e não ativa
+    }
+    var cands=pool.filter(function(l){ return l.lat && l.lng && segOk(l) && livre(l) && tipoOk(l); });
+    cands.forEach(function(l){ var best=Infinity; for(var k=0;k<ativas.length;k++){ var d=_crmDist(l.lat,l.lng,ativas[k].lat,ativas[k].lng); if(d<best) best=d; } l._d=best; });
+    cands.sort(function(a,b){ return (a._d-b._d) || ((parseInt(b.qtd_pedidos)||0)-(parseInt(a.qtd_pedidos)||0)); });
+    var chosen=cands.slice(0,qtd);
+    if(!chosen.length){ if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">Nenhum lead novo com esse critério. Tente outra cidade/segmento ou o outro tipo.</div>'; return; }
+    var agora=new Date().toISOString();
+    var novos=chosen.map(function(l){
+      return { id:_crmUID(), loja_id:l.id||null, empresa_nome:l.nome||'', cidade_slug:l.cidade_slug||'', bairro:l.bairro||'', endereco:l.endereco||'',
+        lat:l.lat||null, lng:l.lng||null, cnpj:(l.cnpj||'').replace(/\D/g,'')||null, telefone:l.telefone||'', segmento:l.segmento||l.categoria||'',
+        tipo:tipo, pipeline:'field', etapa:1, status:'ativo', dono_id:u.id, posse_desde:agora, origem:'iniciar_dia',
+        ultima_atividade_em:agora, criado_por:u.id, criado_em:agora, atualizado_em:agora };
+    });
+    await _crmEscrever('crm_leads','upsert',{ dados:novos });
+    novos.forEach(function(l){ _CRM.leads.unshift(l); });
+    for(var j=0;j<novos.length;j++){ try{ await _crmGerarCadencia(novos[j]); }catch(e){} }
+    try{ await _crmEscrever('crm_atividades','upsert',{ dados: novos.map(function(l){ return { lead_id:l.id, tipo:'atribuicao', descricao:'Lead do "Iniciar o dia" ('+(_CRM_TIPO_LABEL[tipo]||tipo)+')', autor_id:u.id, autor_nome:(u.nome||u.email||''), criado_em:agora }; }) }); }catch(e){}
+    if(res) res.innerHTML='<div style="padding:12px;text-align:center;color:#1D9E75;font-size:14px;font-weight:800">✓ '+novos.length+' leads no seu funil!</div>';
+    if(typeof toast==='function') toast('✓ '+novos.length+' leads prontos pra prospectar','success');
+    setTimeout(function(){ var m=document.getElementById('crm-modal2'); if(m) m.remove(); _crmSetTab('pipeline'); }, 1000);
+  }catch(e){ if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">Erro ao buscar leads. Tente de novo.</div>'; }
 }
 
 /* --------- LEAD: detalhe + ações --------- */
