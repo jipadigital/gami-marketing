@@ -1,3 +1,4 @@
+<!-- v33.14 - Central Gami (Marketing): layout estilo "Jipa Central" - barra compacta no topo (badges + SISTEMA ONLINE + relogio ao vivo), reator menor e contido (altura limitada) com a LOGO da Gami no centro (img/icon-symbol-transparent.png) no lugar do emoji, e paineis laterais: Instagram (seguidores), Campanhas ativas (le gami_campanhas do localStorage), Site & Blog (posts WP), Comercial (leads+prospects). Removido o grid de 6 KPIs (migrou pros paineis). Funcoes mvRenderCampanhas/mvClock. - 26/10/2026 -->
 <!-- v33.13 - Marketing/Visao Geral: "Reator Gami" ao vivo (ecossistema SVG animado) + KPIs REAIS substituindo os mock: seguidores/posts/cidades do Instagram-Meta (list_accounts), leads e prospects do Supabase (count), posts do blog via WordPress REST; novo painel "Instagram por cidade" com ranking real de seguidores. mvCarregarDados() em paralelo, cache 5min, badges de conexao. - 26/10/2026 -->
 <!-- v33.12 - CRM Carteira: botao "Reativar" renomeado pra "Virar lead" (mais claro: transforma o cliente em alerta num lead no funil). - 26/10/2026 -->
 <!-- v33.11 - CRM (mobile): no celular o "Meu funil" empilha as etapas na vertical (sem rolagem horizontal) e esconde etapas vazias; no desktop segue kanban lado a lado. Fecha o pacote mobile do field. - 26/10/2026 -->
@@ -4608,28 +4609,37 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <!-- Dados ao vivo: Instagram/Meta · Supabase · WordPress -->
     <!-- =========================================== -->
     <style>
-      /* ⚛️ REATOR — ecossistema de marketing ao vivo */
-      #mv-reator-wrap{position:relative;border-radius:18px;overflow:hidden;
-        background:radial-gradient(900px 500px at 70% -10%,#13335a 0%,#0B2542 50%,#081528 100%);
+      /* ⚛️ CENTRAL GÂMI AO VIVO (estilo Jipa) */
+      #mv-cc-wrap{position:relative;border-radius:18px;overflow:hidden;
+        background:radial-gradient(900px 480px at 50% -10%,#13335a 0%,#0B2542 52%,#081528 100%);
         border:1px solid #1AB8F022;margin-bottom:14px}
-      #mv-reator-svg{display:block;width:100%;height:auto}
+      #mv-cc-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+      .mv-cc-badges{display:flex;gap:6px;flex-wrap:wrap}
+      .mv-rbadge{font-size:9.5px;font-weight:700;letter-spacing:.3px;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.08);color:#9fb6d0;border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:4px}
+      .mv-rbadge.on{color:#7CF2C0;border-color:#1D9E7555}
+      .mv-rbadge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+      .mv-cc-online{font-size:9.5px;font-weight:700;color:#7CF2C0;display:flex;align-items:center;gap:5px;letter-spacing:.5px}
+      .mv-cc-online .dot{width:7px;height:7px;border-radius:50%;background:#2BE88B;box-shadow:0 0 8px #2BE88B;animation:mvPulseNode 2s infinite}
+      #mv-clock{font-family:'Syne',sans-serif;font-weight:800;font-size:16px;color:#fff;letter-spacing:.5px}
+      .mv-cc-grid{display:grid;grid-template-columns:225px 1fr 225px;gap:10px;padding:12px}
+      .mv-pan-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+      .mv-pan{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:12px 13px;display:flex;flex-direction:column;gap:2px;min-width:0}
+      .mv-pan-lbl{font-size:9.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+      .mv-pan-val{font-family:'Syne',sans-serif;font-weight:800;font-size:30px;color:#fff;line-height:1.05}
+      .mv-pan-sub{font-size:10.5px;color:#9fb6d0}
+      .mv-camp-item{font-size:11px;color:#cfe0f0;padding:4px 0;border-top:1px solid rgba(255,255,255,.06);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #mv-reator{display:flex;justify-content:center;align-items:center;min-width:0}
+      #mv-reator-svg{width:100%;height:clamp(285px,38vh,395px);display:block}
+      #mv-reator-stamp{font-size:9.5px;color:#9fb6d0}
       @keyframes mvFlow{to{stroke-dashoffset:-240}}
       @keyframes mvPulseNode{0%,100%{opacity:.55}50%{opacity:1}}
       @keyframes mvSpinRing{to{transform:rotate(360deg)}}
-      .mv-reator-node{cursor:pointer;transition:transform .2s}
-      .mv-reator-node:hover{transform:scale(1.06)}
+      .mv-reator-node{transition:transform .2s}
       .mv-reator-line{stroke-dasharray:6 10;animation:mvFlow 4s linear infinite}
       .mv-reator-ring{transform-origin:center;animation:mvSpinRing 60s linear infinite}
       .mv-reator-halo{animation:mvPulseNode 3s ease-in-out infinite}
       @media (prefers-reduced-motion:reduce){.mv-reator-line,.mv-reator-ring,.mv-reator-halo{animation:none}}
-      #mv-reator-badges{position:absolute;top:12px;left:14px;display:flex;gap:7px;flex-wrap:wrap;z-index:2}
-      .mv-rbadge{font-size:9.5px;font-weight:700;letter-spacing:.3px;padding:3px 9px;border-radius:20px;
-        background:rgba(255,255,255,.08);color:#9fb6d0;border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:4px}
-      .mv-rbadge.on{color:#7CF2C0;border-color:#1D9E7555}
-      .mv-rbadge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
-      #mv-reator-stamp{position:absolute;bottom:10px;right:14px;font-size:9.5px;color:#9fb6d0;z-index:2}
-      /* KPI strip real */
-      .mv-kpi .mv-kpi-val.loading{color:var(--text3);opacity:.5}
+      @media (max-width:880px){ .mv-cc-grid{grid-template-columns:1fr} #mv-reator{order:-1} }
       /* Instagram por cidade */
       .mv-ig-card{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:11px;background:var(--surface);transition:transform .15s,border-color .15s}
       .mv-ig-card:hover{transform:translateY(-2px);border-color:#E1306C55}
@@ -4639,52 +4649,59 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
 
     <div class="mv-section">
       <div class="mv-section-title" style="display:flex;align-items:center;justify-content:space-between">
-        <span>⚛️ Reator Gâmi — ecossistema ao vivo</span>
+        <span>⚛️ Central Gâmi — ecossistema ao vivo</span>
         <button onclick="mvCarregarDados(true)" style="font-size:11px;padding:5px 11px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">🔄 Atualizar</button>
       </div>
 
-      <!-- REATOR -->
-      <div id="mv-reator-wrap">
-        <div id="mv-reator-badges">
-          <span class="mv-rbadge" id="mv-badge-ig"><span class="dot"></span>Instagram</span>
-          <span class="mv-rbadge" id="mv-badge-sb"><span class="dot"></span>Supabase</span>
-          <span class="mv-rbadge" id="mv-badge-wp"><span class="dot"></span>WordPress</span>
+      <div id="mv-cc-wrap">
+        <!-- BARRA SUPERIOR -->
+        <div id="mv-cc-top">
+          <div class="mv-cc-badges">
+            <span class="mv-rbadge" id="mv-badge-ig"><span class="dot"></span>Instagram</span>
+            <span class="mv-rbadge" id="mv-badge-sb"><span class="dot"></span>Supabase</span>
+            <span class="mv-rbadge" id="mv-badge-wp"><span class="dot"></span>WordPress</span>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <span class="mv-cc-online"><span class="dot"></span>SISTEMA ONLINE</span>
+            <span id="mv-reator-stamp">—</span>
+            <span id="mv-clock">--:--</span>
+          </div>
         </div>
-        <div id="mv-reator" style="width:100%"></div>
-        <div id="mv-reator-stamp">—</div>
-      </div>
 
-      <!-- KPIs REAIS (6 cards) -->
-      <div class="mv-grid-6" style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px" id="mv-kpis-grid">
-        <div class="mv-kpi" title="Soma de seguidores de todas as contas Gâmi no Instagram (dado real via Meta)">
-          <div class="mv-kpi-label">📣 Seguidores</div>
-          <div class="mv-kpi-val loading" id="mvk-seguidores">—</div>
-          <div class="mv-kpi-sub" id="mvk-seguidores-sub">Instagram · todas as contas</div>
-        </div>
-        <div class="mv-kpi" title="Total de publicações no feed somando todas as contas">
-          <div class="mv-kpi-label">📸 Posts IG</div>
-          <div class="mv-kpi-val loading" id="mvk-posts-ig">—</div>
-          <div class="mv-kpi-sub">no feed · total</div>
-        </div>
-        <div class="mv-kpi" title="Cidades com conta Gâmi ativa no Instagram">
-          <div class="mv-kpi-label">🏙️ Cidades ativas</div>
-          <div class="mv-kpi-val loading" id="mvk-cidades">—</div>
-          <div class="mv-kpi-sub">contas no ar</div>
-        </div>
-        <div class="mv-kpi" title="Leads cadastrados no CRM da Gâmi (Supabase)">
-          <div class="mv-kpi-label">📥 Leads no CRM</div>
-          <div class="mv-kpi-val loading" id="mvk-leads">—</div>
-          <div class="mv-kpi-sub">base comercial</div>
-        </div>
-        <div class="mv-kpi" title="Lojas mapeadas para prospecção em campo">
-          <div class="mv-kpi-label">📍 Prospects</div>
-          <div class="mv-kpi-val loading" id="mvk-prospects">—</div>
-          <div class="mv-kpi-sub">mapeados</div>
-        </div>
-        <div class="mv-kpi" title="Matérias publicadas no blog gamidelivery.com.br">
-          <div class="mv-kpi-label">📝 Blog</div>
-          <div class="mv-kpi-val loading" id="mvk-blog">—</div>
-          <div class="mv-kpi-sub">publicadas</div>
+        <!-- GRID: painéis · reator · painéis -->
+        <div class="mv-cc-grid">
+          <!-- ESQUERDA -->
+          <div class="mv-pan-col">
+            <div class="mv-pan" style="border-color:#E1306C40">
+              <div class="mv-pan-lbl" style="color:#FF6AA6">📣 Instagram</div>
+              <div class="mv-pan-val" id="mvp-ig-seg">—</div>
+              <div class="mv-pan-sub" id="mvp-ig-sub">seguidores</div>
+            </div>
+            <div class="mv-pan" style="border-color:#EF9F2740;flex:1">
+              <div class="mv-pan-lbl" style="color:#F4B942">🎯 Campanhas ativas</div>
+              <div class="mv-pan-val" id="mvp-camp-n">—</div>
+              <div id="mvp-camp-list"></div>
+            </div>
+          </div>
+
+          <!-- CENTRO: REATOR -->
+          <div id="mv-reator"></div>
+
+          <!-- DIREITA -->
+          <div class="mv-pan-col">
+            <div class="mv-pan" style="border-color:#1AB8F040">
+              <div class="mv-pan-lbl" style="color:#4CC8F5">🌐 Site & Blog</div>
+              <div class="mv-pan-val" id="mvp-blog">—</div>
+              <div class="mv-pan-sub">matérias em gamidelivery.com.br</div>
+            </div>
+            <div class="mv-pan" style="border-color:#1D9E7540;flex:1">
+              <div class="mv-pan-lbl" style="color:#7CF2C0">📊 Comercial</div>
+              <div style="display:flex;gap:18px;margin-top:5px">
+                <div><div class="mv-pan-val" id="mvp-leads" style="font-size:24px">—</div><div class="mv-pan-sub">leads no CRM</div></div>
+                <div><div class="mv-pan-val" id="mvp-prosp" style="font-size:24px">—</div><div class="mv-pan-sub">prospects</div></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -44485,7 +44502,8 @@ function mvInit(){
     });
   }, 100);
 
-  // ⚛️ Reator + dados reais (Instagram/Meta · Supabase · WordPress)
+  // ⚛️ Central ao vivo: relógio + dados reais (Instagram/Meta · Supabase · WordPress)
+  try { mvClock(); } catch(e){}
   try { mvCarregarDados(); } catch(e){}
 
   // Renderiza gráficos
@@ -44637,15 +44655,52 @@ async function mvCarregarDados(force){
   if(elStamp){ var d=new Date(); elStamp.textContent='● ao vivo · '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 }
 function mvAplicarKpis(d){
-  mvSetKpi('mvk-seguidores', d.contas?mvFmt(d.seg):'—');
-  var sub=document.getElementById('mvk-seguidores-sub'); if(sub) sub.textContent = (d.contas||0)+' contas';
-  mvSetKpi('mvk-posts-ig', d.contas?mvFmt(d.posts):'—');
-  mvSetKpi('mvk-cidades', d.contas?String(d.contas):'—');
-  mvSetKpi('mvk-leads', d.leads==null?'—':mvFmt(d.leads));
-  mvSetKpi('mvk-prospects', d.prosp==null?'—':mvFmt(d.prosp));
-  mvSetKpi('mvk-blog', d.blog==null?'—':String(d.blog));
+  var set=function(id,v){var e=document.getElementById(id); if(e) e.textContent=v;};
+  set('mvp-ig-seg', d.contas?mvFmt(d.seg):'—');
+  set('mvp-ig-sub', (d.contas||0)+' contas · '+mvFmt(d.posts||0)+' posts');
+  set('mvp-blog', d.blog==null?'—':String(d.blog));
+  set('mvp-leads', d.leads==null?'—':mvFmt(d.leads));
+  set('mvp-prosp', d.prosp==null?'—':mvFmt(d.prosp));
+  mvRenderCampanhas();
 }
-function mvSetKpi(id,val){ var el=document.getElementById(id); if(!el) return; el.classList.remove('loading'); el.textContent=val; }
+function mvRenderCampanhas(){
+  var elN=document.getElementById('mvp-camp-n'), elL=document.getElementById('mvp-camp-list');
+  if(!elN) return;
+  var camps=[];
+  try{
+    var raw=localStorage.getItem('gami_campanhas')||localStorage.getItem('gami_campanhas_v1')||localStorage.getItem('campanhas');
+    camps=JSON.parse(raw||'[]'); if(!Array.isArray(camps)) camps=[];
+  }catch(e){ camps=[]; }
+  var hoje=new Date(); hoje.setHours(0,0,0,0);
+  function pd(s){ if(!s) return null; var d=new Date(s); return isNaN(d.getTime())?null:d; }
+  var ativas=[], prox=[];
+  camps.forEach(function(c){
+    if(!c) return;
+    var ini=pd(c.data_inicio||c.dataInicio||c.data||c.dia);
+    var fim=pd(c.data_fim||c.dataFim||c.data_termino||c.fim)||ini;
+    var nome=(c.nome||c.titulo||'Campanha');
+    if(!ini) return;
+    if(ini<=hoje && fim>=hoje) ativas.push({nome:nome,ini:ini});
+    else if(ini>hoje) prox.push({nome:nome,ini:ini});
+  });
+  elN.textContent=String(ativas.length);
+  if(elL){
+    if(ativas.length){
+      elL.innerHTML=ativas.slice(0,3).map(function(c){return '<div class="mv-camp-item">📣 '+String(c.nome).slice(0,26)+'</div>';}).join('');
+    } else if(prox.length){
+      prox.sort(function(a,b){return a.ini-b.ini;});
+      elL.innerHTML='<div class="mv-pan-sub" style="margin-top:4px">próximas:</div>'+prox.slice(0,3).map(function(c){return '<div class="mv-camp-item">🗓️ '+String(c.nome).slice(0,24)+'</div>';}).join('');
+    } else {
+      elL.innerHTML='<div class="mv-pan-sub" style="margin-top:4px">nenhuma cadastrada</div>';
+    }
+  }
+}
+var _mvClockInt=null;
+function mvClock(){
+  var el=document.getElementById('mv-clock'); if(!el){ return; }
+  var d=new Date(); el.textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+  if(!_mvClockInt) _mvClockInt=setInterval(mvClock,1000);
+}
 
 function mvRenderReator(d){
   var host=document.getElementById('mv-reator'); if(!host) return;
@@ -44678,10 +44733,9 @@ function mvRenderReator(d){
     +'<defs><radialGradient id="mvCore"><stop offset="0%" stop-color="#1AB8F0"/><stop offset="100%" stop-color="#0E7AB8"/></radialGradient></defs>'
     +'<circle class="mv-reator-ring" cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="#1AB8F0" stroke-width="1" stroke-dasharray="2 9" opacity="0.3"/>'
     +lines
-    +'<circle class="mv-reator-halo" cx="'+cx+'" cy="'+cy+'" r="60" fill="none" stroke="#1AB8F0" stroke-width="10" opacity="0.18"/>'
-    +'<circle cx="'+cx+'" cy="'+cy+'" r="52" fill="url(#mvCore)" stroke="#fff" stroke-width="2"/>'
-    +'<text x="'+cx+'" y="'+(cy-4)+'" text-anchor="middle" font-size="28">🛵</text>'
-    +'<text x="'+cx+'" y="'+(cy+20)+'" text-anchor="middle" font-size="15" font-weight="800" fill="#fff" font-family="Syne,sans-serif">Gâmi</text>'
+    +'<circle class="mv-reator-halo" cx="'+cx+'" cy="'+cy+'" r="64" fill="none" stroke="#1AB8F0" stroke-width="10" opacity="0.18"/>'
+    +'<circle cx="'+cx+'" cy="'+cy+'" r="56" fill="#0B2542" stroke="#1AB8F0" stroke-width="2.5"/>'
+    +'<image href="/img/icon-symbol-transparent.png" xlink:href="/img/icon-symbol-transparent.png" x="'+(cx-42)+'" y="'+(cy-42)+'" width="84" height="84" preserveAspectRatio="xMidYMid meet"/>'
     +ncontent
     +'</svg>';
 }
