@@ -1,3 +1,4 @@
+<!-- v33.02 - CRM (cadencias + fila do dia): ao pegar o lead ou mudar de etapa, o sistema gera as tarefas da cadencia (inside: D0/D1/D3/D5/D7; field etapa1: visita de hoje; field etapa2: D+1 wpp/D+3 revisita) e elas caem na aba HOJE (fila pessoal: so as suas, vencendo hoje/atrasadas). Mudar de etapa limpa as pendentes antigas e gera as novas. Config lida do crm_config. - 26/10/2026 -->
 <!-- v33.01 - CRM: arrastar lead entre etapas no kanban (drag/drop no desktop; no celular segue pelo toque -> abre o lead -> botoes de etapa). Nao move entre funis diferentes. Schema: documentado DISABLE RLS nas crm_* (sem isso a leitura anon vinha vazia). - 26/10/2026 -->
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
@@ -6269,8 +6270,11 @@ async function _crmFetch(force){
   if(_CRM.carregado && !force) return;
   var u=_crmUser(); if(!u) return;
   try {
+    var cfgRows = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_config?select=chave,valor');
+    var cfg={}; (Array.isArray(cfgRows)?cfgRows:[]).forEach(function(r){ cfg[r.chave]=r.valor; });
+    _CRM.config = cfg;
     var leads = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=*&order=atualizado_em.desc');
-    var tarefas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_tarefas?select=*&feita=eq.false&order=vence_em.asc');
+    var tarefas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_tarefas?select=*&pulada=eq.false&order=vence_em.asc');
     _CRM.leads = _crmVisiveis(Array.isArray(leads)?leads:[], u);
     _CRM.tarefas = (Array.isArray(tarefas)?tarefas:[]).filter(function(t){ return t.dono_id===u.id || _crmPapel(u)==='admin'; });
     _CRM.carregado = true;
@@ -6314,8 +6318,9 @@ function _crmRenderTab(){
 
 /* --------- HOJE (fila de tarefas) --------- */
 function _crmRenderHoje(b){
+  var u=_crmUser(); var meuId=u?u.id:'';
   var hoje=new Date(); hoje.setHours(23,59,59,999);
-  var fila=_CRM.tarefas.filter(function(t){ return !t.feita && new Date(t.vence_em)<=hoje; }).sort(function(a,x){ return new Date(a.vence_em)-new Date(x.vence_em); });
+  var fila=_CRM.tarefas.filter(function(t){ return t.dono_id===meuId && !t.feita && !t.pulada && new Date(t.vence_em)<=hoje; }).sort(function(a,x){ return new Date(a.vence_em)-new Date(x.vence_em); });
   if(!fila.length){ b.innerHTML='<div style="padding:34px;text-align:center;color:var(--text3);font-size:13px">🎉 Sem tarefas vencendo hoje. Pegue leads no mapa (Prospecção em Campo) ou no seu funil.</div>'; return; }
   b.innerHTML=fila.map(function(t){
     var l=_CRM.leads.find(function(x){ return x.id===t.lead_id; })||{};
@@ -6386,9 +6391,34 @@ async function _crmPegarLead(data){
   try {
     await _crmEscrever('crm_leads','upsert',{ dados:[lead] });
     await _crmLog(id,'atribuicao','Lead puxado do mapa por '+(u.nome||u.email||''),true);
+    await _crmGerarCadencia(lead); // já cria as tarefas da fila "Hoje"
     if(typeof toast==='function') toast('✓ Lead no seu funil ('+(pipe==='inside'?'Inside':'Field')+')','success');
     if(document.getElementById('pg-crm') && document.getElementById('pg-crm').classList.contains('active')) _crmRenderTab();
   } catch(e){ if(typeof toast==='function') toast('Não consegui criar o lead.','error'); }
+}
+/* --------- CADÊNCIAS: geram as tarefas da fila "Hoje" --------- */
+function _crmNovaTarefa(lead, tipo, titulo, dias){
+  var v=new Date(); v.setDate(v.getDate()+(dias||0)); v.setHours(9,0,0,0);
+  return { id:'tar_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), lead_id:lead.id, dono_id:lead.dono_id, tipo:tipo, titulo:titulo, vence_em:v.toISOString(), feita:false, pulada:false, origem:'cadencia', criado_em:new Date().toISOString() };
+}
+async function _crmGerarCadencia(lead){
+  var c=(_CRM.config&&_CRM.config.cadencias)||{}, tarefas=[];
+  if(lead.pipeline==='inside' && (lead.etapa||1)===1 && c.inside_prospectando){
+    c.inside_prospectando.forEach(function(p){ var canal=((p.canal||'').indexOf('whatsapp')>=0 && (p.canal||'').indexOf('ligacao')<0)?'whatsapp':'ligacao'; tarefas.push(_crmNovaTarefa(lead, canal, 'D'+p.d+': '+(p.txt||canal), p.d)); });
+  } else if(lead.pipeline==='field' && (lead.etapa||1)===1){
+    tarefas.push(_crmNovaTarefa(lead,'visita','Visitar '+(lead.empresa_nome||''), 0));
+  } else if(lead.pipeline==='field' && (lead.etapa||1)===2 && c.field_visita){
+    c.field_visita.forEach(function(p){ var tipo=(p.canal||'').indexOf('revisita')>=0?'revisita':((p.canal||'').indexOf('whatsapp')>=0?'whatsapp':'ligacao'); tarefas.push(_crmNovaTarefa(lead, tipo, 'D+'+p.d+': '+(p.txt||tipo), p.d)); });
+  }
+  if(!tarefas.length) return;
+  tarefas.forEach(function(t){ _CRM.tarefas.push(t); });
+  try{ await _crmEscrever('crm_tarefas','upsert',{ dados:tarefas }); }catch(e){}
+}
+async function _crmLimparPendentes(leadId){
+  var pend=_CRM.tarefas.filter(function(t){ return t.lead_id===leadId && !t.feita && !t.pulada && t.origem==='cadencia'; });
+  if(!pend.length) return;
+  pend.forEach(function(t){ t.pulada=true; });
+  try{ await _crmEscrever('crm_tarefas','patch',{ filtro:'lead_id=eq.'+encodeURIComponent(leadId)+'&feita=eq.false&origem=eq.cadencia', patch:{ pulada:true } }); }catch(e){}
 }
 async function _crmLog(leadId, tipo, descricao, silent){
   var u=_crmUser();
@@ -6436,6 +6466,8 @@ async function _crmMoverEtapa(id, etapa, semModal){
   var m=document.getElementById('crm-modal'); if(m) m.remove(); if(!semModal) _crmAbrirLead(id); _crmRenderTab();
   try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ etapa:etapa, atualizado_em:l.atualizado_em } });
        await _crmLog(id,'etapa','Mudou para '+etapa+'. '+(etapas[etapa-1]||''),true);
+       await _crmLimparPendentes(id); await _crmGerarCadencia(l); // nova etapa = nova cadência; limpa as pendentes antigas
+       _crmRenderTab();
   }catch(e){ if(typeof toast==='function') toast('Não consegui mover a etapa.','error'); }
 }
 /* arrastar card entre colunas (desktop). No celular continua pelo toque: abre o lead → botões de etapa. */
