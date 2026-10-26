@@ -1,3 +1,4 @@
+<!-- v33.07 - CRM (ficha do lead = workspace completo, nivel Pipedrive/HubSpot): HISTORICO/timeline de atividades na ficha; WhatsApp com SCRIPTS (modelos com variaveis nome_empresa/bairro/praca/nome_vendedor, 1 clique abre o wa.me ja preenchido e loga); DECISOR editavel (alerta se nao identificado); AGENDAR RETORNO (status retornar + volta pra fila na data, reativacao automatica ao abrir). Carrega crm_scripts. - 26/10/2026 -->
 <!-- v33.06 - CRM Fase 2 (Carteira ativa): aba Carteira (gestor/admin) com saude dos clientes que pedem, por praca, lida do raio-X da Machine (mv_empresas_raiox). Mostra ALERTAS (dias sem pedir > limiar, queda % vs media de 3 meses tirando o mes em andamento, top20 caindo) com botao Reativar (vira lead churn/em_queda) + tabela por volume de entregas, tendencia e ultimo pedido. R$ faturamento SO p/ quem tem permissao de valores (_podeVerFaturamento); os demais veem volume/tendencia. Limiares vem do crm_config. - 26/10/2026 -->
 <!-- v33.05 - CRM (fecha Fase 1): REGRA DE POSSE - lead inativo ha N dias (config) volta ao POOL (dono_id null) quando admin/gestor abre o CRM; vendedor/BDR enxergam os leads sem dono da praca e podem "Pegar pra mim"; admin/gestor "Reatribuir" (com log de quem/quando/porque); card marca "no pool". TELA DE CONFIG (admin): edita limiares, motivos de perda, segmentos, etapas e cadencias (salva em crm_config, nada fixo no codigo). - 26/10/2026 -->
 <!-- v33.04 - CRM (metas + paineis): Painel pessoal (vendedor/BDR) com ativacoes do mes vs META e receita gerada vs META (receita lida de mv_empresas_raiox) com barras de progresso; Painel do time (gestor/admin) com tabela por pessoa (em aberto, ativacoes, meta, perdidos). Admin (Carlos) define metas por pessoa/mes (ativacoes + receita) no botao "Definir metas". crm_metas com id de texto p/ upsert idempotente. - 26/10/2026 -->
@@ -6232,7 +6233,7 @@ function _fatRender(root, dados){
 /* CRM GÂMI (Fase 1) — inside (BDR) + field (vendedor/gestor)   */
 /* Tabelas crm_* (docs/crm-schema.sql). Carteira/Ativado = Machine (só leitura) */
 /* ============================================================ */
-var _CRM = { leads:[], tarefas:[], checklist:[], metas:[], carregado:false, tab:'hoje', config:null };
+var _CRM = { leads:[], tarefas:[], checklist:[], metas:[], scripts:[], carregado:false, tab:'hoje', config:null };
 var _CRM_CHECK_ITENS = [['cadastro','Cadastro concluído na plataforma'],['ativacao','Ativação (1ª entrega) — automático'],['ifood','Integração iFood'],['99','Integração 99'],['outra','Outras plataformas de logística']];
 var _CRM_ETAPAS = {
   inside:['Prospectando','Contato realizado','Oportunidade','Fechamento'],
@@ -6284,6 +6285,8 @@ async function _crmFetch(force){
     _CRM.checklist = Array.isArray(checklist)?checklist:[];
     var metas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_metas?select=*');
     _CRM.metas = Array.isArray(metas)?metas:[];
+    var scripts = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_scripts?select=*&ativo=eq.true');
+    _CRM.scripts = Array.isArray(scripts)?scripts:[];
     _CRM.leads = _crmVisiveis(Array.isArray(leads)?leads:[], u);
     _CRM.tarefas = (Array.isArray(tarefas)?tarefas:[]).filter(function(t){ return t.dono_id===u.id || _crmPapel(u)==='admin'; });
     _CRM.carregado = true;
@@ -6293,7 +6296,7 @@ async function _crmFetch(force){
 function initCRM(){
   if(!_podeVerCRM()){ var r0=document.getElementById('crm-root'); if(r0) r0.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Sem acesso ao CRM.</div>'; return; }
   _crmRenderShell();
-  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmChecarAtivacoes(true); }catch(e){} var pp=_crmPapel(); if(pp==='admin'||pp==='gestor') try{ _crmDevolverInativos(); }catch(e){} }); // checa ativações + devolve inativos (admin/gestor)
+  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmReativarRetornos(); }catch(e){} try{ _crmChecarAtivacoes(true); }catch(e){} var pp=_crmPapel(); if(pp==='admin'||pp==='gestor') try{ _crmDevolverInativos(); }catch(e){} }); // retornos + ativações + devolve inativos
 }
 function _crmRenderShell(){
   var root=document.getElementById('crm-root'); if(!root) return;
@@ -6441,29 +6444,90 @@ async function _crmLog(leadId, tipo, descricao, silent){
 }
 
 /* --------- LEAD: detalhe + ações --------- */
+function _crmModal2(titulo, inner){
+  var old=document.getElementById('crm-modal2'); if(old) old.remove();
+  var h='<div id="crm-modal2" style="position:fixed;inset:0;background:rgba(11,37,66,.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    +'<div style="background:var(--card,#fff);border-radius:14px;max-width:420px;width:100%;max-height:82vh;overflow:auto;padding:18px" onclick="event.stopPropagation()">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-family:Syne,sans-serif;font-size:15px;font-weight:800;color:var(--text)">'+titulo+'</div>'
+    +'<button onclick="document.getElementById(\'crm-modal2\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button></div>'+inner+'</div></div>';
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function _crmVars(texto, l){
+  var u=_crmUser();
+  return (texto||'').replace(/\{nome_empresa\}/g, l.empresa_nome||'').replace(/\{bairro\}/g, l.bairro||'')
+    .replace(/\{praca\}/g, l.cidade_slug||'').replace(/\{praça\}/g, l.cidade_slug||'')
+    .replace(/\{nome_vendedor\}/g, (u&&(u.nome||u.email))||'').replace(/\{segmento\}/g, l.segmento||'');
+}
+function _crmScriptsPara(l, canal){ return _CRM.scripts.filter(function(s){ return (!s.canal||s.canal===canal) && (!s.tipo_lead || s.tipo_lead===l.tipo); }); }
+function _crmWhats(id, scriptId){
+  var l=_CRM.leads.find(function(x){return x.id===id;}); if(!l) return;
+  var tel=(l.telefone||'').replace(/\D/g,''); if(tel.length<10){ if(typeof toast==='function') toast('Sem telefone válido.'); return; }
+  var nm=''; var msg=''; if(scriptId){ var s=_CRM.scripts.find(function(x){return x.id===scriptId;}); if(s){ msg=_crmVars(s.texto,l); nm=s.nome; } }
+  window.open('https://wa.me/55'+tel+(msg?('?text='+encodeURIComponent(msg)):''),'_blank','noopener');
+  _crmLog(id,'whatsapp','WhatsApp'+(nm?(' — modelo: '+nm):' aberto'));
+}
+function _crmWhatsMenu(id){
+  var l=_CRM.leads.find(function(x){return x.id===id;}); if(!l) return;
+  var scr=_crmScriptsPara(l,'whatsapp');
+  if(!scr.length){ _crmWhats(id,null); return; }
+  var inner=scr.map(function(s){ return '<button onclick="document.getElementById(\'crm-modal2\').remove();_crmWhats(\''+id+'\',\''+s.id+'\')" style="display:block;width:100%;text-align:left;font-size:12px;padding:10px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;cursor:pointer;margin-bottom:5px"><b>'+_crmEsc(s.nome)+'</b><div style="font-size:10.5px;color:var(--text3);margin-top:3px;white-space:pre-wrap">'+_crmEsc(_crmVars(s.texto,l).slice(0,130))+'…</div></button>'; }).join('')
+    +'<button onclick="document.getElementById(\'crm-modal2\').remove();_crmWhats(\''+id+'\',null)" style="width:100%;font-size:12px;padding:9px;border:1px dashed var(--border);background:transparent;color:var(--text2);border-radius:8px;cursor:pointer">Sem modelo (abrir vazio)</button>';
+  _crmModal2('💬 Modelo de mensagem', inner);
+}
+async function _crmAtualizarLead(id, patch){ var l=_CRM.leads.find(function(x){return x.id===id;}); if(l) Object.assign(l,patch); patch.atualizado_em=new Date().toISOString(); try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:patch }); }catch(e){} }
+function _crmRetornar(id){
+  var d=prompt('Agendar retorno em quantos dias? (ex: 30)'); if(d==null) return; var dias=parseInt(d); if(isNaN(dias)||dias<1){ if(typeof toast==='function') toast('Número de dias inválido.'); return; }
+  var dt=new Date(); dt.setDate(dt.getDate()+dias);
+  _crmAtualizarLead(id,{ status:'retornar', retornar_em:dt.toISOString().slice(0,10) });
+  _crmLog(id,'nota','Retorno agendado p/ '+dt.toLocaleDateString('pt-BR')+' ('+dias+'d)',true);
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
+  if(typeof toast==='function') toast('Retorno agendado. Volta pra fila na data.');
+}
+function _crmDecisor(id){
+  var l=_CRM.leads.find(function(x){return x.id===id;}); if(!l) return;
+  var nome=prompt('Decisor (dono/gerente):', l.decisor_nome||''); if(nome==null) return; nome=nome.trim();
+  var cargo=(prompt('Cargo (opcional):', l.decisor_cargo||'')||'').trim();
+  _crmAtualizarLead(id,{ decisor_nome:nome, decisor_cargo:cargo });
+  _crmLog(id,'nota','Decisor: '+nome+(cargo?(' ('+cargo+')'):''),true);
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmAbrirLead(id);
+}
+async function _crmCarregarTimeline(id){
+  try{ var r=await fetch(SUPA_URL+'/rest/v1/crm_atividades?lead_id=eq.'+encodeURIComponent(id)+'&select=tipo,descricao,autor_nome,criado_em&order=criado_em.desc&limit=60',{headers:supaHeaders()});
+    var ats=r.ok?await r.json():[]; var box=document.getElementById('crm-timeline'); if(!box) return;
+    if(!Array.isArray(ats)||!ats.length){ box.innerHTML='<div style="font-size:11px;color:var(--text3)">Sem histórico ainda.</div>'; return; }
+    var ic={ligacao:'📞',whatsapp:'💬',visita:'📍',nota:'📝',etapa:'➡️',perda:'❌',atribuicao:'🔁',tarefa:'✅'};
+    box.innerHTML=ats.map(function(a){ return '<div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--border)"><div style="flex:none">'+(ic[a.tipo]||'•')+'</div><div style="flex:1;min-width:0"><div style="font-size:11.5px;color:var(--text)">'+_crmEsc(a.descricao||a.tipo)+'</div><div style="font-size:9.5px;color:var(--text3)">'+_crmEsc(a.autor_nome||'')+' · '+new Date(a.criado_em).toLocaleString('pt-BR')+'</div></div></div>'; }).join('');
+  }catch(e){}
+}
 function _crmAbrirLead(id){
   var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l){ if(typeof toast==='function') toast('Lead não encontrado.'); return; }
   var etapas=_CRM_ETAPAS[l.pipeline]||_CRM_ETAPAS.field;
-  var telLimpo=(l.telefone||'').replace(/\D/g,'');
+  var tel=(l.telefone||'').replace(/\D/g,'');
+  var meuId=_crmUser()?_crmUser().id:'';
   var acoes='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">'
-    +(telLimpo.length>=10?'<a href="tel:+55'+telLimpo+'" onclick="_crmLog(\''+id+'\',\'ligacao\',\'Ligação iniciada\')" style="flex:1;text-align:center;font-size:12px;padding:9px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">📞 Ligar</a>':'')
-    +(telLimpo.length>=10?'<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" onclick="_crmLog(\''+id+'\',\'whatsapp\',\'WhatsApp aberto\')" style="flex:1;text-align:center;font-size:12px;padding:9px;border:1px solid #25D366;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">💬 WhatsApp</a>':'')
+    +(tel.length>=10?'<a href="tel:+55'+tel+'" onclick="_crmLog(\''+id+'\',\'ligacao\',\'Ligação iniciada\')" style="flex:1;text-align:center;font-size:12.5px;padding:10px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:9px;text-decoration:none;font-weight:700">📞 Ligar</a>':'')
+    +(tel.length>=10?'<button onclick="_crmWhatsMenu(\''+id+'\')" style="flex:1;font-size:12.5px;padding:10px;border:1px solid #25D366;background:#25D366;color:#fff;border-radius:9px;cursor:pointer;font-weight:700">💬 WhatsApp</button>':'')
     +'</div>';
   var etapasHtml=etapas.map(function(nm,i){ var at=(l.etapa||1)===(i+1); return '<button onclick="_crmMoverEtapa(\''+id+'\','+(i+1)+')" style="font-size:10.5px;padding:6px 9px;border:1px solid '+(at?'#0E7AB8':'var(--border)')+';background:'+(at?'#0E7AB8':'var(--card)')+';color:'+(at?'#fff':'var(--text2)')+';border-radius:7px;cursor:pointer;font-weight:'+(at?'700':'500')+'">'+(i+1)+'. '+nm+'</button>'; }).join(' ');
-  var inner='<div style="font-size:11px;color:var(--text3)">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo)+' · '+(l.pipeline==='inside'?'Inside':'Field')+' · '+_crmEsc(l.cidade_slug)+'</div>'
+  var decisorLin = l.decisor_nome ? ('👤 '+_crmEsc(l.decisor_nome)+(l.decisor_cargo?(' · '+_crmEsc(l.decisor_cargo)):'')) : '<span style="color:#E24B4A">⚠️ decisor não identificado</span>';
+  var inner='<div style="font-size:11px;color:var(--text3)">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo)+' · '+(l.pipeline==='inside'?'Inside':'Field')+' · '+_crmEsc(l.cidade_slug)+(l.status!=='ativo'?(' · <b style="color:#C98A00">'+l.status+'</b>'):'')+'</div>'
     +'<div style="font-size:12px;color:var(--text2);margin:4px 0">'+_crmEsc([l.bairro,l.endereco].filter(Boolean).join(' · ')||'')+(l.segmento?(' · '+_crmEsc(l.segmento)):'')+(l.telefone?(' · '+_crmEsc(l.telefone)):'')+'</div>'
+    +'<div onclick="_crmDecisor(\''+id+'\')" style="font-size:11.5px;margin:2px 0;cursor:pointer">'+decisorLin+' <span style="color:#0E7AB8;font-size:10px">(editar)</span></div>'
     +acoes
     +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Etapa</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+etapasHtml+'</div>'
     +((l.pipeline==='field')?('<div style="font-size:11px;font-weight:700;color:var(--text2);margin:14px 0 2px">Checklist de cadastramento (comissão)</div><div id="crm-checklist-box">'+_crmChecklistHTML(id)+'</div>'):'')
     +'<div style="display:flex;gap:6px;margin-top:12px;align-items:center;flex-wrap:wrap">'
-    +(!l.dono_id ? '<button onclick="_crmPegarPraMim(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #1D9E75;background:#1D9E75;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">📥 Pegar pra mim</button>' : '<div style="flex:1;font-size:11px;color:var(--text3)">Dono: <b>'+_crmEsc(_crmNomePessoa(l.dono_id))+'</b>'+((_crmUser()&&l.dono_id===_crmUser().id)?' (você)':'')+'</div>')
+    +(!l.dono_id ? '<button onclick="_crmPegarPraMim(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #1D9E75;background:#1D9E75;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">📥 Pegar pra mim</button>' : '<div style="flex:1;font-size:11px;color:var(--text3)">Dono: <b>'+_crmEsc(_crmNomePessoa(l.dono_id))+'</b>'+(l.dono_id===meuId?' (você)':'')+'</div>')
     +(((_crmPapel()==='admin'||_crmPapel()==='gestor'))?'<button onclick="_crmReatribuir(\''+id+'\')" style="font-size:12px;padding:9px 12px;border:1px solid #0E7AB8;background:transparent;color:#0E7AB8;border-radius:8px;cursor:pointer;font-weight:700">🔁 Reatribuir</button>':'')
     +'</div>'
     +'<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
     +'<button onclick="_crmNota(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:8px;cursor:pointer;font-weight:700">📝 Nota</button>'
+    +'<button onclick="_crmRetornar(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #C98A00;background:transparent;color:#C98A00;border-radius:8px;cursor:pointer;font-weight:700">⏰ Retornar</button>'
     +'<button onclick="_crmPerder(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #E24B4A;background:transparent;color:#E24B4A;border-radius:8px;cursor:pointer;font-weight:700">Perder</button>'
-    +'</div>';
+    +'</div>'
+    +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin:16px 0 2px">🕑 Histórico</div><div id="crm-timeline"><div style="font-size:11px;color:var(--text3)">carregando…</div></div>';
   _crmModal('💼 '+_crmEsc(l.empresa_nome), inner);
+  _crmCarregarTimeline(id);
 }
 function _crmModal(titulo, inner){
   var old=document.getElementById('crm-modal'); if(old) old.remove();
@@ -6598,6 +6662,15 @@ async function _crmDevolverInativos(){
          await _crmLog(l.id,'atribuicao','Voltou ao pool por inatividade ('+dias+'d). Era de '+_crmNomePessoa(antigo),true); }catch(e){}
   }
   if(dev.length) _crmRenderTab();
+}
+async function _crmReativarRetornos(){
+  var hoje=new Date().toISOString().slice(0,10);
+  var volta=_CRM.leads.filter(function(l){ return l.status==='retornar' && l.retornar_em && l.retornar_em<=hoje && l.dono_id; });
+  for(var i=0;i<volta.length;i++){ var l=volta[i]; l.status='ativo';
+    try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(l.id), patch:{ status:'ativo', atualizado_em:new Date().toISOString() } });
+         await _crmLog(l.id,'nota','Voltou pra fila (retorno agendado chegou)',true); }catch(e){}
+  }
+  if(volta.length) _crmRenderTab();
 }
 async function _crmPegarPraMim(id){
   var u=_crmUser(); var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l||!u) return;
