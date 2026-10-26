@@ -1,3 +1,4 @@
+<!-- v33.08 - CRM (gerenciar scripts na Config, admin): lista os modelos de mensagem com editar/remover + botao Novo (nome, canal, tipo de lead, texto com variaveis). Salva em crm_scripts (upsert por id). Fecha a feature de scripts: admin cria/edita sem SQL e os modelos aparecem no WhatsApp da ficha do lead. - 26/10/2026 -->
 <!-- v33.07 - CRM (ficha do lead = workspace completo, nivel Pipedrive/HubSpot): HISTORICO/timeline de atividades na ficha; WhatsApp com SCRIPTS (modelos com variaveis nome_empresa/bairro/praca/nome_vendedor, 1 clique abre o wa.me ja preenchido e loga); DECISOR editavel (alerta se nao identificado); AGENDAR RETORNO (status retornar + volta pra fila na data, reativacao automatica ao abrir). Carrega crm_scripts. - 26/10/2026 -->
 <!-- v33.06 - CRM Fase 2 (Carteira ativa): aba Carteira (gestor/admin) com saude dos clientes que pedem, por praca, lida do raio-X da Machine (mv_empresas_raiox). Mostra ALERTAS (dias sem pedir > limiar, queda % vs media de 3 meses tirando o mes em andamento, top20 caindo) com botao Reativar (vira lead churn/em_queda) + tabela por volume de entregas, tendencia e ultimo pedido. R$ faturamento SO p/ quem tem permissao de valores (_podeVerFaturamento); os demais veem volume/tendencia. Limiares vem do crm_config. - 26/10/2026 -->
 <!-- v33.05 - CRM (fecha Fase 1): REGRA DE POSSE - lead inativo ha N dias (config) volta ao POOL (dono_id null) quando admin/gestor abre o CRM; vendedor/BDR enxergam os leads sem dono da praca e podem "Pegar pra mim"; admin/gestor "Reatribuir" (com log de quem/quando/porque); card marca "no pool". TELA DE CONFIG (admin): edita limiares, motivos de perda, segmentos, etapas e cadencias (salva em crm_config, nada fixo no codigo). - 26/10/2026 -->
@@ -6903,7 +6904,43 @@ function _crmRenderConfig(b){
     +'<div style="font-size:11px;color:var(--text3);margin:8px 0 2px">Etapas</div><textarea id="cfg-etapas" rows="6" style="'+taCss+';font-family:monospace">'+_crmEsc(JSON.stringify(cfg.etapas||{},null,1))+'</textarea>'
     +'<div style="font-size:11px;color:var(--text3);margin:8px 0 2px">Cadências</div><textarea id="cfg-cadencias" rows="8" style="'+taCss+';font-family:monospace">'+_crmEsc(JSON.stringify(cfg.cadencias||{},null,1))+'</textarea>'
     +'</details>'
-    +'<button onclick="_crmSalvarConfig()" style="width:100%;padding:12px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer">💾 Salvar configuração</button>';
+    +'<button onclick="_crmSalvarConfig()" style="width:100%;padding:12px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer">💾 Salvar configuração</button>'
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-size:12px;font-weight:700">💬 Scripts (modelos de mensagem)</div><button onclick="_crmScriptEditor()" style="font-size:11px;padding:6px 10px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">➕ Novo</button></div>'
+    +'<div style="font-size:10.5px;color:var(--text3);margin-bottom:6px">Variáveis: {nome_empresa} {bairro} {praça} {nome_vendedor} {segmento}</div>'
+    +_crmScriptsListaHTML()
+    +'</div>';
+}
+function _crmScriptsListaHTML(){
+  if(!_CRM.scripts.length) return '<div style="font-size:11px;color:var(--text3);padding:6px">Nenhum script. Clique em ➕ Novo.</div>';
+  return _CRM.scripts.map(function(s){
+    return '<div style="border-top:1px solid var(--border);padding:7px 2px;display:flex;gap:8px;align-items:center"><div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700">'+_crmEsc(s.nome)+' <span style="font-size:9.5px;color:var(--text3);font-weight:400">'+(s.canal||'')+(s.tipo_lead?(' · '+s.tipo_lead):'')+'</span></div><div style="font-size:10.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(s.texto)+'</div></div>'
+      +'<button onclick="_crmScriptEditor(\''+s.id+'\')" style="font-size:11px;padding:5px 8px;border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:6px;cursor:pointer">✏️</button>'
+      +'<button onclick="_crmDeleteScript(\''+s.id+'\')" style="font-size:11px;padding:5px 8px;border:1px solid #E24B4A;background:transparent;color:#E24B4A;border-radius:6px;cursor:pointer">🗑️</button></div>';
+  }).join('');
+}
+function _crmScriptEditor(id){
+  var s=id?_CRM.scripts.find(function(x){return x.id===id;}):null; s=s||{};
+  function opt(v,txt,cur){ return '<option value="'+v+'"'+(cur===v?' selected':'')+'>'+txt+'</option>'; }
+  var inner='<label style="font-size:11px;color:var(--text3)">Nome</label><input id="crm-scr-nome" value="'+_crmEsc(s.nome||'')+'" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:8px">'
+    +'<div style="display:flex;gap:8px"><div style="flex:1"><label style="font-size:11px;color:var(--text3)">Canal</label><select id="crm-scr-canal" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:8px">'+opt('whatsapp','WhatsApp',s.canal)+opt('ligacao','Ligação',s.canal)+'</select></div>'
+    +'<div style="flex:1"><label style="font-size:11px;color:var(--text3)">Tipo de lead</label><select id="crm-scr-tipo" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:8px">'+opt('','Qualquer',s.tipo_lead||'')+opt('novo','Novo',s.tipo_lead)+opt('cadastrado_nao_ativado','Cadastrou/nunca pediu',s.tipo_lead)+opt('churn','Churn',s.tipo_lead)+opt('em_queda','Em queda',s.tipo_lead)+'</select></div></div>'
+    +'<label style="font-size:11px;color:var(--text3)">Texto (use as variáveis)</label><textarea id="crm-scr-texto" rows="6" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-family:inherit;font-size:12px;margin-bottom:12px">'+_crmEsc(s.texto||'')+'</textarea>'
+    +'<button onclick="_crmSalvarScript(\''+(s.id||'')+'\')" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Salvar script</button>';
+  _crmModal('💬 '+(id?'Editar':'Novo')+' script', inner);
+}
+async function _crmSalvarScript(id){
+  var nome=(document.getElementById('crm-scr-nome')||{}).value||''; if(!nome.trim()){ if(typeof toast==='function') toast('Põe o nome.','error'); return; }
+  var texto=(document.getElementById('crm-scr-texto')||{}).value||''; if(!texto.trim()){ if(typeof toast==='function') toast('Põe o texto.','error'); return; }
+  var obj={ id:id||('scr_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)), nome:nome.trim(), canal:(document.getElementById('crm-scr-canal')||{}).value||'whatsapp', tipo_lead:(document.getElementById('crm-scr-tipo')||{}).value||null, texto:texto, ativo:true };
+  var ex=_CRM.scripts.find(function(x){return x.id===obj.id;}); if(ex) Object.assign(ex,obj); else _CRM.scripts.push(obj);
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
+  try{ await _crmEscrever('crm_scripts','upsert',{ dados:[obj] }); if(typeof toast==='function') toast('Script salvo.','success'); }catch(e){ if(typeof toast==='function') toast('Não consegui salvar.','error'); }
+}
+async function _crmDeleteScript(id){
+  if(!confirm('Remover esse script?')) return;
+  _CRM.scripts=_CRM.scripts.filter(function(x){return x.id!==id;}); _crmRenderTab();
+  try{ await _crmEscrever('crm_scripts','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ ativo:false } }); }catch(e){}
 }
 async function _crmSalvarConfig(){
   function val(id){ var e=document.getElementById(id); return e?e.value:''; }
