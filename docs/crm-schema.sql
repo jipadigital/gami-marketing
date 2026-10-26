@@ -124,6 +124,15 @@ CREATE TABLE IF NOT EXISTS crm_scripts (
 );
 
 -- Leitura pelo dashboard (anon), escrita pela rota segura (service key) ---------
+-- Desliga RLS (padrão do projeto: leitura anon + escrita pela rota com service key,
+-- igual prospeccao_lojas). SEM isto, o Supabase liga RLS e a leitura anon vem vazia.
+ALTER TABLE crm_config     DISABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_leads      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_atividades DISABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_tarefas    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_checklist  DISABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_metas      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE crm_scripts    DISABLE ROW LEVEL SECURITY;
 GRANT SELECT ON crm_config, crm_leads, crm_atividades, crm_tarefas, crm_checklist, crm_metas, crm_scripts TO anon, authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 

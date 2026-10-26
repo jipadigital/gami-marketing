@@ -1,3 +1,4 @@
+<!-- v33.01 - CRM: arrastar lead entre etapas no kanban (drag/drop no desktop; no celular segue pelo toque -> abre o lead -> botoes de etapa). Nao move entre funis diferentes. Schema: documentado DISABLE RLS nas crm_* (sem isso a leitura anon vinha vazia). - 26/10/2026 -->
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
@@ -6347,7 +6348,7 @@ function _crmRenderPipeline(b){
     html+='<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px">';
     etapas.forEach(function(nome,i){
       var col=meus.filter(function(l){ return (l.etapa||1)===(i+1); });
-      html+='<div style="min-width:210px;flex:1;background:var(--surface2,#f7f9fc);border:1px solid var(--border);border-radius:10px;padding:8px">'
+      html+='<div class="crm-col" data-pipe="'+pp+'" data-etapa="'+(i+1)+'" ondragover="event.preventDefault();this.style.background=\'#EDE9FB\'" ondragleave="this.style.background=\'\'" ondrop="_crmDrop(event,\''+pp+'\','+(i+1)+')" style="min-width:210px;flex:1;background:var(--surface2,#f7f9fc);border:1px solid var(--border);border-radius:10px;padding:8px;transition:background .1s">'
         +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+(i+1)+'. '+nome+' <span style="color:var(--text3)">('+col.length+')</span></div>'
         +col.map(function(l){ return _crmCard(l); }).join('')
         +(col.length?'':'<div style="font-size:10px;color:var(--text3);padding:6px;text-align:center">vazio</div>')
@@ -6359,7 +6360,7 @@ function _crmRenderPipeline(b){
   b.innerHTML=html;
 }
 function _crmCard(l){
-  return '<div onclick="_crmAbrirLead(\''+l.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:5px;cursor:pointer">'
+  return '<div draggable="true" ondragstart="_crmDragStart(event,\''+l.id+'\')" ondragend="_crmDragEnd(event)" onclick="_crmAbrirLead(\''+l.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:5px;cursor:grab">'
     +'<div style="font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(l.empresa_nome)+'</div>'
     +'<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(l.bairro||'')+(l.segmento?(' · '+_crmEsc(l.segmento)):'')+'</div>'
     +'<div style="font-size:9.5px;color:var(--text3);margin-top:2px">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo||'')+'</div>'
@@ -6427,14 +6428,27 @@ function _crmModal(titulo, inner){
     +inner+'</div></div>';
   document.body.insertAdjacentHTML('beforeend', h);
 }
-async function _crmMoverEtapa(id, etapa){
+async function _crmMoverEtapa(id, etapa, semModal){
   var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l) return;
+  if((l.etapa||1)===etapa){ if(!semModal){ var mm=document.getElementById('crm-modal'); if(mm) mm.remove(); _crmAbrirLead(id); } return; }
   var etapas=_CRM_ETAPAS[l.pipeline]||_CRM_ETAPAS.field;
   l.etapa=etapa; l.atualizado_em=new Date().toISOString();
-  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmAbrirLead(id); _crmRenderTab();
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); if(!semModal) _crmAbrirLead(id); _crmRenderTab();
   try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ etapa:etapa, atualizado_em:l.atualizado_em } });
-       await _crmLog(id,'etapa','Avançou para '+etapa+'. '+(etapas[etapa-1]||''),true);
+       await _crmLog(id,'etapa','Mudou para '+etapa+'. '+(etapas[etapa-1]||''),true);
   }catch(e){ if(typeof toast==='function') toast('Não consegui mover a etapa.','error'); }
+}
+/* arrastar card entre colunas (desktop). No celular continua pelo toque: abre o lead → botões de etapa. */
+function _crmDragStart(ev, id){ _CRM._dragId=id; try{ ev.dataTransfer.setData('text/plain', id); ev.dataTransfer.effectAllowed='move'; }catch(e){} ev.target.style.opacity='0.5'; }
+function _crmDragEnd(ev){ try{ ev.target.style.opacity='1'; }catch(e){} }
+function _crmDrop(ev, pipe, etapa){
+  ev.preventDefault();
+  try{ var col=ev.currentTarget; if(col) col.style.background=''; }catch(e){}
+  var id=_CRM._dragId || (ev.dataTransfer && ev.dataTransfer.getData('text/plain')); if(!id) return;
+  var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l) return;
+  if(l.pipeline!==pipe){ if(typeof toast==='function') toast('Esse lead é do outro funil.'); return; } // não move entre inside/field
+  _crmMoverEtapa(id, etapa, true);
+  _CRM._dragId=null;
 }
 function _crmNota(id){
   var txt=prompt('Anotação / resultado do contato:'); if(txt==null||!txt.trim()) return;
