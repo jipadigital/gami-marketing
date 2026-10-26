@@ -1,3 +1,4 @@
+<!-- v33.16 - CRM/Prospeccao (3 itens): (1) MAPA: tirado o status "Ativada" amarelo (nao usado) e o amarelo virou "Sem sucesso" (lead trabalhado que nao fechou, pra resgatar); quando um lead e marcado PERDIDO no CRM a loja vira status=sem_sucesso no mapa (_crmPerder faz patch em prospeccao_lojas). Atualizado _CAMPO_STATUS, legenda, chips de filtro, contadores, dropdown, analytics, CSV. (2) Lojas ATIVAS (via Machine) agora com verde mais forte (#16A34A) pra destacar. (3) ROTA->CRM: ao adicionar loja/empresa na rota (gestor/vendedor) ja cria o lead no CRM em silencio (_crmAutoPegar, origem='rota', sem duplicar). - 26/10/2026 -->
 <!-- v33.15 - CRM: botao "Iniciar o dia" na aba Hoje. Vendedor escolhe quantidade, tipo (Novos / Cadastrados e nao ativos), segmento e ate 2 cidades (ou todas as praças dele). O sistema puxa de prospeccao_lojas, EXCLUI qualquer loja ja no CRM de qualquer vendedor, e entrega as mais PROXIMAS de lojas ativas (haversine ate a loja status=ativa mais perto), atribui ao vendedor (dono_id), gera cadencia e loga. Funcoes _crmIniciarDiaModal/_crmIniciarDiaConfirmar/_crmIdiaLimite/_crmDist. - 26/10/2026 -->
 <!-- v33.14 - Central Gami (Marketing): layout estilo "Jipa Central" - barra compacta no topo (badges + SISTEMA ONLINE + relogio ao vivo), reator menor e contido (altura limitada) com a LOGO da Gami no centro (img/icon-symbol-transparent.png) no lugar do emoji, e paineis laterais: Instagram (seguidores), Campanhas ativas (le gami_campanhas do localStorage), Site & Blog (posts WP), Comercial (leads+prospects). Removido o grid de 6 KPIs (migrou pros paineis). Funcoes mvRenderCampanhas/mvClock. - 26/10/2026 -->
 <!-- v33.13 - Marketing/Visao Geral: "Reator Gami" ao vivo (ecossistema SVG animado) + KPIs REAIS substituindo os mock: seguidores/posts/cidades do Instagram-Meta (list_accounts), leads e prospects do Supabase (count), posts do blog via WordPress REST; novo painel "Instagram por cidade" com ranking real de seguidores. mvCarregarDados() em paralelo, cache 5min, badges de conexao. - 26/10/2026 -->
@@ -6490,6 +6491,22 @@ async function _crmPegarLead(data){
     if(document.getElementById('pg-crm') && document.getElementById('pg-crm').classList.contains('active')) _crmRenderTab();
   } catch(e){ if(typeof toast==='function') toast('Não consegui criar o lead.','error'); }
 }
+/* --------- AUTO-PEGAR (rota → CRM): cria lead em silêncio se ninguém tiver --------- */
+async function _crmAutoPegar(data){
+  if(typeof _crmPapel==='function' && !_crmPapel()) return;      // só quem tem CRM
+  var u=_crmUser(); if(!u || !_CRM.carregado) return;
+  var pipe=_crmPipelineUser(u); if(pipe==='inside') return;       // rota é de campo (vendedor/gestor)
+  var nome=(data.nome||'').trim(); if(!nome) return;
+  var ja=_CRM.leads.find(function(l){ return (data.loja_id && l.loja_id===data.loja_id) || ((l.empresa_nome||'').trim().toLowerCase()===nome.toLowerCase() && l.cidade_slug===(data.cidade_slug||'')); });
+  if(ja) return; // já está no CRM, não duplica
+  var agora=new Date().toISOString();
+  var lead={ id:_crmUID(), loja_id:data.loja_id||null, empresa_nome:nome, cidade_slug:data.cidade_slug||'', bairro:data.bairro||'', endereco:data.endereco||'',
+    lat:parseFloat(data.lat)||null, lng:parseFloat(data.lng)||null, cnpj:(data.cnpj||'').replace(/\D/g,'')||null, telefone:data.telefone||'', segmento:data.segmento||'',
+    tipo:data.tipo||'novo', pipeline:'field', etapa:1, status:'ativo', dono_id:u.id, posse_desde:agora, origem:'rota',
+    ultima_atividade_em:agora, criado_por:u.id, criado_em:agora, atualizado_em:agora };
+  _CRM.leads.unshift(lead);
+  try{ await _crmEscrever('crm_leads','upsert',{ dados:[lead] }); await _crmGerarCadencia(lead); await _crmLog(lead.id,'atribuicao','Lead criado pela rota de campo',true); }catch(e){}
+}
 /* --------- CADÊNCIAS: geram as tarefas da fila "Hoje" --------- */
 function _crmNovaTarefa(lead, tipo, titulo, dias){
   var v=new Date(); v.setDate(v.getDate()+(dias||0)); v.setHours(9,0,0,0);
@@ -6758,7 +6775,13 @@ async function _crmPerder(id){
   var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
   try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ status:'perdido', motivo_perda:motivo, motivo_perda_txt:txt, atualizado_em:l.atualizado_em } });
        await _crmLog(id,'perda','Perdido: '+motivo+(txt?(' — '+txt):''),true);
-       if(typeof toast==='function') toast('Lead marcado como perdido.');
+       // marca a loja no mapa como "Sem sucesso" (amarelo) pra resgatar depois
+       if(l.loja_id){
+         try{ await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(l.loja_id), patch:{ status:'sem_sucesso', updated_at:new Date().toISOString() } });
+              if(typeof _CAMPO!=='undefined' && _CAMPO.lojas){ var lm=_CAMPO.lojas.find(function(x){return x.id===l.loja_id;}); if(lm) lm.status='sem_sucesso'; }
+         }catch(e2){}
+       }
+       if(typeof toast==='function') toast('Lead perdido. Loja marcada como "sem sucesso" no mapa pra resgate.');
   }catch(e){ if(typeof toast==='function') toast('Não consegui salvar.','error'); }
 }
 
@@ -7201,8 +7224,9 @@ var _CAMPO = { lojas:[], visitas:[], carregado:false, exp:{}, montado:false, rot
 
 var _CAMPO_STATUS = {
   prospect: { cor:'#9AA3AF', bg:'#F1F2F4', label:'Prospect',  dot:'⚪', desc:'cadastrada, nunca ativou' },
-  ativada:  { cor:'#C98A00', bg:'#FFF6DC', label:'Ativada',   dot:'🟡', desc:'ativada, aguardando 1º pedido' },
-  ativa:    { cor:'#1D9E75', bg:'#E4F6EF', label:'Ativa',     dot:'🟢', desc:'já está pedindo' },
+  ativada:  { cor:'#E8A800', bg:'#FFF6DC', label:'Sem sucesso', dot:'🟡', desc:'trabalhada e não fechou, resgatar depois' },
+  sem_sucesso:{ cor:'#E8A800', bg:'#FFF6DC', label:'Sem sucesso', dot:'🟡', desc:'trabalhada e não fechou, resgatar depois' },
+  ativa:    { cor:'#16A34A', bg:'#E4F6EF', label:'Ativa',     dot:'🟢', desc:'já está pedindo (via Machine)' },
   perdida:  { cor:'#E24B4A', bg:'#FDECEC', label:'Perdida',   dot:'🔴', desc:'pedia e parou' },
   // só pra base da Machine: cadastrou na Machine e nunca fez pedido (fantasma)
   fantasma: { cor:'#141414', bg:'#EEF0F2', label:'Nunca pediu', dot:'👻', desc:'cadastrou na Machine e nunca pediu' }
@@ -7280,7 +7304,7 @@ async function _campoFetch(){
 function _campoMapaWrapHTML(){
   return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--card)">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
-    +   '<div style="font-size:11px;color:var(--text2)">🟢 Pedindo &nbsp; 🔴 Parou &nbsp; 🟡 Ativada &nbsp; ⚪ Prospect &nbsp; 🟤 Suspensa <span style="color:var(--text3)">· ponto pequeno = Machine, grande = prospecção · anel marrom = suspensa</span></div>'
+    +   '<div style="font-size:11px;color:var(--text2)">🟢 Ativa (pedindo) &nbsp; 🔴 Parou &nbsp; 🟡 Sem sucesso &nbsp; ⚪ Prospect &nbsp; 🟤 Suspensa <span style="color:var(--text3)">· ponto pequeno = Machine, grande = prospecção · anel marrom = suspensa</span></div>'
     +   '<div style="display:flex;gap:6px;flex-wrap:wrap">'
     +     '<button onclick="_campoMapaBrasil()" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Voltar o mapa pro Brasil inteiro">🇧🇷 Brasil</button>'
     +     '<button onclick="_campoGeocodificarFaltantes()" id="campo-geo-btn" class="btn btn-ghost" style="font-size:11px;padding:7px 12px" title="Converter os endereços em pontos no mapa">📍 Geocodificar faltantes</button>'
@@ -7347,7 +7371,7 @@ function _campoMontarShell(){
     '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
     +   '<select id="campo-f-cidade" onchange="_campoSetCidade(this.value)" style="'+selCss+'">'+optCidades+'</select>'
     +   '<div id="campo-f-status-chips" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center" title="Marque um ou vários status (ex: Perdida + Nunca pediu). Nenhum marcado = mostra todos.">'
-    +     [['prospect','⚪ Prospect'],['ativada','🟡 Ativada'],['ativa','🟢 Ativa'],['perdida','🔴 Perdida'],['fantasma','👻 Nunca pediu'],['suspensa','🟤 Suspensa']].map(function(s){ return '<button type="button" data-st="'+s[0]+'" onclick="_campoStatusToggle(\''+s[0]+'\')" class="campo-stchip" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:16px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">'+s[1]+'</button>'; }).join('')
+    +     [['prospect','⚪ Prospect'],['ativa','🟢 Ativa'],['perdida','🔴 Perdida'],['sem_sucesso','🟡 Sem sucesso'],['fantasma','👻 Nunca pediu'],['suspensa','🟤 Suspensa']].map(function(s){ return '<button type="button" data-st="'+s[0]+'" onclick="_campoStatusToggle(\''+s[0]+'\')" class="campo-stchip" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:16px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">'+s[1]+'</button>'; }).join('')
     +   '</div>'
     +   '<select id="campo-f-categoria" onchange="_campoAplicar()" title="Filtra os prospects por categoria" style="'+selCss+'"><option value="">Todas as categorias</option></select>'
     +   '<input id="campo-f-busca" oninput="_campoAplicar()" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
@@ -7516,7 +7540,7 @@ function _campoRepintar(){
 function _campoRenderKpis(lojas, emp){
   var box = document.getElementById('campo-kpis'); if(!box) return;
   emp = emp || [];
-  var cont = { prospect:0, ativada:0, ativa:0, perdida:0 };
+  var cont = { prospect:0, ativada:0, sem_sucesso:0, ativa:0, perdida:0 };
   lojas.forEach(function(l){ var s=l.status||'prospect'; if(cont[s]!=null) cont[s]++; });
   // soma a base da Machine (verde/vermelho)
   var empAtiva=0, empPerdida=0, empFantasma=0;
@@ -7527,9 +7551,9 @@ function _campoRenderKpis(lojas, emp){
       + '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">'+label+'</div></div>';
   }
   box.innerHTML =
-      card((cont.ativa+empAtiva),'🟢 Pedindo','#1D9E75')
+      card((cont.ativa+empAtiva),'🟢 Ativas (pedindo)','#16A34A')
     + card((cont.perdida+empPerdida),'🔴 Pararam','#E24B4A')
-    + card(cont.ativada,'🟡 Ativadas','#C98A00')
+    + card((cont.ativada+cont.sem_sucesso),'🟡 Sem sucesso','#E8A800')
     + card(cont.prospect,'⚪ Prospect','#9AA3AF')
     + card(empFantasma,'👻 Nunca pediram','#141414')
     + card(emp.length,'Base Machine','#0E7AB8')
@@ -7774,7 +7798,7 @@ function _campoCard(l){
 
 function _campoBotoesStatus(l){
   var atual = l.status||'prospect';
-  return ['prospect','ativada','ativa','perdida'].filter(function(s){ return s!==atual; }).map(function(s){
+  return ['prospect','ativa','perdida','sem_sucesso'].filter(function(s){ return s!==atual; }).map(function(s){
     var m=_campoStMeta(s);
     return '<button onclick="_campoMudarStatus(\''+l.id+'\',\''+s+'\')" style="font-size:10px;padding:6px 10px;border:1px solid '+m.cor+';background:transparent;color:'+m.cor+';border-radius:7px;cursor:pointer;font-weight:700">'+m.dot+' '+m.label+'</button>';
   }).join('');
@@ -7835,9 +7859,9 @@ function _campoNovaLoja(prefill){
     + '</div>'
     + '<select id="campo-m-status" style="'+css+'">'
     +   '<option value="prospect">⚪ Prospect (visitei, não ativou)</option>'
-    +   '<option value="ativada">🟡 Ativada (sem 1º pedido)</option>'
     +   '<option value="ativa">🟢 Ativa (já pede)</option>'
-    +   '<option value="perdida">🔴 Perdida</option>'
+    +   '<option value="perdida">🔴 Perdida (pedia e parou)</option>'
+    +   '<option value="sem_sucesso">🟡 Sem sucesso (resgatar depois)</option>'
     + '</select>'
     + '<textarea id="campo-m-obs" placeholder="Observação" style="'+css+';min-height:54px;resize:vertical">'+_campoEsc(prefill.obs||'')+'</textarea>'
     + '<button onclick="_campoSalvarLojaForm()" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Salvar loja</button>';
@@ -8180,7 +8204,8 @@ function _campoRotaToggleEmp(slug, nomeEnc){
     bairro:e.bairro||'', endereco:e.endereco||'', lat:(e.lat!=null?String(e.lat):''), lng:(e.lng!=null?String(e.lng):''),
     status:e._status||'ativa', telefone:e.telefone||'', documento:e.documento||'', visitado:false, visitado_em:null
   });
-  if(typeof toast==='function') toast('Adicionado à rota 🚗');
+  try{ if(typeof _crmAutoPegar==='function'){ var _t=e._status==='fantasma'?'cadastrado_nao_ativado':(e._status==='perdida'?'churn':(e._status==='ativa'?'em_queda':'novo')); _crmAutoPegar({ loja_id:'', nome:e.nome, cidade_slug:slug, bairro:e.bairro, endereco:e.endereco, lat:e.lat, lng:e.lng, cnpj:e.documento, telefone:e.telefone, segmento:e.segmento||'', tipo:_t }); } }catch(e2){}
+  if(typeof toast==='function') toast('Adicionado à rota 🚗 (e ao seu CRM)');
   _campoRepintar(); _campoRenderRota(); _campoRotaAviso();
 }
 function _campoRotaToggleLoja(id){
@@ -8192,7 +8217,8 @@ function _campoRotaToggleLoja(id){
     bairro:l.bairro||'', endereco:l.endereco||'', lat:(l.lat!=null?String(l.lat):''), lng:(l.lng!=null?String(l.lng):''),
     status:l.status||'prospect', telefone:l.telefone||'', documento:l.cnpj||'', visitado:false, visitado_em:null
   });
-  if(typeof toast==='function') toast('Adicionado à rota 🚗');
+  try{ if(typeof _crmAutoPegar==='function') _crmAutoPegar({ loja_id:id, nome:l.nome, cidade_slug:l.cidade_slug||_campoSlug(l.cidade), bairro:l.bairro, endereco:l.endereco, lat:l.lat, lng:l.lng, cnpj:l.cnpj, telefone:l.telefone, segmento:l.segmento, tipo:'novo' }); }catch(e){}
+  if(typeof toast==='function') toast('Adicionado à rota 🚗 (e ao seu CRM)');
   _campoRepintar(); _campoRenderRota(); _campoRotaAviso();
 }
 /* abre o painel da rota se estiver fechado, pra dar feedback visual ao adicionar */
@@ -8465,9 +8491,9 @@ function _campoVisitasFiltradas(){
 function _campoRenderNumeros(){
   var box=document.getElementById('campo-numeros'); if(!box) return;
   var lojas=_campoLojasFiltradas(), visitas=_campoVisitasFiltradas(), total=lojas.length;
-  var cont={prospect:0,ativada:0,ativa:0,perdida:0};
+  var cont={prospect:0,ativada:0,sem_sucesso:0,ativa:0,perdida:0};
   lojas.forEach(function(l){ var s=l.status||'prospect'; if(cont[s]!=null) cont[s]++; });
-  var taxaAtiv = total? Math.round(100*(cont.ativa+cont.ativada)/total):0;
+  var taxaAtiv = total? Math.round(100*cont.ativa/total):0;
   var taxaPedindo = total? Math.round(100*cont.ativa/total):0;
   var difs=[];
   lojas.forEach(function(l){ if(l.ativada_em && l.primeiro_pedido_em){ var d=(Date.parse(l.primeiro_pedido_em)-Date.parse(l.ativada_em))/86400000; if(d>=0 && d<400) difs.push(d); } });
@@ -8485,8 +8511,8 @@ function _campoRenderNumeros(){
     +   '<button onclick="_campoExportarCSV()" class="btn btn-ghost" style="font-size:11px;padding:6px 10px">⬇️ Exportar CSV</button></div>'
     + '<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">Funil (de '+total+' lojas)</div>'
     + funilBar('⚪ Prospect',cont.prospect,'#9AA3AF')
-    + funilBar('🟡 Ativada (sem 1º pedido)',cont.ativada,'#E9A800')
-    + funilBar('🟢 Ativa (pedindo)',cont.ativa,'#1D9E75')
+    + funilBar('🟢 Ativa (pedindo)',cont.ativa,'#16A34A')
+    + funilBar('🟡 Sem sucesso (resgatar)',(cont.ativada+cont.sem_sucesso),'#E8A800')
     + funilBar('🔴 Perdida',cont.perdida,'#E24B4A')
     + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'
     +   kcard(taxaAtiv+'%','Taxa de ativação') + kcard(taxaPedindo+'%','Viraram pedido')
@@ -8507,7 +8533,7 @@ function _campoExportarCSV(){
   var lojas=_campoLojasFiltradas();
   var head=['Loja','Cidade','Bairro','Status','Telefone','Segmento','Criada por','Ultima visita','Lat','Lng'];
   function esc(s){ s=(s==null?'':String(s)); return '"'+s.replace(/"/g,'""')+'"'; }
-  var stLbl={prospect:'Prospect',ativada:'Ativada',ativa:'Ativa',perdida:'Perdida'};
+  var stLbl={prospect:'Prospect',ativada:'Sem sucesso',sem_sucesso:'Sem sucesso',ativa:'Ativa',perdida:'Perdida'};
   var rows=[head.map(esc).join(',')];
   lojas.forEach(function(l){ var ult=_campoVisitasDaLoja(l.id)[0];
     rows.push([ l.nome,l.cidade,l.bairro,(stLbl[l.status||'prospect']||l.status),l.telefone,l.segmento,l.criado_por_nome,(ult?(ult.data||'').slice(0,10):''),l.lat||'',l.lng||'' ].map(esc).join(',')); });
@@ -8700,7 +8726,7 @@ function _campoExportarExcel(){
   function _xe(v){ return String(v==null?'':v).replace(/[&<>]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch];}); }
   function _em(e){ return (Array.isArray(e.admins)&&e.admins[0]&&e.admins[0].email)?e.admins[0].email:''; }
   function _resp(e){ return (Array.isArray(e.admins)&&e.admins[0]&&e.admins[0].nome)?e.admins[0].nome:''; }
-  var stLbl = {ativa:'Pedindo', perdida:'Parou de pedir', fantasma:'Cadastrou e nunca pediu', ativada:'Ativada', prospect:'Prospect'};
+  var stLbl = {ativa:'Pedindo', perdida:'Parou de pedir', fantasma:'Cadastrou e nunca pediu', ativada:'Sem sucesso', sem_sucesso:'Sem sucesso', prospect:'Prospect'};
   var sitLbl = {A:'Ativo', I:'Inativo', S:'Suspenso'};
   var headers = ['Nome','Status','Endereço','Bairro','Cidade','UF','CEP','Telefone','E-mail','Responsável','CNPJ/CPF','Contrato','Cadastro','Situação','Pedidos (120d)','Finalizados','Cancelados'];
   if(!oculta){ headers.push('Faturamento (R$)'); headers.push('Ticket médio (R$)'); }
