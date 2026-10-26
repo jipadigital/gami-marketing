@@ -1,3 +1,4 @@
+<!-- v33.09 - CRM (rota do dia + check-in GPS, field): botao "Abrir rota do dia no Google Maps" na aba Hoje (monta rota multi-parada com os leads de campo do vendedor, origem no GPS atual); botao "Check-in" na ficha do lead field = pega GPS, registra visita com coordenada no historico e avanca pra etapa Visita realizada. - 26/10/2026 -->
 <!-- v33.08 - CRM (gerenciar scripts na Config, admin): lista os modelos de mensagem com editar/remover + botao Novo (nome, canal, tipo de lead, texto com variaveis). Salva em crm_scripts (upsert por id). Fecha a feature de scripts: admin cria/edita sem SQL e os modelos aparecem no WhatsApp da ficha do lead. - 26/10/2026 -->
 <!-- v33.07 - CRM (ficha do lead = workspace completo, nivel Pipedrive/HubSpot): HISTORICO/timeline de atividades na ficha; WhatsApp com SCRIPTS (modelos com variaveis nome_empresa/bairro/praca/nome_vendedor, 1 clique abre o wa.me ja preenchido e loga); DECISOR editavel (alerta se nao identificado); AGENDAR RETORNO (status retornar + volta pra fila na data, reativacao automatica ao abrir). Carrega crm_scripts. - 26/10/2026 -->
 <!-- v33.06 - CRM Fase 2 (Carteira ativa): aba Carteira (gestor/admin) com saude dos clientes que pedem, por praca, lida do raio-X da Machine (mv_empresas_raiox). Mostra ALERTAS (dias sem pedir > limiar, queda % vs media de 3 meses tirando o mes em andamento, top20 caindo) com botao Reativar (vira lead churn/em_queda) + tabela por volume de entregas, tendencia e ultimo pedido. R$ faturamento SO p/ quem tem permissao de valores (_podeVerFaturamento); os demais veem volume/tendencia. Limiares vem do crm_config. - 26/10/2026 -->
@@ -6335,9 +6336,11 @@ function _crmRenderTab(){
 function _crmRenderHoje(b){
   var u=_crmUser(); var meuId=u?u.id:'';
   var hoje=new Date(); hoje.setHours(23,59,59,999);
+  var temRota=_CRM.leads.some(function(l){ return l.dono_id===meuId && l.status==='ativo' && l.pipeline==='field' && l.lat && l.lng; });
+  var rotaBtn = temRota ? '<button onclick="_crmRotaDia()" style="width:100%;font-size:13px;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#1D9E75,#56C597);color:#fff;font-weight:700;cursor:pointer;margin-bottom:10px">🗺️ Abrir rota do dia no Google Maps</button>' : '';
   var fila=_CRM.tarefas.filter(function(t){ return t.dono_id===meuId && !t.feita && !t.pulada && new Date(t.vence_em)<=hoje; }).sort(function(a,x){ return new Date(a.vence_em)-new Date(x.vence_em); });
-  if(!fila.length){ b.innerHTML='<div style="padding:34px;text-align:center;color:var(--text3);font-size:13px">🎉 Sem tarefas vencendo hoje. Pegue leads no mapa (Prospecção em Campo) ou no seu funil.</div>'; return; }
-  b.innerHTML=fila.map(function(t){
+  if(!fila.length){ b.innerHTML=rotaBtn+'<div style="padding:34px;text-align:center;color:var(--text3);font-size:13px">🎉 Sem tarefas vencendo hoje. Pegue leads no mapa (Prospecção em Campo) ou no seu funil.</div>'; return; }
+  b.innerHTML=rotaBtn+fila.map(function(t){
     var l=_CRM.leads.find(function(x){ return x.id===t.lead_id; })||{};
     var atras=new Date(t.vence_em)<new Date();
     return '<div style="display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--card)">'
@@ -6508,6 +6511,7 @@ function _crmAbrirLead(id){
   var acoes='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">'
     +(tel.length>=10?'<a href="tel:+55'+tel+'" onclick="_crmLog(\''+id+'\',\'ligacao\',\'Ligação iniciada\')" style="flex:1;text-align:center;font-size:12.5px;padding:10px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:9px;text-decoration:none;font-weight:700">📞 Ligar</a>':'')
     +(tel.length>=10?'<button onclick="_crmWhatsMenu(\''+id+'\')" style="flex:1;font-size:12.5px;padding:10px;border:1px solid #25D366;background:#25D366;color:#fff;border-radius:9px;cursor:pointer;font-weight:700">💬 WhatsApp</button>':'')
+    +(l.pipeline==='field'?'<button onclick="_crmCheckin(\''+id+'\')" style="flex:1;font-size:12.5px;padding:10px;border:1px solid #C98A00;background:#C98A00;color:#fff;border-radius:9px;cursor:pointer;font-weight:700">📍 Check-in</button>':'')
     +'</div>';
   var etapasHtml=etapas.map(function(nm,i){ var at=(l.etapa||1)===(i+1); return '<button onclick="_crmMoverEtapa(\''+id+'\','+(i+1)+')" style="font-size:10.5px;padding:6px 9px;border:1px solid '+(at?'#0E7AB8':'var(--border)')+';background:'+(at?'#0E7AB8':'var(--card)')+';color:'+(at?'#fff':'var(--text2)')+';border-radius:7px;cursor:pointer;font-weight:'+(at?'700':'500')+'">'+(i+1)+'. '+nm+'</button>'; }).join(' ');
   var decisorLin = l.decisor_nome ? ('👤 '+_crmEsc(l.decisor_nome)+(l.decisor_cargo?(' · '+_crmEsc(l.decisor_cargo)):'')) : '<span style="color:#E24B4A">⚠️ decisor não identificado</span>';
@@ -6723,6 +6727,35 @@ async function _crmCartLoad(slug){
   var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/mv_empresas_raiox?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,qtd_total,qtd_finalizadas,faturamento,ultimo,meses,bairro_op&order=qtd_total.desc');
   _CRM_CART.cache[slug]=Array.isArray(rows)?rows:[];
   return _CRM_CART.cache[slug];
+}
+/* --------- ROTA DO DIA + CHECK-IN GPS (field) --------- */
+async function _crmLogCoord(leadId,tipo,desc,la,lo){
+  var u=_crmUser(); var now=new Date().toISOString();
+  var at={ lead_id:leadId, tipo:tipo, descricao:desc||'', lat:la, lng:lo, autor_id:u?u.id:'', autor_nome:u?(u.nome||u.email||''):'', criado_em:now };
+  var l=_CRM.leads.find(function(x){return x.id===leadId;}); if(l) l.ultima_atividade_em=now;
+  try{ await _crmEscrever('crm_atividades','upsert',{ dados:[at] }); if(l) await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(leadId), patch:{ ultima_atividade_em:now, atualizado_em:now } }); }catch(e){}
+}
+function _crmCheckin(id){
+  if(!navigator.geolocation){ if(typeof toast==='function') toast('GPS indisponível neste aparelho.'); return; }
+  if(typeof toast==='function') toast('📍 Pegando sua localização…');
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var la=+pos.coords.latitude.toFixed(6), lo=+pos.coords.longitude.toFixed(6);
+    var l=_CRM.leads.find(function(x){return x.id===id;});
+    _crmLogCoord(id,'visita','Check-in na loja (visita feita)',la,lo);
+    if(l && l.pipeline==='field' && (l.etapa||1)<2){ _crmMoverEtapa(id,2,true); }
+    var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
+    if(typeof toast==='function') toast('✅ Check-in registrado!','success');
+  }, function(){ if(typeof toast==='function') toast('Não consegui o GPS. Ative a localização do aparelho.','error'); }, {enableHighAccuracy:true, timeout:12000});
+}
+function _crmRotaDia(){
+  var u=_crmUser();
+  var leads=_CRM.leads.filter(function(l){ return l.dono_id===u.id && l.status==='ativo' && l.pipeline==='field' && l.lat && l.lng; });
+  if(!leads.length){ if(typeof toast==='function') toast('Nenhum lead de campo com localização pra montar rota.'); return; }
+  var paradas=leads.slice(0,10).map(function(l){ return l.lat+','+l.lng; });
+  function abrir(origem){ var dest=paradas[paradas.length-1]; window.open('https://www.google.com/maps/dir/?api=1'+(origem?('&origin='+origem):'')+'&destination='+dest+(paradas.length>1?('&waypoints='+paradas.slice(0,-1).join('|')):'')+'&travelmode=driving','_blank','noopener'); }
+  if(typeof toast==='function') toast('🗺️ Abrindo rota com '+paradas.length+' parada(s)…');
+  if(navigator.geolocation){ navigator.geolocation.getCurrentPosition(function(p){ abrir(p.coords.latitude+','+p.coords.longitude); }, function(){ abrir(''); }, {timeout:8000}); }
+  else abrir('');
 }
 function _crmRenderCarteira(b){
   var cids=_crmCartCidades(); if(!_CRM_CART.slug||cids.indexOf(_CRM_CART.slug)<0) _CRM_CART.slug=cids[0];
