@@ -88,14 +88,13 @@ CREATE INDEX IF NOT EXISTS idx_crm_tarefas_lead ON crm_tarefas (lead_id);
 
 -- 5) CHECKLIST (etapa Cadastramento do field; cada item data+autor p/ comissão) -
 CREATE TABLE IF NOT EXISTS crm_checklist (
-  id        bigserial PRIMARY KEY,
+  id        text PRIMARY KEY,                     -- determinístico: lead_id||'|'||item (upsert idempotente)
   lead_id   text NOT NULL REFERENCES crm_leads(id) ON DELETE CASCADE,
   item      text NOT NULL,                        -- cadastro | ativacao | ifood | 99 | outra
   item_txt  text,                                 -- quando item='outra'
   feito     boolean DEFAULT false,
   feito_em  timestamptz,
-  autor_id  text,                                 -- 'ativacao' é marcada pela Machine, não manual
-  UNIQUE (lead_id, item)
+  autor_id  text                                  -- 'ativacao' é marcada pela Machine, não manual
 );
 
 -- 6) METAS individuais (e por praça/time) — Carlos/Admin define -----------------

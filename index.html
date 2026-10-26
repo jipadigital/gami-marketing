@@ -1,3 +1,4 @@
+<!-- v33.03 - CRM (checklist + ativacao automatica): leads field mostram o CHECKLIST de cadastramento (cadastro, ativacao, iFood, 99, outras; cada um data+autor, base da comissao). ATIVACAO AUTOMATICA: botao "Checar ativacoes" + auto ao abrir le a Machine (mv_prospeccao_mapa por coord/nome) e marca ATIVADO quando ha 1a entrega recente (ate 45d), fecha o item ativacao e loga. crm_checklist com id de texto p/ upsert idempotente. - 26/10/2026 -->
 <!-- v33.02 - CRM (cadencias + fila do dia): ao pegar o lead ou mudar de etapa, o sistema gera as tarefas da cadencia (inside: D0/D1/D3/D5/D7; field etapa1: visita de hoje; field etapa2: D+1 wpp/D+3 revisita) e elas caem na aba HOJE (fila pessoal: so as suas, vencendo hoje/atrasadas). Mudar de etapa limpa as pendentes antigas e gera as novas. Config lida do crm_config. - 26/10/2026 -->
 <!-- v33.01 - CRM: arrastar lead entre etapas no kanban (drag/drop no desktop; no celular segue pelo toque -> abre o lead -> botoes de etapa). Nao move entre funis diferentes. Schema: documentado DISABLE RLS nas crm_* (sem isso a leitura anon vinha vazia). - 26/10/2026 -->
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
@@ -6228,7 +6229,8 @@ function _fatRender(root, dados){
 /* CRM GÂMI (Fase 1) — inside (BDR) + field (vendedor/gestor)   */
 /* Tabelas crm_* (docs/crm-schema.sql). Carteira/Ativado = Machine (só leitura) */
 /* ============================================================ */
-var _CRM = { leads:[], tarefas:[], carregado:false, tab:'hoje', config:null };
+var _CRM = { leads:[], tarefas:[], checklist:[], carregado:false, tab:'hoje', config:null };
+var _CRM_CHECK_ITENS = [['cadastro','Cadastro concluído na plataforma'],['ativacao','Ativação (1ª entrega) — automático'],['ifood','Integração iFood'],['99','Integração 99'],['outra','Outras plataformas de logística']];
 var _CRM_ETAPAS = {
   inside:['Prospectando','Contato realizado','Oportunidade','Fechamento'],
   field :['Lead na rota','Visita realizada','Oportunidade','Cadastramento']
@@ -6275,6 +6277,8 @@ async function _crmFetch(force){
     _CRM.config = cfg;
     var leads = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=*&order=atualizado_em.desc');
     var tarefas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_tarefas?select=*&pulada=eq.false&order=vence_em.asc');
+    var checklist = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_checklist?select=*');
+    _CRM.checklist = Array.isArray(checklist)?checklist:[];
     _CRM.leads = _crmVisiveis(Array.isArray(leads)?leads:[], u);
     _CRM.tarefas = (Array.isArray(tarefas)?tarefas:[]).filter(function(t){ return t.dono_id===u.id || _crmPapel(u)==='admin'; });
     _CRM.carregado = true;
@@ -6284,7 +6288,7 @@ async function _crmFetch(force){
 function initCRM(){
   if(!_podeVerCRM()){ var r0=document.getElementById('crm-root'); if(r0) r0.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Sem acesso ao CRM.</div>'; return; }
   _crmRenderShell();
-  _crmFetch().then(function(){ _crmRenderTab(); });
+  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmChecarAtivacoes(true); }catch(e){} }); // checa ativações silenciosamente ao abrir
 }
 function _crmRenderShell(){
   var root=document.getElementById('crm-root'); if(!root) return;
@@ -6296,6 +6300,8 @@ function _crmRenderShell(){
   root.innerHTML =
     '<div id="crm-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
     + abas.map(function(a){ return '<button type="button" data-crmtab="'+a[0]+'" onclick="_crmSetTab(\''+a[0]+'\')" class="crm-tab" style="font-size:12px;padding:8px 14px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">'+a[1]+'</button>'; }).join('')
+    + '<div style="flex:1"></div>'
+    + '<button type="button" onclick="_crmChecarAtivacoes(false)" title="Confere na Machine quais leads já fizeram a 1ª entrega (ativaram)" style="font-size:11px;padding:8px 12px;border:1px solid #1D9E75;border-radius:9px;background:transparent;color:#1D9E75;cursor:pointer;font-family:inherit;font-weight:700">🔄 Checar ativações</button>'
     + '</div>'
     + '<div id="crm-body"></div>';
   _crmTabsUI();
@@ -6443,6 +6449,7 @@ function _crmAbrirLead(id){
     +'<div style="font-size:12px;color:var(--text2);margin:4px 0">'+_crmEsc([l.bairro,l.endereco].filter(Boolean).join(' · ')||'')+(l.segmento?(' · '+_crmEsc(l.segmento)):'')+(l.telefone?(' · '+_crmEsc(l.telefone)):'')+'</div>'
     +acoes
     +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Etapa</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+etapasHtml+'</div>'
+    +((l.pipeline==='field')?('<div style="font-size:11px;font-weight:700;color:var(--text2);margin:14px 0 2px">Checklist de cadastramento (comissão)</div><div id="crm-checklist-box">'+_crmChecklistHTML(id)+'</div>'):'')
     +'<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'
     +'<button onclick="_crmNota(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:8px;cursor:pointer;font-weight:700">📝 Nota</button>'
     +'<button onclick="_crmPerder(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #E24B4A;background:transparent;color:#E24B4A;border-radius:8px;cursor:pointer;font-weight:700">Perder</button>'
@@ -6514,6 +6521,62 @@ function _crmLeadDeEmpresa(slug, nomeEnc){
   var e=arr.find(function(x){ return (x.nome||'')===nome; })||{};
   var tipo = e._status==='fantasma' ? 'cadastrado_nao_ativado' : (e._status==='perdida' ? 'churn' : (e._status==='ativa' ? 'em_queda' : 'novo'));
   _crmPegarLead({ nome:nome, cidade_slug:slug, bairro:e.bairro, endereco:e.endereco, lat:e.lat, lng:e.lng, cnpj:e.documento, telefone:e.telefone, segmento:e.segmento||'', tipo:tipo });
+}
+
+/* --------- CHECKLIST de Cadastramento (field) + comissão --------- */
+function _crmCheckGet(leadId,item){ return _CRM.checklist.find(function(x){ return x.lead_id===leadId && x.item===item; }); }
+function _crmChecklistHTML(leadId){
+  var html='';
+  _CRM_CHECK_ITENS.forEach(function(it){
+    var row=_crmCheckGet(leadId,it[0]); var feito=row&&row.feito; var auto=it[0]==='ativacao';
+    html+='<div '+(auto?'':'onclick="_crmToggleChecklist(\''+leadId+'\',\''+it[0]+'\')"')+' style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-top:1px solid var(--border);cursor:'+(auto?'default':'pointer')+'">'
+      +'<div style="width:18px;height:18px;border-radius:5px;border:1.5px solid '+(feito?'#1D9E75':'var(--border)')+';background:'+(feito?'#1D9E75':'transparent')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none">'+(feito?'✓':'')+'</div>'
+      +'<div style="flex:1;font-size:12px;color:var(--text)'+(feito?';text-decoration:line-through;opacity:.65':'')+'">'+it[1]+(auto?' 🔒':'')+'</div>'
+      +(feito&&row&&row.feito_em?('<div style="font-size:9.5px;color:var(--text3)">'+new Date(row.feito_em).toLocaleDateString('pt-BR')+'</div>'):'')
+      +'</div>';
+  });
+  return html;
+}
+async function _crmChecklistUpsert(leadId,item,feito){
+  var u=_crmUser(); var now=new Date().toISOString(); var row=_crmCheckGet(leadId,item);
+  var obj={ id:leadId+'|'+item, lead_id:leadId, item:item, feito:!!feito, feito_em:feito?(row&&row.feito_em||now):null, autor_id:(u?u.id:'auto') };
+  if(row){ row.feito=obj.feito; row.feito_em=obj.feito_em; row.autor_id=obj.autor_id; } else { _CRM.checklist.push(obj); }
+  try{ await _crmEscrever('crm_checklist','upsert',{ dados:[obj] }); return true; }catch(e){ return false; }
+}
+async function _crmToggleChecklist(leadId,item){
+  var cur=_crmCheckGet(leadId,item); var feito=!(cur&&cur.feito);
+  var ok=await _crmChecklistUpsert(leadId,item,feito);
+  var box=document.querySelector('#crm-checklist-box'); if(box) box.innerHTML=_crmChecklistHTML(leadId);
+  if(ok) _crmLog(leadId,'nota','Checklist: '+item+(feito?' ✓':' desmarcado'),true);
+  else if(typeof toast==='function') toast('Não consegui salvar o checklist.','error');
+}
+
+/* --------- ATIVAÇÃO automática (lê a Machine; 1ª entrega = "ganho real") --------- */
+async function _crmChecarAtivacoes(silent){
+  var alvos=_CRM.leads.filter(function(l){ return (l.status==='ativo'||l.status==='aguardando_ativacao') && l.empresa_nome && l.cidade_slug; });
+  if(!alvos.length){ if(!silent&&typeof toast==='function') toast('Sem leads pra checar.'); return; }
+  var porCid={}; alvos.forEach(function(l){ (porCid[l.cidade_slug]=porCid[l.cidade_slug]||[]).push(l); });
+  var mudou=[];
+  for(var slug in porCid){
+    var mv=await _campoFetchTodos(SUPA_URL+'/rest/v1/mv_prospeccao_mapa?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,lat,lng,qtd_pedidos,ultimo');
+    var byCoord={}, byNome={};
+    (mv||[]).forEach(function(e){ var k=(typeof _campoCoordKey5==='function')?_campoCoordKey5(e.lat,e.lng):null; if(k) byCoord[k]=e; var fn=(typeof _campoNomeFlat==='function')?_campoNomeFlat(e.nome):''; if(fn) byNome[fn]=e; });
+    porCid[slug].forEach(function(l){
+      var k=(typeof _campoCoordKey5==='function')?_campoCoordKey5(l.lat,l.lng):null;
+      var e=(k&&byCoord[k]) || byNome[(typeof _campoNomeFlat==='function')?_campoNomeFlat(l.empresa_nome):''];
+      if(e && (parseInt(e.qtd_pedidos)||0)>0 && e.ultimo && (Date.now()-Date.parse(e.ultimo))/86400000<=45){
+        l.status='ativado'; l.ativado_em=l.ativado_em||new Date().toISOString(); mudou.push(l);
+      }
+    });
+  }
+  for(var i=0;i<mudou.length;i++){ var l=mudou[i];
+    try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(l.id), patch:{ status:'ativado', ativado_em:l.ativado_em, atualizado_em:new Date().toISOString() } });
+         await _crmChecklistUpsert(l.id,'ativacao',true);
+         await _crmLog(l.id,'etapa','🎉 Ativado (1ª entrega confirmada pela Machine)',true);
+    }catch(e){}
+  }
+  if(mudou.length){ _crmRenderTab(); }
+  if(!silent&&typeof toast==='function') toast(mudou.length?('🎉 '+mudou.length+' lead(s) ativado(s)!'):'Nenhuma ativação nova por enquanto.');
 }
 
 /* --------- placeholders (próximos increments) --------- */
