@@ -42,14 +42,17 @@ const TABELAS_PERMITIDAS = [
   'notificacoes',      // notificações (delegação avisa o delegante, etc.)
   'prospeccao_lojas',  // CRM de campo: lojas prospectadas/ativadas (Carlos + gestores)
   'prospeccao_visitas', // CRM de campo: log de visitas
-  'prospeccao_rotas'   // CRM de campo: rota de visitas por gestor
+  'prospeccao_rotas',  // CRM de campo: rota de visitas por gestor
+  // CRM Gâmi (comercial): inside (BDR) + field (vendedor/gestor)
+  'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config'
 ];
 
 // 🆕 Tabelas de COLABORAÇÃO: qualquer usuário com SESSÃO VÁLIDA pode gravar aqui
 // (não precisa ser super_admin). Necessário pra fluxos entre colaboradores, ex.:
 // o Mazinho concluir uma tarefa que a Suzi delegou (UPDATE em tarefas) e avisá-la
 // (INSERT em notificacoes). Fora dessas, segue só super_admin.
-const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospeccao_visitas', 'prospeccao_rotas'];
+const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospeccao_visitas', 'prospeccao_rotas',
+  'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config'];
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [

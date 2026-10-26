@@ -1,3 +1,4 @@
+<!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
 <!-- v32.96 - PROSPECCAO mapa: emoji dentro da bolinha um pouco menor (7.5px) a pedido, pra ficar mais discreto. - 23/10/2026 -->
@@ -2534,6 +2535,7 @@ function aplicarPermissoesVisuais(){
     var aba = match[1];
     if(aba === 'faturamento') return; // gate próprio (data-perm-faturamento), não pela MATRIZ de cargos
     if(aba === 'campo'){ item.style.display = (typeof _podeVerCampo==='function' && _podeVerCampo()) ? '' : 'none'; return; } // gate próprio (gestor/vendedor/diretoria/gerência + BDRs)
+    if(aba === 'crm'){ item.style.display = (typeof _podeVerCRM==='function' && _podeVerCRM()) ? '' : 'none'; return; } // CRM: comercial (admin/gestor/vendedor/BDR)
     if(perms.abas.indexOf(aba) === -1){
       item.style.display = 'none';
     } else {
@@ -2620,6 +2622,7 @@ function bloquearAcessoAba(aba){
   // 🔒 Faturamento: gate próprio (allowlist + super_admin), não pela MATRIZ de cargos
   if(aba === 'faturamento'){ return _podeVerFaturamento() ? false : _blocoRestrito(); }
   if(aba === 'campo'){ return _podeVerCampo() ? false : _blocoRestrito(); }
+  if(aba === 'crm'){ return (typeof _podeVerCRM==='function' && _podeVerCRM()) ? false : _blocoRestrito(); }
   if(!temPermissao('aba:' + aba)){
     var nivel = detectarNivelPermissao(u);
     // Mostra modal amigável
@@ -2806,6 +2809,7 @@ window.nav = function(el, page){
         'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
         'faturamento':     function(){ if(typeof initFaturamento==='function') initFaturamento(); },
         'campo':           function(){ if(typeof initCampo==='function') initCampo(); },
+        'crm':             function(){ if(typeof initCRM==='function') initCRM(); },
         'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); }
       };
       if(initMap[page]) setTimeout(initMap[page], 80);
@@ -2858,6 +2862,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'inbox')" style="display:none" data-feature-flag="inbox-instagram">📷 Inbox Instagram<span class="nav-badge" id="badge-inb" style="display:none">0</span></div>
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'campo')">📍 Prospecção em Campo</div>
+    <div class="nav-item" id="nav-crm" onclick="nav(this,'crm')" style="display:none">💼 CRM</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas</div>
     <div class="nav-item" onclick="abrirVerificarMotoristas(this)" title="Consulta de antecedentes, mandados de prisão e CNH por CPF">🚗 Verificação de Motoristas</div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
@@ -6206,6 +6211,278 @@ function _fatRender(root, dados){
     <div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando prospecção...</div>
   </div>
 </div>
+
+<!-- ==================== CRM GÂMI (comercial) ==================== -->
+<div class="page" id="pg-crm">
+  <div class="page-header">
+    <div><div class="page-title">💼 CRM Comercial</div><div class="page-sub">Seu funil, sua fila do dia e suas ativações</div></div>
+  </div>
+  <div id="crm-root" style="padding:0 2px">
+    <div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando CRM...</div>
+  </div>
+</div>
+<script>
+/* ============================================================ */
+/* CRM GÂMI (Fase 1) — inside (BDR) + field (vendedor/gestor)   */
+/* Tabelas crm_* (docs/crm-schema.sql). Carteira/Ativado = Machine (só leitura) */
+/* ============================================================ */
+var _CRM = { leads:[], tarefas:[], carregado:false, tab:'hoje', config:null };
+var _CRM_ETAPAS = {
+  inside:['Prospectando','Contato realizado','Oportunidade','Fechamento'],
+  field :['Lead na rota','Visita realizada','Oportunidade','Cadastramento']
+};
+var _CRM_TIPO_LABEL = { novo:'🆕 Novo', cadastrado_nao_ativado:'👻 Cadastrou, nunca pediu', churn:'🔴 Churn (parou)', em_queda:'📉 Em queda' };
+var _CRM_ADMIN_IDS = ['pecarlosvinicius','pe001','pe002','pe003','pematheusfedrizzi'];
+
+function _crmUser(){ try{ return getUsuarioLogado(); }catch(e){ return null; } }
+function _crmPapel(u){
+  u = u || _crmUser(); if(!u) return null;
+  var email=(u.email||'').toLowerCase();
+  var nivel=(typeof detectarNivelPermissao==='function')?detectarNivelPermissao(u):'';
+  var cargo=(u.cargo||'').toLowerCase();
+  if(email==='jipadigital@gmail.com' || nivel==='super_admin' || nivel==='diretoria' || nivel==='gerencia' || _CRM_ADMIN_IDS.indexOf(u.id)>=0) return 'admin';
+  if(nivel==='gestor') return 'gestor';
+  if(nivel==='vendedor') return 'vendedor';
+  if(/prospec/.test(cargo) || (typeof CAMPO_BDR_IDS!=='undefined' && CAMPO_BDR_IDS.indexOf(u.id)>=0)) return 'bdr';
+  return null;
+}
+function _podeVerCRM(){ return !!_crmPapel(); }
+function _crmPipelineUser(u){ var p=_crmPapel(u); if(p==='bdr') return 'inside'; if(p==='vendedor'||p==='gestor') return 'field'; return 'ambos'; }
+function _crmEsc(s){ return (typeof _campoEsc==='function')?_campoEsc(s):String(s==null?'':s); }
+function _crmUID(){ return 'lead_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+async function _crmEscrever(tabela, operacao, payload){
+  return _syncEscrever(Object.assign({ tabela:tabela, operacao:operacao }, payload));
+}
+function _crmVisiveis(leads, u){
+  var p=_crmPapel(u);
+  if(p==='admin') return leads;
+  if(p==='gestor'){
+    var cids=(typeof cidadesQueUsuarioAtende==='function')?cidadesQueUsuarioAtende(u):null;
+    var slugs = cids ? cids.map(function(n){ return _campoSlug(n); }) : null;
+    return leads.filter(function(l){ return l.dono_id===u.id || (slugs===null) || slugs.indexOf((l.cidade_slug||'').toLowerCase())>=0; });
+  }
+  return leads.filter(function(l){ return l.dono_id===u.id; });
+}
+async function _crmFetch(force){
+  if(_CRM.carregado && !force) return;
+  var u=_crmUser(); if(!u) return;
+  try {
+    var leads = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=*&order=atualizado_em.desc');
+    var tarefas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_tarefas?select=*&feita=eq.false&order=vence_em.asc');
+    _CRM.leads = _crmVisiveis(Array.isArray(leads)?leads:[], u);
+    _CRM.tarefas = (Array.isArray(tarefas)?tarefas:[]).filter(function(t){ return t.dono_id===u.id || _crmPapel(u)==='admin'; });
+    _CRM.carregado = true;
+  } catch(e){ console.warn('[CRM] load', e); }
+}
+
+function initCRM(){
+  if(!_podeVerCRM()){ var r0=document.getElementById('crm-root'); if(r0) r0.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Sem acesso ao CRM.</div>'; return; }
+  _crmRenderShell();
+  _crmFetch().then(function(){ _crmRenderTab(); });
+}
+function _crmRenderShell(){
+  var root=document.getElementById('crm-root'); if(!root) return;
+  var u=_crmUser(), papel=_crmPapel(u);
+  var abas=[['hoje','📋 Hoje'],['pipeline','🧭 Meu funil']];
+  if(papel==='gestor'||papel==='admin') abas.push(['carteira','💰 Carteira']);
+  abas.push(['painel','📊 Painel']);
+  if(papel==='admin') abas.push(['config','⚙️ Config']);
+  root.innerHTML =
+    '<div id="crm-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'
+    + abas.map(function(a){ return '<button type="button" data-crmtab="'+a[0]+'" onclick="_crmSetTab(\''+a[0]+'\')" class="crm-tab" style="font-size:12px;padding:8px 14px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit;font-weight:600">'+a[1]+'</button>'; }).join('')
+    + '</div>'
+    + '<div id="crm-body"></div>';
+  _crmTabsUI();
+}
+function _crmTabsUI(){
+  document.querySelectorAll('#crm-tabs .crm-tab').forEach(function(b){
+    var on=b.getAttribute('data-crmtab')===_CRM.tab;
+    b.style.background=on?'#0E7AB8':'var(--card)'; b.style.color=on?'#fff':'var(--text2)'; b.style.borderColor=on?'#0E7AB8':'var(--border)';
+  });
+}
+function _crmSetTab(t){ _CRM.tab=t; _crmTabsUI(); _crmRenderTab(); }
+function _crmRenderTab(){
+  var b=document.getElementById('crm-body'); if(!b) return;
+  if(_CRM.tab==='hoje') return _crmRenderHoje(b);
+  if(_CRM.tab==='pipeline') return _crmRenderPipeline(b);
+  if(_CRM.tab==='carteira') return _crmRenderCarteira(b);
+  if(_CRM.tab==='painel') return _crmRenderPainel(b);
+  if(_CRM.tab==='config') return _crmRenderConfig(b);
+}
+
+/* --------- HOJE (fila de tarefas) --------- */
+function _crmRenderHoje(b){
+  var hoje=new Date(); hoje.setHours(23,59,59,999);
+  var fila=_CRM.tarefas.filter(function(t){ return !t.feita && new Date(t.vence_em)<=hoje; }).sort(function(a,x){ return new Date(a.vence_em)-new Date(x.vence_em); });
+  if(!fila.length){ b.innerHTML='<div style="padding:34px;text-align:center;color:var(--text3);font-size:13px">🎉 Sem tarefas vencendo hoje. Pegue leads no mapa (Prospecção em Campo) ou no seu funil.</div>'; return; }
+  b.innerHTML=fila.map(function(t){
+    var l=_CRM.leads.find(function(x){ return x.id===t.lead_id; })||{};
+    var atras=new Date(t.vence_em)<new Date();
+    return '<div style="display:flex;align-items:center;gap:10px;padding:11px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;background:var(--card)">'
+      +'<div style="font-size:18px">'+(t.tipo==='ligacao'?'📞':t.tipo==='whatsapp'?'💬':t.tipo==='visita'?'📍':'✅')+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700;color:var(--text)">'+_crmEsc(t.titulo||t.tipo)+'</div>'
+      +'<div style="font-size:11px;color:var(--text3)">'+_crmEsc(l.empresa_nome||'')+(l.bairro?(' · '+_crmEsc(l.bairro)):'')+'</div></div>'
+      +'<div style="font-size:10px;color:'+(atras?'#E24B4A':'var(--text3)')+';font-weight:700">'+(atras?'Atrasada':'Hoje')+'</div>'
+      +'<button onclick="_crmAbrirLead(\''+t.lead_id+'\')" style="font-size:11px;padding:6px 10px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:7px;cursor:pointer;font-weight:700">Abrir</button>'
+      +'<button onclick="_crmTarefaFeita(\''+t.id+'\')" style="font-size:11px;padding:6px 10px;border:1px solid #1D9E75;background:transparent;color:#1D9E75;border-radius:7px;cursor:pointer;font-weight:700">✓ Feita</button>'
+      +'</div>';
+  }).join('');
+}
+async function _crmTarefaFeita(id){
+  var t=_CRM.tarefas.find(function(x){ return x.id===id; }); if(!t) return;
+  t.feita=true; t.feita_em=new Date().toISOString(); _crmRenderTab();
+  try{ await _crmEscrever('crm_tarefas','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ feita:true, feita_em:t.feita_em } }); }catch(e){ if(typeof toast==='function') toast('Não consegui marcar a tarefa.','error'); }
+}
+
+/* --------- MEU FUNIL (kanban) --------- */
+function _crmRenderPipeline(b){
+  var u=_crmUser(); var pipe=_crmPipelineUser(u);
+  var pipes = pipe==='ambos' ? ['inside','field'] : [pipe];
+  var html='';
+  pipes.forEach(function(pp){
+    var etapas=_CRM_ETAPAS[pp];
+    var meus=_CRM.leads.filter(function(l){ return l.pipeline===pp && l.status==='ativo'; });
+    html+='<div style="font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:6px 2px 8px">'+(pp==='inside'?'📞 Inside (BDR)':'🚶 Field (vendedor/gestor)')+' · '+meus.length+' leads</div>';
+    html+='<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px">';
+    etapas.forEach(function(nome,i){
+      var col=meus.filter(function(l){ return (l.etapa||1)===(i+1); });
+      html+='<div style="min-width:210px;flex:1;background:var(--surface2,#f7f9fc);border:1px solid var(--border);border-radius:10px;padding:8px">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+(i+1)+'. '+nome+' <span style="color:var(--text3)">('+col.length+')</span></div>'
+        +col.map(function(l){ return _crmCard(l); }).join('')
+        +(col.length?'':'<div style="font-size:10px;color:var(--text3);padding:6px;text-align:center">vazio</div>')
+        +'</div>';
+    });
+    html+='</div>';
+  });
+  if(!_CRM.leads.length) html='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">Você ainda não tem leads.<br>Vá na <b>Prospecção em Campo</b>, clique numa empresa e toque em <b>💼 CRM</b> pra puxar pro seu funil.</div>';
+  b.innerHTML=html;
+}
+function _crmCard(l){
+  return '<div onclick="_crmAbrirLead(\''+l.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:5px;cursor:pointer">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(l.empresa_nome)+'</div>'
+    +'<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(l.bairro||'')+(l.segmento?(' · '+_crmEsc(l.segmento)):'')+'</div>'
+    +'<div style="font-size:9.5px;color:var(--text3);margin-top:2px">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo||'')+'</div>'
+    +'</div>';
+}
+
+/* --------- PEGAR LEAD DO MAPA --------- */
+async function _crmPegarLead(data){
+  var u=_crmUser(); if(!u){ if(typeof toast==='function') toast('Faça login.','error'); return; }
+  var pipe=_crmPipelineUser(u); if(pipe==='ambos') pipe='field'; // admin cria como field por padrão
+  // dedup
+  var dupl=_CRM.leads.find(function(l){ return (data.cnpj && l.cnpj===data.cnpj) || ((l.empresa_nome||'').trim().toLowerCase()===(data.nome||'').trim().toLowerCase() && l.cidade_slug===data.cidade_slug); });
+  if(dupl){
+    if(dupl.dono_id===u.id){ if(typeof toast==='function') toast('Esse lead já é seu.'); _crmAbrirLead(dupl.id); return; }
+    if(!confirm('Já existe um lead dessa empresa'+(dupl.dono_id?' (de outra pessoa)':'')+'. Puxar mesmo assim?')) return;
+  }
+  var id=_crmUID();
+  var lead={ id:id, loja_id:data.loja_id||null, empresa_nome:data.nome||'', cidade_slug:data.cidade_slug||'', bairro:data.bairro||'', endereco:data.endereco||'',
+    lat:data.lat||null, lng:data.lng||null, cnpj:(data.cnpj||'').replace(/\D/g,'')||null, telefone:data.telefone||'', segmento:data.segmento||'',
+    tipo:data.tipo||'novo', pipeline:pipe, etapa:1, status:'ativo', dono_id:u.id, posse_desde:new Date().toISOString(),
+    ultima_atividade_em:new Date().toISOString(), criado_por:u.id, criado_em:new Date().toISOString(), atualizado_em:new Date().toISOString() };
+  _CRM.leads.unshift(lead);
+  try {
+    await _crmEscrever('crm_leads','upsert',{ dados:[lead] });
+    await _crmLog(id,'atribuicao','Lead puxado do mapa por '+(u.nome||u.email||''),true);
+    if(typeof toast==='function') toast('✓ Lead no seu funil ('+(pipe==='inside'?'Inside':'Field')+')','success');
+    if(document.getElementById('pg-crm') && document.getElementById('pg-crm').classList.contains('active')) _crmRenderTab();
+  } catch(e){ if(typeof toast==='function') toast('Não consegui criar o lead.','error'); }
+}
+async function _crmLog(leadId, tipo, descricao, silent){
+  var u=_crmUser();
+  var at={ lead_id:leadId, tipo:tipo, descricao:descricao||'', autor_id:u?u.id:'', autor_nome:u?(u.nome||u.email||''):'', criado_em:new Date().toISOString() };
+  var l=_CRM.leads.find(function(x){ return x.id===leadId; }); if(l){ l.ultima_atividade_em=at.criado_em; }
+  try{ await _crmEscrever('crm_atividades','upsert',{ dados:[at] });
+       if(l) await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(leadId), patch:{ ultima_atividade_em:at.criado_em, atualizado_em:at.criado_em } });
+  }catch(e){ if(!silent && typeof toast==='function') toast('Não consegui registrar.','error'); }
+}
+
+/* --------- LEAD: detalhe + ações --------- */
+function _crmAbrirLead(id){
+  var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l){ if(typeof toast==='function') toast('Lead não encontrado.'); return; }
+  var etapas=_CRM_ETAPAS[l.pipeline]||_CRM_ETAPAS.field;
+  var telLimpo=(l.telefone||'').replace(/\D/g,'');
+  var acoes='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">'
+    +(telLimpo.length>=10?'<a href="tel:+55'+telLimpo+'" onclick="_crmLog(\''+id+'\',\'ligacao\',\'Ligação iniciada\')" style="flex:1;text-align:center;font-size:12px;padding:9px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">📞 Ligar</a>':'')
+    +(telLimpo.length>=10?'<a href="https://wa.me/55'+telLimpo+'" target="_blank" rel="noopener" onclick="_crmLog(\''+id+'\',\'whatsapp\',\'WhatsApp aberto\')" style="flex:1;text-align:center;font-size:12px;padding:9px;border:1px solid #25D366;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">💬 WhatsApp</a>':'')
+    +'</div>';
+  var etapasHtml=etapas.map(function(nm,i){ var at=(l.etapa||1)===(i+1); return '<button onclick="_crmMoverEtapa(\''+id+'\','+(i+1)+')" style="font-size:10.5px;padding:6px 9px;border:1px solid '+(at?'#0E7AB8':'var(--border)')+';background:'+(at?'#0E7AB8':'var(--card)')+';color:'+(at?'#fff':'var(--text2)')+';border-radius:7px;cursor:pointer;font-weight:'+(at?'700':'500')+'">'+(i+1)+'. '+nm+'</button>'; }).join(' ');
+  var inner='<div style="font-size:11px;color:var(--text3)">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo)+' · '+(l.pipeline==='inside'?'Inside':'Field')+' · '+_crmEsc(l.cidade_slug)+'</div>'
+    +'<div style="font-size:12px;color:var(--text2);margin:4px 0">'+_crmEsc([l.bairro,l.endereco].filter(Boolean).join(' · ')||'')+(l.segmento?(' · '+_crmEsc(l.segmento)):'')+(l.telefone?(' · '+_crmEsc(l.telefone)):'')+'</div>'
+    +acoes
+    +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Etapa</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+etapasHtml+'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'
+    +'<button onclick="_crmNota(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:8px;cursor:pointer;font-weight:700">📝 Nota</button>'
+    +'<button onclick="_crmPerder(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #E24B4A;background:transparent;color:#E24B4A;border-radius:8px;cursor:pointer;font-weight:700">Perder</button>'
+    +'</div>';
+  _crmModal('💼 '+_crmEsc(l.empresa_nome), inner);
+}
+function _crmModal(titulo, inner){
+  var old=document.getElementById('crm-modal'); if(old) old.remove();
+  var h='<div id="crm-modal" style="position:fixed;inset:0;background:rgba(11,37,66,.6);z-index:99998;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">'
+    +'<div style="background:var(--card,#fff);border-radius:14px;max-width:440px;width:100%;max-height:88vh;overflow:auto;padding:20px" onclick="event.stopPropagation()">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-family:Syne,sans-serif;font-size:16px;font-weight:800;color:var(--text)">'+titulo+'</div>'
+    +'<button onclick="document.getElementById(\'crm-modal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3)">×</button></div>'
+    +inner+'</div></div>';
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+async function _crmMoverEtapa(id, etapa){
+  var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l) return;
+  var etapas=_CRM_ETAPAS[l.pipeline]||_CRM_ETAPAS.field;
+  l.etapa=etapa; l.atualizado_em=new Date().toISOString();
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmAbrirLead(id); _crmRenderTab();
+  try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ etapa:etapa, atualizado_em:l.atualizado_em } });
+       await _crmLog(id,'etapa','Avançou para '+etapa+'. '+(etapas[etapa-1]||''),true);
+  }catch(e){ if(typeof toast==='function') toast('Não consegui mover a etapa.','error'); }
+}
+function _crmNota(id){
+  var txt=prompt('Anotação / resultado do contato:'); if(txt==null||!txt.trim()) return;
+  _crmLog(id,'nota',txt.trim());
+  if(typeof toast==='function') toast('Nota registrada.','success');
+}
+async function _crmPerder(id){
+  var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l) return;
+  var motivos=(_CRM.config&&_CRM.config.motivos_perda)||['Preço','Já usa concorrente','Frota própria','Não faz delivery','Fechou o negócio','Sem decisor','Outro'];
+  var lista=motivos.map(function(m,i){ return (i+1)+') '+m; }).join('\n');
+  var sel=prompt('Motivo da perda (OBRIGATÓRIO):\n'+lista+'\n\nDigite o número:'); if(sel==null) return;
+  var idx=parseInt(sel)-1; if(isNaN(idx)||idx<0||idx>=motivos.length){ if(typeof toast==='function') toast('Motivo inválido. Lead não foi perdido.','error'); return; }
+  var motivo=motivos[idx]; var txt='';
+  if(/outro/i.test(motivo)){ txt=prompt('Descreva o motivo:')||''; if(!txt.trim()){ if(typeof toast==='function') toast('Motivo "Outro" exige descrição.','error'); return; } }
+  l.status='perdido'; l.motivo_perda=motivo; l.motivo_perda_txt=txt; l.atualizado_em=new Date().toISOString();
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
+  try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ status:'perdido', motivo_perda:motivo, motivo_perda_txt:txt, atualizado_em:l.atualizado_em } });
+       await _crmLog(id,'perda','Perdido: '+motivo+(txt?(' — '+txt):''),true);
+       if(typeof toast==='function') toast('Lead marcado como perdido.');
+  }catch(e){ if(typeof toast==='function') toast('Não consegui salvar.','error'); }
+}
+
+/* --------- pegar lead a partir do mapa (Prospecção em Campo) --------- */
+function _crmLeadDeLoja(lojaId){
+  var l=(typeof _CAMPO!=='undefined'&&_CAMPO.lojas||[]).find(function(x){ return x.id===lojaId; }); if(!l) return;
+  _crmPegarLead({ loja_id:l.id, nome:l.nome, cidade_slug:l.cidade_slug||(typeof _campoSlug==='function'?_campoSlug(l.cidade):''), bairro:l.bairro, endereco:l.endereco, lat:l.lat, lng:l.lng, cnpj:l.cnpj, telefone:l.telefone, segmento:l.segmento, tipo:'novo' });
+}
+function _crmLeadDeEmpresa(slug, nomeEnc){
+  var nome=decodeURIComponent(nomeEnc||'');
+  var arr=(typeof _CAMPO!=='undefined'&&_CAMPO.machineCache&&_CAMPO.machineCache[slug])||[];
+  var e=arr.find(function(x){ return (x.nome||'')===nome; })||{};
+  var tipo = e._status==='fantasma' ? 'cadastrado_nao_ativado' : (e._status==='perdida' ? 'churn' : (e._status==='ativa' ? 'em_queda' : 'novo'));
+  _crmPegarLead({ nome:nome, cidade_slug:slug, bairro:e.bairro, endereco:e.endereco, lat:e.lat, lng:e.lng, cnpj:e.documento, telefone:e.telefone, segmento:e.segmento||'', tipo:tipo });
+}
+
+/* --------- placeholders (próximos increments) --------- */
+function _crmRenderCarteira(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">💰 Carteira ativa (saúde dos clientes que pedem) chega no próximo pacote.</div>'; }
+function _crmRenderPainel(b){
+  var u=_crmUser(); var meus=_CRM.leads.filter(function(l){ return l.dono_id===u.id; });
+  var ativados=meus.filter(function(l){ return l.status==='ativado'; }).length;
+  var abertos=meus.filter(function(l){ return l.status==='ativo'; }).length;
+  var perdidos=meus.filter(function(l){ return l.status==='perdido'; }).length;
+  function card(n,t,c){ return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center"><div style="font-size:26px;font-weight:800;color:'+c+'">'+n+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">'+t+'</div></div>'; }
+  b.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">'+card(abertos,'Em aberto','#0E7AB8')+card(ativados,'Ativados (mês)','#1D9E75')+card(perdidos,'Perdidos','#E24B4A')+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">Metas (ativações + receita) e painel do time chegam no próximo pacote.</div>';
+}
+function _crmRenderConfig(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">⚙️ Configuração (etapas, cadências, motivos, metas) chega no próximo pacote. Por enquanto usa os padrões do schema.</div>'; }
+</script>
 <script>
 /* ============================================================ */
 /* PROSPECÇÃO EM CAMPO (v32.21) — CRM de campo do Carlos + gestores */
@@ -6733,7 +7010,8 @@ function _campoFichaEmpresa(e, inline){
   var naRota=_campoRotaTem(_campoEmpKey(e));
   var btnRota='<button onclick="_campoRotaToggleEmp(\''+e._slug+'\',\''+encodeURIComponent(e.nome)+'\')" style="flex:1;font-size:11px;padding:6px;border:1px solid '+(naRota?'#1D9E75':'#0E7AB8')+';background:'+(naRota?'#1D9E75':(inline?'transparent':'#fff'))+';color:'+(naRota?'#fff':'#0E7AB8')+';border-radius:6px;cursor:pointer;font-weight:700">'+(naRota?'✔ Na rota':'🚗 + Rota')+'</button>';
   var btnPros='<button onclick="_campoProspectarEmpresa(\''+e._slug+'\',\''+encodeURIComponent(e.nome)+'\')" style="flex:1;font-size:11px;padding:6px;border:1px solid #0E7AB8;background:'+(inline?'transparent':'#fff')+';color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Acompanhar</button>';
-  var btn='<div style="display:flex;gap:6px;margin-top:8px">'+btnRota+btnPros+'</div>';
+  var btnCRM=(typeof _podeVerCRM==='function' && _podeVerCRM()) ? '<button onclick="_crmLeadDeEmpresa(\''+e._slug+'\',\''+encodeURIComponent(e.nome)+'\')" style="width:100%;margin-top:6px;font-size:11px;padding:6px;border:1px solid #5B4BB3;background:#5B4BB3;color:#fff;border-radius:6px;cursor:pointer;font-weight:700">💼 Puxar pro meu CRM</button>' : '';
+  var btn='<div style="display:flex;gap:6px;margin-top:8px">'+btnRota+btnPros+'</div>'+btnCRM;
   return '<div style="font-family:inherit;font-size:11.5px;line-height:1.35">'+h+btn+'</div>';
 }
 
@@ -8082,7 +8360,9 @@ function _campoLojaPopupHTML(l){
     +   '<button onclick="_campoAbrirDoMapa(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:6px;cursor:pointer;font-weight:700">Abrir loja</button>'
     +   '<button onclick="_campoRotaToggleLoja(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1D9E75;background:transparent;color:#1D9E75;border-radius:6px;cursor:pointer;font-weight:700">🚗 Rota</button>'
     +   '<button onclick="_campoNovaVisita(\''+l.id+'\')" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid #1AB8F0;background:transparent;color:#0E7AB8;border-radius:6px;cursor:pointer;font-weight:700">+ Visita</button>'
-    + '</div></div>';
+    + '</div>'
+    + ((typeof _podeVerCRM==='function' && _podeVerCRM())?('<button onclick="_crmLeadDeLoja(\''+l.id+'\')" style="width:100%;margin-top:6px;font-size:11px;padding:7px;border:1px solid #5B4BB3;background:#5B4BB3;color:#fff;border-radius:6px;cursor:pointer;font-weight:700">💼 Puxar pro meu CRM</button>'):'')
+    + '</div>';
 }
 // OVERLAY de EMOJI por categoria: desenha o emoji (pequeno, na bolinha) SÓ nos prospects dentro da
 // tela (viewport), com teto. Zoom aberto (muitos na tela) = fica nas bolinhas cinza, sem emoji (leve).
