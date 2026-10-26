@@ -99,15 +99,14 @@ CREATE TABLE IF NOT EXISTS crm_checklist (
 
 -- 6) METAS individuais (e por praça/time) — Carlos/Admin define -----------------
 CREATE TABLE IF NOT EXISTS crm_metas (
-  id            bigserial PRIMARY KEY,
+  id            text PRIMARY KEY,                 -- determinístico: pessoa_id||'||'||periodo (upsert idempotente)
   pessoa_id     text,                             -- meta individual
   cidade_slug   text,                             -- meta de praça/time (opcional)
   periodo       text NOT NULL,                    -- 'YYYY-MM'
   meta_ativacoes int DEFAULT 0,
   meta_receita   numeric DEFAULT 0,
   definido_por  text,
-  atualizado_em timestamptz DEFAULT now(),
-  UNIQUE (pessoa_id, cidade_slug, periodo)
+  atualizado_em timestamptz DEFAULT now()
 );
 
 -- 7) SCRIPTS (modelos de mensagem com variáveis {nome_empresa} etc.) ------------

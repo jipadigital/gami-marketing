@@ -1,3 +1,4 @@
+<!-- v33.04 - CRM (metas + paineis): Painel pessoal (vendedor/BDR) com ativacoes do mes vs META e receita gerada vs META (receita lida de mv_empresas_raiox) com barras de progresso; Painel do time (gestor/admin) com tabela por pessoa (em aberto, ativacoes, meta, perdidos). Admin (Carlos) define metas por pessoa/mes (ativacoes + receita) no botao "Definir metas". crm_metas com id de texto p/ upsert idempotente. - 26/10/2026 -->
 <!-- v33.03 - CRM (checklist + ativacao automatica): leads field mostram o CHECKLIST de cadastramento (cadastro, ativacao, iFood, 99, outras; cada um data+autor, base da comissao). ATIVACAO AUTOMATICA: botao "Checar ativacoes" + auto ao abrir le a Machine (mv_prospeccao_mapa por coord/nome) e marca ATIVADO quando ha 1a entrega recente (ate 45d), fecha o item ativacao e loga. crm_checklist com id de texto p/ upsert idempotente. - 26/10/2026 -->
 <!-- v33.02 - CRM (cadencias + fila do dia): ao pegar o lead ou mudar de etapa, o sistema gera as tarefas da cadencia (inside: D0/D1/D3/D5/D7; field etapa1: visita de hoje; field etapa2: D+1 wpp/D+3 revisita) e elas caem na aba HOJE (fila pessoal: so as suas, vencendo hoje/atrasadas). Mudar de etapa limpa as pendentes antigas e gera as novas. Config lida do crm_config. - 26/10/2026 -->
 <!-- v33.01 - CRM: arrastar lead entre etapas no kanban (drag/drop no desktop; no celular segue pelo toque -> abre o lead -> botoes de etapa). Nao move entre funis diferentes. Schema: documentado DISABLE RLS nas crm_* (sem isso a leitura anon vinha vazia). - 26/10/2026 -->
@@ -6229,7 +6230,7 @@ function _fatRender(root, dados){
 /* CRM GÂMI (Fase 1) — inside (BDR) + field (vendedor/gestor)   */
 /* Tabelas crm_* (docs/crm-schema.sql). Carteira/Ativado = Machine (só leitura) */
 /* ============================================================ */
-var _CRM = { leads:[], tarefas:[], checklist:[], carregado:false, tab:'hoje', config:null };
+var _CRM = { leads:[], tarefas:[], checklist:[], metas:[], carregado:false, tab:'hoje', config:null };
 var _CRM_CHECK_ITENS = [['cadastro','Cadastro concluído na plataforma'],['ativacao','Ativação (1ª entrega) — automático'],['ifood','Integração iFood'],['99','Integração 99'],['outra','Outras plataformas de logística']];
 var _CRM_ETAPAS = {
   inside:['Prospectando','Contato realizado','Oportunidade','Fechamento'],
@@ -6279,6 +6280,8 @@ async function _crmFetch(force){
     var tarefas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_tarefas?select=*&pulada=eq.false&order=vence_em.asc');
     var checklist = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_checklist?select=*');
     _CRM.checklist = Array.isArray(checklist)?checklist:[];
+    var metas = await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_metas?select=*');
+    _CRM.metas = Array.isArray(metas)?metas:[];
     _CRM.leads = _crmVisiveis(Array.isArray(leads)?leads:[], u);
     _CRM.tarefas = (Array.isArray(tarefas)?tarefas:[]).filter(function(t){ return t.dono_id===u.id || _crmPapel(u)==='admin'; });
     _CRM.carregado = true;
@@ -6581,14 +6584,105 @@ async function _crmChecarAtivacoes(silent){
 
 /* --------- placeholders (próximos increments) --------- */
 function _crmRenderCarteira(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">💰 Carteira ativa (saúde dos clientes que pedem) chega no próximo pacote.</div>'; }
+function _crmPeriodo(){ return new Date().toISOString().slice(0,7); }
+function _crmMetaDe(pid, per){ per=per||_crmPeriodo(); return _CRM.metas.find(function(m){ return m.pessoa_id===pid && !m.cidade_slug && m.periodo===per; }); }
+function _crmBarra(feito, meta, cor){
+  var pct = meta>0 ? Math.min(100, Math.round(100*feito/meta)) : 0;
+  return '<div style="background:var(--border);border-radius:8px;height:8px;overflow:hidden;margin-top:4px"><div style="height:100%;width:'+pct+'%;background:'+cor+'"></div></div>';
+}
+function _crmNomePessoa(pid){ try{ var p=(typeof getPessoas==='function'?getPessoas():[]).find(function(x){ return x.id===pid; }); return p?(p.nome||pid):pid; }catch(e){ return pid; } }
 function _crmRenderPainel(b){
-  var u=_crmUser(); var meus=_CRM.leads.filter(function(l){ return l.dono_id===u.id; });
-  var ativados=meus.filter(function(l){ return l.status==='ativado'; }).length;
+  var u=_crmUser(); var papel=_crmPapel(u); var per=_crmPeriodo();
+  if(papel==='admin'||papel==='gestor') return _crmPainelTime(b, per, papel);
+  _crmPainelPessoal(b, u, per);
+}
+function _crmPainelPessoal(b, u, per){
+  var meus=_CRM.leads.filter(function(l){ return l.dono_id===u.id; });
+  var ativMes=meus.filter(function(l){ return l.status==='ativado' && (l.ativado_em||'').slice(0,7)===per; });
   var abertos=meus.filter(function(l){ return l.status==='ativo'; }).length;
   var perdidos=meus.filter(function(l){ return l.status==='perdido'; }).length;
-  function card(n,t,c){ return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center"><div style="font-size:26px;font-weight:800;color:'+c+'">'+n+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">'+t+'</div></div>'; }
-  b.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">'+card(abertos,'Em aberto','#0E7AB8')+card(ativados,'Ativados (mês)','#1D9E75')+card(perdidos,'Perdidos','#E24B4A')+'</div>'
-    +'<div style="font-size:11px;color:var(--text3);margin-top:12px;text-align:center">Metas (ativações + receita) e painel do time chegam no próximo pacote.</div>';
+  var meta=_crmMetaDe(u.id,per)||{meta_ativacoes:0,meta_receita:0};
+  function card(n,t,c){ return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center"><div style="font-size:24px;font-weight:800;color:'+c+'">'+n+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-top:2px">'+t+'</div></div>'; }
+  var html='<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">📊 Seu mês ('+per+')</div>'
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">'
+    +'<div style="display:flex;justify-content:space-between;font-size:12px"><span style="font-weight:700">🎉 Ativações</span><span style="color:var(--text2)">'+ativMes.length+' / '+(meta.meta_ativacoes||0)+'</span></div>'+_crmBarra(ativMes.length, meta.meta_ativacoes||0, '#1D9E75')
+    +'<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:10px"><span style="font-weight:700">💰 Receita gerada</span><span style="color:var(--text2)" id="crm-receita-val">calculando…</span></div><div id="crm-receita-barra"></div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">'+card(abertos,'Em aberto','#0E7AB8')+card(ativMes.length,'Ativados (mês)','#1D9E75')+card(perdidos,'Perdidos','#E24B4A')+'</div>';
+  b.innerHTML=html;
+  _crmReceitaAtivados(ativMes).then(function(rec){
+    var v=document.getElementById('crm-receita-val'); var ba=document.getElementById('crm-receita-barra');
+    if(v) v.textContent='R$ '+(rec||0).toLocaleString('pt-BR',{maximumFractionDigits:0})+' / R$ '+(meta.meta_receita||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
+    if(ba) ba.innerHTML=_crmBarra(rec||0, meta.meta_receita||0, '#5B4BB3');
+  });
+}
+function _crmPainelTime(b, per, papel){
+  // donos visíveis
+  var donos={}; _CRM.leads.forEach(function(l){ if(l.dono_id) donos[l.dono_id]=true; });
+  var ids=Object.keys(donos);
+  var rows=ids.map(function(pid){
+    var leads=_CRM.leads.filter(function(l){ return l.dono_id===pid; });
+    var ativ=leads.filter(function(l){ return l.status==='ativado' && (l.ativado_em||'').slice(0,7)===per; }).length;
+    var meta=_crmMetaDe(pid,per)||{meta_ativacoes:0,meta_receita:0};
+    return { pid:pid, nome:_crmNomePessoa(pid), abertos:leads.filter(function(l){return l.status==='ativo';}).length, ativ:ativ, perdidos:leads.filter(function(l){return l.status==='perdido';}).length, metaA:meta.meta_ativacoes||0 };
+  }).sort(function(a,c){ return c.ativ-a.ativ; });
+  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:var(--text2)">📊 Time ('+per+')</div>'
+    +(papel==='admin'?'<button onclick="_crmMetasEditor()" style="font-size:11px;padding:7px 12px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">🎯 Definir metas</button>':'')+'</div>';
+  if(!rows.length){ b.innerHTML=html+'<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Ninguém com lead ainda.</div>'; return; }
+  html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--text3);text-align:left">'
+    +'<th style="padding:7px 8px">Pessoa</th><th style="padding:7px 8px;text-align:center">Em aberto</th><th style="padding:7px 8px;text-align:center">🎉 Ativ.</th><th style="padding:7px 8px;text-align:center">Meta</th><th style="padding:7px 8px;text-align:center">Perdidos</th></tr></thead><tbody>';
+  rows.forEach(function(r){
+    var bateu=r.metaA>0 && r.ativ>=r.metaA;
+    html+='<tr style="border-top:1px solid var(--border)"><td style="padding:8px;font-weight:700">'+_crmEsc(r.nome)+'</td>'
+      +'<td style="padding:8px;text-align:center">'+r.abertos+'</td>'
+      +'<td style="padding:8px;text-align:center;font-weight:800;color:#1D9E75">'+r.ativ+(bateu?' ✅':'')+'</td>'
+      +'<td style="padding:8px;text-align:center;color:var(--text3)">'+(r.metaA||'—')+'</td>'
+      +'<td style="padding:8px;text-align:center;color:#E24B4A">'+r.perdidos+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  b.innerHTML=html;
+}
+async function _crmReceitaAtivados(leads){
+  if(!leads||!leads.length) return 0;
+  var porCid={}; leads.forEach(function(l){ (porCid[l.cidade_slug]=porCid[l.cidade_slug]||[]).push(l); });
+  var total=0;
+  for(var slug in porCid){
+    try{
+      var mv=await _campoFetchTodos(SUPA_URL+'/rest/v1/mv_empresas_raiox?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,faturamento');
+      var byNome={}; (mv||[]).forEach(function(e){ var fn=(typeof _campoNomeFlat==='function')?_campoNomeFlat(e.nome):''; if(fn) byNome[fn]=e; });
+      porCid[slug].forEach(function(l){ var e=byNome[(typeof _campoNomeFlat==='function')?_campoNomeFlat(l.empresa_nome):'']; if(e) total+=(parseFloat(e.faturamento)||0); });
+    }catch(e){}
+  }
+  return total;
+}
+/* --------- METAS (admin/Carlos define) --------- */
+function _crmMetasEditor(){
+  var per=_crmPeriodo();
+  var pessoas=[]; try{ pessoas=(typeof getPessoas==='function'?getPessoas():[]).filter(function(p){ return _crmPapel(p); }); }catch(e){}
+  var opts=pessoas.map(function(p){ return '<option value="'+p.id+'">'+_crmEsc(p.nome)+' ('+(_crmPapel(p)||'')+')</option>'; }).join('');
+  var inner='<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Período: <b>'+per+'</b></div>'
+    +'<label style="font-size:11px;color:var(--text3)">Pessoa</label><select id="crm-meta-pessoa" onchange="_crmMetaPreench()" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:8px">'+opts+'</select>'
+    +'<label style="font-size:11px;color:var(--text3)">Meta de ativações (no mês)</label><input id="crm-meta-ativ" type="number" min="0" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:8px">'
+    +'<label style="font-size:11px;color:var(--text3)">Meta de receita gerada (R$)</label><input id="crm-meta-rec" type="number" min="0" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:12px">'
+    +'<button onclick="_crmSalvarMeta()" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Salvar meta</button>';
+  _crmModal('🎯 Metas · '+per, inner);
+  _crmMetaPreench();
+}
+function _crmMetaPreench(){
+  var pid=(document.getElementById('crm-meta-pessoa')||{}).value; var m=_crmMetaDe(pid)||{};
+  var a=document.getElementById('crm-meta-ativ'); if(a) a.value=m.meta_ativacoes||'';
+  var r=document.getElementById('crm-meta-rec'); if(r) r.value=m.meta_receita||'';
+}
+async function _crmSalvarMeta(){
+  var u=_crmUser(); var per=_crmPeriodo();
+  var pid=(document.getElementById('crm-meta-pessoa')||{}).value; if(!pid){ if(typeof toast==='function') toast('Escolha a pessoa.','error'); return; }
+  var ativ=parseInt((document.getElementById('crm-meta-ativ')||{}).value)||0;
+  var rec=parseFloat((document.getElementById('crm-meta-rec')||{}).value)||0;
+  var obj={ id:pid+'||'+per, pessoa_id:pid, cidade_slug:null, periodo:per, meta_ativacoes:ativ, meta_receita:rec, definido_por:(u?u.id:''), atualizado_em:new Date().toISOString() };
+  var ex=_CRM.metas.find(function(m){ return m.pessoa_id===pid && !m.cidade_slug && m.periodo===per; });
+  if(ex){ ex.meta_ativacoes=ativ; ex.meta_receita=rec; } else { _CRM.metas.push(obj); }
+  try{ await _crmEscrever('crm_metas','upsert',{ dados:[obj] }); var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab(); if(typeof toast==='function') toast('Meta salva.','success'); }
+  catch(e){ if(typeof toast==='function') toast('Não consegui salvar a meta.','error'); }
 }
 function _crmRenderConfig(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">⚙️ Configuração (etapas, cadências, motivos, metas) chega no próximo pacote. Por enquanto usa os padrões do schema.</div>'; }
 </script>
