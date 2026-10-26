@@ -1,3 +1,4 @@
+<!-- v33.11 - CRM (mobile): no celular o "Meu funil" empilha as etapas na vertical (sem rolagem horizontal) e esconde etapas vazias; no desktop segue kanban lado a lado. Fecha o pacote mobile do field. - 26/10/2026 -->
 <!-- v33.10 - CRM (painel Admin da rede): no Painel do admin, bloco "Rede" com ativacoes do mes, split Inside x Field, reativacoes de churn e grafico de ativacoes por mes (cohort). Nota honesta: receita 30/60/90 por janela exata depende do espelho diario da Machine (completo so em CG); por ora usa ativacoes reais + receita-proxy no painel pessoal. - 26/10/2026 -->
 <!-- v33.09 - CRM (rota do dia + check-in GPS, field): botao "Abrir rota do dia no Google Maps" na aba Hoje (monta rota multi-parada com os leads de campo do vendedor, origem no GPS atual); botao "Check-in" na ficha do lead field = pega GPS, registra visita com coordenada no historico e avanca pra etapa Visita realizada. - 26/10/2026 -->
 <!-- v33.08 - CRM (gerenciar scripts na Config, admin): lista os modelos de mensagem com editar/remover + botao Novo (nome, canal, tipo de lead, texto com variaveis). Salva em crm_scripts (upsert por id). Fecha a feature de scripts: admin cria/edita sem SQL e os modelos aparecem no WhatsApp da ficha do lead. - 26/10/2026 -->
@@ -6364,15 +6365,17 @@ async function _crmTarefaFeita(id){
 function _crmRenderPipeline(b){
   var u=_crmUser(); var pipe=_crmPipelineUser(u);
   var pipes = pipe==='ambos' ? ['inside','field'] : [pipe];
+  var mob = (typeof window!=='undefined' && window.innerWidth < 640); // celular = colunas empilhadas (sem rolar de lado)
   var html='';
   pipes.forEach(function(pp){
     var etapas=_CRM_ETAPAS[pp];
     var meus=_CRM.leads.filter(function(l){ return l.pipeline===pp && l.status==='ativo'; });
     html+='<div style="font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:6px 2px 8px">'+(pp==='inside'?'📞 Inside (BDR)':'🚶 Field (vendedor/gestor)')+' · '+meus.length+' leads</div>';
-    html+='<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px">';
+    html+='<div style="display:flex;'+(mob?'flex-direction:column;':'overflow-x:auto;')+'gap:8px;padding-bottom:8px;margin-bottom:14px">';
     etapas.forEach(function(nome,i){
       var col=meus.filter(function(l){ return (l.etapa||1)===(i+1); });
-      html+='<div class="crm-col" data-pipe="'+pp+'" data-etapa="'+(i+1)+'" ondragover="event.preventDefault();this.style.background=\'#EDE9FB\'" ondragleave="this.style.background=\'\'" ondrop="_crmDrop(event,\''+pp+'\','+(i+1)+')" style="min-width:210px;flex:1;background:var(--surface2,#f7f9fc);border:1px solid var(--border);border-radius:10px;padding:8px;transition:background .1s">'
+      if(mob && !col.length) return; // no celular, esconde etapa vazia (menos rolagem)
+      html+='<div class="crm-col" data-pipe="'+pp+'" data-etapa="'+(i+1)+'" ondragover="event.preventDefault();this.style.background=\'#EDE9FB\'" ondragleave="this.style.background=\'\'" ondrop="_crmDrop(event,\''+pp+'\','+(i+1)+')" style="'+(mob?'width:100%;':'min-width:210px;flex:1;')+'background:var(--surface2,#f7f9fc);border:1px solid var(--border);border-radius:10px;padding:8px;transition:background .1s">'
         +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">'+(i+1)+'. '+nome+' <span style="color:var(--text3)">('+col.length+')</span></div>'
         +col.map(function(l){ return _crmCard(l); }).join('')
         +(col.length?'':'<div style="font-size:10px;color:var(--text3);padding:6px;text-align:center">vazio</div>')
