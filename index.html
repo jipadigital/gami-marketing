@@ -1,3 +1,4 @@
+<!-- v33.06 - CRM Fase 2 (Carteira ativa): aba Carteira (gestor/admin) com saude dos clientes que pedem, por praca, lida do raio-X da Machine (mv_empresas_raiox). Mostra ALERTAS (dias sem pedir > limiar, queda % vs media de 3 meses tirando o mes em andamento, top20 caindo) com botao Reativar (vira lead churn/em_queda) + tabela por volume de entregas, tendencia e ultimo pedido. R$ faturamento SO p/ quem tem permissao de valores (_podeVerFaturamento); os demais veem volume/tendencia. Limiares vem do crm_config. - 26/10/2026 -->
 <!-- v33.05 - CRM (fecha Fase 1): REGRA DE POSSE - lead inativo ha N dias (config) volta ao POOL (dono_id null) quando admin/gestor abre o CRM; vendedor/BDR enxergam os leads sem dono da praca e podem "Pegar pra mim"; admin/gestor "Reatribuir" (com log de quem/quando/porque); card marca "no pool". TELA DE CONFIG (admin): edita limiares, motivos de perda, segmentos, etapas e cadencias (salva em crm_config, nada fixo no codigo). - 26/10/2026 -->
 <!-- v33.04 - CRM (metas + paineis): Painel pessoal (vendedor/BDR) com ativacoes do mes vs META e receita gerada vs META (receita lida de mv_empresas_raiox) com barras de progresso; Painel do time (gestor/admin) com tabela por pessoa (em aberto, ativacoes, meta, perdidos). Admin (Carlos) define metas por pessoa/mes (ativacoes + receita) no botao "Definir metas". crm_metas com id de texto p/ upsert idempotente. - 26/10/2026 -->
 <!-- v33.03 - CRM (checklist + ativacao automatica): leads field mostram o CHECKLIST de cadastramento (cadastro, ativacao, iFood, 99, outras; cada um data+autor, base da comissao). ATIVACAO AUTOMATICA: botao "Checar ativacoes" + auto ao abrir le a Machine (mv_prospeccao_mapa por coord/nome) e marca ATIVADO quando ha 1a entrega recente (ate 45d), fecha o item ativacao e loga. crm_checklist com id de texto p/ upsert idempotente. - 26/10/2026 -->
@@ -6627,8 +6628,82 @@ async function _crmSalvarReatribuir(id){
        if(typeof toast==='function') toast('Reatribuído.','success'); }catch(e){ if(typeof toast==='function') toast('Não consegui reatribuir.','error'); }
 }
 
-/* --------- placeholders (próximos increments) --------- */
-function _crmRenderCarteira(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">💰 Carteira ativa (saúde dos clientes que pedem) chega no próximo pacote.</div>'; }
+/* --------- CARTEIRA ATIVA (saúde dos clientes que pedem) --------- */
+var _CRM_CART = { slug:'', cache:{} };
+function _crmCartCidades(){
+  var u=_crmUser(), p=_crmPapel(u);
+  if(p==='gestor'){ try{ var c=cidadesQueUsuarioAtende(u); if(c&&c.length) return c.map(function(n){ return _campoSlug(n); }); }catch(e){} }
+  try{ return _campoListaCidades().map(function(n){ return _campoSlug(n); }); }catch(e){ return ['campo-grande']; }
+}
+function _crmCartTend(meses){
+  if(!Array.isArray(meses)||meses.length<2) return { t:'—', queda:0 };
+  var curYm=_crmPeriodo();
+  var arr=meses.slice().filter(function(m){ return m&&m.ym&&m.ym!==curYm; }).sort(function(a,b){ return a.ym<b.ym?-1:1; }); // tira o mês em andamento
+  if(arr.length<2) return { t:'—', queda:0 };
+  var ult=arr[arr.length-1].n||0; var prev=arr.slice(-4,-1); var avg=prev.length?prev.reduce(function(s,x){return s+(x.n||0);},0)/prev.length:ult;
+  var queda= avg>0?Math.round((ult-avg)/avg*100):0;
+  return { t: queda>=10?'📈 subindo':(queda<=-10?'📉 caindo':'➡️ estável'), queda:queda, ult:ult, avg:Math.round(avg) };
+}
+async function _crmCartLoad(slug){
+  if(_CRM_CART.cache[slug]) return _CRM_CART.cache[slug];
+  var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/mv_empresas_raiox?cidade_slug=eq.'+encodeURIComponent(slug)+'&select=nome,qtd_total,qtd_finalizadas,faturamento,ultimo,meses,bairro_op&order=qtd_total.desc');
+  _CRM_CART.cache[slug]=Array.isArray(rows)?rows:[];
+  return _CRM_CART.cache[slug];
+}
+function _crmRenderCarteira(b){
+  var cids=_crmCartCidades(); if(!_CRM_CART.slug||cids.indexOf(_CRM_CART.slug)<0) _CRM_CART.slug=cids[0];
+  var veR$=(typeof _podeVerFaturamento==='function' && _podeVerFaturamento());
+  var selCss='padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:12px';
+  b.innerHTML='<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><select id="crm-cart-cid" onchange="_crmCartSetCidade(this.value)" style="'+selCss+'">'
+    +cids.map(function(s){ var nome=_campoListaCidades().find(function(n){return _campoSlug(n)===s;})||s; return '<option value="'+s+'"'+(s===_CRM_CART.slug?' selected':'')+'>'+_crmEsc(nome)+'</option>'; }).join('')
+    +'</select><div style="font-size:11px;color:var(--text3)">clientes que pedem, por volume de entregas</div></div>'
+    +'<div id="crm-cart-body"><div style="padding:30px;text-align:center;color:var(--text3)">Carregando carteira…</div></div>';
+  _crmCartLoad(_CRM_CART.slug).then(function(rows){
+    var body=document.getElementById('crm-cart-body'); if(!body) return;
+    var lim=(_CRM.config&&_CRM.config.limiares)||{}; var diasCorte=lim.carteira_dias_sem_pedido||21; var quedaCorte=lim.carteira_queda_pct||30;
+    var top20=new Set(rows.slice(0,20).map(function(e){return e.nome;}));
+    var enr=rows.map(function(e){ var t=_crmCartTend(e.meses); var dias=e.ultimo?Math.round((Date.now()-Date.parse(e.ultimo))/86400000):9999; var alertas=[];
+      if(dias>diasCorte) alertas.push('🔴 '+dias+'d sem pedir');
+      if(t.queda<=-quedaCorte) alertas.push('📉 queda '+Math.abs(t.queda)+'%');
+      if(top20.has(e.nome) && t.queda<0 && alertas.length===0) alertas.push('⚠️ top20 caindo');
+      return Object.assign({},e,{tend:t,dias:dias,alertas:alertas}); });
+    var comAlerta=enr.filter(function(e){ return e.alertas.length; });
+    var html='';
+    html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px">'
+      +'<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:800;color:#1D9E75">'+rows.length+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">clientes ativos</div></div>'
+      +'<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:800;color:#E24B4A">'+comAlerta.length+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">em alerta</div></div>'
+      +'</div>';
+    if(comAlerta.length){
+      html+='<div style="font-size:12px;font-weight:800;color:#E24B4A;margin:8px 2px 6px">⚠️ Alertas (agir)</div>';
+      comAlerta.slice(0,40).forEach(function(e){
+        html+='<div style="display:flex;align-items:center;gap:8px;padding:9px;border:1px solid #F3C6C6;background:#FEF5F5;border-radius:9px;margin-bottom:5px">'
+          +'<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700;color:#0B2542;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(e.nome)+'</div>'
+          +'<div style="font-size:10.5px;color:#A93226">'+e.alertas.join(' · ')+(e.bairro_op?(' · '+_crmEsc(e.bairro_op)):'')+'</div></div>'
+          +'<button onclick="_crmCartVirarLead('+_crmCartArg(e)+')" style="font-size:10.5px;padding:6px 9px;border:1px solid #5B4BB3;background:#5B4BB3;color:#fff;border-radius:7px;cursor:pointer;font-weight:700">↩️ Reativar</button>'
+          +'</div>';
+      });
+    } else { html+='<div style="padding:16px;text-align:center;color:#1D9E75;font-size:12px;background:#E8F7F0;border-radius:9px;margin-bottom:10px">✅ Nenhum cliente em alerta nesta praça.</div>'; }
+    html+='<div style="font-size:12px;font-weight:800;color:var(--text2);margin:14px 2px 6px">📋 Carteira (top por volume)</div>';
+    html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--text3);text-align:left"><th style="padding:7px 8px">Cliente</th><th style="padding:7px 8px;text-align:center">Entregas</th>'+(veR$?'<th style="padding:7px 8px;text-align:right">Faturamento</th>':'')+'<th style="padding:7px 8px;text-align:center">Tendência</th><th style="padding:7px 8px;text-align:center">Último</th></tr></thead><tbody>';
+    enr.slice(0,150).forEach(function(e){
+      html+='<tr style="border-top:1px solid var(--border)"><td style="padding:8px;font-weight:600">'+_crmEsc(e.nome)+(e.bairro_op?('<div style="font-size:9.5px;color:var(--text3)">'+_crmEsc(e.bairro_op)+'</div>'):'')+'</td>'
+        +'<td style="padding:8px;text-align:center">'+(e.qtd_total||0)+'</td>'
+        +(veR$?('<td style="padding:8px;text-align:right">R$ '+(parseFloat(e.faturamento)||0).toLocaleString("pt-BR",{maximumFractionDigits:0})+'</td>'):'')
+        +'<td style="padding:8px;text-align:center">'+e.tend.t+(e.tend.queda?(' <span style="font-size:10px;color:'+(e.tend.queda<0?'#E24B4A':'#1D9E75')+'">'+(e.tend.queda>0?'+':'')+e.tend.queda+'%</span>'):'')+'</td>'
+        +'<td style="padding:8px;text-align:center;color:'+(e.dias>diasCorte?'#E24B4A':'var(--text3)')+'">'+(e.dias<9999?e.dias+'d':'—')+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    if(enr.length>150) html+='<div style="font-size:11px;color:var(--text3);text-align:center;padding:8px">Mostrando 150 de '+enr.length+'.</div>';
+    body.innerHTML=html;
+  });
+}
+function _crmCartSetCidade(s){ _CRM_CART.slug=s; _crmRenderTab(); }
+function _crmCartArg(e){ return '{nome:\''+(e.nome||'').replace(/'/g,"\\'")+'\'}'; }
+function _crmCartVirarLead(ref){
+  var e=(_CRM_CART.cache[_CRM_CART.slug]||[]).find(function(x){ return x.nome===ref.nome; }); if(!e) e=ref;
+  var dias=e.ultimo?Math.round((Date.now()-Date.parse(e.ultimo))/86400000):9999;
+  _crmPegarLead({ nome:e.nome, cidade_slug:_CRM_CART.slug, bairro:e.bairro_op||'', segmento:'', tipo: dias>45?'churn':'em_queda' });
+}
 function _crmPeriodo(){ return new Date().toISOString().slice(0,7); }
 function _crmMetaDe(pid, per){ per=per||_crmPeriodo(); return _CRM.metas.find(function(m){ return m.pessoa_id===pid && !m.cidade_slug && m.periodo===per; }); }
 function _crmBarra(feito, meta, cor){
