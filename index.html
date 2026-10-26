@@ -1,3 +1,4 @@
+<!-- v33.05 - CRM (fecha Fase 1): REGRA DE POSSE - lead inativo ha N dias (config) volta ao POOL (dono_id null) quando admin/gestor abre o CRM; vendedor/BDR enxergam os leads sem dono da praca e podem "Pegar pra mim"; admin/gestor "Reatribuir" (com log de quem/quando/porque); card marca "no pool". TELA DE CONFIG (admin): edita limiares, motivos de perda, segmentos, etapas e cadencias (salva em crm_config, nada fixo no codigo). - 26/10/2026 -->
 <!-- v33.04 - CRM (metas + paineis): Painel pessoal (vendedor/BDR) com ativacoes do mes vs META e receita gerada vs META (receita lida de mv_empresas_raiox) com barras de progresso; Painel do time (gestor/admin) com tabela por pessoa (em aberto, ativacoes, meta, perdidos). Admin (Carlos) define metas por pessoa/mes (ativacoes + receita) no botao "Definir metas". crm_metas com id de texto p/ upsert idempotente. - 26/10/2026 -->
 <!-- v33.03 - CRM (checklist + ativacao automatica): leads field mostram o CHECKLIST de cadastramento (cadastro, ativacao, iFood, 99, outras; cada um data+autor, base da comissao). ATIVACAO AUTOMATICA: botao "Checar ativacoes" + auto ao abrir le a Machine (mv_prospeccao_mapa por coord/nome) e marca ATIVADO quando ha 1a entrega recente (ate 45d), fecha o item ativacao e loga. crm_checklist com id de texto p/ upsert idempotente. - 26/10/2026 -->
 <!-- v33.02 - CRM (cadencias + fila do dia): ao pegar o lead ou mudar de etapa, o sistema gera as tarefas da cadencia (inside: D0/D1/D3/D5/D7; field etapa1: visita de hoje; field etapa2: D+1 wpp/D+3 revisita) e elas caem na aba HOJE (fila pessoal: so as suas, vencendo hoje/atrasadas). Mudar de etapa limpa as pendentes antigas e gera as novas. Config lida do crm_config. - 26/10/2026 -->
@@ -6262,12 +6263,12 @@ async function _crmEscrever(tabela, operacao, payload){
 function _crmVisiveis(leads, u){
   var p=_crmPapel(u);
   if(p==='admin') return leads;
-  if(p==='gestor'){
-    var cids=(typeof cidadesQueUsuarioAtende==='function')?cidadesQueUsuarioAtende(u):null;
-    var slugs = cids ? cids.map(function(n){ return _campoSlug(n); }) : null;
-    return leads.filter(function(l){ return l.dono_id===u.id || (slugs===null) || slugs.indexOf((l.cidade_slug||'').toLowerCase())>=0; });
-  }
-  return leads.filter(function(l){ return l.dono_id===u.id; });
+  var cids=(typeof cidadesQueUsuarioAtende==='function')?cidadesQueUsuarioAtende(u):null;
+  var slugs = cids ? cids.map(function(n){ return _campoSlug(n); }) : null;
+  function naPraca(l){ return slugs===null || slugs.indexOf((l.cidade_slug||'').toLowerCase())>=0; }
+  if(p==='gestor'){ return leads.filter(function(l){ return l.dono_id===u.id || naPraca(l); }); }
+  // vendedor/BDR: os próprios + os do POOL (sem dono) da(s) praça(s) dele
+  return leads.filter(function(l){ return l.dono_id===u.id || (!l.dono_id && naPraca(l)); });
 }
 async function _crmFetch(force){
   if(_CRM.carregado && !force) return;
@@ -6291,7 +6292,7 @@ async function _crmFetch(force){
 function initCRM(){
   if(!_podeVerCRM()){ var r0=document.getElementById('crm-root'); if(r0) r0.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Sem acesso ao CRM.</div>'; return; }
   _crmRenderShell();
-  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmChecarAtivacoes(true); }catch(e){} }); // checa ativações silenciosamente ao abrir
+  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmChecarAtivacoes(true); }catch(e){} var pp=_crmPapel(); if(pp==='admin'||pp==='gestor') try{ _crmDevolverInativos(); }catch(e){} }); // checa ativações + devolve inativos (admin/gestor)
 }
 function _crmRenderShell(){
   var root=document.getElementById('crm-root'); if(!root) return;
@@ -6377,7 +6378,7 @@ function _crmCard(l){
   return '<div draggable="true" ondragstart="_crmDragStart(event,\''+l.id+'\')" ondragend="_crmDragEnd(event)" onclick="_crmAbrirLead(\''+l.id+'\')" style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:5px;cursor:grab">'
     +'<div style="font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(l.empresa_nome)+'</div>'
     +'<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_crmEsc(l.bairro||'')+(l.segmento?(' · '+_crmEsc(l.segmento)):'')+'</div>'
-    +'<div style="font-size:9.5px;color:var(--text3);margin-top:2px">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo||'')+'</div>'
+    +'<div style="font-size:9.5px;color:var(--text3);margin-top:2px">'+(_CRM_TIPO_LABEL[l.tipo]||l.tipo||'')+(!l.dono_id?' · <span style="color:#1D9E75;font-weight:700">📥 no pool</span>':'')+'</div>'
     +'</div>';
 }
 
@@ -6453,7 +6454,11 @@ function _crmAbrirLead(id){
     +acoes
     +'<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Etapa</div><div style="display:flex;gap:5px;flex-wrap:wrap">'+etapasHtml+'</div>'
     +((l.pipeline==='field')?('<div style="font-size:11px;font-weight:700;color:var(--text2);margin:14px 0 2px">Checklist de cadastramento (comissão)</div><div id="crm-checklist-box">'+_crmChecklistHTML(id)+'</div>'):'')
-    +'<div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap">'
+    +'<div style="display:flex;gap:6px;margin-top:12px;align-items:center;flex-wrap:wrap">'
+    +(!l.dono_id ? '<button onclick="_crmPegarPraMim(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #1D9E75;background:#1D9E75;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">📥 Pegar pra mim</button>' : '<div style="flex:1;font-size:11px;color:var(--text3)">Dono: <b>'+_crmEsc(_crmNomePessoa(l.dono_id))+'</b>'+((_crmUser()&&l.dono_id===_crmUser().id)?' (você)':'')+'</div>')
+    +(((_crmPapel()==='admin'||_crmPapel()==='gestor'))?'<button onclick="_crmReatribuir(\''+id+'\')" style="font-size:12px;padding:9px 12px;border:1px solid #0E7AB8;background:transparent;color:#0E7AB8;border-radius:8px;cursor:pointer;font-weight:700">🔁 Reatribuir</button>':'')
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
     +'<button onclick="_crmNota(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:8px;cursor:pointer;font-weight:700">📝 Nota</button>'
     +'<button onclick="_crmPerder(\''+id+'\')" style="flex:1;font-size:12px;padding:9px;border:1px solid #E24B4A;background:transparent;color:#E24B4A;border-radius:8px;cursor:pointer;font-weight:700">Perder</button>'
     +'</div>';
@@ -6582,6 +6587,46 @@ async function _crmChecarAtivacoes(silent){
   if(!silent&&typeof toast==='function') toast(mudou.length?('🎉 '+mudou.length+' lead(s) ativado(s)!'):'Nenhuma ativação nova por enquanto.');
 }
 
+/* --------- POSSE do lead (pool / devolução por inatividade / reatribuir) --------- */
+async function _crmDevolverInativos(){
+  var dias=(_CRM.config&&_CRM.config.limiares&&_CRM.config.limiares.dias_devolve_lead)||7;
+  var lim=Date.now()-dias*86400000;
+  var dev=_CRM.leads.filter(function(l){ return l.dono_id && l.status==='ativo' && l.ultima_atividade_em && Date.parse(l.ultima_atividade_em)<lim; });
+  for(var i=0;i<dev.length;i++){ var l=dev[i]; var antigo=l.dono_id; l.dono_id=null;
+    try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(l.id), patch:{ dono_id:null, atualizado_em:new Date().toISOString() } });
+         await _crmLog(l.id,'atribuicao','Voltou ao pool por inatividade ('+dias+'d). Era de '+_crmNomePessoa(antigo),true); }catch(e){}
+  }
+  if(dev.length) _crmRenderTab();
+}
+async function _crmPegarPraMim(id){
+  var u=_crmUser(); var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l||!u) return;
+  if(l.dono_id && l.dono_id!==u.id){ if(typeof toast==='function') toast('Esse lead já tem dono.'); return; }
+  var now=new Date().toISOString(); l.dono_id=u.id; l.posse_desde=now; l.ultima_atividade_em=now;
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
+  try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ dono_id:u.id, posse_desde:now, ultima_atividade_em:now, atualizado_em:now } });
+       await _crmLog(id,'atribuicao',(u.nome||u.email||'')+' pegou o lead do pool',true);
+       if(typeof toast==='function') toast('Lead é seu agora.','success'); }catch(e){ if(typeof toast==='function') toast('Não consegui pegar.','error'); }
+}
+function _crmReatribuir(id){
+  var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l) return;
+  var pessoas=[]; try{ pessoas=(typeof getPessoas==='function'?getPessoas():[]).filter(function(p){ return _crmPapel(p); }); }catch(e){}
+  var opts='<option value="">(deixar no pool)</option>'+pessoas.map(function(p){ return '<option value="'+p.id+'"'+(p.id===l.dono_id?' selected':'')+'>'+_crmEsc(p.nome)+' ('+(_crmPapel(p)||'')+')</option>'; }).join('');
+  var inner='<label style="font-size:11px;color:var(--text3)">Novo dono</label><select id="crm-reat-pessoa" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:8px">'+opts+'</select>'
+    +'<label style="font-size:11px;color:var(--text3)">Motivo (opcional)</label><input id="crm-reat-motivo" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);margin-bottom:12px">'
+    +'<button onclick="_crmSalvarReatribuir(\''+id+'\')" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:9px;font-weight:700;cursor:pointer">Reatribuir</button>';
+  _crmModal('🔁 Reatribuir lead', inner);
+}
+async function _crmSalvarReatribuir(id){
+  var l=_CRM.leads.find(function(x){ return x.id===id; }); if(!l) return;
+  var novo=(document.getElementById('crm-reat-pessoa')||{}).value||null;
+  var motivo=(document.getElementById('crm-reat-motivo')||{}).value||'';
+  var antigo=l.dono_id; var now=new Date().toISOString(); l.dono_id=novo; l.posse_desde=now; l.ultima_atividade_em=now;
+  var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
+  try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(id), patch:{ dono_id:novo, posse_desde:now, ultima_atividade_em:now, atualizado_em:now } });
+       await _crmLog(id,'atribuicao','Reatribuído: '+(antigo?_crmNomePessoa(antigo):'pool')+' → '+(novo?_crmNomePessoa(novo):'pool')+(motivo?(' ('+motivo+')'):''),true);
+       if(typeof toast==='function') toast('Reatribuído.','success'); }catch(e){ if(typeof toast==='function') toast('Não consegui reatribuir.','error'); }
+}
+
 /* --------- placeholders (próximos increments) --------- */
 function _crmRenderCarteira(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">💰 Carteira ativa (saúde dos clientes que pedem) chega no próximo pacote.</div>'; }
 function _crmPeriodo(){ return new Date().toISOString().slice(0,7); }
@@ -6684,7 +6729,52 @@ async function _crmSalvarMeta(){
   try{ await _crmEscrever('crm_metas','upsert',{ dados:[obj] }); var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab(); if(typeof toast==='function') toast('Meta salva.','success'); }
   catch(e){ if(typeof toast==='function') toast('Não consegui salvar a meta.','error'); }
 }
-function _crmRenderConfig(b){ b.innerHTML='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">⚙️ Configuração (etapas, cadências, motivos, metas) chega no próximo pacote. Por enquanto usa os padrões do schema.</div>'; }
+function _crmRenderConfig(b){
+  var cfg=_CRM.config||{}; var lim=cfg.limiares||{};
+  var taCss='width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-family:inherit;font-size:12px';
+  var numCss='width:90px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)';
+  function campoNum(id,lab,val){ return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><label style="font-size:12px;color:var(--text2)">'+lab+'</label><input id="'+id+'" type="number" min="0" value="'+(val==null?'':val)+'" style="'+numCss+'"></div>'; }
+  b.innerHTML=
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Tudo aqui é editável e vale pra todo o CRM (nada fica fixo no código).</div>'
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">⏱️ Limiares</div>'
+    +campoNum('cfg-dias-devolve','Dias p/ devolver lead ao pool (inatividade)', lim.dias_devolve_lead)
+    +campoNum('cfg-dias-ativacao','Dias de alerta "aguardando ativação"', lim.dias_aguardando_ativacao)
+    +campoNum('cfg-queda','Carteira: queda de alerta (%)', lim.carteira_queda_pct)
+    +campoNum('cfg-dias-pedido','Carteira: dias sem pedido p/ alerta', lim.carteira_dias_sem_pedido)
+    +'</div>'
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">❌ Motivos de perda (um por linha)</div>'
+    +'<textarea id="cfg-motivos" rows="7" style="'+taCss+'">'+_crmEsc((cfg.motivos_perda||[]).join('\n'))+'</textarea>'
+    +'</div>'
+    +'<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">🏷️ Segmentos (um por linha)</div>'
+    +'<textarea id="cfg-segmentos" rows="7" style="'+taCss+'">'+_crmEsc((cfg.segmentos||[]).join('\n'))+'</textarea>'
+    +'</div>'
+    +'<details style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px"><summary style="font-size:12px;font-weight:700;cursor:pointer">🔧 Etapas e cadências (avançado, JSON)</summary>'
+    +'<div style="font-size:11px;color:var(--text3);margin:8px 0 2px">Etapas</div><textarea id="cfg-etapas" rows="6" style="'+taCss+';font-family:monospace">'+_crmEsc(JSON.stringify(cfg.etapas||{},null,1))+'</textarea>'
+    +'<div style="font-size:11px;color:var(--text3);margin:8px 0 2px">Cadências</div><textarea id="cfg-cadencias" rows="8" style="'+taCss+';font-family:monospace">'+_crmEsc(JSON.stringify(cfg.cadencias||{},null,1))+'</textarea>'
+    +'</details>'
+    +'<button onclick="_crmSalvarConfig()" style="width:100%;padding:12px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer">💾 Salvar configuração</button>';
+}
+async function _crmSalvarConfig(){
+  function val(id){ var e=document.getElementById(id); return e?e.value:''; }
+  function linhas(id){ return val(id).split('\n').map(function(s){ return s.trim(); }).filter(Boolean); }
+  var lim={ dias_devolve_lead:parseInt(val('cfg-dias-devolve'))||7, dias_aguardando_ativacao:parseInt(val('cfg-dias-ativacao'))||10, carteira_queda_pct:parseInt(val('cfg-queda'))||30, carteira_dias_sem_pedido:parseInt(val('cfg-dias-pedido'))||21 };
+  var etapas, cadencias;
+  try{ etapas=JSON.parse(val('cfg-etapas')||'{}'); cadencias=JSON.parse(val('cfg-cadencias')||'{}'); }
+  catch(e){ if(typeof toast==='function') toast('JSON de etapas/cadências inválido. Confere.','error'); return; }
+  var rows=[
+    { chave:'limiares', valor:lim },
+    { chave:'motivos_perda', valor:linhas('cfg-motivos') },
+    { chave:'segmentos', valor:linhas('cfg-segmentos') },
+    { chave:'etapas', valor:etapas },
+    { chave:'cadencias', valor:cadencias }
+  ];
+  _CRM.config={ limiares:lim, motivos_perda:rows[1].valor, segmentos:rows[2].valor, etapas:etapas, cadencias:cadencias };
+  try{ await _crmEscrever('crm_config','upsert',{ dados:rows }); if(typeof toast==='function') toast('Configuração salva.','success'); }
+  catch(e){ if(typeof toast==='function') toast('Não consegui salvar a config.','error'); }
+}
 </script>
 <script>
 /* ============================================================ */
