@@ -1,3 +1,4 @@
+<!-- v33.10 - CRM (painel Admin da rede): no Painel do admin, bloco "Rede" com ativacoes do mes, split Inside x Field, reativacoes de churn e grafico de ativacoes por mes (cohort). Nota honesta: receita 30/60/90 por janela exata depende do espelho diario da Machine (completo so em CG); por ora usa ativacoes reais + receita-proxy no painel pessoal. - 26/10/2026 -->
 <!-- v33.09 - CRM (rota do dia + check-in GPS, field): botao "Abrir rota do dia no Google Maps" na aba Hoje (monta rota multi-parada com os leads de campo do vendedor, origem no GPS atual); botao "Check-in" na ficha do lead field = pega GPS, registra visita com coordenada no historico e avanca pra etapa Visita realizada. - 26/10/2026 -->
 <!-- v33.08 - CRM (gerenciar scripts na Config, admin): lista os modelos de mensagem com editar/remover + botao Novo (nome, canal, tipo de lead, texto com variaveis). Salva em crm_scripts (upsert por id). Fecha a feature de scripts: admin cria/edita sem SQL e os modelos aparecem no WhatsApp da ficha do lead. - 26/10/2026 -->
 <!-- v33.07 - CRM (ficha do lead = workspace completo, nivel Pipedrive/HubSpot): HISTORICO/timeline de atividades na ficha; WhatsApp com SCRIPTS (modelos com variaveis nome_empresa/bairro/praca/nome_vendedor, 1 clique abre o wa.me ja preenchido e loga); DECISOR editavel (alerta se nao identificado); AGENDAR RETORNO (status retornar + volta pra fila na data, reativacao automatica ao abrir). Carrega crm_scripts. - 26/10/2026 -->
@@ -6843,7 +6844,28 @@ function _crmPainelPessoal(b, u, per){
     if(ba) ba.innerHTML=_crmBarra(rec||0, meta.meta_receita||0, '#5B4BB3');
   });
 }
+function _crmRedeHTML(per){
+  var ativos=_CRM.leads.filter(function(l){ return l.status==='ativado'; });
+  var mesAtual=ativos.filter(function(l){ return (l.ativado_em||'').slice(0,7)===per; });
+  var inside=mesAtual.filter(function(l){ return l.pipeline==='inside'; }).length;
+  var field=mesAtual.filter(function(l){ return l.pipeline==='field'; }).length;
+  var reativ=mesAtual.filter(function(l){ return l.tipo==='churn'||l.tipo==='em_queda'; }).length;
+  // cohort por mês de ativação (últimos 4)
+  var coh={}; ativos.forEach(function(l){ var m=(l.ativado_em||'').slice(0,7); if(m) coh[m]=(coh[m]||0)+1; });
+  var meses=Object.keys(coh).sort().slice(-4);
+  function card(n,t,c){ return '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:800;color:'+c+'">'+n+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px;margin-top:2px">'+t+'</div></div>'; }
+  var html='<div style="font-size:12px;font-weight:800;color:var(--text2);margin:0 2px 8px">🌐 Rede ('+per+')</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:8px">'
+    +card(mesAtual.length,'🎉 Ativações mês','#1D9E75')+card(inside,'📞 Inside','#0E7AB8')+card(field,'🚶 Field','#C98A00')+card(reativ,'↩️ Reativações','#5B4BB3')+'</div>';
+  if(meses.length>1){ var max=Math.max.apply(null,meses.map(function(m){return coh[m];}));
+    html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">Ativações por mês</div>'
+      +meses.map(function(m){ var w=max?Math.round(100*coh[m]/max):0; return '<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><div style="width:52px;font-size:10.5px;color:var(--text3)">'+m+'</div><div style="flex:1;background:var(--border);border-radius:6px;height:14px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:#1D9E75"></div></div><div style="width:28px;text-align:right;font-size:11px;font-weight:700">'+coh[m]+'</div></div>'; }).join('')+'</div>';
+  }
+  html+='<div style="font-size:10.5px;color:var(--text3);margin:2px 2px 12px">💰 Receita 30/60/90 por janela exata depende do espelho diário da Machine (hoje completo só em Campo Grande). Esta visão usa ativações reais; a receita-proxy aparece no painel pessoal.</div>';
+  return html;
+}
 function _crmPainelTime(b, per, papel){
+  var rede = (papel==='admin') ? _crmRedeHTML(per) : '';
   // donos visíveis
   var donos={}; _CRM.leads.forEach(function(l){ if(l.dono_id) donos[l.dono_id]=true; });
   var ids=Object.keys(donos);
@@ -6853,7 +6875,7 @@ function _crmPainelTime(b, per, papel){
     var meta=_crmMetaDe(pid,per)||{meta_ativacoes:0,meta_receita:0};
     return { pid:pid, nome:_crmNomePessoa(pid), abertos:leads.filter(function(l){return l.status==='ativo';}).length, ativ:ativ, perdidos:leads.filter(function(l){return l.status==='perdido';}).length, metaA:meta.meta_ativacoes||0 };
   }).sort(function(a,c){ return c.ativ-a.ativ; });
-  var html='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:var(--text2)">📊 Time ('+per+')</div>'
+  var html=rede+'<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0 10px"><div style="font-size:12px;font-weight:700;color:var(--text2)">📊 Time ('+per+')</div>'
     +(papel==='admin'?'<button onclick="_crmMetasEditor()" style="font-size:11px;padding:7px 12px;border:1px solid #0E7AB8;background:#0E7AB8;color:#fff;border-radius:8px;cursor:pointer;font-weight:700">🎯 Definir metas</button>':'')+'</div>';
   if(!rows.length){ b.innerHTML=html+'<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Ninguém com lead ainda.</div>'; return; }
   html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--text3);text-align:left">'
