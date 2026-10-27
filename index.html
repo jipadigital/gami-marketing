@@ -1,3 +1,4 @@
+<!-- v33.32 - SEGURANCA lote B (escrita pelo servidor): estoque_itens (cadastrar/editar/desativar), estoque_mov (editar venda) e desafios_admin (criar/editar/encerrar) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). As 3 tabelas add em PERMITIDAS e COLAB. Entrada/venda de estoque seguem por RPC (estoque_registrar_entrada/venda) - o RLS lock preserva essas RPCs como SECURITY DEFINER. Depois de testar (cadastrar/editar brinde, registrar entrada+venda, criar/encerrar desafio) rodar o RLS lock lote B. - 27/10/2026 -->
 <!-- v33.31 - SEGURANCA lote A (escrita pelo servidor): tarefas (_tfPatchTarefa), recados (_recadosSalvarSupa/_recadosApagarSupa/limpeza) e pulse_votos (voto) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). pulse_votos add em PERMITIDAS; recados+pulse_votos em COLAB. Depois de testar (postar recado, concluir tarefa, votar pulse) rodar o RLS lock. - 27/10/2026 -->
 <!-- v33.30 - SEGURANCA (pessoas): todas as escritas de pessoas passam a ir pelo SERVIDOR (supabase-write, service key) em vez de direto com a chave publica: syncPessoas (upsert on_conflict=id + delete em lote via id=in), reset-total e force-sync. pessoas adicionada em TABELAS_COLAB (qualquer logado escreve pelo servidor, bloqueia anon, auditavel). Removido o fallback de niveis (coluna ja existe). Depois de testar editar uma pessoa, rodar o RLS lock. - 27/10/2026 -->
 <!-- v33.29 - PROSPECCAO (modelo certo do isolamento + BDR): (1) voltou a BASE no mapa pra todos garimparem, MAS BDR/vendedor NAO veem empresa que ja esta no CRM de OUTRO usuario (exclusividade, nao bater): _campoCarregarCrmTaken (crm_leads nao-perdidos com dono) + _campoDonoCrm + _campoAplicaExclusao, filtrado em _campoLojasFiltradas e _campoMachineFiltrada. (2) BDR (home office) ve "Registrar ATIVIDADE" no lugar de "visita" (card + modal + historico), via _campoTermoVisita. Removido o travamento total (v33.24-27). - 27/10/2026 -->
@@ -50157,15 +50158,12 @@ async function desafioCriar(){
   if(!titulo || !pontos || !inicio || !fim){ alert('⚠️ Preencha título, pontos, datas'); return; }
   var corpo = { titulo: titulo, descricao: descricao, pontos_recompensa: pontos, tipo_alvo: alvo, data_inicio: inicio, data_fim: fim };
   try {
-    var url, metodo;
-    if(id){ url = SUPA_URL + '/rest/v1/desafios_admin?id=eq.' + encodeURIComponent(id); metodo = 'PATCH'; }
-    else { url = SUPA_URL + '/rest/v1/desafios_admin'; metodo = 'POST'; corpo.status = 'ativo'; corpo.criado_por = 'cleyton'; }
-    var r = await fetch(url, {
-      method: metodo,
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify(corpo)
-    });
-    if(r.ok){
+    if(!id){ corpo.status = 'ativo'; corpo.criado_por = 'cleyton'; }
+    var _ok=true;
+    try{ if(id) await _syncEscrever({ tabela:'desafios_admin', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:corpo });
+         else await _syncEscrever({ tabela:'desafios_admin', operacao:'upsert', dados:[corpo] }); }
+    catch(e){ _ok=false; }
+    if(_ok){
       alert(id ? '✅ Desafio atualizado!' : '✅ Desafio criado!');
       var m = document.getElementById('modal-novo-desafio'); if(m) m.remove();
       if(typeof renderDesafios === 'function') renderDesafios();
@@ -50185,12 +50183,8 @@ async function desafioEncerrar(id){
   if(!isAdminPontos()){ alert('⚠️ Apenas admin.'); return; }
   if(!confirm('Encerrar este desafio? Ele sai dos ativos e vai pros encerrados.')) return;
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/desafios_admin?id=eq.' + encodeURIComponent(id), {
-      method: 'PATCH',
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ status: 'encerrado' })
-    });
-    if(r.ok){
+    var _ok=true; try{ await _syncEscrever({ tabela:'desafios_admin', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:{ status:'encerrado' } }); }catch(e){ _ok=false; }
+    if(_ok){
       if(typeof renderDesafios === 'function') renderDesafios();
       if(typeof _rkRenderDesafioAtivo === 'function') _rkRenderDesafioAtivo();
     } else { alert('❌ Erro ao encerrar'); }
@@ -55716,20 +55710,16 @@ async function estCadastrarNovoItem(){
   if(!nome){ alert('Informe o nome do item.'); return; }
   
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens', {
-      method: 'POST',
-      headers: Object.assign({}, _estSupaHeaders(), { 'Prefer': 'return=representation' }),
-      body: JSON.stringify({ 
-        nome: nome, 
-        tamanho: tamanho || null, 
+    var _resp = await _syncEscrever({ tabela:'estoque_itens', operacao:'upsert', retornar:true, dados:[{
+        nome: nome,
+        tamanho: tamanho || null,
         descricao: descricao || null,
-        valor_unitario: 0, 
-        foto_url: fotoUrl 
-      })
-    });
-    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
-    var criado = await r.json();
+        valor_unitario: 0,
+        foto_url: fotoUrl
+      }] });
+    var criado = _resp && _resp.resultado;
     var novoItem = Array.isArray(criado) ? criado[0] : criado;
+    if(!novoItem || !novoItem.id){ throw new Error('Falha ao cadastrar item'); }
     
     EST_ITENS.push(novoItem);
     EST_ITENS.sort(function(a,b){ return a.nome.localeCompare(b.nome); });
@@ -55938,20 +55928,15 @@ async function estSalvarEdicao(){
   if(!nome){ alert('Informe o nome do item.'); return; }
   
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?id=eq.' + EST_ITEM_EDITANDO.id, {
-      method: 'PATCH',
-      headers: Object.assign({}, _estSupaHeaders(), { 'Prefer': 'return=representation' }),
-      body: JSON.stringify({
+    await _syncEscrever({ tabela:'estoque_itens', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(EST_ITEM_EDITANDO.id), patch:{
         nome: nome,
         tamanho: tamanho,
         valor_unitario: valor,
         descricao: descricao,
         foto_url: fotoUrl,
         updated_at: new Date().toISOString()
-      })
-    });
-    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
-    
+      } });
+
     if(typeof toast === 'function') toast('✅ Item atualizado', 'success');
     estFecharEdicao();
     await estCarregarTudo();
@@ -55974,13 +55959,8 @@ async function estDesativarItem(){
   if(!confirm(msg)) return;
   
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_itens?id=eq.' + EST_ITEM_EDITANDO.id, {
-      method: 'PATCH',
-      headers: _estSupaHeaders(),
-      body: JSON.stringify({ ativo: false })
-    });
-    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
-    
+    await _syncEscrever({ tabela:'estoque_itens', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(EST_ITEM_EDITANDO.id), patch:{ ativo: false } });
+
     if(typeof toast === 'function') toast('✅ Item desativado', 'info');
     estFecharEdicao();
     await estCarregarTudo();
@@ -56333,12 +56313,7 @@ async function estSalvarEdicaoVenda(id){
   };
   if(btn){ btn.disabled = true; btn.textContent = '💾 Salvando...'; }
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/estoque_mov?id=eq.' + encodeURIComponent(id), {
-      method: 'PATCH',
-      headers: Object.assign({}, _estSupaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
-      body: JSON.stringify(patch)
-    });
-    if(!r.ok){ var t = await r.text(); throw new Error('HTTP ' + r.status + ' ' + t); }
+    await _syncEscrever({ tabela:'estoque_mov', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:patch });
     var mm = document.getElementById('est-edit-venda-modal'); if(mm) mm.remove();
     if(typeof toast === 'function') toast('✅ Venda atualizada!', 'success');
     await estCarregarTudo();      // recomputa saldos (qtd/item podem ter mudado)

@@ -47,7 +47,9 @@ const TABELAS_PERMITIDAS = [
   'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config',
   // Push (cada usuário logado inscreve o próprio aparelho / agenda os próprios lembretes)
   'push_subscriptions', 'push_agendados',
-  'pulse_votos'        // voto do pulse (humor do dia)
+  'pulse_votos',       // voto do pulse (humor do dia)
+  'estoque_itens', 'estoque_mov',  // estoque de brindes (tela admin)
+  'desafios_admin'     // desafios da gamificação (tela admin)
 ];
 
 // 🆕 Tabelas de COLABORAÇÃO: qualquer usuário com SESSÃO VÁLIDA pode gravar aqui
@@ -58,7 +60,8 @@ const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospecca
   'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config',
   'push_subscriptions', 'push_agendados',
   'pessoas',   // edição do time: qualquer logado escreve pelo servidor (bloqueia anon; auditável). UI já restringe quem edita.
-  'recados', 'pulse_votos'];  // mural e voto do pulse: ação de qualquer usuário logado
+  'recados', 'pulse_votos',  // mural e voto do pulse: ação de qualquer usuário logado
+  'estoque_itens', 'estoque_mov', 'desafios_admin'];  // telas admin (UI já restringe por isAdminPontos / gestor)
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
