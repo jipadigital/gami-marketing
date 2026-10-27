@@ -1,3 +1,4 @@
+<!-- v33.36 - SEGURANCA etapa 3 R3 (PII do time): pessoas + ponto_registros/ponto_log_admin/ponto_config entram no conjunto sensivel (leem pelo proxy supabase-read). GUARDA nova no interceptor: sem token de sessao (pre-login/boot) NAO reroteia, cai no fetch normal (a protecao real e a RLS no banco; nao quebra login nem boot). pessoas estava ESCANCARADA (nome/email/tel/cargo via chave publica); ponto_* ja vinha []. Depois de testar diretorio do time, perfil no login, permissoes e telas de ponto, rodar docs/seguranca-rls-leitura-r3.sql (dropa policy _sel de pessoas; confirma ponto_*). - 27/10/2026 -->
 <!-- v33.35 - SEGURANCA etapa 3 R2 (Machine + RPCs): interceptor global de fetch reroteia pro proxy supabase-read todo GET a tabela sensivel (agora + machine_corridas/empresas/condutores/sync_log) E todo POST a RPC sensivel (22 RPCs comerciais/Machine: empresas_*, motoboys_*, metricas_*, mapa_empresas_cidade, clientes_onboarding, indicadores_cidade, contar_corridas, calendario_demanda_rede, acoes_gestor_semana, ranking_cidades_mes, prospeccao_sinal_machine). Preserva signal, replica content-range (sondas count), pagina RPC por Range. proxy: querySegura passa agregacao mas barra embed; count e range no SELECT/RPC. NADA travado ainda. Depois de testar dashboards de cidade/mapa/telefones/onboarding/churn/raiox/motoboys, rodar docs/seguranca-rls-leitura-r2.sql (REVOKE machine_* do anon + REVOKE EXECUTE das 22 RPCs). - 27/10/2026 -->
 <!-- v33.34 - SEGURANCA etapa 3 R0+R1 (fechar LEITURA sensivel): nova function supabase-read.js (proxy de SELECT+RPC com service key, atras de sessao, lista branca TABELAS_LEITURA/RPCS_LEITURA). Cliente ganhou supaLer()/supaLerRPC(). _campoFetchTodos e supaSelect agora roteiam tabelas do conjunto _SUPA_SENSIVEL pelo proxy (R1: crm_*, prospeccao_*, mv_prospeccao_mapa, mv_empresas_raiox) paginando por limit/offset. crm_atividades (timeline) convertida. NADA travado ainda: a chave publica ainda le (policies _sel seguem); so a transporte mudou. Depois de testar CRM + mapa de prospeccao, dropo as policies _sel dessas tabelas (anon para de ler, so o proxy le). - 27/10/2026 -->
 <!-- v33.33 - SEGURANCA (configuracoes, ultima da etapa 2): o Cloud Mirror (_gamiCloudFlush) deixa de gravar direto com a chave publica e passa pelo supabase-write (service key, on_conflict=chave). Guarda: nao tenta flush sem sessao valida (evita 401/logout em background); _syncEscrever ganhou opt {silencioso} pra nao forcar logout em chamada de fundo. configuracoes add em TABELAS_COLAB (todo logado espelha; blacklist filtra o sensivel). syncConfig ja roteava via supaUpsert. Depois de testar (editar algo que espelha, ex. reconhecimento/direcao/spotlight, e confirmar que recarrega em outro aparelho) rodar docs/seguranca-rls-configuracoes.sql. - 27/10/2026 -->
@@ -8820,7 +8821,9 @@ var _SUPA_SENSIVEL = {
   prospeccao_lojas:1, prospeccao_visitas:1, prospeccao_rotas:1,
   mv_prospeccao_mapa:1, mv_empresas_raiox:1,
   // R2 (Machine): corridas, empresas (tel cliente), condutores (tel motorista, PII)
-  machine_corridas:1, machine_empresas:1, machine_condutores:1, machine_sync_log:1
+  machine_corridas:1, machine_empresas:1, machine_condutores:1, machine_sync_log:1,
+  // R3 (PII do time): cadastro, ponto (GPS/IP), config e log de ponto
+  pessoas:1, ponto_registros:1, ponto_log_admin:1, ponto_config:1
 };
 // R2b: RPCs que devolvem dado comercial/Machine/prospecção (vão pelo proxy).
 var _SUPA_SENSIVEL_RPC = {
@@ -8850,6 +8853,11 @@ function _supaParseUrl(url){
     try {
       var url = (typeof input === 'string') ? input : (input && input.url);
       var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      // Sem sessão (pré-login / boot) o interceptor NÃO reroteia: cai no fetch
+      // normal. A proteção real é a RLS no banco (anon trancado recebe [] igual),
+      // então não quebra login nem leitura de boot, e não vaza nada.
+      var _sess = ''; try { _sess = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+      if(_sess){
       // ---- RPC sensível (POST /rest/v1/rpc/NOME) → proxy ----
       if(url && method === 'POST' && url.indexOf(_REST+'rpc/') === 0){
         var rpcNome = url.slice((_REST+'rpc/').length).split('?')[0];
@@ -8908,6 +8916,7 @@ function _supaParseUrl(url){
           });
         }
       }
+      } /* fim if(_sess) */
     } catch(e){ /* qualquer erro: cai pro fetch normal */ }
     return _origFetch(input, init);
   };
