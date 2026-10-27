@@ -1,3 +1,4 @@
+<!-- v33.34 - SEGURANCA etapa 3 R0+R1 (fechar LEITURA sensivel): nova function supabase-read.js (proxy de SELECT+RPC com service key, atras de sessao, lista branca TABELAS_LEITURA/RPCS_LEITURA). Cliente ganhou supaLer()/supaLerRPC(). _campoFetchTodos e supaSelect agora roteiam tabelas do conjunto _SUPA_SENSIVEL pelo proxy (R1: crm_*, prospeccao_*, mv_prospeccao_mapa, mv_empresas_raiox) paginando por limit/offset. crm_atividades (timeline) convertida. NADA travado ainda: a chave publica ainda le (policies _sel seguem); so a transporte mudou. Depois de testar CRM + mapa de prospeccao, dropo as policies _sel dessas tabelas (anon para de ler, so o proxy le). - 27/10/2026 -->
 <!-- v33.33 - SEGURANCA (configuracoes, ultima da etapa 2): o Cloud Mirror (_gamiCloudFlush) deixa de gravar direto com a chave publica e passa pelo supabase-write (service key, on_conflict=chave). Guarda: nao tenta flush sem sessao valida (evita 401/logout em background); _syncEscrever ganhou opt {silencioso} pra nao forcar logout em chamada de fundo. configuracoes add em TABELAS_COLAB (todo logado espelha; blacklist filtra o sensivel). syncConfig ja roteava via supaUpsert. Depois de testar (editar algo que espelha, ex. reconhecimento/direcao/spotlight, e confirmar que recarrega em outro aparelho) rodar docs/seguranca-rls-configuracoes.sql. - 27/10/2026 -->
 <!-- v33.32 - SEGURANCA lote B (escrita pelo servidor): estoque_itens (cadastrar/editar/desativar), estoque_mov (editar venda) e desafios_admin (criar/editar/encerrar) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). As 3 tabelas add em PERMITIDAS e COLAB. Entrada/venda de estoque seguem por RPC (estoque_registrar_entrada/venda) - o RLS lock preserva essas RPCs como SECURITY DEFINER. Depois de testar (cadastrar/editar brinde, registrar entrada+venda, criar/encerrar desafio) rodar o RLS lock lote B. - 27/10/2026 -->
 <!-- v33.31 - SEGURANCA lote A (escrita pelo servidor): tarefas (_tfPatchTarefa), recados (_recadosSalvarSupa/_recadosApagarSupa/limpeza) e pulse_votos (voto) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). pulse_votos add em PERMITIDAS; recados+pulse_votos em COLAB. Depois de testar (postar recado, concluir tarefa, votar pulse) rodar o RLS lock. - 27/10/2026 -->
@@ -6852,8 +6853,8 @@ function _crmDecisor(id){
   var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmAbrirLead(id);
 }
 async function _crmCarregarTimeline(id){
-  try{ var r=await fetch(SUPA_URL+'/rest/v1/crm_atividades?lead_id=eq.'+encodeURIComponent(id)+'&select=tipo,descricao,autor_nome,criado_em&order=criado_em.desc&limit=60',{headers:supaHeaders()});
-    var ats=r.ok?await r.json():[]; var box=document.getElementById('crm-timeline'); if(!box) return;
+  try{ var ats=await supaLer('crm_atividades','lead_id=eq.'+encodeURIComponent(id)+'&select=tipo,descricao,autor_nome,criado_em&order=criado_em.desc&limit=60').catch(function(){return [];});
+    var box=document.getElementById('crm-timeline'); if(!box) return;
     if(!Array.isArray(ats)||!ats.length){ box.innerHTML='<div style="font-size:11px;color:var(--text3)">Sem histórico ainda.</div>'; return; }
     var ic={ligacao:'📞',whatsapp:'💬',visita:'📍',nota:'📝',etapa:'➡️',perda:'❌',atribuicao:'🔁',tarefa:'✅'};
     box.innerHTML=ats.map(function(a){ return '<div style="display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--border)"><div style="flex:none">'+(ic[a.tipo]||'•')+'</div><div style="flex:1;min-width:0"><div style="font-size:11.5px;color:var(--text)">'+_crmEsc(a.descricao||a.tipo)+'</div><div style="font-size:9.5px;color:var(--text3)">'+_crmEsc(a.autor_nome||'')+' · '+new Date(a.criado_em).toLocaleString('pt-BR')+'</div></div></div>'; }).join('');
@@ -8809,15 +8810,40 @@ function _campoStatusMachine(e){
   return dias <= 21 ? 'ativa' : 'perdida';
 }
 // busca paginada (o PostgREST corta em 1000 linhas por resposta)
+// 🔒 v33.34 (etapa 3): tabelas cuja LEITURA passa pelo servidor (proxy supabase-read).
+// Tem que casar com TABELAS_LEITURA do netlify/functions/supabase-read.js.
+// Começa só com o lote R1 (comercial). machine_* / pessoas / ponto_* entram
+// quando cada lote for convertido e testado (R2, R3).
+var _SUPA_SENSIVEL = {
+  crm_leads:1, crm_atividades:1, crm_tarefas:1, crm_checklist:1, crm_metas:1, crm_scripts:1, crm_config:1,
+  prospeccao_lojas:1, prospeccao_visitas:1, prospeccao_rotas:1,
+  mv_prospeccao_mapa:1, mv_empresas_raiox:1
+};
+// Quebra SUPA_URL+'/rest/v1/TABELA?QUERY' em {tabela, query}. Null se não casar.
+function _supaParseUrl(url){
+  var m = /\/rest\/v1\/([^?\/]+)(?:\?([\s\S]*))?$/.exec(String(url||''));
+  if(!m) return null;
+  return { tabela: decodeURIComponent(m[1]), query: m[2] || 'select=*' };
+}
 async function _campoFetchTodos(url, opts){
   var out=[], step=1000;
+  var parsed = _supaParseUrl(url);
+  var viaProxy = parsed && _SUPA_SENSIVEL[parsed.tabela];
   for(var off=0; off<30000; off+=step){
-    var h=Object.assign({}, supaHeaders(), (opts&&opts.headers)||{}, { 'Range-Unit':'items', 'Range':off+'-'+(off+step-1) });
-    var r=await fetch(url, Object.assign({}, opts||{}, { headers:h }));
-    if(!r.ok) break;
-    var a=await r.json(); if(!Array.isArray(a)) break;
-    out=out.concat(a);
-    if(a.length<step) break;
+    if(viaProxy){
+      var q = (parsed.query ? parsed.query + '&' : '') + 'limit='+step+'&offset='+off;
+      var a = await supaLer(parsed.tabela, q);
+      if(!Array.isArray(a)) break;
+      out=out.concat(a);
+      if(a.length<step) break;
+    } else {
+      var h=Object.assign({}, supaHeaders(), (opts&&opts.headers)||{}, { 'Range-Unit':'items', 'Range':off+'-'+(off+step-1) });
+      var r=await fetch(url, Object.assign({}, opts||{}, { headers:h }));
+      if(!r.ok) break;
+      var a2=await r.json(); if(!Array.isArray(a2)) break;
+      out=out.concat(a2);
+      if(a2.length<step) break;
+    }
   }
   return out;
 }
@@ -25874,6 +25900,43 @@ async function _syncEscrever(payload, opts){
   return await r.json();
 }
 
+/* 🔒 v33.34 (etapa 3): LEITURA de tabela sensível pelo servidor (service key,
+   atrás de sessão). Troca fetch(SUPA_URL+'/rest/v1/X?'+q) direto pela chave
+   pública por supaLer('X', q). Devolve array de linhas. */
+async function supaLer(tabela, query){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var userId = u && u.id ? u.id : 'desconhecido';
+  var token = ''; try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+  var r = await fetch('/.netlify/functions/supabase-read', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'X-Gami-User':userId, 'X-Gami-Token':token },
+    body: JSON.stringify({ tabela: tabela, query: query || 'select=*' })
+  });
+  if(!r.ok){
+    var t = await r.text().catch(function(){return '';});
+    throw new Error('Leitura falhou ('+r.status+'): '+t.slice(0,160));
+  }
+  var j = await r.json();
+  return (j && j.resultado) || [];
+}
+/* 🔒 v33.34: RPC sensível pelo servidor. supaLerRPC('mapa_empresas_cidade', {p_cidade:'...'}) */
+async function supaLerRPC(rpc, args){
+  var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var userId = u && u.id ? u.id : 'desconhecido';
+  var token = ''; try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+  var r = await fetch('/.netlify/functions/supabase-read', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', 'X-Gami-User':userId, 'X-Gami-Token':token },
+    body: JSON.stringify({ rpc: rpc, args: args || {} })
+  });
+  if(!r.ok){
+    var t = await r.text().catch(function(){return '';});
+    throw new Error('RPC leitura falhou ('+r.status+'): '+t.slice(0,160));
+  }
+  var j = await r.json();
+  return (j && j.resultado) || [];
+}
+
 /* Inicia sincronização */
 async function iniciarSincronizacaoSupabase(cidadeId){
   if(_SYNC.rodando){ alert('Já tem uma sincronização rodando'); return; }
@@ -42647,6 +42710,11 @@ async function supaWrite(tabela, dados, opcoes){
 }
 async function supaSelect(tabela, filtro){
   try{
+    // 🔒 v33.34: tabela sensível lê pelo servidor (proxy)
+    if(typeof _SUPA_SENSIVEL !== 'undefined' && _SUPA_SENSIVEL[tabela] && typeof supaLer === 'function'){
+      var q = 'select=*' + (filtro ? '&'+filtro : '');
+      return await supaLer(tabela, q);
+    }
     var url=SUPA_URL+'/rest/v1/'+tabela+'?select=*';
     if(filtro)url+='&'+filtro;
     var r=await fetch(url,{headers:supaHeaders()});
