@@ -1,3 +1,4 @@
+<!-- v33.25 - PROSPECCAO: (1) busca da "Lista completa de empresas" agora acha por TELEFONE (alem de CNPJ/CPF) e por CIDADE/BAIRRO (alem do nome); placeholder atualizado. (2) card da loja mantem o HISTORICO da Machine depois de acompanhar: mostra "X pedidos na Machine · sem pedir ha Y dias" (via _campoMachineInfo, casa por nome+cidade no machineCache). Antes, ao acompanhar, sumiam os numeros. - 27/10/2026 -->
 <!-- v33.24 - PROSPECCAO isolamento por pessoa: BDR e vendedor agora SO veem as PROPRIAS prospeccoes (travado, sem opcao de ver a base) - criadas por eles OU que sao lead deles no CRM (dono_id). A base Machine fica escondida pra eles (_campoMachineFiltrada retorna [] no lock). initCampo carrega o CRM pra saber os leads deles e esconde o botao "Minhas". Admin (Carlos) ve tudo; gestor ve a cidade dele. _campoSoMinhasLock/_campoMinhasSet/_ehMinha. - 27/10/2026 -->
 <!-- v33.23 - PROSPECCAO "Minhas prospeccoes" (individual): (1) ao ligar o botao, limpa os filtros que escondiam (status/data/categoria/cidade) e mostra TODAS as suas (resolve o "badge 4 mas lista 2" que o BDR perguntou). (2) BDR e vendedor ABREM a aba ja em "Minhas prospeccoes" (veem so as deles; admin/gestor seguem na base pra garimpar). _campoToggleMinhas + default em initCampo por _crmPapel. - 27/10/2026 -->
 <!-- v33.22 - SEGURANCA (blindar escrita): push_subscriptions e push_agendados deixaram de ser gravados DIRETO com a chave publica e passam pela Netlify function supabase-write (service key, exige sessao). supabase-write ganhou suporte a on_conflict e resolution (ignore-duplicates) no upsert; push_* adicionadas em TABELAS_PERMITIDAS e TABELAS_COLAB. Depois disso pode ligar RLS nessas tabelas (SQL docs). Preparo pra blindar pessoas/configuracoes/posts_agendados na sequencia. - 27/10/2026 -->
@@ -7963,6 +7964,16 @@ function _campoVisitasDaLoja(lojaId){
     .sort(function(a,b){ return (b.data||'').localeCompare(a.data||''); });
 }
 
+/* histórico da Machine (pedidos / há quanto tempo não pede) pra manter no card mesmo depois de acompanhar */
+function _campoMachineInfo(l){
+  try{
+    var slug=l.cidade_slug||_campoSlug(l.cidade);
+    var arr=(_CAMPO.machineCache&&_CAMPO.machineCache[slug])||[];
+    if(!arr.length) return null;
+    var nk=(l.nome||'').trim().toLowerCase();
+    return arr.find(function(x){ return (x.nome||'').trim().toLowerCase()===nk; }) || null;
+  }catch(e){ return null; }
+}
 function _campoCard(l){
   var m = _campoStMeta(l.status||'prospect');
   var visitas = _campoVisitasDaLoja(l.id);
@@ -7987,6 +7998,14 @@ function _campoCard(l){
       +   '<button class="btn btn-ghost" onclick="_campoEditarLoja(\''+l.id+'\')" style="font-size:11px;padding:7px 12px">✏️ Editar loja</button>'
       +   _campoBotoesStatus(l)
       + '</div>';
+    // histórico da Machine (não some depois de acompanhar): pedidos + há quanto tempo sem pedir
+    (function(){ var mi=_campoMachineInfo(l); if(!mi) return;
+      var q=parseInt(mi.qtd_pedidos)||0;
+      var dias=mi.ultimo?Math.floor((Date.now()-Date.parse(mi.ultimo))/86400000):null;
+      if(!q && dias==null) return;
+      var info='🛵 '+q+' pedido'+(q===1?'':'s')+' na Machine'+(dias!=null?(' · '+(dias<=0?'pediu hoje':'sem pedir há '+dias+' dia'+(dias===1?'':'s'))):'');
+      html += '<div style="font-size:11px;color:#0E7AB8;background:#E6F6FE;border:1px solid #1AB8F033;border-radius:7px;padding:5px 9px;margin-bottom:6px;font-weight:600">'+info+'</div>';
+    })();
     if(l.telefone) html += '<div style="font-size:11px;color:var(--text2);margin-bottom:4px">📞 '+_campoEsc(l.telefone)+'</div>';
     if(l.obs) html += '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-style:italic">'+_campoEsc(l.obs)+'</div>';
     if(!visitas.length){
@@ -33596,12 +33615,16 @@ function empRenderLista(corridasMes, empresasGeral, hojeStr){
     if(st.busca){
       var termo = st.busca.trim();
       var soDigitos = termo.replace(/\D/g,'');
-      // Termo predominantemente numérico (3+ dígitos) = busca por CNPJ/CPF, ignora máscara (. / -)
-      if(soDigitos.length >= 3 && soDigitos.length >= termo.replace(/[\s.\-\/]/g,'').length){
+      // Termo predominantemente numérico (3+ dígitos) = CNPJ/CPF OU TELEFONE, ignora máscara ( ) . / -
+      if(soDigitos.length >= 3 && soDigitos.length >= termo.replace(/[\s.\-\/()]/g,'').length){
         var docLimpo = (m.documento||'').replace(/\D/g,'');
-        if(docLimpo.indexOf(soDigitos) < 0) return false;
+        var telLimpo = (m.telefone||'').replace(/\D/g,'');
+        if(docLimpo.indexOf(soDigitos) < 0 && telLimpo.indexOf(soDigitos) < 0) return false;
       } else {
-        if(m.nome.toLowerCase().indexOf(termo.toLowerCase()) < 0) return false;
+        // texto = nome OU cidade OU bairro
+        var _t = termo.toLowerCase();
+        var _hay = ((m.nome||'')+' '+(m.cidade||m.cidade_nome||m.cidade_slug||'')+' '+(m.bairro||'')).toLowerCase();
+        if(_hay.indexOf(_t) < 0) return false;
       }
     }
     if(st.status !== 'todos'){
@@ -33658,7 +33681,7 @@ function empRenderLista(corridasMes, empresasGeral, hojeStr){
     + '</div>'
     // Linha de filtros
     + '<div style="display:grid;grid-template-columns:1fr auto auto auto auto;gap:8px;margin-bottom:10px;align-items:center">'
-      + '<input id="emp-lista-busca" type="text" value="'+st.busca+'" placeholder="🔍 Buscar por nome, CNPJ ou CPF..." '
+      + '<input id="emp-lista-busca" type="text" value="'+st.busca+'" placeholder="🔍 Buscar por nome, cidade, CNPJ ou telefone..." '
         + 'oninput="_empListaEstado.busca=this.value;_empListaEstado.pagina=1;empAtualizarLista()" '
         + 'style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit">'
       + '<select onchange="_empListaEstado.status=this.value;_empListaEstado.pagina=1;empAtualizarLista()" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:inherit;background:white">'
