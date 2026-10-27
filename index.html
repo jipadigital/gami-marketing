@@ -1,3 +1,4 @@
+<!-- v33.20 - CRM: tipo "Cadastrados e nao ativos" agora puxa a base REAL da Machine (os "pontos pretos"/fantasma do mapa = cadastrou e nunca pediu, via _campoCarregarMachine -> RPC clientes_onboarding + coord do cadastro). _crmBuscarCandidatos ramifica por tipo: novo=prospeccao_lojas status=prospect; cadastrado_nao_ativado=fantasma com coord. Exclusao por nome|cidade (fantasma nao tem loja_id). Obs: filtro de segmento so vale pros Novos (Machine nao tem segmento). - 27/10/2026 -->
 <!-- v33.19 - CRM BDR: (1) "Escolher leads" (seletor manual) na aba Hoje - busca por tipo/segmento/cidade, lista com checkbox (marca varios, "marcar todos"), salva em lote na lista do papel. (2) "Exportar planilha" (CSV dos meus leads: empresa, telefone, segmento, bairro, cidade, funil, etapa, tipo, status, ult. atividade). (3) BDR e admin podem escolher QUALQUER cidade (_crmCidadesSelec); vendedor/gestor seguem nas praças deles. Refatorado: _crmBuscarCandidatos + _crmSalvarLeads compartilhados entre Iniciar o dia e Escolher. - 27/10/2026 -->
 <!-- v33.18 - CRM 3 papeis: "Iniciar o dia" agora cria o lead no funil do PAPEL (antes era sempre field): BDR=inside (telefone/WhatsApp, home office, cadencia de contato), vendedor/gestor=field (visita/rota). via _crmPipelineUser. - 27/10/2026 -->
 <!-- v33.17 - FIX "Iniciar o dia": (1) a query pedia colunas inexistentes em prospeccao_lojas (categoria/status_empresa/qtd_pedidos) -> PostgREST dava erro 42703 e o pool vinha VAZIO = "nenhum lead" pra todos (inclusive Harrison). Corrigido o SELECT pras colunas reais. (2) As lojas ATIVAS (pra ranquear proximidade) nao estao em prospeccao_lojas (la e tudo 'prospect', importado do iFood) e sim na Machine -> agora puxa de mv_prospeccao_mapa (qtd_pedidos>0, ultimo<=60d). (3) Seletor de cidade usa _campoListaCidades (nomes certos + funciona pra admin/gestor que ve varias pracas; antes admin via lista vazia). tipoOk: novo=prospect / cadastrado_nao_ativado=ja trabalhado e nao ativo. - 27/10/2026 -->
@@ -6609,7 +6610,9 @@ async function _crmIniciarDiaConfirmar(){
     var r=await _crmBuscarCandidatos(slugs, seg, tipo);
     var chosen=r.cands.slice(0,qtd);
     if(!chosen.length){
-      var msg = !r.poolLen ? 'Não achei prospecção nessa(s) cidade(s).' : (tipo==='novo' ? 'Sem novos prospects livres aqui (todos já estão em algum CRM ou ativos).' : 'Sem leads cadastrados/não-ativos livres aqui. Tente "Novos leads".');
+      var msg = tipo==='cadastrado_nao_ativado'
+        ? (!r.poolLen ? 'Nenhuma empresa cadastrada-sem-pedido com endereço nessa(s) cidade(s).' : 'As cadastradas-sem-pedido daqui já estão todas em algum CRM.')
+        : (!r.poolLen ? 'Não achei prospecção nessa(s) cidade(s).' : 'Sem novos prospects livres aqui (já estão em algum CRM).');
       if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">'+msg+'</div>'; return;
     }
     var n=await _crmSalvarLeads(chosen, tipo, 'iniciar_dia');
@@ -6620,23 +6623,38 @@ async function _crmIniciarDiaConfirmar(){
 }
 /* Busca compartilhada: pool de prospeccao + proximidade de lojas ativas (Machine) + exclusão do que já está no CRM */
 async function _crmBuscarCandidatos(slugs, seg, tipo){
-  var pool=[];
-  for(var i=0;i<slugs.length;i++){
-    var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&cidade_slug=eq.'+encodeURIComponent(slugs[i])+'&select=id,nome,lat,lng,bairro,endereco,cnpj,telefone,segmento,status,cidade,cidade_slug,ativada_em');
-    if(Array.isArray(rows)) pool=pool.concat(rows);
-  }
+  // lojas ATIVAS (pedindo) p/ ranquear proximidade — Machine (mv_prospeccao_mapa)
   var ativas=[]; var limiteAtiva=Date.now()-60*86400000;
   for(var a=0;a<slugs.length;a++){
     var mv=await _campoFetchTodos(SUPA_URL+'/rest/v1/mv_prospeccao_mapa?cidade_slug=eq.'+encodeURIComponent(slugs[a])+'&qtd_pedidos=gt.0&lat=not.is.null&select=lat,lng,ultimo');
     if(Array.isArray(mv)) mv.forEach(function(m){ if(m.lat&&m.lng && (!m.ultimo || Date.parse(m.ultimo)>=limiteAtiva)) ativas.push(m); });
   }
+  // exclusão: qualquer lead já no CRM (de qualquer vendedor)
   var existentes=await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=loja_id,empresa_nome,cidade_slug');
   var exLoja={}, exNome={};
   (existentes||[]).forEach(function(l){ if(l.loja_id) exLoja[l.loja_id]=1; exNome[((l.empresa_nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]=1; });
+  function coordOk(la,ln){ return (typeof _campoCoordOk==='function') ? _campoCoordOk(la,ln) : (!!la && !!ln); }
+  // POOL conforme o tipo
+  var pool=[];
+  if(tipo==='cadastrado_nao_ativado'){
+    // "pontos pretos" do mapa: cadastraram na Machine e NUNCA pediram (fantasma), coord vem do cadastro
+    for(var i=0;i<slugs.length;i++){
+      var arr = (typeof _campoCarregarMachine==='function') ? await _campoCarregarMachine(slugs[i]) : [];
+      (arr||[]).forEach(function(e){
+        if(e._status!=='fantasma' || !coordOk(e.lat,e.lng)) return;
+        pool.push({ id:e.id||'', nome:(e._nomeCad||e.nome), lat:e.lat, lng:e.lng, bairro:e.bairro||'', endereco:e.endereco||'', cnpj:e.documento||'', telefone:e.telefone||'', segmento:e.segmento||'', status:'fantasma', cidade:e._cidade||'', cidade_slug:slugs[i] });
+      });
+    }
+  } else {
+    // novos: prospects da prospeccao (iFood etc.), status=prospect
+    for(var j=0;j<slugs.length;j++){
+      var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&status=eq.prospect&cidade_slug=eq.'+encodeURIComponent(slugs[j])+'&select=id,nome,lat,lng,bairro,endereco,cnpj,telefone,segmento,status,cidade,cidade_slug');
+      if(Array.isArray(rows)) pool=pool.concat(rows);
+    }
+  }
   function segOk(l){ if(!seg) return true; return (((l.segmento||'')+'').toLowerCase().indexOf(seg.toLowerCase())>=0); }
-  function livre(l){ return !exLoja[l.id] && !exNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]; }
-  function tipoOk(l){ var s=l.status||'prospect'; if(s==='ativa') return false; if(tipo==='novo') return s==='prospect'; return (s!=='prospect'); }
-  var cands=pool.filter(function(l){ return l.lat && l.lng && segOk(l) && livre(l) && tipoOk(l); });
+  function livre(l){ return (!l.id || !exLoja[l.id]) && !exNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]; }
+  var cands=pool.filter(function(l){ return coordOk(l.lat,l.lng) && segOk(l) && livre(l); });
   cands.forEach(function(l){ var best=Infinity; for(var k=0;k<ativas.length;k++){ var d=_crmDist(l.lat,l.lng,ativas[k].lat,ativas[k].lng); if(d<best) best=d; } l._d=best; });
   cands.sort(function(a,b){ return (a._d-b._d); });
   return { cands:cands, poolLen:pool.length };
