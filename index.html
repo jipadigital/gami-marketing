@@ -1,3 +1,4 @@
+<!-- v33.26 - FIX (BDR): o botao "Minhas prospeccoes" tinha SUMIDO pra BDR/vendedor (v33.24 escondia pq estavam travados). Agora o botao fica VISIVEL e ativo (travado, nao desliga); badge mostra o total do que ele ve (criadas por ele + leads dele no CRM). - 27/10/2026 -->
 <!-- v33.25 - PROSPECCAO: (1) busca da "Lista completa de empresas" agora acha por TELEFONE (alem de CNPJ/CPF) e por CIDADE/BAIRRO (alem do nome); placeholder atualizado. (2) card da loja mantem o HISTORICO da Machine depois de acompanhar: mostra "X pedidos na Machine · sem pedir ha Y dias" (via _campoMachineInfo, casa por nome+cidade no machineCache). Antes, ao acompanhar, sumiam os numeros. - 27/10/2026 -->
 <!-- v33.24 - PROSPECCAO isolamento por pessoa: BDR e vendedor agora SO veem as PROPRIAS prospeccoes (travado, sem opcao de ver a base) - criadas por eles OU que sao lead deles no CRM (dono_id). A base Machine fica escondida pra eles (_campoMachineFiltrada retorna [] no lock). initCampo carrega o CRM pra saber os leads deles e esconde o botao "Minhas". Admin (Carlos) ve tudo; gestor ve a cidade dele. _campoSoMinhasLock/_campoMinhasSet/_ehMinha. - 27/10/2026 -->
 <!-- v33.23 - PROSPECCAO "Minhas prospeccoes" (individual): (1) ao ligar o botao, limpa os filtros que escondiam (status/data/categoria/cidade) e mostra TODAS as suas (resolve o "badge 4 mas lista 2" que o BDR perguntou). (2) BDR e vendedor ABREM a aba ja em "Minhas prospeccoes" (veem so as deles; admin/gestor seguem na base pra garimpar). _campoToggleMinhas + default em initCampo por _crmPapel. - 27/10/2026 -->
@@ -7479,7 +7480,7 @@ async function initCampo(){
   }
   _campoMontarShell();
   var _bm=document.getElementById('campo-btn-minhas');
-  if(_bm){ if(_campoSoMinhasLock()) _bm.style.display='none'; else _bm.classList.toggle('active', !!_CAMPO.soMinhas); }
+  if(_bm){ _bm.classList.toggle('active', !!_CAMPO.soMinhas); if(_campoSoMinhasLock()) _bm.title='Você vê só as suas prospecções'; }
   _campoAplicar();
   _campoRenderMapa(); // mapa já aberto ao entrar na aba
 }
@@ -7624,6 +7625,7 @@ function _campoStatusChipsUI(){
 
 /* ⭐ Minhas prospecções: liga/desliga o modo que mostra SÓ as lojas que o usuário acompanha */
 function _campoToggleMinhas(){
+  if(_campoSoMinhasLock()){ _CAMPO.soMinhas=true; var _bb=document.getElementById('campo-btn-minhas'); if(_bb) _bb.classList.add('active'); _campoRepintar(); return; } // BDR/vendedor: travado nas suas, não desliga
   _CAMPO.soMinhas = !_CAMPO.soMinhas;
   var b = document.getElementById('campo-btn-minhas'); if(b) b.classList.toggle('active', !!_CAMPO.soMinhas);
   if(_CAMPO.soMinhas){
@@ -7741,10 +7743,12 @@ function _campoRepintar(){
   _campoRenderKpis(lojas, emp);
   _campoRenderLista(lojas, emp);
   if(_CAMPO.mapaAberto && _campoMapaInst){ try{ _campoDrawMarkers(lojas); }catch(e){} }
-  try{ // badge "⭐ Minhas prospecções": total das lojas que EU acompanho (todas as cidades)
+  try{ // badge "⭐ Minhas prospecções": no modo "minhas"/travado mostra o que está na lista; senão conta as criadas por mim
     var _mu2=getUsuarioLogado(); var _mid=(_mu2&&_mu2.id)||'';
-    var _nMin=_mid ? _CAMPO.lojas.filter(function(l){ return (l.criado_por||'')===_mid && _campoPodeVerLoja(l); }).length : 0;
-    var _bd=document.getElementById('campo-minhas-badge'); if(_bd){ _bd.textContent=_nMin; _bd.style.display=_nMin?'inline-block':'none'; }
+    var _nMin = (_CAMPO.soMinhas || _campoSoMinhasLock())
+      ? (lojas ? lojas.length : 0)
+      : (_mid ? _CAMPO.lojas.filter(function(l){ return (l.criado_por||'')===_mid && _campoPodeVerLoja(l); }).length : 0);
+    var _bd=document.getElementById('campo-minhas-badge'); if(_bd){ _bd.textContent=_nMin; _bd.style.display='inline-block'; }
   }catch(e){}
   var nb=document.getElementById('campo-numeros'); if(nb && nb.style.display==='block'){ try{ _campoRenderNumeros(); }catch(e){} }
   try{ _campoRotaAtualizarBadge(); }catch(e){}
