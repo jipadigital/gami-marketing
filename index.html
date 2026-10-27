@@ -1,3 +1,4 @@
+<!-- v33.17 - FIX "Iniciar o dia": (1) a query pedia colunas inexistentes em prospeccao_lojas (categoria/status_empresa/qtd_pedidos) -> PostgREST dava erro 42703 e o pool vinha VAZIO = "nenhum lead" pra todos (inclusive Harrison). Corrigido o SELECT pras colunas reais. (2) As lojas ATIVAS (pra ranquear proximidade) nao estao em prospeccao_lojas (la e tudo 'prospect', importado do iFood) e sim na Machine -> agora puxa de mv_prospeccao_mapa (qtd_pedidos>0, ultimo<=60d). (3) Seletor de cidade usa _campoListaCidades (nomes certos + funciona pra admin/gestor que ve varias pracas; antes admin via lista vazia). tipoOk: novo=prospect / cadastrado_nao_ativado=ja trabalhado e nao ativo. - 27/10/2026 -->
 <!-- v33.16 - CRM/Prospeccao (3 itens): (1) MAPA: tirado o status "Ativada" amarelo (nao usado) e o amarelo virou "Sem sucesso" (lead trabalhado que nao fechou, pra resgatar); quando um lead e marcado PERDIDO no CRM a loja vira status=sem_sucesso no mapa (_crmPerder faz patch em prospeccao_lojas). Atualizado _CAMPO_STATUS, legenda, chips de filtro, contadores, dropdown, analytics, CSV. (2) Lojas ATIVAS (via Machine) agora com verde mais forte (#16A34A) pra destacar. (3) ROTA->CRM: ao adicionar loja/empresa na rota (gestor/vendedor) ja cria o lead no CRM em silencio (_crmAutoPegar, origem='rota', sem duplicar). - 26/10/2026 -->
 <!-- v33.15 - CRM: botao "Iniciar o dia" na aba Hoje. Vendedor escolhe quantidade, tipo (Novos / Cadastrados e nao ativos), segmento e ate 2 cidades (ou todas as praças dele). O sistema puxa de prospeccao_lojas, EXCLUI qualquer loja ja no CRM de qualquer vendedor, e entrega as mais PROXIMAS de lojas ativas (haversine ate a loja status=ativa mais perto), atribui ao vendedor (dono_id), gera cadencia e loga. Funcoes _crmIniciarDiaModal/_crmIniciarDiaConfirmar/_crmIdiaLimite/_crmDist. - 26/10/2026 -->
 <!-- v33.14 - Central Gami (Marketing): layout estilo "Jipa Central" - barra compacta no topo (badges + SISTEMA ONLINE + relogio ao vivo), reator menor e contido (altura limitada) com a LOGO da Gami no centro (img/icon-symbol-transparent.png) no lugar do emoji, e paineis laterais: Instagram (seguidores), Campanhas ativas (le gami_campanhas do localStorage), Site & Blog (posts WP), Comercial (leads+prospects). Removido o grid de 6 KPIs (migrou pros paineis). Funcoes mvRenderCampanhas/mvClock. - 26/10/2026 -->
@@ -6552,7 +6553,7 @@ function _crmDist(aLat,aLng,bLat,bLng){
   return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));
 }
 function _crmIniciarDiaModal(){
-  var cids=(typeof _campoCidadesUser==='function')?(_campoCidadesUser()||[]):[];
+  var cids=(typeof _campoListaCidades==='function')?(_campoListaCidades()||[]):[];
   var segs=(_CRM.config&&_CRM.config.segmentos)||[];
   var inp='padding:9px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface2,#f7f9fc);color:var(--text);font-size:13px;font-family:inherit;width:100%';
   var inner=''
@@ -6592,35 +6593,45 @@ async function _crmIniciarDiaConfirmar(){
   var tipo=(document.querySelector('input[name=idia-tipo]:checked')||{}).value||'novo';
   var seg=((document.getElementById('idia-seg')||{}).value||'').trim();
   var todas=(document.getElementById('idia-cid-todas')||{}).checked;
-  var nomes = todas ? ((typeof _campoCidadesUser==='function')?_campoCidadesUser():[])
+  var nomes = todas ? ((typeof _campoListaCidades==='function')?_campoListaCidades():[])
                     : Array.prototype.slice.call(document.querySelectorAll('.idia-cid:checked')).map(function(c){ return c.value; });
   var res=document.getElementById('idia-res');
   if(!nomes || !nomes.length){ if(res) res.innerHTML='<div style="padding:8px;text-align:center;color:#E24B4A;font-size:12px">Escolha ao menos 1 cidade.</div>'; return; }
   var slugs=nomes.map(function(n){ return _campoSlug(n); });
   if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:var(--text3);font-size:12px">⏳ Buscando os melhores leads…</div>';
   try{
+    // 1) POOL de prospecção (colunas reais de prospeccao_lojas)
     var pool=[];
     for(var i=0;i<slugs.length;i++){
-      var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&cidade_slug=eq.'+encodeURIComponent(slugs[i])+'&select=id,nome,lat,lng,bairro,endereco,cnpj,telefone,segmento,categoria,status,status_empresa,cidade_slug,qtd_pedidos');
+      var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&cidade_slug=eq.'+encodeURIComponent(slugs[i])+'&select=id,nome,lat,lng,bairro,endereco,cnpj,telefone,segmento,status,cidade_slug,ativada_em');
       if(Array.isArray(rows)) pool=pool.concat(rows);
     }
-    // exclusão: qualquer lead já no CRM (de qualquer vendedor)
+    // 2) LOJAS ATIVAS (pedindo) vêm da Machine: mv_prospeccao_mapa com pedidos recentes
+    var ativas=[]; var limiteAtiva=Date.now()-60*86400000;
+    for(var a=0;a<slugs.length;a++){
+      var mv=await _campoFetchTodos(SUPA_URL+'/rest/v1/mv_prospeccao_mapa?cidade_slug=eq.'+encodeURIComponent(slugs[a])+'&qtd_pedidos=gt.0&lat=not.is.null&select=lat,lng,ultimo');
+      if(Array.isArray(mv)) mv.forEach(function(m){ if(m.lat&&m.lng && (!m.ultimo || Date.parse(m.ultimo)>=limiteAtiva)) ativas.push(m); });
+    }
+    // 3) exclusão: qualquer lead já no CRM (de qualquer vendedor)
     var existentes=await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=loja_id,empresa_nome,cidade_slug');
     var exLoja={}, exNome={};
     (existentes||[]).forEach(function(l){ if(l.loja_id) exLoja[l.loja_id]=1; exNome[((l.empresa_nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]=1; });
-    var ativas=pool.filter(function(l){ return l.status==='ativa' && l.lat && l.lng; });
-    function segOk(l){ if(!seg) return true; var s=((l.segmento||l.categoria||'')+'').toLowerCase(); return s.indexOf(seg.toLowerCase())>=0; }
+    function segOk(l){ if(!seg) return true; return (((l.segmento||'')+'').toLowerCase().indexOf(seg.toLowerCase())>=0); }
     function livre(l){ return !exLoja[l.id] && !exNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]; }
     function tipoOk(l){
-      if(l.status==='ativa') return false; // nunca entrega loja ativa
-      if(tipo==='novo') return (!l.status || l.status==='prospect');
-      return (!!l.status_empresa || !!l.cnpj) && l.status!=='ativa'; // cadastrada e não ativa
+      var s=l.status||'prospect';
+      if(s==='ativa') return false; // nunca entrega loja já ativa
+      if(tipo==='novo') return s==='prospect';          // nunca ativados
+      return (s!=='prospect');                           // já trabalhados e não ativos (perdida/sem sucesso/cadastrados)
     }
     var cands=pool.filter(function(l){ return l.lat && l.lng && segOk(l) && livre(l) && tipoOk(l); });
     cands.forEach(function(l){ var best=Infinity; for(var k=0;k<ativas.length;k++){ var d=_crmDist(l.lat,l.lng,ativas[k].lat,ativas[k].lng); if(d<best) best=d; } l._d=best; });
-    cands.sort(function(a,b){ return (a._d-b._d) || ((parseInt(b.qtd_pedidos)||0)-(parseInt(a.qtd_pedidos)||0)); });
+    cands.sort(function(a,b){ return (a._d-b._d); });
     var chosen=cands.slice(0,qtd);
-    if(!chosen.length){ if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">Nenhum lead novo com esse critério. Tente outra cidade/segmento ou o outro tipo.</div>'; return; }
+    if(!chosen.length){
+      var msg = !pool.length ? 'Não achei prospecção nessa(s) cidade(s).' : (tipo==='novo' ? 'Sem novos prospects livres aqui (todos já estão em algum CRM ou ativos).' : 'Sem leads cadastrados/não-ativos livres aqui. Tente "Novos leads".');
+      if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">'+msg+'</div>'; return;
+    }
     var agora=new Date().toISOString();
     var novos=chosen.map(function(l){
       return { id:_crmUID(), loja_id:l.id||null, empresa_nome:l.nome||'', cidade_slug:l.cidade_slug||'', bairro:l.bairro||'', endereco:l.endereco||'',
