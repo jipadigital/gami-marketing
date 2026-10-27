@@ -1,3 +1,4 @@
+<!-- v33.24 - PROSPECCAO isolamento por pessoa: BDR e vendedor agora SO veem as PROPRIAS prospeccoes (travado, sem opcao de ver a base) - criadas por eles OU que sao lead deles no CRM (dono_id). A base Machine fica escondida pra eles (_campoMachineFiltrada retorna [] no lock). initCampo carrega o CRM pra saber os leads deles e esconde o botao "Minhas". Admin (Carlos) ve tudo; gestor ve a cidade dele. _campoSoMinhasLock/_campoMinhasSet/_ehMinha. - 27/10/2026 -->
 <!-- v33.23 - PROSPECCAO "Minhas prospeccoes" (individual): (1) ao ligar o botao, limpa os filtros que escondiam (status/data/categoria/cidade) e mostra TODAS as suas (resolve o "badge 4 mas lista 2" que o BDR perguntou). (2) BDR e vendedor ABREM a aba ja em "Minhas prospeccoes" (veem so as deles; admin/gestor seguem na base pra garimpar). _campoToggleMinhas + default em initCampo por _crmPapel. - 27/10/2026 -->
 <!-- v33.22 - SEGURANCA (blindar escrita): push_subscriptions e push_agendados deixaram de ser gravados DIRETO com a chave publica e passam pela Netlify function supabase-write (service key, exige sessao). supabase-write ganhou suporte a on_conflict e resolution (ignore-duplicates) no upsert; push_* adicionadas em TABELAS_PERMITIDAS e TABELAS_COLAB. Depois disso pode ligar RLS nessas tabelas (SQL docs). Preparo pra blindar pessoas/configuracoes/posts_agendados na sequencia. - 27/10/2026 -->
 <!-- v33.21 - CRM (feedbacks do Carlos): (1) ROTA->CRM: ao remover parada/apagar rota, o lead SO sai do CRM se foi criado pela rota E ainda esta em "Lead na rota" (etapa 1, nao visitado). Se ja visitou (etapa>=2) PERMANECE no funil (preserva historico). _crmRotaSaiu ligado em _campoRotaRemove e _campoRotaApagar. (2) VISAO DE GESTAO (admin/gestor): barra de filtro por cidade e por pessoa no pipeline e no painel (_crmLeadsView/_crmFiltroBarHTML/_crmSetFiltro), pra analisar metricas de uma praca/individuo. Depende da coluna crm_leads.origem (SQL docs/seguranca-rls-crm-prospeccao.sql, que tbm blindou RLS). - 27/10/2026 -->
@@ -7469,13 +7470,15 @@ async function initCampo(){
     await _campoFetch();
     try { await _campoFetchRota(); } catch(e){}
   }
-  // BDR/vendedor abrem já vendo SÓ as suas prospecções (trabalho individual); admin/gestor veem a base
-  if(!_CAMPO._minhasDefault){
-    _CAMPO._minhasDefault = true;
-    try{ var _pp=(typeof _crmPapel==='function')?_crmPapel():null; if(_pp==='bdr'||_pp==='vendedor') _CAMPO.soMinhas=true; }catch(e){}
+  // BDR/vendedor são ISOLADOS: só veem as suas prospecções. Carrega o CRM (pra saber quais lojas
+  // são leads deles) e trava a visão (sem opção de ver a base). Admin/gestor seguem normal.
+  if(_campoSoMinhasLock()){
+    _CAMPO.soMinhas = true;
+    if(typeof _crmFetch==='function' && !(typeof _CRM!=='undefined' && _CRM.carregado)){ try{ await _crmFetch(); }catch(e){} }
   }
   _campoMontarShell();
-  var _bm=document.getElementById('campo-btn-minhas'); if(_bm) _bm.classList.toggle('active', !!_CAMPO.soMinhas); // reflete o estado no botão
+  var _bm=document.getElementById('campo-btn-minhas');
+  if(_bm){ if(_campoSoMinhasLock()) _bm.style.display='none'; else _bm.classList.toggle('active', !!_CAMPO.soMinhas); }
   _campoAplicar();
   _campoRenderMapa(); // mapa já aberto ao entrar na aba
 }
@@ -7670,6 +7673,17 @@ function _campoPreencherCategorias(){
   sel.value = (cats.indexOf(cur)>=0) ? cur : '';
 }
 
+/* BDR e vendedor são ISOLADOS: só veem as próprias prospecções. Admin/gestor não. */
+function _campoSoMinhasLock(){ try{ var p=(typeof _crmPapel==='function')?_crmPapel():null; return p==='bdr'||p==='vendedor'; }catch(e){ return false; } }
+/* conjunto das lojas "minhas": criadas por mim + as que são meu lead no CRM (dono_id = eu) */
+function _campoMinhasSet(){
+  var mid=''; try{ var u=getUsuarioLogado(); mid=(u&&u.id)||''; }catch(e){}
+  var byLoja={}, byNome={};
+  try{ var leads=(typeof _CRM!=='undefined'&&_CRM.leads)?_CRM.leads:[];
+    leads.forEach(function(l){ if((l.dono_id||'')!==mid) return; if(l.loja_id) byLoja[l.loja_id]=1; byNome[((l.empresa_nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]=1; });
+  }catch(e){}
+  return { byLoja:byLoja, byNome:byNome };
+}
 function _campoLojasFiltradas(){
   var fCidade = _campoCidadeSel();
   var selSt   = _CAMPO.statusSel || [];
@@ -7679,6 +7693,10 @@ function _campoLojasFiltradas(){
   var fAte    = (document.getElementById('campo-f-ate')||{}).value || '';
   _CAMPO.filtro = { cidade:fCidade, status:selSt, categoria:fCat, busca:fBusca, de:fDe, ate:fAte };
   var meuId = ''; try{ var _mu=getUsuarioLogado(); meuId=(_mu&&_mu.id)||''; }catch(e){}
+  var _lock=_campoSoMinhasLock();                 // BDR/vendedor travados nas suas
+  var _mine=_lock || _CAMPO.soMinhas;
+  var _mset=_mine ? _campoMinhasSet() : null;
+  function _ehMinha(l){ if((l.criado_por||'')===meuId) return true; if(!_mset) return false; if(_mset.byLoja[l.id]) return true; return !!_mset.byNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||_campoSlug(l.cidade))]; }
 
   // Lojas com visita no período (se filtro de data ativo)
   var lojasComVisitaNoPeriodo = null;
@@ -7694,7 +7712,7 @@ function _campoLojasFiltradas(){
 
   return _CAMPO.lojas.filter(function(l){
     if(!_campoPodeVerLoja(l)) return false;
-    if(_CAMPO.soMinhas){ if(!meuId || (l.criado_por||'') !== meuId) return false; } // só as que EU acompanho
+    if(_mine){ if(!_ehMinha(l)) return false; } // BDR/vendedor (ou modo "minhas"): só as minhas (criei eu ou é meu lead no CRM)
     if(fCidade){ var slug = l.cidade_slug || _campoSlug(l.cidade); if(slug !== fCidade) return false; }
     if(fCat && (l.segmento||'').trim() !== fCat) return false; // filtro por categoria (segmento)
     if(selSt.length && selSt.indexOf(l.status||'prospect') < 0) return false; // status marcados (lojas: prospect/ativada/ativa/perdida)
@@ -8890,6 +8908,7 @@ function _campoGarantirMachine(){
 }
 // empresas da Machine já em cache pro filtro atual (tira as que viraram loja de prospecção)
 function _campoMachineFiltrada(){
+  if(_campoSoMinhasLock()) return []; // BDR/vendedor não veem a base Machine, só as suas prospecções
   var slug=_campoCidadeSel();
   var selSt=_CAMPO.statusSel||[];
   var fCat=(document.getElementById('campo-f-categoria')||{}).value||'';
