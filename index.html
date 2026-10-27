@@ -1,3 +1,4 @@
+<!-- v33.18 - CRM 3 papeis: "Iniciar o dia" agora cria o lead no funil do PAPEL (antes era sempre field): BDR=inside (telefone/WhatsApp, home office, cadencia de contato), vendedor/gestor=field (visita/rota). via _crmPipelineUser. - 27/10/2026 -->
 <!-- v33.17 - FIX "Iniciar o dia": (1) a query pedia colunas inexistentes em prospeccao_lojas (categoria/status_empresa/qtd_pedidos) -> PostgREST dava erro 42703 e o pool vinha VAZIO = "nenhum lead" pra todos (inclusive Harrison). Corrigido o SELECT pras colunas reais. (2) As lojas ATIVAS (pra ranquear proximidade) nao estao em prospeccao_lojas (la e tudo 'prospect', importado do iFood) e sim na Machine -> agora puxa de mv_prospeccao_mapa (qtd_pedidos>0, ultimo<=60d). (3) Seletor de cidade usa _campoListaCidades (nomes certos + funciona pra admin/gestor que ve varias pracas; antes admin via lista vazia). tipoOk: novo=prospect / cadastrado_nao_ativado=ja trabalhado e nao ativo. - 27/10/2026 -->
 <!-- v33.16 - CRM/Prospeccao (3 itens): (1) MAPA: tirado o status "Ativada" amarelo (nao usado) e o amarelo virou "Sem sucesso" (lead trabalhado que nao fechou, pra resgatar); quando um lead e marcado PERDIDO no CRM a loja vira status=sem_sucesso no mapa (_crmPerder faz patch em prospeccao_lojas). Atualizado _CAMPO_STATUS, legenda, chips de filtro, contadores, dropdown, analytics, CSV. (2) Lojas ATIVAS (via Machine) agora com verde mais forte (#16A34A) pra destacar. (3) ROTA->CRM: ao adicionar loja/empresa na rota (gestor/vendedor) ja cria o lead no CRM em silencio (_crmAutoPegar, origem='rota', sem duplicar). - 26/10/2026 -->
 <!-- v33.15 - CRM: botao "Iniciar o dia" na aba Hoje. Vendedor escolhe quantidade, tipo (Novos / Cadastrados e nao ativos), segmento e ate 2 cidades (ou todas as praças dele). O sistema puxa de prospeccao_lojas, EXCLUI qualquer loja ja no CRM de qualquer vendedor, e entrega as mais PROXIMAS de lojas ativas (haversine ate a loja status=ativa mais perto), atribui ao vendedor (dono_id), gera cadencia e loga. Funcoes _crmIniciarDiaModal/_crmIniciarDiaConfirmar/_crmIdiaLimite/_crmDist. - 26/10/2026 -->
@@ -6633,10 +6634,11 @@ async function _crmIniciarDiaConfirmar(){
       if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">'+msg+'</div>'; return;
     }
     var agora=new Date().toISOString();
+    var pipe=_crmPipelineUser(u); if(pipe==='ambos') pipe='field'; // BDR=inside (telefone/WhatsApp), vendedor/gestor=field (visita/rota)
     var novos=chosen.map(function(l){
       return { id:_crmUID(), loja_id:l.id||null, empresa_nome:l.nome||'', cidade_slug:l.cidade_slug||'', bairro:l.bairro||'', endereco:l.endereco||'',
         lat:l.lat||null, lng:l.lng||null, cnpj:(l.cnpj||'').replace(/\D/g,'')||null, telefone:l.telefone||'', segmento:l.segmento||l.categoria||'',
-        tipo:tipo, pipeline:'field', etapa:1, status:'ativo', dono_id:u.id, posse_desde:agora, origem:'iniciar_dia',
+        tipo:tipo, pipeline:pipe, etapa:1, status:'ativo', dono_id:u.id, posse_desde:agora, origem:'iniciar_dia',
         ultima_atividade_em:agora, criado_por:u.id, criado_em:agora, atualizado_em:agora };
     });
     await _crmEscrever('crm_leads','upsert',{ dados:novos });
