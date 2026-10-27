@@ -1,31 +1,33 @@
 -- ============================================================
--- SEGURANÇA (parte 2): travar escrita de push + posts agendados
--- Versão em comandos SIMPLES (sem bloco DO), pra qualquer erro aparecer
--- claro e não derrubar o resto. RODE TUDO. Se alguma linha der ERRO
--- (vermelho), me mande o texto do erro que eu ajusto.
+-- SEGURANÇA (parte 2 - FINAL): remover as políticas ANTIGAS que
+-- deixavam qualquer um ESCREVER em push/posts.
 --
--- push_subscriptions / push_agendados: o app já grava pelo servidor (v33.22).
--- posts_agendados: já é gravado só por functions (service key).
--- Então travar aqui NÃO quebra nada. Leitura (SELECT) segue liberada.
--- REVERSÍVEL: ALTER TABLE x DISABLE ROW LEVEL SECURITY;
+-- Diagnóstico mostrou: RLS já está LIGADO nas 3, mas existem políticas
+-- permissivas de ESCRITA (ALL / INSERT / UPDATE / DELETE pro public).
+-- Basta DROPAR essas e manter só a de leitura (SELECT).
+--
+-- Depois disto: a chave pública só LÊ; escrita só pelo servidor (service key).
+-- Nada quebra (o app já grava pelo servidor desde a v33.22).
 -- 27/10/2026
 -- ============================================================
 
--- push_subscriptions
-ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS push_subscriptions_sel ON push_subscriptions;
-CREATE POLICY push_subscriptions_sel ON push_subscriptions FOR SELECT TO anon, authenticated USING (true);
+-- push_subscriptions: tira a política "ALL" permissiva
+DROP POLICY IF EXISTS "p_push_subs_all" ON push_subscriptions;
 
--- push_agendados
-ALTER TABLE push_agendados ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS push_agendados_sel ON push_agendados;
-CREATE POLICY push_agendados_sel ON push_agendados FOR SELECT TO anon, authenticated USING (true);
+-- push_agendados: tira a política "ALL" permissiva
+DROP POLICY IF EXISTS "p_push_ag_all" ON push_agendados;
 
--- posts_agendados
-ALTER TABLE posts_agendados ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS posts_agendados_sel ON posts_agendados;
-CREATE POLICY posts_agendados_sel ON posts_agendados FOR SELECT TO anon, authenticated USING (true);
+-- posts_agendados: tira as permissivas de escrita (mantém leitura)
+DROP POLICY IF EXISTS "Permitir todos escreverem posts_agendados" ON posts_agendados;
+DROP POLICY IF EXISTS "Permitir todos atualizarem posts_agendados" ON posts_agendados;
+DROP POLICY IF EXISTS "Permitir todos apagarem posts_agendados" ON posts_agendados;
 
--- Confere depois (deve listar as 3 com rowsecurity = true):
--- SELECT relname, relrowsecurity FROM pg_class
---   WHERE relname IN ('push_subscriptions','push_agendados','posts_agendados');
+-- (limpeza opcional) remove as políticas de leitura DUPLICADAS, deixa só *_sel
+DROP POLICY IF EXISTS "push_subscriptions_anon_select" ON push_subscriptions;
+DROP POLICY IF EXISTS "push_agendados_anon_select" ON push_agendados;
+DROP POLICY IF EXISTS "posts_agendados_anon_select" ON posts_agendados;
+DROP POLICY IF EXISTS "Permitir todos lerem posts_agendados" ON posts_agendados;
+
+-- Confere: deve sobrar só as políticas *_sel (SELECT) em cada tabela.
+-- SELECT tablename, policyname, cmd FROM pg_policies
+--   WHERE tablename IN ('push_subscriptions','push_agendados','posts_agendados') ORDER BY 1,3;
