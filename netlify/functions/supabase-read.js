@@ -35,6 +35,9 @@ const RPCS_LEITURA = [
   'empresas_periodo_comparado','empresas_raiox_cidade','indicadores_cidade','mapa_empresas_cidade',
   'metricas_mensais_cidade','metricas_semanais_cidade','motoboys_atividade_real','motoboys_periodo_comparado',
   'prospeccao_sinal_machine','ranking_cidades_mes',
+  // estoque (estoque_vendas devolve nome/telefone de CLIENTE)
+  'estoque_saldo','estoque_vendas','estoque_dashboard','estoque_vitrine',
+  'estoque_distribuicao_cidades','estoque_vendas_agrupadas',
   // reservados pra lotes seguintes (PII/ponto)
   'ponto_dia_editor','tarefas_minhas'
 ];
