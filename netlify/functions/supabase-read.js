@@ -27,10 +27,16 @@ const TABELAS_LEITURA = [
   'pessoas','ponto_registros','ponto_log_admin','ponto_config'
 ];
 
-// RPCs sensíveis que o proxy aceita chamar (lista branca).
+// RPCs sensíveis (leitura de dado comercial/Machine/prospecção) que o proxy aceita chamar.
 const RPCS_LEITURA = [
-  'mapa_empresas_cidade','clientes_onboarding','ponto_dia_editor',
-  'tarefas_minhas','crm_leads_visiveis','prospeccao_mapa_usuario'
+  'acoes_gestor_semana','calendario_demanda_rede','clientes_onboarding','contar_corridas_por_cidade',
+  'empresas_ativas_periodos','empresas_atividade_real','empresas_churn_inteligente','empresas_fantasmas',
+  'empresas_pararam_30d','empresas_pararam_60d','empresas_pararam_90d','empresas_pararam_intervalo',
+  'empresas_periodo_comparado','empresas_raiox_cidade','indicadores_cidade','mapa_empresas_cidade',
+  'metricas_mensais_cidade','metricas_semanais_cidade','motoboys_atividade_real','motoboys_periodo_comparado',
+  'prospeccao_sinal_machine','ranking_cidades_mes',
+  // reservados pra lotes seguintes (PII/ponto)
+  'ponto_dia_editor','tarefas_minhas'
 ];
 
 const ORIGENS_PERMITIDAS = [
@@ -78,9 +84,17 @@ async function validarSessao(userId, token){
 // ou que não seja a shape esperada. Mantém o proxy restrito à tabela pedida.
 function querySegura(q){
   if(typeof q !== 'string') return false;
-  if(q.length > 2000) return false;
-  // parênteses no select = embed de recurso relacionado → recusa
-  if(/select=[^&]*\(/i.test(q)) return false;
+  if(q.length > 4000) return false;
+  // No select: "palavra(" que NÃO seja função de agregação = embed de recurso
+  // relacionado (ex.: machine_corridas(*)) → recusa. count()/sum()/avg()/min()/max() ok.
+  var m = /(?:^|&)select=([^&]*)/i.exec(q);
+  if(m){
+    var sel = '';
+    try { sel = decodeURIComponent(m[1]); } catch(e){ sel = m[1]; }
+    var AGG = { count:1, sum:1, avg:1, min:1, max:1 };
+    var re = /([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, mm;
+    while((mm = re.exec(sel))){ if(!AGG[mm[1].toLowerCase()]) return false; }
+  }
   return true;
 }
 
@@ -111,14 +125,16 @@ exports.handler = async function(event){
       if(RPCS_LEITURA.indexOf(body.rpc) < 0){
         return { statusCode:400, headers:cors, body:JSON.stringify({error:'RPC não permitida: '+body.rpc}) };
       }
+      const rh = Object.assign({}, svc, { 'Content-Type':'application/json' });
+      // paginação por Range (quando o cliente pagina um RPC que devolve setof grande)
+      if(body.range){ rh['Range-Unit'] = 'items'; rh['Range'] = String(body.range); }
       const r = await fetch(SUPA_URL+'/rest/v1/rpc/'+body.rpc, {
-        method:'POST',
-        headers: Object.assign({}, svc, { 'Content-Type':'application/json' }),
-        body: JSON.stringify(body.args || {})
+        method:'POST', headers: rh, body: JSON.stringify(body.args || {})
       });
+      const cr = r.headers.get('content-range') || '';
       const txt = await r.text();
       if(!r.ok) return { statusCode:r.status, headers:cors, body:JSON.stringify({error:'Supabase HTTP '+r.status, detalhe:txt.slice(0,300)}) };
-      return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: txt ? JSON.parse(txt) : [] }) };
+      return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: txt ? JSON.parse(txt) : [], content_range: cr }) };
     }
 
     // ---- SELECT ----
@@ -131,10 +147,13 @@ exports.handler = async function(event){
       return { statusCode:400, headers:cors, body:JSON.stringify({error:'Query inválida'}) };
     }
     url = SUPA_URL+'/rest/v1/'+tabela+'?'+q;
-    const r = await fetch(url, { headers: svc });
+    // count=exact quando o cliente pede (sondas que leem content-range pra contar)
+    const shead = body.count ? Object.assign({}, svc, { 'Prefer':'count=exact' }) : svc;
+    const r = await fetch(url, { headers: shead });
     const txt = await r.text();
+    const contentRange = r.headers.get('content-range') || '';
     if(!r.ok) return { statusCode:r.status, headers:cors, body:JSON.stringify({error:'Supabase HTTP '+r.status, detalhe:txt.slice(0,300)}) };
-    return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: txt ? JSON.parse(txt) : [] }) };
+    return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: txt ? JSON.parse(txt) : [], content_range: contentRange }) };
 
   } catch(err){
     console.error('[supabase-read]', err);

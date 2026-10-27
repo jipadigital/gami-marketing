@@ -1,3 +1,4 @@
+<!-- v33.35 - SEGURANCA etapa 3 R2 (Machine + RPCs): interceptor global de fetch reroteia pro proxy supabase-read todo GET a tabela sensivel (agora + machine_corridas/empresas/condutores/sync_log) E todo POST a RPC sensivel (22 RPCs comerciais/Machine: empresas_*, motoboys_*, metricas_*, mapa_empresas_cidade, clientes_onboarding, indicadores_cidade, contar_corridas, calendario_demanda_rede, acoes_gestor_semana, ranking_cidades_mes, prospeccao_sinal_machine). Preserva signal, replica content-range (sondas count), pagina RPC por Range. proxy: querySegura passa agregacao mas barra embed; count e range no SELECT/RPC. NADA travado ainda. Depois de testar dashboards de cidade/mapa/telefones/onboarding/churn/raiox/motoboys, rodar docs/seguranca-rls-leitura-r2.sql (REVOKE machine_* do anon + REVOKE EXECUTE das 22 RPCs). - 27/10/2026 -->
 <!-- v33.34 - SEGURANCA etapa 3 R0+R1 (fechar LEITURA sensivel): nova function supabase-read.js (proxy de SELECT+RPC com service key, atras de sessao, lista branca TABELAS_LEITURA/RPCS_LEITURA). Cliente ganhou supaLer()/supaLerRPC(). _campoFetchTodos e supaSelect agora roteiam tabelas do conjunto _SUPA_SENSIVEL pelo proxy (R1: crm_*, prospeccao_*, mv_prospeccao_mapa, mv_empresas_raiox) paginando por limit/offset. crm_atividades (timeline) convertida. NADA travado ainda: a chave publica ainda le (policies _sel seguem); so a transporte mudou. Depois de testar CRM + mapa de prospeccao, dropo as policies _sel dessas tabelas (anon para de ler, so o proxy le). - 27/10/2026 -->
 <!-- v33.33 - SEGURANCA (configuracoes, ultima da etapa 2): o Cloud Mirror (_gamiCloudFlush) deixa de gravar direto com a chave publica e passa pelo supabase-write (service key, on_conflict=chave). Guarda: nao tenta flush sem sessao valida (evita 401/logout em background); _syncEscrever ganhou opt {silencioso} pra nao forcar logout em chamada de fundo. configuracoes add em TABELAS_COLAB (todo logado espelha; blacklist filtra o sensivel). syncConfig ja roteava via supaUpsert. Depois de testar (editar algo que espelha, ex. reconhecimento/direcao/spotlight, e confirmar que recarrega em outro aparelho) rodar docs/seguranca-rls-configuracoes.sql. - 27/10/2026 -->
 <!-- v33.32 - SEGURANCA lote B (escrita pelo servidor): estoque_itens (cadastrar/editar/desativar), estoque_mov (editar venda) e desafios_admin (criar/editar/encerrar) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). As 3 tabelas add em PERMITIDAS e COLAB. Entrada/venda de estoque seguem por RPC (estoque_registrar_entrada/venda) - o RLS lock preserva essas RPCs como SECURITY DEFINER. Depois de testar (cadastrar/editar brinde, registrar entrada+venda, criar/encerrar desafio) rodar o RLS lock lote B. - 27/10/2026 -->
@@ -8817,7 +8818,18 @@ function _campoStatusMachine(e){
 var _SUPA_SENSIVEL = {
   crm_leads:1, crm_atividades:1, crm_tarefas:1, crm_checklist:1, crm_metas:1, crm_scripts:1, crm_config:1,
   prospeccao_lojas:1, prospeccao_visitas:1, prospeccao_rotas:1,
-  mv_prospeccao_mapa:1, mv_empresas_raiox:1
+  mv_prospeccao_mapa:1, mv_empresas_raiox:1,
+  // R2 (Machine): corridas, empresas (tel cliente), condutores (tel motorista, PII)
+  machine_corridas:1, machine_empresas:1, machine_condutores:1, machine_sync_log:1
+};
+// R2b: RPCs que devolvem dado comercial/Machine/prospecção (vão pelo proxy).
+var _SUPA_SENSIVEL_RPC = {
+  acoes_gestor_semana:1, calendario_demanda_rede:1, clientes_onboarding:1, contar_corridas_por_cidade:1,
+  empresas_ativas_periodos:1, empresas_atividade_real:1, empresas_churn_inteligente:1, empresas_fantasmas:1,
+  empresas_pararam_30d:1, empresas_pararam_60d:1, empresas_pararam_90d:1, empresas_pararam_intervalo:1,
+  empresas_periodo_comparado:1, empresas_raiox_cidade:1, indicadores_cidade:1, mapa_empresas_cidade:1,
+  metricas_mensais_cidade:1, metricas_semanais_cidade:1, motoboys_atividade_real:1, motoboys_periodo_comparado:1,
+  prospeccao_sinal_machine:1, ranking_cidades_mes:1
 };
 // Quebra SUPA_URL+'/rest/v1/TABELA?QUERY' em {tabela, query}. Null se não casar.
 function _supaParseUrl(url){
@@ -8825,6 +8837,81 @@ function _supaParseUrl(url){
   if(!m) return null;
   return { tabela: decodeURIComponent(m[1]), query: m[2] || 'select=*' };
 }
+/* 🔒 v33.35 (etapa 3): interceptor de fetch. Todo GET direto a uma tabela do
+   conjunto _SUPA_SENSIVEL (SUPA_URL/rest/v1/<tabela>) é reroteado, transparente,
+   pro proxy supabase-read. Devolve um Response cujo .json() é o array (igual
+   PostgREST) e replica o header content-range (pras sondas de count=exact).
+   Preserva o signal (aborto). Cobre os reads diretos sem reescrever cada site. */
+(function(){
+  if(typeof window === 'undefined' || !window.fetch) return;
+  var _origFetch = window.fetch.bind(window);
+  var _REST = SUPA_URL + '/rest/v1/';
+  window.fetch = function(input, init){
+    try {
+      var url = (typeof input === 'string') ? input : (input && input.url);
+      var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      // ---- RPC sensível (POST /rest/v1/rpc/NOME) → proxy ----
+      if(url && method === 'POST' && url.indexOf(_REST+'rpc/') === 0){
+        var rpcNome = url.slice((_REST+'rpc/').length).split('?')[0];
+        if(_SUPA_SENSIVEL_RPC[rpcNome]){
+          var rpcArgs = {};
+          try { var b = (init && init.body) || (input && input.body); if(typeof b === 'string') rpcArgs = JSON.parse(b || '{}'); }
+          catch(e){ rpcArgs = {}; }
+          var rng = '';
+          try { var hr = (init && init.headers) || (input && input.headers) || {}; rng = (hr.get ? hr.get('Range') : (hr.Range || hr.range)) || ''; } catch(e){}
+          var ur = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+          var uid = ur && ur.id ? ur.id : 'desconhecido';
+          var tk = ''; try { tk = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+          return _origFetch('/.netlify/functions/supabase-read', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', 'X-Gami-User':uid, 'X-Gami-Token':tk },
+            body: JSON.stringify({ rpc: rpcNome, args: rpcArgs, range: rng || undefined }),
+            signal: (init && init.signal) || undefined
+          }).then(function(r){
+            return r.text().then(function(txt){
+              var ob = txt, oh = { 'Content-Type':'application/json' };
+              if(r.ok){ try { var jj = JSON.parse(txt); ob = JSON.stringify(jj.resultado); if(jj.content_range) oh['Content-Range'] = jj.content_range; } catch(e){} }
+              return new Response(ob, { status: r.status, statusText: r.statusText, headers: oh });
+            });
+          });
+        }
+      }
+      if(url && method === 'GET' && url.indexOf(_REST) === 0 && url.indexOf('/rpc/') < 0){
+        var parsed = _supaParseUrl(url);
+        if(parsed && _SUPA_SENSIVEL[parsed.tabela]){
+          var wantCount = false;
+          try {
+            var hh = (init && init.headers) || (input && input.headers) || {};
+            var pref = (hh.get ? hh.get('Prefer') : (hh.Prefer || hh.prefer)) || '';
+            if(/count/i.test(pref)) wantCount = true;
+          } catch(e){}
+          var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+          var userId = u && u.id ? u.id : 'desconhecido';
+          var token = ''; try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+          return _origFetch('/.netlify/functions/supabase-read', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', 'X-Gami-User':userId, 'X-Gami-Token':token },
+            body: JSON.stringify({ tabela: parsed.tabela, query: parsed.query, count: wantCount }),
+            signal: (init && init.signal) || undefined
+          }).then(function(r){
+            return r.text().then(function(txt){
+              var outBody = txt, outHeaders = { 'Content-Type':'application/json' };
+              if(r.ok){
+                try {
+                  var j = JSON.parse(txt);
+                  outBody = JSON.stringify(j.resultado || []);
+                  if(j.content_range) outHeaders['Content-Range'] = j.content_range;
+                } catch(e){}
+              }
+              return new Response(outBody, { status: r.status, statusText: r.statusText, headers: outHeaders });
+            });
+          });
+        }
+      }
+    } catch(e){ /* qualquer erro: cai pro fetch normal */ }
+    return _origFetch(input, init);
+  };
+})();
 async function _campoFetchTodos(url, opts){
   var out=[], step=1000;
   var parsed = _supaParseUrl(url);
