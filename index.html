@@ -1,3 +1,4 @@
+<!-- v33.31 - SEGURANCA lote A (escrita pelo servidor): tarefas (_tfPatchTarefa), recados (_recadosSalvarSupa/_recadosApagarSupa/limpeza) e pulse_votos (voto) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). pulse_votos add em PERMITIDAS; recados+pulse_votos em COLAB. Depois de testar (postar recado, concluir tarefa, votar pulse) rodar o RLS lock. - 27/10/2026 -->
 <!-- v33.30 - SEGURANCA (pessoas): todas as escritas de pessoas passam a ir pelo SERVIDOR (supabase-write, service key) em vez de direto com a chave publica: syncPessoas (upsert on_conflict=id + delete em lote via id=in), reset-total e force-sync. pessoas adicionada em TABELAS_COLAB (qualquer logado escreve pelo servidor, bloqueia anon, auditavel). Removido o fallback de niveis (coluna ja existe). Depois de testar editar uma pessoa, rodar o RLS lock. - 27/10/2026 -->
 <!-- v33.29 - PROSPECCAO (modelo certo do isolamento + BDR): (1) voltou a BASE no mapa pra todos garimparem, MAS BDR/vendedor NAO veem empresa que ja esta no CRM de OUTRO usuario (exclusividade, nao bater): _campoCarregarCrmTaken (crm_leads nao-perdidos com dono) + _campoDonoCrm + _campoAplicaExclusao, filtrado em _campoLojasFiltradas e _campoMachineFiltrada. (2) BDR (home office) ve "Registrar ATIVIDADE" no lugar de "visita" (card + modal + historico), via _campoTermoVisita. Removido o travamento total (v33.24-27). - 27/10/2026 -->
 <!-- v33.27 - PROSPECCAO (ajuste final do isolamento): "minhas" = SO as CRIADAS por ele (criado_por), nao mais inclui os leads do CRM por dono_id (revertido). BDR/vendedor travados veem so as que eles criaram; admin ve tudo; gestor a cidade. Removido o _crmFetch no initCampo (nao precisa mais). - 27/10/2026 -->
@@ -44756,12 +44757,8 @@ async function _tfPatchFeito(id, feito){
    anon e disparava "Não consegui salvar (tarefas)" a cada load pra quem RECEBE delegada. */
 async function _tfPatchTarefa(id, campos){
   try {
-    var r = await fetch(SUPA_URL + '/rest/v1/tarefas?id=eq.' + encodeURIComponent(id), {
-      method: 'PATCH',
-      headers: Object.assign({}, supaHeaders(), { 'Prefer': 'return=minimal' }),
-      body: JSON.stringify(campos || {})
-    });
-    return r.ok;
+    await _syncEscrever({ tabela:'tarefas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:campos||{} });
+    return true;
   } catch(e){ console.warn('[patch tarefa]', e && e.message); return false; }
 }
 
@@ -52137,27 +52134,9 @@ function votarPulse(emoji){
   try {
     var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
     var uid = u && u.id ? u.id : 'anon_'+Math.random().toString(36).slice(2);
-    fetch(SUPA_URL+'/rest/v1/pulse_votos', {
-      method: 'POST',
-      headers: {
-        'apikey': SUPA_KEY,
-        'Authorization': 'Bearer '+SUPA_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal,resolution=ignore-duplicates'
-      },
-      body: JSON.stringify({
-        usuario_id: uid,
-        emoji: emoji
-      })
-    }).then(function(r){
-      if(!r.ok){
-        r.text().then(function(t){
-          console.error('[pulse] ❌ insert FALHOU · status', r.status, '·', t);
-        });
-      } else {
-        console.log('[pulse] ✅ voto salvo no Supabase');
-      }
-    }).catch(function(e){ console.warn('[pulse] sync supabase (rede):', e); });
+    _syncEscrever({ tabela:'pulse_votos', operacao:'upsert', dados:[{ usuario_id:uid, emoji:emoji }], resolution:'ignore-duplicates' })
+      .then(function(){ console.log('[pulse] ✅ voto salvo'); })
+      .catch(function(e){ console.warn('[pulse] sync:', e && e.message); });
   } catch(e){}
   
   if(typeof toast === 'function') toast('Voto registrado · obrigado!', 'success');
@@ -52242,30 +52221,22 @@ async function _recadosCarregarSupa(){
     saveRecados(arr.map(_recadosMapDoSupa)); // atualiza o cache que renderRecados lê
     if(typeof renderRecados === 'function') renderRecados();
     // Limpeza best-effort: apaga da tabela os recados com mais de 2 dias
-    try { fetch(SUPA_URL + '/rest/v1/recados?created_at=lt.' + encodeURIComponent(corteISO), { method:'DELETE', headers: Object.assign({}, supaHeaders(), { 'Prefer':'return=minimal' }) }).catch(function(){}); } catch(e){}
+    try { _syncEscrever({ tabela:'recados', operacao:'delete', filtro:'created_at=lt.'+encodeURIComponent(corteISO) }).catch(function(){}); } catch(e){}
   } catch(e){ console.warn('[Recados] carregar:', e && e.message); }
 }
 async function _recadosSalvarSupa(recado){
   try {
     if(typeof SUPA_URL === 'undefined' || !recado) return;
-    var hdr = Object.assign({}, supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'return=minimal' });
     var base = { id:recado.id, texto:recado.texto, data:recado.data, autor:recado.autor, autor_id:recado.autorId, autor_foto:recado.autorFoto };
     var full = Object.assign({}, base, { reacoes:recado.reacoes||{}, imagem:recado.imagem||null, gif:recado.gif||null, audio:recado.audio||null, respostas:Array.isArray(recado.respostas)?recado.respostas:[] });
-    var r = await fetch(SUPA_URL + '/rest/v1/recados', { method:'POST', headers:hdr, body: JSON.stringify([full]) });
-    if(!r.ok){
-      // v32.13: colunas novas (reacoes/imagem/gif) ainda não criadas no banco → posta só o básico,
-      // pra o mural nunca quebrar antes de rodar o SQL de migração.
-      await fetch(SUPA_URL + '/rest/v1/recados', { method:'POST', headers:hdr, body: JSON.stringify([base]) });
-    }
+    // pelo servidor (service key). Fallback pro básico se colunas novas ainda não existirem.
+    try { await _syncEscrever({ tabela:'recados', operacao:'upsert', dados:[full] }); }
+    catch(e1){ await _syncEscrever({ tabela:'recados', operacao:'upsert', dados:[base] }); }
   } catch(e){ console.warn('[Recados] salvar:', e && e.message); }
 }
 async function _recadosApagarSupa(id){
-  try {
-    if(typeof SUPA_URL === 'undefined' || !id) return;
-    await fetch(SUPA_URL + '/rest/v1/recados?id=eq.' + encodeURIComponent(id), {
-      method:'DELETE', headers: Object.assign({}, supaHeaders(), { 'Prefer':'return=minimal' })
-    });
-  } catch(e){ console.warn('[Recados] apagar:', e && e.message); }
+  try { if(!id) return; await _syncEscrever({ tabela:'recados', operacao:'delete', filtro:'id=eq.'+encodeURIComponent(id) }); }
+  catch(e){ console.warn('[Recados] apagar:', e && e.message); }
 }
 
 function adicionarRecado(){
