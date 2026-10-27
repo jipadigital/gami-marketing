@@ -1,3 +1,4 @@
+<!-- v33.30 - SEGURANCA (pessoas): todas as escritas de pessoas passam a ir pelo SERVIDOR (supabase-write, service key) em vez de direto com a chave publica: syncPessoas (upsert on_conflict=id + delete em lote via id=in), reset-total e force-sync. pessoas adicionada em TABELAS_COLAB (qualquer logado escreve pelo servidor, bloqueia anon, auditavel). Removido o fallback de niveis (coluna ja existe). Depois de testar editar uma pessoa, rodar o RLS lock. - 27/10/2026 -->
 <!-- v33.29 - PROSPECCAO (modelo certo do isolamento + BDR): (1) voltou a BASE no mapa pra todos garimparem, MAS BDR/vendedor NAO veem empresa que ja esta no CRM de OUTRO usuario (exclusividade, nao bater): _campoCarregarCrmTaken (crm_leads nao-perdidos com dono) + _campoDonoCrm + _campoAplicaExclusao, filtrado em _campoLojasFiltradas e _campoMachineFiltrada. (2) BDR (home office) ve "Registrar ATIVIDADE" no lugar de "visita" (card + modal + historico), via _campoTermoVisita. Removido o travamento total (v33.24-27). - 27/10/2026 -->
 <!-- v33.27 - PROSPECCAO (ajuste final do isolamento): "minhas" = SO as CRIADAS por ele (criado_por), nao mais inclui os leads do CRM por dono_id (revertido). BDR/vendedor travados veem so as que eles criaram; admin ve tudo; gestor a cidade. Removido o _crmFetch no initCampo (nao precisa mais). - 27/10/2026 -->
 <!-- v33.26 - FIX (BDR): o botao "Minhas prospeccoes" tinha SUMIDO pra BDR/vendedor (v33.24 escondia pq estavam travados). Agora o botao fica VISIVEL e ativo (travado, nao desliga); badge mostra o total do que ele ve (criadas por ele + leads dele no CRM). - 27/10/2026 -->
@@ -17372,23 +17373,9 @@ async function resetarPessoasCompleto(){
   
   // 2. Limpa Supabase
   try {
-    if(typeof SUPA_URL !== 'undefined' && typeof SUPA_KEY !== 'undefined'){
-      var resp = await fetch(SUPA_URL + '/rest/v1/pessoas?id=neq.impossible_id_xyz', {
-        method: 'DELETE',
-        headers: {
-          'apikey': SUPA_KEY,
-          'Authorization': 'Bearer ' + SUPA_KEY,
-          'Prefer': 'return=minimal'
-        }
-      });
-      if(resp.ok || resp.status === 204){
-        msgs.push('✓ Servidor Supabase limpo');
-      } else {
-        msgs.push('✗ Supabase respondeu status ' + resp.status + ' — talvez precise da Service Role Key');
-      }
-    } else {
-      msgs.push('✗ Configuração do Supabase não encontrada');
-    }
+    // apaga tudo pelo servidor (service key, ignora RLS)
+    await _syncEscrever({ tabela:'pessoas', operacao:'delete', filtro:'id=neq.impossible_id_xyz' });
+    msgs.push('✓ Servidor Supabase limpo');
   } catch(e){
     msgs.push('✗ Erro no Supabase: ' + e.message);
   }
@@ -17429,13 +17416,9 @@ async function forcarSincronizacaoPessoas(){
     var idsParaApagar = (existentes||[]).filter(function(x){ return !idsLocais.has(x.id); }).map(function(x){ return x.id; });
     
     var apagados = 0;
-    for(var i=0; i<idsParaApagar.length; i++){
-      try {
-        var r = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(idsParaApagar[i]),{
-          method:'DELETE', headers: supaHeaders()
-        });
-        if(r.ok || r.status === 204) apagados++;
-      } catch(e){}
+    if(idsParaApagar.length){
+      try { await _syncEscrever({ tabela:'pessoas', operacao:'delete', filtro:'id=in.('+idsParaApagar.map(encodeURIComponent).join(',')+')' }); apagados=idsParaApagar.length; }
+      catch(e){ console.warn('[forcarSync] delete', e&&e.message); }
     }
     
     // Sobe os atuais
@@ -42724,47 +42707,16 @@ async function syncPessoas(){
       idsParaApagar = [];
     }
 
-    // Passo 2: apaga do Supabase os que não estão no localStorage
-    for(var i=0; i<idsParaApagar.length; i++){
-      try {
-        await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(idsParaApagar[i]),{
-          method:'DELETE', headers: supaHeaders()
-        });
-      } catch(e){}
+    // Passo 2: apaga do servidor os que não estão no localStorage (service key, ignora RLS)
+    if(idsParaApagar.length){
+      try { await _syncEscrever({ tabela:'pessoas', operacao:'delete', filtro:'id=in.('+idsParaApagar.map(encodeURIComponent).join(',')+')' }); }
+      catch(e){ console.warn('[syncPessoas] delete', e&&e.message); }
     }
   } catch(e){ /* segue mesmo se a limpeza falhar */ }
   
-  // Passo 3: upsert dos atuais (insere/atualiza)
+  // Passo 3: upsert dos atuais pelo servidor (service key, ignora RLS). A coluna `niveis` já existe.
   if(pessoasNormalizadas.length){
-    var r = await fetch(SUPA_URL+'/rest/v1/pessoas?on_conflict=id',{
-      method:'POST',
-      headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
-      body: JSON.stringify(pessoasNormalizadas)
-    });
-    if(!r.ok){
-      var errTxt = await r.text();
-      console.error('syncPessoas tentativa 1 falhou:', r.status, errTxt);
-      // FALLBACK: se a coluna `niveis` ainda não existe no Supabase, retira o campo
-      // e tenta de novo. O usuário ainda vê os múltiplos níveis localmente porque
-      // o Cloud Mirror sincroniza via tabela `configuracoes`.
-      var colMissing = /column.*niveis.*does not exist|Could not find the .niveis. column/i.test(errTxt);
-      if(colMissing){
-        console.warn('Coluna `niveis` ausente na tabela pessoas — retentando sem ela. Rode o SQL em docs/supabase-schema.sql pra adicionar.');
-        var pessoasSemNiveis = pessoasNormalizadas.map(function(x){
-          var c = Object.assign({}, x); delete c.niveis; return c;
-        });
-        var r2 = await fetch(SUPA_URL+'/rest/v1/pessoas?on_conflict=id',{
-          method:'POST',
-          headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
-          body: JSON.stringify(pessoasSemNiveis)
-        });
-        if(r2.ok) return true;
-        var err2 = await r2.text();
-        console.error('syncPessoas tentativa 2 falhou:', r2.status, err2);
-        throw new Error('Sync falhou (mesmo sem niveis): ' + r2.status + ' ' + err2.slice(0,200));
-      }
-      throw new Error('Sync falhou: ' + r.status + ' ' + errTxt.slice(0,200));
-    }
+    await _syncEscrever({ tabela:'pessoas', operacao:'upsert', dados:pessoasNormalizadas, on_conflict:'id' });
     return true;
   }
 }

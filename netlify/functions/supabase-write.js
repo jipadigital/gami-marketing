@@ -55,7 +55,8 @@ const TABELAS_PERMITIDAS = [
 // (INSERT em notificacoes). Fora dessas, segue só super_admin.
 const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospeccao_visitas', 'prospeccao_rotas',
   'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config',
-  'push_subscriptions', 'push_agendados'];
+  'push_subscriptions', 'push_agendados',
+  'pessoas'];  // edição do time: qualquer logado escreve pelo servidor (bloqueia anon; auditável). UI já restringe quem edita.
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
