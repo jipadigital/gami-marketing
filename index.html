@@ -1,3 +1,4 @@
+<!-- v33.29 - PROSPECCAO (modelo certo do isolamento + BDR): (1) voltou a BASE no mapa pra todos garimparem, MAS BDR/vendedor NAO veem empresa que ja esta no CRM de OUTRO usuario (exclusividade, nao bater): _campoCarregarCrmTaken (crm_leads nao-perdidos com dono) + _campoDonoCrm + _campoAplicaExclusao, filtrado em _campoLojasFiltradas e _campoMachineFiltrada. (2) BDR (home office) ve "Registrar ATIVIDADE" no lugar de "visita" (card + modal + historico), via _campoTermoVisita. Removido o travamento total (v33.24-27). - 27/10/2026 -->
 <!-- v33.27 - PROSPECCAO (ajuste final do isolamento): "minhas" = SO as CRIADAS por ele (criado_por), nao mais inclui os leads do CRM por dono_id (revertido). BDR/vendedor travados veem so as que eles criaram; admin ve tudo; gestor a cidade. Removido o _crmFetch no initCampo (nao precisa mais). - 27/10/2026 -->
 <!-- v33.26 - FIX (BDR): o botao "Minhas prospeccoes" tinha SUMIDO pra BDR/vendedor (v33.24 escondia pq estavam travados). Agora o botao fica VISIVEL e ativo (travado, nao desliga); badge mostra o total do que ele ve (criadas por ele + leads dele no CRM). - 27/10/2026 -->
 <!-- v33.25 - PROSPECCAO: (1) busca da "Lista completa de empresas" agora acha por TELEFONE (alem de CNPJ/CPF) e por CIDADE/BAIRRO (alem do nome); placeholder atualizado. (2) card da loja mantem o HISTORICO da Machine depois de acompanhar: mostra "X pedidos na Machine · sem pedir ha Y dias" (via _campoMachineInfo, casa por nome+cidade no machineCache). Antes, ao acompanhar, sumiam os numeros. - 27/10/2026 -->
@@ -7473,12 +7474,11 @@ async function initCampo(){
     await _campoFetch();
     try { await _campoFetchRota(); } catch(e){}
   }
-  // BDR/vendedor são ISOLADOS: só veem as suas prospecções. Carrega o CRM (pra saber quais lojas
-  // são leads deles) e trava a visão (sem opção de ver a base). Admin/gestor seguem normal.
-  if(_campoSoMinhasLock()){ _CAMPO.soMinhas = true; } // travado: só as criadas por ele
+  // BDR/vendedor: carrega quem já pegou cada empresa no CRM, pra NÃO mostrar as de outro (não bater)
+  if(_campoAplicaExclusao()){ try{ await _campoCarregarCrmTaken(); }catch(e){} }
   _campoMontarShell();
   var _bm=document.getElementById('campo-btn-minhas');
-  if(_bm){ _bm.classList.toggle('active', !!_CAMPO.soMinhas); if(_campoSoMinhasLock()) _bm.title='Você vê só as suas prospecções'; }
+  if(_bm){ _bm.classList.toggle('active', !!_CAMPO.soMinhas); }
   _campoAplicar();
   _campoRenderMapa(); // mapa já aberto ao entrar na aba
 }
@@ -7623,7 +7623,6 @@ function _campoStatusChipsUI(){
 
 /* ⭐ Minhas prospecções: liga/desliga o modo que mostra SÓ as lojas que o usuário acompanha */
 function _campoToggleMinhas(){
-  if(_campoSoMinhasLock()){ _CAMPO.soMinhas=true; var _bb=document.getElementById('campo-btn-minhas'); if(_bb) _bb.classList.add('active'); _campoRepintar(); return; } // BDR/vendedor: travado nas suas, não desliga
   _CAMPO.soMinhas = !_CAMPO.soMinhas;
   var b = document.getElementById('campo-btn-minhas'); if(b) b.classList.toggle('active', !!_CAMPO.soMinhas);
   if(_CAMPO.soMinhas){
@@ -7674,16 +7673,25 @@ function _campoPreencherCategorias(){
   sel.value = (cats.indexOf(cur)>=0) ? cur : '';
 }
 
-/* BDR e vendedor são ISOLADOS: só veem as próprias prospecções. Admin/gestor não. */
-function _campoSoMinhasLock(){ try{ var p=(typeof _crmPapel==='function')?_crmPapel():null; return p==='bdr'||p==='vendedor'; }catch(e){ return false; } }
-/* conjunto das lojas "minhas": criadas por mim + as que são meu lead no CRM (dono_id = eu) */
-function _campoMinhasSet(){
-  var mid=''; try{ var u=getUsuarioLogado(); mid=(u&&u.id)||''; }catch(e){}
-  var byLoja={}, byNome={};
-  try{ var leads=(typeof _CRM!=='undefined'&&_CRM.leads)?_CRM.leads:[];
-    leads.forEach(function(l){ if((l.dono_id||'')!==mid) return; if(l.loja_id) byLoja[l.loja_id]=1; byNome[((l.empresa_nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]=1; });
-  }catch(e){}
-  return { byLoja:byLoja, byNome:byNome };
+/* Exclusividade no mapa: BDR/vendedor NÃO veem empresa que já está no CRM de OUTRO usuário
+   (pra não bater/duplicar). Veem a base livre + as que são deles. Admin/gestor veem tudo. */
+function _campoAplicaExclusao(){ try{ var p=(typeof _crmPapel==='function')?_crmPapel():null; return p==='bdr'||p==='vendedor'; }catch(e){ return false; } }
+async function _campoCarregarCrmTaken(){
+  try{
+    var rows=await _campoFetchTodos(SUPA_URL+'/rest/v1/crm_leads?select=loja_id,empresa_nome,cidade_slug,dono_id,status');
+    var byLoja={}, byNome={};
+    (rows||[]).forEach(function(l){
+      if((l.status||'')==='perdido' || !l.dono_id) return; // perdido ou sem dono = empresa livre de novo
+      if(l.loja_id) byLoja[l.loja_id]=l.dono_id;
+      byNome[((l.empresa_nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]=l.dono_id;
+    });
+    _CAMPO.crmTaken={ byLoja:byLoja, byNome:byNome };
+  }catch(e){ _CAMPO.crmTaken={ byLoja:{}, byNome:{} }; }
+}
+function _campoDonoCrm(nome, lojaId, slug){ // dono_id de quem tem essa empresa no CRM, '' se livre
+  var t=_CAMPO.crmTaken; if(!t) return '';
+  if(lojaId && t.byLoja[lojaId]) return t.byLoja[lojaId];
+  return t.byNome[((nome||'').trim().toLowerCase())+'|'+(slug||'')]||'';
 }
 function _campoLojasFiltradas(){
   var fCidade = _campoCidadeSel();
@@ -7694,9 +7702,9 @@ function _campoLojasFiltradas(){
   var fAte    = (document.getElementById('campo-f-ate')||{}).value || '';
   _CAMPO.filtro = { cidade:fCidade, status:selSt, categoria:fCat, busca:fBusca, de:fDe, ate:fAte };
   var meuId = ''; try{ var _mu=getUsuarioLogado(); meuId=(_mu&&_mu.id)||''; }catch(e){}
-  var _lock=_campoSoMinhasLock();                 // BDR/vendedor travados nas suas
-  var _mine=_lock || _CAMPO.soMinhas;
-  function _ehMinha(l){ return (l.criado_por||'')===meuId; } // só as CRIADAS por ele
+  var _mine=_CAMPO.soMinhas;                       // modo opcional "minhas" (toggle), base compartilhada
+  var _excl=_campoAplicaExclusao();                // BDR/vendedor: esconde empresa já no CRM de outro
+  function _ehMinha(l){ return (l.criado_por||'')===meuId; } // só as criadas por ele
 
   // Lojas com visita no período (se filtro de data ativo)
   var lojasComVisitaNoPeriodo = null;
@@ -7712,6 +7720,7 @@ function _campoLojasFiltradas(){
 
   return _CAMPO.lojas.filter(function(l){
     if(!_campoPodeVerLoja(l)) return false;
+    if(_excl){ var _d=_campoDonoCrm(l.nome, l.id, l.cidade_slug||_campoSlug(l.cidade)); if(_d && _d!==meuId) return false; } // não bate: já está no CRM de outro
     if(_mine){ if(!_ehMinha(l)) return false; } // BDR/vendedor (ou modo "minhas"): só as minhas (criei eu ou é meu lead no CRM)
     if(fCidade){ var slug = l.cidade_slug || _campoSlug(l.cidade); if(slug !== fCidade) return false; }
     if(fCat && (l.segmento||'').trim() !== fCat) return false; // filtro por categoria (segmento)
@@ -7742,10 +7751,10 @@ function _campoRepintar(){
   if(_CAMPO.mapaAberto && _campoMapaInst){ try{ _campoDrawMarkers(lojas); }catch(e){} }
   try{ // badge "⭐ Minhas prospecções": no modo "minhas"/travado mostra o que está na lista; senão conta as criadas por mim
     var _mu2=getUsuarioLogado(); var _mid=(_mu2&&_mu2.id)||'';
-    var _nMin = (_CAMPO.soMinhas || _campoSoMinhasLock())
+    var _nMin = _CAMPO.soMinhas
       ? (lojas ? lojas.length : 0)
       : (_mid ? _CAMPO.lojas.filter(function(l){ return (l.criado_por||'')===_mid && _campoPodeVerLoja(l); }).length : 0);
-    var _bd=document.getElementById('campo-minhas-badge'); if(_bd){ _bd.textContent=_nMin; _bd.style.display='inline-block'; }
+    var _bd=document.getElementById('campo-minhas-badge'); if(_bd){ _bd.textContent=_nMin; _bd.style.display=_nMin?'inline-block':'none'; }
   }catch(e){}
   var nb=document.getElementById('campo-numeros'); if(nb && nb.style.display==='block'){ try{ _campoRenderNumeros(); }catch(e){} }
   try{ _campoRotaAtualizarBadge(); }catch(e){}
@@ -7975,8 +7984,11 @@ function _campoMachineInfo(l){
     return arr.find(function(x){ return (x.nome||'').trim().toLowerCase()===nk; }) || null;
   }catch(e){ return null; }
 }
+/* BDR (home office) não faz "visita", faz "atividade" (ligação/WhatsApp). Vendedor faz visita. */
+function _campoTermoVisita(){ try{ return (typeof _crmPapel==='function' && _crmPapel()==='bdr') ? 'atividade' : 'visita'; }catch(e){ return 'visita'; } }
 function _campoCard(l){
   var m = _campoStMeta(l.status||'prospect');
+  var _tv = _campoTermoVisita();
   var visitas = _campoVisitasDaLoja(l.id);
   var ult = visitas[0];
   var aberto = !!_CAMPO.exp[l.id];
@@ -7985,7 +7997,7 @@ function _campoCard(l){
     + '<div style="display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer" onclick="_campoToggle(\''+l.id+'\')">'
     +   '<div style="flex:1;min-width:0">'
     +     '<div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+m.dot+' '+_campoEsc(l.nome)+'</div>'
-    +     '<div style="font-size:11px;color:var(--text3);margin-top:1px">'+_campoEsc(sub||'sem endereço')+(ult?' · última visita '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/')):'')+'</div>'
+    +     '<div style="font-size:11px;color:var(--text3);margin-top:1px">'+_campoEsc(sub||'sem endereço')+(ult?' · última '+_tv+' '+_campoEsc((ult.data||'').slice(0,10).split('-').reverse().join('/')):'')+'</div>'
     +   '</div>'
     +   '<span style="font-size:10px;font-weight:700;padding:3px 9px;border-radius:12px;background:'+m.bg+';color:'+m.cor+'">'+m.label+'</span>'
     +   '<span style="font-size:11px;color:var(--text3)">'+(visitas.length||0)+' 📝</span>'
@@ -7994,7 +8006,7 @@ function _campoCard(l){
   if(aberto){
     html += '<div style="padding:4px 12px 12px;border-top:1px solid var(--border)">'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">'
-      +   '<button class="btn" onclick="_campoNovaVisita(\''+l.id+'\')" style="font-size:11px;background:#1AB8F0;color:#fff;border:none;padding:7px 12px;border-radius:7px;font-weight:700;cursor:pointer">+ Registrar visita</button>'
+      +   '<button class="btn" onclick="_campoNovaVisita(\''+l.id+'\')" style="font-size:11px;background:#1AB8F0;color:#fff;border:none;padding:7px 12px;border-radius:7px;font-weight:700;cursor:pointer">+ Registrar '+_tv+'</button>'
       +   (function(){ var r=_campoRotaTem('loja|'+l.id); return '<button class="btn btn-ghost" onclick="_campoRotaToggleLoja(\''+l.id+'\')" style="font-size:11px;padding:7px 12px;'+(r?'border-color:#1D9E75;color:#1D9E75':'')+'">'+(r?'✔ Na rota':'🚗 + Rota')+'</button>'; })()
       +   '<button class="btn btn-ghost" onclick="_campoEditarLoja(\''+l.id+'\')" style="font-size:11px;padding:7px 12px">✏️ Editar loja</button>'
       +   _campoBotoesStatus(l)
@@ -8010,9 +8022,9 @@ function _campoCard(l){
     if(l.telefone) html += '<div style="font-size:11px;color:var(--text2);margin-bottom:4px">📞 '+_campoEsc(l.telefone)+'</div>';
     if(l.obs) html += '<div style="font-size:11px;color:var(--text2);margin-bottom:6px;font-style:italic">'+_campoEsc(l.obs)+'</div>';
     if(!visitas.length){
-      html += '<div style="font-size:11px;color:var(--text3);padding:6px 0">Nenhuma visita registrada ainda.</div>';
+      html += '<div style="font-size:11px;color:var(--text3);padding:6px 0">Nenhuma '+_tv+' registrada ainda.</div>';
     } else {
-      html += '<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Histórico de visitas</div>';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--text2);margin:8px 0 4px">Histórico de '+_tv+'s</div>';
       html += visitas.map(function(v){
         var res = { visitei:'Visitei', ativei:'✅ Ativei', sem_interesse:'❌ Sem interesse', retornar:'🔁 Retornar' }[v.resultado] || (v.resultado||'');
         return '<div style="border-left:2px solid var(--border);padding:4px 0 6px 10px;margin-bottom:4px">'
@@ -8154,18 +8166,19 @@ async function _campoSalvarLojaForm(){
 function _campoNovaVisita(lojaId){
   var l = _CAMPO.lojas.find(function(x){ return x.id===lojaId; }); if(!l) return;
   var css=_campoInputCss();
+  var _tv=_campoTermoVisita(); var _bdr=(_tv==='atividade');
   var inner =
       '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Loja: <b>'+_campoEsc(l.nome)+'</b></div>'
-    + '<label style="font-size:11px;color:var(--text3)">Data da visita</label>'
+    + '<label style="font-size:11px;color:var(--text3)">Data da '+_tv+'</label>'
     + '<input id="campo-v-data" type="date" value="'+_campoHoje()+'" style="'+css+'">'
     + '<label style="font-size:11px;color:var(--text3)">Como terminou</label>'
     + '<select id="campo-v-resultado" style="'+css+'">'
-    +   '<option value="visitei">Visitei (sem fechar)</option>'
+    +   '<option value="visitei">'+(_bdr?'Falei (sem fechar)':'Visitei (sem fechar)')+'</option>'
     +   '<option value="ativei">✅ Ativei a loja</option>'
     +   '<option value="retornar">🔁 Preciso retornar</option>'
     +   '<option value="sem_interesse">❌ Sem interesse</option>'
     + '</select>'
-    + '<label style="font-size:11px;color:var(--text3)">Como foi a visita</label>'
+    + '<label style="font-size:11px;color:var(--text3)">Como foi '+(_bdr?'o contato':'a visita')+'</label>'
     + '<textarea id="campo-v-relato" placeholder="Conta como foi, o que conversou, objeções..." style="'+css+';min-height:80px;resize:vertical"></textarea>'
     + '<label style="font-size:11px;color:var(--text3)">Próxima ação (opcional)</label>'
     + '<input id="campo-v-proxima" placeholder="Ex: voltar semana que vem com proposta" style="'+css+'">'
@@ -8173,9 +8186,9 @@ function _campoNovaVisita(lojaId){
     + '<input id="campo-v-retorno" type="date" style="'+css+'">'
     + '<button type="button" onclick="_campoEscolherFoto()" style="width:100%;padding:9px;margin-bottom:4px;background:#EAF4FB;color:#0E7AB8;border:1px solid #BFE3F5;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">📷 Foto da fachada</button>'
     + '<div id="campo-v-foto-preview"></div>'
-    + '<button onclick="_campoSalvarVisitaForm(\''+lojaId+'\')" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Salvar visita</button>';
+    + '<button onclick="_campoSalvarVisitaForm(\''+lojaId+'\')" style="width:100%;padding:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Salvar '+_tv+'</button>';
   _campoVisitaFoto='';
-  _campoModalShell('Registrar visita', inner);
+  _campoModalShell('Registrar '+_tv, inner);
 }
 
 async function _campoSalvarVisitaForm(lojaId){
@@ -8928,7 +8941,6 @@ function _campoGarantirMachine(){
 }
 // empresas da Machine já em cache pro filtro atual (tira as que viraram loja de prospecção)
 function _campoMachineFiltrada(){
-  if(_campoSoMinhasLock()) return []; // BDR/vendedor não veem a base Machine, só as suas prospecções
   var slug=_campoCidadeSel();
   var selSt=_CAMPO.statusSel||[];
   var fCat=(document.getElementById('campo-f-categoria')||{}).value||'';
@@ -8945,9 +8957,11 @@ function _campoMachineFiltrada(){
       return false; // prospect/ativada são status só de loja de prospecção
     });
   }
+  var _exclM=_campoAplicaExclusao(); var _meM=''; try{ var _um=getUsuarioLogado(); _meM=(_um&&_um.id)||''; }catch(e){}
   var out=[];
   slugs.forEach(function(s){ (_CAMPO.machineCache[s]||[]).forEach(function(e){
     if(prosp[s+'|'+(e.nome||'').trim().toLowerCase()]) return; // já é loja de prospecção
+    if(_exclM){ var _dm=_campoDonoCrm(e.nome, '', s); if(_dm && _dm!==_meM) return; } // já está no CRM de outro
     if(selSt.length && !_machineBate(e)) return; // status marcados
     if(fBusca && ((e.nome||'')+' '+(e.bairro||'')).toLowerCase().indexOf(fBusca)<0) return;
     out.push(e);
