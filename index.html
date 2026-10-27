@@ -1,3 +1,4 @@
+<!-- v33.23 - PROSPECCAO "Minhas prospeccoes" (individual): (1) ao ligar o botao, limpa os filtros que escondiam (status/data/categoria/cidade) e mostra TODAS as suas (resolve o "badge 4 mas lista 2" que o BDR perguntou). (2) BDR e vendedor ABREM a aba ja em "Minhas prospeccoes" (veem so as deles; admin/gestor seguem na base pra garimpar). _campoToggleMinhas + default em initCampo por _crmPapel. - 27/10/2026 -->
 <!-- v33.22 - SEGURANCA (blindar escrita): push_subscriptions e push_agendados deixaram de ser gravados DIRETO com a chave publica e passam pela Netlify function supabase-write (service key, exige sessao). supabase-write ganhou suporte a on_conflict e resolution (ignore-duplicates) no upsert; push_* adicionadas em TABELAS_PERMITIDAS e TABELAS_COLAB. Depois disso pode ligar RLS nessas tabelas (SQL docs). Preparo pra blindar pessoas/configuracoes/posts_agendados na sequencia. - 27/10/2026 -->
 <!-- v33.21 - CRM (feedbacks do Carlos): (1) ROTA->CRM: ao remover parada/apagar rota, o lead SO sai do CRM se foi criado pela rota E ainda esta em "Lead na rota" (etapa 1, nao visitado). Se ja visitou (etapa>=2) PERMANECE no funil (preserva historico). _crmRotaSaiu ligado em _campoRotaRemove e _campoRotaApagar. (2) VISAO DE GESTAO (admin/gestor): barra de filtro por cidade e por pessoa no pipeline e no painel (_crmLeadsView/_crmFiltroBarHTML/_crmSetFiltro), pra analisar metricas de uma praca/individuo. Depende da coluna crm_leads.origem (SQL docs/seguranca-rls-crm-prospeccao.sql, que tbm blindou RLS). - 27/10/2026 -->
 <!-- v33.20 - CRM: tipo "Cadastrados e nao ativos" agora puxa a base REAL da Machine (os "pontos pretos"/fantasma do mapa = cadastrou e nunca pediu, via _campoCarregarMachine -> RPC clientes_onboarding + coord do cadastro). _crmBuscarCandidatos ramifica por tipo: novo=prospeccao_lojas status=prospect; cadastrado_nao_ativado=fantasma com coord. Exclusao por nome|cidade (fantasma nao tem loja_id). Obs: filtro de segmento so vale pros Novos (Machine nao tem segmento). - 27/10/2026 -->
@@ -7468,7 +7469,13 @@ async function initCampo(){
     await _campoFetch();
     try { await _campoFetchRota(); } catch(e){}
   }
+  // BDR/vendedor abrem já vendo SÓ as suas prospecções (trabalho individual); admin/gestor veem a base
+  if(!_CAMPO._minhasDefault){
+    _CAMPO._minhasDefault = true;
+    try{ var _pp=(typeof _crmPapel==='function')?_crmPapel():null; if(_pp==='bdr'||_pp==='vendedor') _CAMPO.soMinhas=true; }catch(e){}
+  }
   _campoMontarShell();
+  var _bm=document.getElementById('campo-btn-minhas'); if(_bm) _bm.classList.toggle('active', !!_CAMPO.soMinhas); // reflete o estado no botão
   _campoAplicar();
   _campoRenderMapa(); // mapa já aberto ao entrar na aba
 }
@@ -7615,6 +7622,11 @@ function _campoStatusChipsUI(){
 function _campoToggleMinhas(){
   _CAMPO.soMinhas = !_CAMPO.soMinhas;
   var b = document.getElementById('campo-btn-minhas'); if(b) b.classList.toggle('active', !!_CAMPO.soMinhas);
+  if(_CAMPO.soMinhas){
+    // "as minhas" = TODAS as suas: limpa os filtros que escondem (status/data/categoria/cidade)
+    ['campo-f-cidade','campo-f-categoria','campo-f-busca','campo-f-de','campo-f-ate'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    _CAMPO.statusSel=[]; _CAMPO.cidadeSel=''; try{ _campoStatusChipsUI(); }catch(e){}
+  }
   _campoRepintar();
 }
 
