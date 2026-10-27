@@ -8,9 +8,10 @@
 --
 -- As RPCs de leitura do estoque agora vão pelo proxy supabase-read
 -- (service role). Aqui tiramos o EXECUTE do público e trancamos a leitura
--- da tabela. As RPCs de ESCRITA (estoque_registrar_entrada/venda) NÃO são
--- mexidas aqui (continuam funcionando); o endurecimento da escrita via RPC
--- é um passo à parte.
+-- da tabela. As RPCs de ESCRITA (estoque_registrar_entrada/venda) também são
+-- fechadas (PASSO 3): o app agora registra entrada/venda pelo servidor
+-- (supabase-write, sessão), então o anon não chama mais , fecha a brecha de
+-- inserir venda/entrada falsa pela chave pública.
 -- REVERSÍVEL: GRANT EXECUTE ... TO anon; recriar policy *_sel.
 -- 27/10/2026
 -- ============================================================
@@ -44,6 +45,22 @@ BEGIN
   ALTER TABLE public.estoque_mov ENABLE ROW LEVEL SECURITY;
 END $$;
 
+-- PASSO 3 — RPCs de ESCRITA do estoque: tira EXECUTE do público (agora o app
+-- registra entrada/venda pelo servidor supabase-write com sessão).
+DO $$
+DECLARE f record;
+  nomes text[] := ARRAY['estoque_registrar_entrada','estoque_registrar_venda'];
+BEGIN
+  FOR f IN
+    SELECT p.proname, oidvectortypes(p.proargtypes) AS args
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='public' AND p.proname = ANY(nomes)
+  LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION public.%I(%s) FROM PUBLIC, anon, authenticated', f.proname, f.args);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION public.%I(%s) TO service_role', f.proname, f.args);
+  END LOOP;
+END $$;
+
 -- CONFERE: GET direto em estoque_mov pela chave pública deve voltar [];
--- chamar estoque_vendas pela chave pública deve dar permission denied/404.
--- Teste no app (logado): a tela de Estoque deve continuar igual.
+-- chamar estoque_vendas/estoque_registrar_venda pela chave pública = permission denied/404.
+-- Teste no app (logado): tela de Estoque igual, E registrar entrada+venda funcionando.

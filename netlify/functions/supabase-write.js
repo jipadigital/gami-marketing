@@ -67,8 +67,14 @@ const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospecca
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
   'refresh_machine_views',
-  'limpar_sessoes_expiradas'
+  'limpar_sessoes_expiradas',
+  // escrita do estoque (antes chamável direto pela chave pública; agora só pelo servidor)
+  'estoque_registrar_entrada',
+  'estoque_registrar_venda'
 ];
+// RPCs que qualquer usuário com sessão válida pode chamar (não só super_admin).
+// A UI já restringe quem opera a tela de estoque (EST_SESSAO / cidade permitida).
+const RPCS_COLAB = ['estoque_registrar_entrada', 'estoque_registrar_venda'];
 
 // Origens permitidas (CORS)
 const ORIGENS_PERMITIDAS = [
@@ -271,8 +277,8 @@ exports.handler = async function(event){
 
   const { tabela, operacao, dados, filtro, patch } = body;
 
-  // Valida tabela
-  if(TABELAS_PERMITIDAS.indexOf(tabela) < 0){
+  // Valida tabela (rpc não usa tabela; a função é validada mais abaixo por RPCS_PERMITIDAS)
+  if(operacao !== 'rpc' && TABELAS_PERMITIDAS.indexOf(tabela) < 0){
     return { statusCode: 400, headers: cors, body: JSON.stringify({error:'Tabela não permitida: '+tabela}) };
   }
 
@@ -280,7 +286,10 @@ exports.handler = async function(event){
   // sessão válida escreve nas tabelas de COLABORAÇÃO (tarefas, notificacoes).
   // Antes SÓ super_admin podia gravar aqui, então colaborador (ex: Mazinho) não
   // conseguia concluir tarefa delegada nem notificar o delegante → "Não consegui salvar".
-  if(!usuario.super_admin && TABELAS_COLAB.indexOf(tabela) < 0){
+  var _permColab = (operacao === 'rpc')
+    ? (RPCS_COLAB.indexOf(body.funcao) >= 0)
+    : (TABELAS_COLAB.indexOf(tabela) >= 0);
+  if(!usuario.super_admin && !_permColab){
     return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada (não é super_admin)'}) };
   }
   

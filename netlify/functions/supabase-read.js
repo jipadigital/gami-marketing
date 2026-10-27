@@ -24,7 +24,9 @@ const TABELAS_LEITURA = [
   // machine (dados de cliente/corrida)
   'machine_corridas','machine_empresas','machine_condutores','machine_sync_log',
   // PII / pessoal
-  'pessoas','ponto_registros','ponto_log_admin','ponto_config'
+  'pessoas','ponto_registros','ponto_log_admin','ponto_config',
+  // conteúdo interno
+  'recados','tarefas'
 ];
 
 // RPCs sensíveis (leitura de dado comercial/Machine/prospecção) que o proxy aceita chamar.
