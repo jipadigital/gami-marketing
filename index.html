@@ -1,3 +1,4 @@
+<!-- v33.27 - PROSPECCAO (ajuste final do isolamento): "minhas" = SO as CRIADAS por ele (criado_por), nao mais inclui os leads do CRM por dono_id (revertido). BDR/vendedor travados veem so as que eles criaram; admin ve tudo; gestor a cidade. Removido o _crmFetch no initCampo (nao precisa mais). - 27/10/2026 -->
 <!-- v33.26 - FIX (BDR): o botao "Minhas prospeccoes" tinha SUMIDO pra BDR/vendedor (v33.24 escondia pq estavam travados). Agora o botao fica VISIVEL e ativo (travado, nao desliga); badge mostra o total do que ele ve (criadas por ele + leads dele no CRM). - 27/10/2026 -->
 <!-- v33.25 - PROSPECCAO: (1) busca da "Lista completa de empresas" agora acha por TELEFONE (alem de CNPJ/CPF) e por CIDADE/BAIRRO (alem do nome); placeholder atualizado. (2) card da loja mantem o HISTORICO da Machine depois de acompanhar: mostra "X pedidos na Machine · sem pedir ha Y dias" (via _campoMachineInfo, casa por nome+cidade no machineCache). Antes, ao acompanhar, sumiam os numeros. - 27/10/2026 -->
 <!-- v33.24 - PROSPECCAO isolamento por pessoa: BDR e vendedor agora SO veem as PROPRIAS prospeccoes (travado, sem opcao de ver a base) - criadas por eles OU que sao lead deles no CRM (dono_id). A base Machine fica escondida pra eles (_campoMachineFiltrada retorna [] no lock). initCampo carrega o CRM pra saber os leads deles e esconde o botao "Minhas". Admin (Carlos) ve tudo; gestor ve a cidade dele. _campoSoMinhasLock/_campoMinhasSet/_ehMinha. - 27/10/2026 -->
@@ -7474,10 +7475,7 @@ async function initCampo(){
   }
   // BDR/vendedor são ISOLADOS: só veem as suas prospecções. Carrega o CRM (pra saber quais lojas
   // são leads deles) e trava a visão (sem opção de ver a base). Admin/gestor seguem normal.
-  if(_campoSoMinhasLock()){
-    _CAMPO.soMinhas = true;
-    if(typeof _crmFetch==='function' && !(typeof _CRM!=='undefined' && _CRM.carregado)){ try{ await _crmFetch(); }catch(e){} }
-  }
+  if(_campoSoMinhasLock()){ _CAMPO.soMinhas = true; } // travado: só as criadas por ele
   _campoMontarShell();
   var _bm=document.getElementById('campo-btn-minhas');
   if(_bm){ _bm.classList.toggle('active', !!_CAMPO.soMinhas); if(_campoSoMinhasLock()) _bm.title='Você vê só as suas prospecções'; }
@@ -7698,8 +7696,7 @@ function _campoLojasFiltradas(){
   var meuId = ''; try{ var _mu=getUsuarioLogado(); meuId=(_mu&&_mu.id)||''; }catch(e){}
   var _lock=_campoSoMinhasLock();                 // BDR/vendedor travados nas suas
   var _mine=_lock || _CAMPO.soMinhas;
-  var _mset=_mine ? _campoMinhasSet() : null;
-  function _ehMinha(l){ if((l.criado_por||'')===meuId) return true; if(!_mset) return false; if(_mset.byLoja[l.id]) return true; return !!_mset.byNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||_campoSlug(l.cidade))]; }
+  function _ehMinha(l){ return (l.criado_por||'')===meuId; } // só as CRIADAS por ele
 
   // Lojas com visita no período (se filtro de data ativo)
   var lojasComVisitaNoPeriodo = null;
