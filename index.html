@@ -1,3 +1,4 @@
+<!-- v33.21 - CRM (feedbacks do Carlos): (1) ROTA->CRM: ao remover parada/apagar rota, o lead SO sai do CRM se foi criado pela rota E ainda esta em "Lead na rota" (etapa 1, nao visitado). Se ja visitou (etapa>=2) PERMANECE no funil (preserva historico). _crmRotaSaiu ligado em _campoRotaRemove e _campoRotaApagar. (2) VISAO DE GESTAO (admin/gestor): barra de filtro por cidade e por pessoa no pipeline e no painel (_crmLeadsView/_crmFiltroBarHTML/_crmSetFiltro), pra analisar metricas de uma praca/individuo. Depende da coluna crm_leads.origem (SQL docs/seguranca-rls-crm-prospeccao.sql, que tbm blindou RLS). - 27/10/2026 -->
 <!-- v33.20 - CRM: tipo "Cadastrados e nao ativos" agora puxa a base REAL da Machine (os "pontos pretos"/fantasma do mapa = cadastrou e nunca pediu, via _campoCarregarMachine -> RPC clientes_onboarding + coord do cadastro). _crmBuscarCandidatos ramifica por tipo: novo=prospeccao_lojas status=prospect; cadastrado_nao_ativado=fantasma com coord. Exclusao por nome|cidade (fantasma nao tem loja_id). Obs: filtro de segmento so vale pros Novos (Machine nao tem segmento). - 27/10/2026 -->
 <!-- v33.19 - CRM BDR: (1) "Escolher leads" (seletor manual) na aba Hoje - busca por tipo/segmento/cidade, lista com checkbox (marca varios, "marcar todos"), salva em lote na lista do papel. (2) "Exportar planilha" (CSV dos meus leads: empresa, telefone, segmento, bairro, cidade, funil, etapa, tipo, status, ult. atividade). (3) BDR e admin podem escolher QUALQUER cidade (_crmCidadesSelec); vendedor/gestor seguem nas praças deles. Refatorado: _crmBuscarCandidatos + _crmSalvarLeads compartilhados entre Iniciar o dia e Escolher. - 27/10/2026 -->
 <!-- v33.18 - CRM 3 papeis: "Iniciar o dia" agora cria o lead no funil do PAPEL (antes era sempre field): BDR=inside (telefone/WhatsApp, home office, cadencia de contato), vendedor/gestor=field (visita/rota). via _crmPipelineUser. - 27/10/2026 -->
@@ -6391,6 +6392,7 @@ function _crmRenderShell(){
     + '<div style="flex:1"></div>'
     + '<button type="button" onclick="_crmChecarAtivacoes(false)" title="Confere na Machine quais leads já fizeram a 1ª entrega (ativaram)" style="font-size:11px;padding:8px 12px;border:1px solid #1D9E75;border-radius:9px;background:transparent;color:#1D9E75;cursor:pointer;font-family:inherit;font-weight:700">🔄 Checar ativações</button>'
     + '</div>'
+    + '<div id="crm-filtrobar"></div>'
     + '<div id="crm-body"></div>';
   _crmTabsUI();
 }
@@ -6403,6 +6405,8 @@ function _crmTabsUI(){
 function _crmSetTab(t){ _CRM.tab=t; _crmTabsUI(); _crmRenderTab(); }
 function _crmRenderTab(){
   var b=document.getElementById('crm-body'); if(!b) return;
+  var fb=document.getElementById('crm-filtrobar');
+  if(fb){ var _pp=_crmPapel(); fb.innerHTML=((_pp==='admin'||_pp==='gestor')&&(_CRM.tab==='pipeline'||_CRM.tab==='painel'))?_crmFiltroBarHTML():''; }
   if(_CRM.tab==='hoje') return _crmRenderHoje(b);
   if(_CRM.tab==='pipeline') return _crmRenderPipeline(b);
   if(_CRM.tab==='carteira') return _crmRenderCarteira(b);
@@ -6448,9 +6452,10 @@ function _crmRenderPipeline(b){
   var pipes = pipe==='ambos' ? ['inside','field'] : [pipe];
   var mob = (typeof window!=='undefined' && window.innerWidth < 640); // celular = colunas empilhadas (sem rolar de lado)
   var html='';
+  var _lv=_crmLeadsView();
   pipes.forEach(function(pp){
     var etapas=_CRM_ETAPAS[pp];
-    var meus=_CRM.leads.filter(function(l){ return l.pipeline===pp && l.status==='ativo'; });
+    var meus=_lv.filter(function(l){ return l.pipeline===pp && l.status==='ativo'; });
     html+='<div style="font-size:12px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:6px 2px 8px">'+(pp==='inside'?'📞 Inside (BDR)':'🚶 Field (vendedor/gestor)')+' · '+meus.length+' leads</div>';
     html+='<div style="display:flex;'+(mob?'flex-direction:column;':'overflow-x:auto;')+'gap:8px;padding-bottom:8px;margin-bottom:14px">';
     etapas.forEach(function(nome,i){
@@ -6464,7 +6469,7 @@ function _crmRenderPipeline(b){
     });
     html+='</div>';
   });
-  if(!_CRM.leads.length) html='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">Você ainda não tem leads.<br>Vá na <b>Prospecção em Campo</b>, clique numa empresa e toque em <b>💼 CRM</b> pra puxar pro seu funil.</div>';
+  if(!_lv.length) html='<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">'+((_CRM.fCidade||_CRM.fPessoa)?'Nenhum lead com esse filtro.':'Você ainda não tem leads.<br>Vá na <b>Prospecção em Campo</b>, clique numa empresa e toque em <b>💼 CRM</b> pra puxar pro seu funil.')+'</div>';
   b.innerHTML=html;
 }
 function _crmCard(l){
@@ -6514,6 +6519,24 @@ async function _crmAutoPegar(data){
     ultima_atividade_em:agora, criado_por:u.id, criado_em:agora, atualizado_em:agora };
   _CRM.leads.unshift(lead);
   try{ await _crmEscrever('crm_leads','upsert',{ dados:[lead] }); await _crmGerarCadencia(lead); await _crmLog(lead.id,'atribuicao','Lead criado pela rota de campo',true); }catch(e){}
+}
+/* Rota: parada saiu (removida/rota apagada). Só tira do CRM se foi criado pela ROTA e AINDA
+   está em "Lead na rota" (etapa 1, não visitado). Se já visitou (etapa>=2) PERMANECE no funil. */
+async function _crmRotaSaiu(parada){
+  if(!parada || typeof _CRM==='undefined' || !_CRM.leads || !_CRM.carregado) return;
+  var loja_id=parada.loja_id||'';
+  var nome=(parada.nome||'').trim().toLowerCase();
+  var slug=parada.cidade_slug||'';
+  var l=_CRM.leads.find(function(x){ return (loja_id && x.loja_id===loja_id) || ((x.empresa_nome||'').trim().toLowerCase()===nome && (x.cidade_slug||'')===slug); });
+  if(!l) return;
+  if(l.origem==='rota' && l.pipeline==='field' && (l.etapa||1)===1 && l.status==='ativo'){
+    _CRM.leads=_CRM.leads.filter(function(x){ return x.id!==l.id; });
+    _CRM.tarefas=(_CRM.tarefas||[]).filter(function(t){ return t.lead_id!==l.id; });
+    try{ await _crmEscrever('crm_tarefas','delete',{ filtro:'lead_id=eq.'+encodeURIComponent(l.id) }); }catch(e){}
+    try{ await _crmEscrever('crm_leads','delete',{ filtro:'id=eq.'+encodeURIComponent(l.id) }); }catch(e){}
+    try{ if(document.getElementById('pg-crm')&&document.getElementById('pg-crm').classList.contains('active')) _crmRenderTab(); }catch(e){}
+  }
+  // etapa>=2 (visitado) ou origem != rota: fica no funil, não mexe.
 }
 /* --------- CADÊNCIAS: geram as tarefas da fila "Hoje" --------- */
 function _crmNovaTarefa(lead, tipo, titulo, dias){
@@ -7146,6 +7169,33 @@ function _crmBarra(feito, meta, cor){
   return '<div style="background:var(--border);border-radius:8px;height:8px;overflow:hidden;margin-top:4px"><div style="height:100%;width:'+pct+'%;background:'+cor+'"></div></div>';
 }
 function _crmNomePessoa(pid){ try{ var p=(typeof getPessoas==='function'?getPessoas():[]).find(function(x){ return x.id===pid; }); return p?(p.nome||pid):pid; }catch(e){ return pid; } }
+function _crmNomeCidade(slug){ try{ var all=(typeof getCidadesData==='function'?getCidadesData():[]).find(function(c){ return _campoSlug(c.nome)===slug; }); return all?all.nome:slug; }catch(e){ return slug; } }
+/* 👁️ VISÃO DE GESTÃO (admin/gestor): filtra o CRM por cidade e por pessoa */
+function _crmLeadsView(){
+  var arr=_CRM.leads||[];
+  if(_CRM.fCidade) arr=arr.filter(function(l){ return (l.cidade_slug||'')===_CRM.fCidade; });
+  if(_CRM.fPessoa) arr=arr.filter(function(l){ return (l.dono_id||'')===_CRM.fPessoa; });
+  return arr;
+}
+function _crmSetFiltro(tipo,val){
+  if(tipo==='cidade') _CRM.fCidade=val||'';
+  else if(tipo==='pessoa') _CRM.fPessoa=val||'';
+  else { _CRM.fCidade=''; _CRM.fPessoa=''; }
+  _crmRenderTab();
+}
+function _crmFiltroBarHTML(){
+  var cids={}, pess={};
+  (_CRM.leads||[]).forEach(function(l){ if(l.cidade_slug) cids[l.cidade_slug]=true; if(l.dono_id) pess[l.dono_id]=true; });
+  var cidOpts=Object.keys(cids).sort().map(function(s){ return '<option value="'+s+'"'+(_CRM.fCidade===s?' selected':'')+'>'+_crmEsc(_crmNomeCidade(s))+'</option>'; }).join('');
+  var pesOpts=Object.keys(pess).map(function(p){ return {id:p,nome:_crmNomePessoa(p)}; }).sort(function(a,b){ return String(a.nome).localeCompare(String(b.nome)); }).map(function(o){ return '<option value="'+o.id+'"'+(_CRM.fPessoa===o.id?' selected':'')+'>'+_crmEsc(o.nome)+'</option>'; }).join('');
+  var sel='padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);font-size:12px;font-family:inherit';
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;padding:10px 12px;background:linear-gradient(135deg,#E6F6FE,var(--surface2,#f7f9fc));border:1px solid #1AB8F033;border-radius:10px">'
+    +'<span style="font-size:11px;font-weight:800;color:#0E7AB8">👁️ Visão de gestão</span>'
+    +'<select onchange="_crmSetFiltro(\'cidade\',this.value)" style="'+sel+'"><option value="">🏙️ Todas as cidades</option>'+cidOpts+'</select>'
+    +'<select onchange="_crmSetFiltro(\'pessoa\',this.value)" style="'+sel+'"><option value="">👤 Todas as pessoas</option>'+pesOpts+'</select>'
+    +((_CRM.fCidade||_CRM.fPessoa)?'<button onclick="_crmSetFiltro(\'limpar\')" style="font-size:11px;padding:7px 11px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit">✕ Limpar</button>':'')
+    +'</div>';
+}
 function _crmRenderPainel(b){
   var u=_crmUser(); var papel=_crmPapel(u); var per=_crmPeriodo();
   if(papel==='admin'||papel==='gestor') return _crmPainelTime(b, per, papel);
@@ -7172,7 +7222,7 @@ function _crmPainelPessoal(b, u, per){
   });
 }
 function _crmRedeHTML(per){
-  var ativos=_CRM.leads.filter(function(l){ return l.status==='ativado'; });
+  var ativos=_crmLeadsView().filter(function(l){ return l.status==='ativado'; });
   var mesAtual=ativos.filter(function(l){ return (l.ativado_em||'').slice(0,7)===per; });
   var inside=mesAtual.filter(function(l){ return l.pipeline==='inside'; }).length;
   var field=mesAtual.filter(function(l){ return l.pipeline==='field'; }).length;
@@ -7193,11 +7243,12 @@ function _crmRedeHTML(per){
 }
 function _crmPainelTime(b, per, papel){
   var rede = (papel==='admin') ? _crmRedeHTML(per) : '';
-  // donos visíveis
-  var donos={}; _CRM.leads.forEach(function(l){ if(l.dono_id) donos[l.dono_id]=true; });
+  // donos visíveis (respeita o filtro de gestão)
+  var _LV=_crmLeadsView();
+  var donos={}; _LV.forEach(function(l){ if(l.dono_id) donos[l.dono_id]=true; });
   var ids=Object.keys(donos);
   var rows=ids.map(function(pid){
-    var leads=_CRM.leads.filter(function(l){ return l.dono_id===pid; });
+    var leads=_LV.filter(function(l){ return l.dono_id===pid; });
     var ativ=leads.filter(function(l){ return l.status==='ativado' && (l.ativado_em||'').slice(0,7)===per; }).length;
     var meta=_crmMetaDe(pid,per)||{meta_ativacoes:0,meta_receita:0};
     return { pid:pid, nome:_crmNomePessoa(pid), abertos:leads.filter(function(l){return l.status==='ativo';}).length, ativ:ativ, perdidos:leads.filter(function(l){return l.status==='perdido';}).length, metaA:meta.meta_ativacoes||0 };
@@ -8263,7 +8314,9 @@ function _campoRotaRenomear(){
 }
 function _campoRotaApagar(){
   if(!_CAMPO.rota) return;
-  if(!confirm('Apagar a rota "'+(_CAMPO.rota.nome||'')+'"? As paradas serão perdidas.')) return;
+  if(!confirm('Apagar a rota "'+(_CAMPO.rota.nome||'')+'"? As paradas serão perdidas.\n(Os leads já visitados continuam no CRM; só saem os que ainda estavam "Lead na rota".)')) return;
+  var _paradas=(_CAMPO.rota.paradas||[]).slice();
+  try{ if(typeof _crmRotaSaiu==='function') _paradas.forEach(function(p){ _crmRotaSaiu(p); }); }catch(e){}
   var id=_CAMPO.rota.id;
   if(_campoRotaSaveQ) delete _campoRotaSaveQ[id]; // cancela save pendente (senão ressuscitava a rota com ativa:true)
   try { _syncEscrever({ tabela:'prospeccao_rotas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:{ ativa:false, updated_at:new Date().toISOString() } }); } catch(e){}
@@ -8320,8 +8373,10 @@ function _campoRotaAddStop(stop){
 }
 function _campoRotaRemove(key){
   if(!_CAMPO.rota) return;
-  _CAMPO.rota.paradas = _CAMPO.rota.paradas.filter(function(p){ return p.key!==key; });
+  var p=(_CAMPO.rota.paradas||[]).find(function(x){ return x.key===key; });
+  _CAMPO.rota.paradas = _CAMPO.rota.paradas.filter(function(x){ return x.key!==key; });
   _campoRotaSalvar(); _campoRepintar(); _campoRenderRota();
+  try{ if(p && typeof _crmRotaSaiu==='function') _crmRotaSaiu(p); }catch(e){} // tira do CRM só se não visitou
 }
 function _campoRotaToggleEmp(slug, nomeEnc){
   var nome=decodeURIComponent(nomeEnc||'');
