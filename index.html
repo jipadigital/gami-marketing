@@ -1,3 +1,4 @@
+<!-- v33.22 - SEGURANCA (blindar escrita): push_subscriptions e push_agendados deixaram de ser gravados DIRETO com a chave publica e passam pela Netlify function supabase-write (service key, exige sessao). supabase-write ganhou suporte a on_conflict e resolution (ignore-duplicates) no upsert; push_* adicionadas em TABELAS_PERMITIDAS e TABELAS_COLAB. Depois disso pode ligar RLS nessas tabelas (SQL docs). Preparo pra blindar pessoas/configuracoes/posts_agendados na sequencia. - 27/10/2026 -->
 <!-- v33.21 - CRM (feedbacks do Carlos): (1) ROTA->CRM: ao remover parada/apagar rota, o lead SO sai do CRM se foi criado pela rota E ainda esta em "Lead na rota" (etapa 1, nao visitado). Se ja visitou (etapa>=2) PERMANECE no funil (preserva historico). _crmRotaSaiu ligado em _campoRotaRemove e _campoRotaApagar. (2) VISAO DE GESTAO (admin/gestor): barra de filtro por cidade e por pessoa no pipeline e no painel (_crmLeadsView/_crmFiltroBarHTML/_crmSetFiltro), pra analisar metricas de uma praca/individuo. Depende da coluna crm_leads.origem (SQL docs/seguranca-rls-crm-prospeccao.sql, que tbm blindou RLS). - 27/10/2026 -->
 <!-- v33.20 - CRM: tipo "Cadastrados e nao ativos" agora puxa a base REAL da Machine (os "pontos pretos"/fantasma do mapa = cadastrou e nunca pediu, via _campoCarregarMachine -> RPC clientes_onboarding + coord do cadastro). _crmBuscarCandidatos ramifica por tipo: novo=prospeccao_lojas status=prospect; cadastrado_nao_ativado=fantasma com coord. Exclusao por nome|cidade (fantasma nao tem loja_id). Obs: filtro de segmento so vale pros Novos (Machine nao tem segmento). - 27/10/2026 -->
 <!-- v33.19 - CRM BDR: (1) "Escolher leads" (seletor manual) na aba Hoje - busca por tipo/segmento/cidade, lista com checkbox (marca varios, "marcar todos"), salva em lote na lista do papel. (2) "Exportar planilha" (CSV dos meus leads: empresa, telefone, segmento, bairro, cidade, funil, etapa, tipo, status, ult. atividade). (3) BDR e admin podem escolher QUALQUER cidade (_crmCidadesSelec); vendedor/gestor seguem nas praças deles. Refatorado: _crmBuscarCandidatos + _crmSalvarLeads compartilhados entre Iniciar o dia e Escolher. - 27/10/2026 -->
@@ -39154,11 +39155,7 @@ async function _pushSubscribe(){
     var j = sub.toJSON();
     if(!j || !j.keys) return false;
     var linha = { pessoa_id: u.id, endpoint: sub.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_agent: (navigator.userAgent||'').slice(0,180) };
-    await fetch(SUPA_URL + '/rest/v1/push_subscriptions?on_conflict=endpoint', {
-      method: 'POST',
-      headers: Object.assign(supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates,return=minimal' }),
-      body: JSON.stringify(linha)
-    });
+    await _syncEscrever({ tabela:'push_subscriptions', operacao:'upsert', dados:[linha], on_conflict:'endpoint' });
     window._pushInscrito = true;
     return true;
   } catch(e){ console.warn('[push subscribe]', e && e.message); return false; }
@@ -39187,12 +39184,8 @@ async function _pushSyncAgendados(){
       }
     });
     if(!rows.length) return;
-    // ignore-duplicates: não mexe em quem já foi enviado
-    await fetch(SUPA_URL + '/rest/v1/push_agendados?on_conflict=pessoa_id,titulo,quando,tipo', {
-      method: 'POST',
-      headers: Object.assign(supaHeaders(), { 'Content-Type':'application/json', 'Prefer':'resolution=ignore-duplicates,return=minimal' }),
-      body: JSON.stringify(rows)
-    });
+    // ignore-duplicates: não mexe em quem já foi enviado (agora pelo servidor, service key)
+    await _syncEscrever({ tabela:'push_agendados', operacao:'upsert', dados:rows, on_conflict:'pessoa_id,titulo,quando,tipo', resolution:'ignore-duplicates' });
   } catch(e){ console.warn('[push sync agendados]', e && e.message); }
 }
 

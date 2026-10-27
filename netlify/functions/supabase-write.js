@@ -44,7 +44,9 @@ const TABELAS_PERMITIDAS = [
   'prospeccao_visitas', // CRM de campo: log de visitas
   'prospeccao_rotas',  // CRM de campo: rota de visitas por gestor
   // CRM Gâmi (comercial): inside (BDR) + field (vendedor/gestor)
-  'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config'
+  'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config',
+  // Push (cada usuário logado inscreve o próprio aparelho / agenda os próprios lembretes)
+  'push_subscriptions', 'push_agendados'
 ];
 
 // 🆕 Tabelas de COLABORAÇÃO: qualquer usuário com SESSÃO VÁLIDA pode gravar aqui
@@ -52,7 +54,8 @@ const TABELAS_PERMITIDAS = [
 // o Mazinho concluir uma tarefa que a Suzi delegou (UPDATE em tarefas) e avisá-la
 // (INSERT em notificacoes). Fora dessas, segue só super_admin.
 const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospeccao_visitas', 'prospeccao_rotas',
-  'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config'];
+  'crm_leads', 'crm_atividades', 'crm_tarefas', 'crm_checklist', 'crm_metas', 'crm_scripts', 'crm_config',
+  'push_subscriptions', 'push_agendados'];
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
@@ -292,11 +295,15 @@ exports.handler = async function(event){
       }
       method = 'POST';
       supaBody = JSON.stringify(dados);
+      // resolução do conflito: merge (padrão) ou ignore (não mexe no que já existe)
+      var resol = (body.resolution === 'ignore-duplicates') ? 'ignore-duplicates' : 'merge-duplicates';
       // Se cliente pediu retornar=true, devolve registros criados
-      var prefer = body.retornar 
-        ? 'resolution=merge-duplicates,return=representation'
-        : 'resolution=merge-duplicates,return=minimal';
+      var prefer = body.retornar
+        ? 'resolution='+resol+',return=representation'
+        : 'resolution='+resol+',return=minimal';
       supaHeaders['Prefer'] = prefer;
+      // on_conflict: deduplica por coluna(s) específica(s) em vez da PK (ex.: endpoint do push)
+      if(body.on_conflict){ url += '?on_conflict='+encodeURIComponent(body.on_conflict); }
     }
     else if(operacao === 'patch'){
       if(!filtro || !patch){
