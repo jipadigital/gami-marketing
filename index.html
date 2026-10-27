@@ -1,3 +1,4 @@
+<!-- v33.33 - SEGURANCA (configuracoes, ultima da etapa 2): o Cloud Mirror (_gamiCloudFlush) deixa de gravar direto com a chave publica e passa pelo supabase-write (service key, on_conflict=chave). Guarda: nao tenta flush sem sessao valida (evita 401/logout em background); _syncEscrever ganhou opt {silencioso} pra nao forcar logout em chamada de fundo. configuracoes add em TABELAS_COLAB (todo logado espelha; blacklist filtra o sensivel). syncConfig ja roteava via supaUpsert. Depois de testar (editar algo que espelha, ex. reconhecimento/direcao/spotlight, e confirmar que recarrega em outro aparelho) rodar docs/seguranca-rls-configuracoes.sql. - 27/10/2026 -->
 <!-- v33.32 - SEGURANCA lote B (escrita pelo servidor): estoque_itens (cadastrar/editar/desativar), estoque_mov (editar venda) e desafios_admin (criar/editar/encerrar) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). As 3 tabelas add em PERMITIDAS e COLAB. Entrada/venda de estoque seguem por RPC (estoque_registrar_entrada/venda) - o RLS lock preserva essas RPCs como SECURITY DEFINER. Depois de testar (cadastrar/editar brinde, registrar entrada+venda, criar/encerrar desafio) rodar o RLS lock lote B. - 27/10/2026 -->
 <!-- v33.31 - SEGURANCA lote A (escrita pelo servidor): tarefas (_tfPatchTarefa), recados (_recadosSalvarSupa/_recadosApagarSupa/limpeza) e pulse_votos (voto) deixam de escrever direto com a chave publica e passam pelo supabase-write (service key). pulse_votos add em PERMITIDAS; recados+pulse_votos em COLAB. Depois de testar (postar recado, concluir tarefa, votar pulse) rodar o RLS lock. - 27/10/2026 -->
 <!-- v33.30 - SEGURANCA (pessoas): todas as escritas de pessoas passam a ir pelo SERVIDOR (supabase-write, service key) em vez de direto com a chave publica: syncPessoas (upsert on_conflict=id + delete em lote via id=in), reset-total e force-sync. pessoas adicionada em TABELAS_COLAB (qualquer logado escreve pelo servidor, bloqueia anon, auditavel). Removido o fallback de niveis (coluna ja existe). Depois de testar editar uma pessoa, rodar o RLS lock. - 27/10/2026 -->
@@ -25833,7 +25834,8 @@ function _syncMostrarProgresso(){
 
 /* Helper centralizado pra escritas no Supabase via função Netlify (segura)
    Usa SUPA_SERVICE_KEY do servidor + valida X-Gami-Token de sessão */
-async function _syncEscrever(payload){
+async function _syncEscrever(payload, opts){
+  opts = opts || {};
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var userId = u && u.id ? u.id : 'desconhecido';
   var token = '';
@@ -25859,7 +25861,7 @@ async function _syncEscrever(payload){
     // token_atual nulo no servidor), redireciona pro login. v31.45: antes so pegava
     // "expirada"/"invalido" e o erro "Sessao nao encontrada" escapava — a pessoa ficava
     // presa em "Nao consegui salvar" sem ser mandada pro login (foi o caso do Joao Duarte).
-    if(r.status === 401 && /expirad|inv[aá]lid|n[aã]o encontrada|fa[cç]a login/i.test(msg)){
+    if(r.status === 401 && !opts.silencioso && /expirad|inv[aá]lid|n[aã]o encontrada|fa[cç]a login/i.test(msg)){
       try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
       alert('Sua sessão caiu. Faça login novamente pra continuar salvando.');
       if(typeof logout === 'function') logout();
@@ -42905,6 +42907,14 @@ function _gamiCloudQueue(key, value){
 async function _gamiCloudFlush(){
   var keys = Object.keys(_GAMI_CLOUD_PEND);
   if(!keys.length) return;
+
+  // 🔒 v33.33: o mirror grava `configuracoes` pelo SERVIDOR (service key).
+  // Sem sessao valida nao tenta: deixa na fila e espera logar (o proximo
+  // write gami_* re-arma o timer). Evita 401/logout em background.
+  var _mu = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
+  var _mtok = ''; try { _mtok = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+  if(!_mu || !_mu.id || !_mtok) return;
+
   var batch = _GAMI_CLOUD_PEND;
   _GAMI_CLOUD_PEND = {};
 
@@ -42919,20 +42929,10 @@ async function _gamiCloudFlush(){
         updated_at: new Date().toISOString()
       };
     });
-    var r = await fetch(SUPA_URL + '/rest/v1/configuracoes?on_conflict=chave', {
-      method: 'POST',
-      headers: Object.assign({}, supaHeaders(), {'Prefer':'resolution=merge-duplicates'}),
-      body: JSON.stringify(registros)
-    });
-    if(!r.ok){
-      _gamiSyncBadge('⚠️ Erro ao salvar na nuvem (HTTP ' + r.status + ')', 'red');
-      console.warn('cloudFlush HTTP', r.status, await r.text());
-      setTimeout(_gamiHideSyncBadge, 4000);
-      Object.keys(batch).forEach(function(k){ _GAMI_CLOUD_PEND[k] = batch[k]; });
-    }
+    await _syncEscrever({ tabela:'configuracoes', operacao:'upsert', dados:registros, on_conflict:'chave' }, { silencioso:true });
     // Sucesso: nao mostra nada (silencioso)
   }catch(e){
-    _gamiSyncBadge('⚠️ Sem conexão — salvo localmente', 'red');
+    _gamiSyncBadge('⚠️ Erro ao salvar na nuvem', 'red');
     console.warn('cloudFlush:', e);
     Object.keys(batch).forEach(function(k){ _GAMI_CLOUD_PEND[k] = batch[k]; });
     setTimeout(_gamiHideSyncBadge, 3000);

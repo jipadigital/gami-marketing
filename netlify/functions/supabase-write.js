@@ -61,7 +61,8 @@ const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospecca
   'push_subscriptions', 'push_agendados',
   'pessoas',   // edição do time: qualquer logado escreve pelo servidor (bloqueia anon; auditável). UI já restringe quem edita.
   'recados', 'pulse_votos',  // mural e voto do pulse: ação de qualquer usuário logado
-  'estoque_itens', 'estoque_mov', 'desafios_admin'];  // telas admin (UI já restringe por isAdminPontos / gestor)
+  'estoque_itens', 'estoque_mov', 'desafios_admin',  // telas admin (UI já restringe por isAdminPontos / gestor)
+  'configuracoes'];  // Cloud Mirror: todo usuário logado espelha suas chaves gami_* (blacklist filtra o sensível)
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
