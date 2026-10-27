@@ -26,7 +26,9 @@ const TABELAS_LEITURA = [
   // PII / pessoal
   'pessoas','ponto_registros','ponto_log_admin','ponto_config',
   // conteúdo interno
-  'recados','tarefas'
+  'recados','tarefas',
+  // varredura final: auditoria e push
+  'audit_log','acessos_log','push_subscriptions','push_agendados'
 ];
 
 // RPCs sensíveis (leitura de dado comercial/Machine/prospecção) que o proxy aceita chamar.
@@ -41,7 +43,9 @@ const RPCS_LEITURA = [
   'estoque_saldo','estoque_vendas','estoque_dashboard','estoque_vitrine',
   'estoque_distribuicao_cidades','estoque_vendas_agrupadas',
   // reservados pra lotes seguintes (PII/ponto)
-  'ponto_dia_editor','tarefas_minhas'
+  'ponto_dia_editor','tarefas_minhas',
+  // varredura final: metadados de backup
+  'listar_backups_diarios'
 ];
 
 const ORIGENS_PERMITIDAS = [

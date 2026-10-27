@@ -1,3 +1,4 @@
+<!-- v33.39 - SEGURANCA etapa 3 R5 (varredura final): auditoria achou mais exposicoes que nao estavam no mapa (o cliente quase nao le): audit_log, acessos_log, push_subscriptions (credenciais de push) e push_agendados liam pela chave publica; RPC listar_backups_diarios idem. Entram no conjunto sensivel (leem pelo proxy). Escrita de audit_log/acessos_log vai pro servidor (add em PERMITIDAS+COLAB) p/ poder travar. SQL: seguranca-rls-leitura-r5-varredura.sql. Confirmado seguro: usuarios_login 401, trocar_pin/registrar_feedback nao executaveis por anon. - 27/10/2026 -->
 <!-- v33.38 - SEGURANCA etapa 3 R4 (conteudo interno + escrita estoque): recados e tarefas entram no conjunto sensivel (leem pelo proxy); tarefas_minhas (RPC) tambem. ESCRITA do estoque fechada: estoque_registrar_entrada/venda deixam de ser chamaveis pela chave publica (fechava brecha de venda/entrada falsa) e passam pelo supabase-write (operacao rpc, RPCS_PERMITIDAS+RPCS_COLAB; check de tabela pulado p/ rpc). Gamificacao (pontos_log/badges/streaks/rankings) fica aberta de proposito (nome+pontos, dado interno baixo risco, decisao do dono). SQLs: seguranca-rls-leitura-r4-estoque.sql (agora inclui revoke das RPCs de escrita) e seguranca-rls-leitura-r4-recados-tarefas.sql. - 27/10/2026 -->
 <!-- v33.37 - SEGURANCA etapa 3 R4-estoque: estoque_vendas/_agrupadas devolviam nome+telefone de CLIENTE (PII) pela chave publica, e a tabela estoque_mov estava aberta. As 6 RPCs de leitura do estoque (estoque_saldo/vendas/dashboard/vitrine/distribuicao_cidades/vendas_agrupadas) entram no conjunto sensivel (leem pelo proxy via interceptor). Depois de testar a tela de Estoque, rodar docs/seguranca-rls-leitura-r4-estoque.sql (REVOKE execute das RPCs + RLS na estoque_mov). Escrita por RPC (entrada/venda) NAO mexida aqui (passo a parte). - 27/10/2026 -->
 <!-- v33.36 - SEGURANCA etapa 3 R3 (PII do time): pessoas + ponto_registros/ponto_log_admin/ponto_config entram no conjunto sensivel (leem pelo proxy supabase-read). GUARDA nova no interceptor: sem token de sessao (pre-login/boot) NAO reroteia, cai no fetch normal (a protecao real e a RLS no banco; nao quebra login nem boot). pessoas estava ESCANCARADA (nome/email/tel/cargo via chave publica); ponto_* ja vinha []. Depois de testar diretorio do time, perfil no login, permissoes e telas de ponto, rodar docs/seguranca-rls-leitura-r3.sql (dropa policy _sel de pessoas; confirma ponto_*). - 27/10/2026 -->
@@ -8827,7 +8828,9 @@ var _SUPA_SENSIVEL = {
   // R3 (PII do time): cadastro, ponto (GPS/IP), config e log de ponto
   pessoas:1, ponto_registros:1, ponto_log_admin:1, ponto_config:1,
   // R4 conteúdo interno: mural e tarefas
-  recados:1, tarefas:1
+  recados:1, tarefas:1,
+  // R5 (varredura final): trilha de auditoria e credenciais/agenda de push
+  audit_log:1, acessos_log:1, push_subscriptions:1, push_agendados:1
 };
 // R2b: RPCs que devolvem dado comercial/Machine/prospecção (vão pelo proxy).
 var _SUPA_SENSIVEL_RPC = {
@@ -8841,7 +8844,9 @@ var _SUPA_SENSIVEL_RPC = {
   estoque_saldo:1, estoque_vendas:1, estoque_dashboard:1, estoque_vitrine:1,
   estoque_distribuicao_cidades:1, estoque_vendas_agrupadas:1,
   // R4 tarefas pessoais (tarefas_minhas devolve tarefa de qualquer pessoa_id)
-  tarefas_minhas:1
+  tarefas_minhas:1,
+  // R5: metadados de backup
+  listar_backups_diarios:1
 };
 // Quebra SUPA_URL+'/rest/v1/TABELA?QUERY' em {tabela, query}. Null se não casar.
 function _supaParseUrl(url){

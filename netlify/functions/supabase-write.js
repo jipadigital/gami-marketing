@@ -28,6 +28,7 @@ const TABELAS_PERMITIDAS = [
   'machine_empresas',
   'machine_sync_log',
   'audit_log',         // pra registrar ações de auditoria
+  'acessos_log',       // log de acesso (login) , escrita pelo servidor p/ poder travar leitura
   // App Gâmi — tabelas operacionais
   'tarefas',           // delegação, tarefas pessoais
   'pessoas',           // cadastros do time
@@ -62,7 +63,8 @@ const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospecca
   'pessoas',   // edição do time: qualquer logado escreve pelo servidor (bloqueia anon; auditável). UI já restringe quem edita.
   'recados', 'pulse_votos',  // mural e voto do pulse: ação de qualquer usuário logado
   'estoque_itens', 'estoque_mov', 'desafios_admin',  // telas admin (UI já restringe por isAdminPontos / gestor)
-  'configuracoes'];  // Cloud Mirror: todo usuário logado espelha suas chaves gami_* (blacklist filtra o sensível)
+  'configuracoes',   // Cloud Mirror: todo usuário logado espelha suas chaves gami_* (blacklist filtra o sensível)
+  'audit_log', 'acessos_log'];  // trilha de auditoria/acesso: qualquer logado registra (log secundário)
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
