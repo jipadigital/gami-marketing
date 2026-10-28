@@ -1,3 +1,4 @@
+<!-- v33.52 - FIX login iPhone (keychain travava a digitacao): o campo PIN era type=password -> o iOS ignora autocomplete=off e forca "Preencher Senha" (keychain do netlify.app), preenchia o PIN com lixo e NAO deixava digitar (caso Jheniffer, visto no video). Conserto: PIN vira type=text com mascara CSS (-webkit-text-security:disc), que o iOS NAO trata como senha; email autocomplete=username->off; form autocomplete=off; _alternarMostrarPin alterna a mascara em vez do type. - 28/10/2026 -->
 <!-- v33.51 - CRM export pro CHAT GURU: botao 📲 na aba Hoje baixa CSV com Nome + Telefone (so os meus leads, do dono), telefone LIMPO no formato WhatsApp (55+DDD+numero), ignorando vazios e placeholders (000000000). _crmExportarChatGuru + _crmTelWhats. - 28/10/2026 -->
 <!-- v33.50 - PROSPECCAO por cidade (perf + fim do bug de corte): o mapa NAO carrega mais todos os ~40k prospects de uma vez. Agora clicou na cidade -> carrega SO os dela (prospeccao_lojas filtrado por cidade_slug, cache por slug = reabrir e instantaneo). _campoFetch so puxa visitas; _campoCarregarLojasCidade/_campoSetLojasCidade novos; _campoIrParaCidade async (camera primeiro, pontos depois); _campoSetCidade/_campoMapaBrasil/initCampo adaptados. _campoGarantirMachine tambem: Brasil nao puxa a Machine das 9 cidades (so a selecionada). Brasil = leve (so estados). Chips mostram count/cor so apos visitar a cidade (vem da machineCache). - 28/10/2026 -->
 <!-- v33.49 - FIX Maceio/Teresina sumidos do mapa: o mapa carrega TODOS os prospects de todas as cidades de uma vez (order updated_at desc) com teto de 30k no _campoFetchTodos. Com os imports novos (Recife+Natal+Aracaju ~12k) o total passou de ~40k, e as cidades MAIS ANTIGAS (Maceio 23/10, Teresina 26/10) caiam depois do offset 30k = cortadas. Teto subido pra 120k (detec. de fim para no total real). Proximo: carregar prospects POR CIDADE pra nao baixar 40k toda vez (perf). - 28/10/2026 -->
@@ -16174,14 +16175,15 @@ function _alternarMostrarPin(){
   var inp = document.getElementById('login-pin');
   var btn = document.getElementById('login-pin-toggle');
   if(!inp || !btn) return;
-  if(inp.type === 'password'){
-    inp.type = 'text';
-    btn.textContent = '🙈';
-    btn.title = 'Ocultar PIN';
+  // v33.52: o campo agora é type=text com máscara CSS (-webkit-text-security) pra o iPhone
+  // NÃO forçar o keychain. O olho alterna a máscara, não o type.
+  var oculto = (inp.style.webkitTextSecurity || 'disc') !== 'none';
+  if(oculto){
+    inp.style.webkitTextSecurity = 'none'; try{ inp.style.textSecurity = 'none'; }catch(e){}
+    btn.textContent = '🙈'; btn.title = 'Ocultar PIN';
   } else {
-    inp.type = 'password';
-    btn.textContent = '👁️';
-    btn.title = 'Mostrar PIN';
+    inp.style.webkitTextSecurity = 'disc'; try{ inp.style.textSecurity = 'disc'; }catch(e){}
+    btn.textContent = '👁️'; btn.title = 'Mostrar PIN';
   }
 }
 
@@ -16584,19 +16586,19 @@ function mostrarTelaLogin(){
     + '<div style="font-family:Syne,sans-serif;font-size:28px;font-weight:800;color:#0B2542;letter-spacing:-0.5px">Gâmi Delivery</div>'
     + '<div style="font-size:12px;color:#0E7AB8;font-weight:600;margin-top:2px">Gestão Operacional</div>'
     + '</div>'
-    + '<form id="login-form" onsubmit="return handleLoginSubmit(event)">'
+    + '<form id="login-form" autocomplete="off" onsubmit="return handleLoginSubmit(event)">'
     + '<div style="margin-bottom:14px">'
     + '<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Email ou Username</label>'
-    + '<input type="text" id="login-user" autocomplete="username" required '
+    + '<input type="text" id="login-user" name="gami_user" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required '
     + 'style="width:100%;padding:11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" '
     + 'placeholder="seu@email.com ou seuapelido" autofocus>'
     + '</div>'
     + '<div style="margin-bottom:18px">'
     + '<label style="font-size:11px;color:#56627a;font-weight:600;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">PIN</label>'
     + '<div style="position:relative">'
-    + '<input type="password" id="login-pin" autocomplete="off" data-lpignore="true" data-1p-ignore="true" required '
+    + '<input type="text" id="login-pin" name="gami_pin" autocomplete="off" inputmode="text" data-lpignore="true" data-1p-ignore="true" required '
     + 'autocapitalize="off" autocorrect="off" spellcheck="false" '
-    + 'style="width:100%;padding:11px 44px 11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit" '
+    + 'style="width:100%;padding:11px 44px 11px 14px;border:1.5px solid #DDE3EB;border-radius:10px;font-size:14px;font-family:inherit;-webkit-text-security:disc;text-security:disc" '
     + 'placeholder="••••••••" maxlength="32">'
     + '<button type="button" onclick="_alternarMostrarPin()" id="login-pin-toggle" '
     + 'style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;font-size:18px;padding:6px;color:#56627a;font-family:inherit" '
