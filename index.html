@@ -1,3 +1,4 @@
+<!-- v33.46 - FIX URGENTE (time sem pontos/ponto/mural): usuarios logados pelo CACHE sem token de sessao viam tudo vazio em silencio (leitura exige token agora; o interceptor sem token cai no anon que volta [] 200, entao o aviso reativo da v33.41 nao disparava). Trava de BOOT: logado + sem gami_sessao_token -> alerta + re-login na hora (guarda pro Modo Teste/impersonacao). Server-side estava OK (ponto_bater DEFINER, pontos_log/recados escrevem pelo servidor). Cura = re-login (gera token). - 28/10/2026 -->
 <!-- v33.45 - CRM (Iniciar o dia + Escolher): SEGMENTO agora e multi-selecao (marcar quantos quiser: ex pizzaria+hamburguer+lanche, ou Todos) e novo filtro de BAIRRO (depois de escolher a cidade carrega os bairros da prospeccao; marcar todos/um/varios - ex Maceio norte x sul por vendedor). _crmBuscarCandidatos aceita arrays segs[] e bairros[] (segOk=some, bairroOk=some normalizado). Helpers _crmSegsBoxHTML/_crmCarregarBairros/_crmSegsMarcados/_crmBairrosMarcados. Bairro so com cidade especifica (nao em 'todas as pracas'). - 28/10/2026 -->
 <!-- v33.44 - CRM (#3 Painel de Produtividade): nova aba "⚡ Produtividade" (so management: super_admin/diretoria/gerencia/gestor/Carlos; vendedor e BDR NAO veem). Filtro por periodo (Hoje/7d/30d/custom) e tabela por vendedor: visitas (crm_atividades tipo=visita), cadastros reais (checklist cadastro autor=pessoa, 'sistema'/ja-na-Machine NAO conta), ativacoes (checklist ativacao -> dono do lead = o ganho real), integracoes (ifood/99/outra). Respeita o filtro de gestao (_crmLeadsView). - 28/10/2026 -->
 <!-- v33.43 - CRM (#1b cadastro auto do lead novo): ao ATIVAR (auto-ativacao ja le a Machine), o sistema tambem marca o "Cadastro concluido" sozinho. Lead novo (fora da Machine) -> credita ao DONO (vendedor que trouxe); lead que ja era da Machine -> 'sistema' (nao credita). Tira o clique manual sem custo de leitura (reaproveita a leitura da ativacao). Casa com a regra: ganho = lead no CRM do vendedor + ativacao. - 28/10/2026 -->
@@ -15854,6 +15855,24 @@ function getUsuarioLogado(){
   } catch(e){}
   return _getUsuarioLogadoReal();
 }
+
+/* 🔧 v33.46: trava de boot. Depois das travas de segurança, a LEITURA exige token
+   de sessao. Quem ficou logado pelo CACHE (gami_usuario_logado) SEM token
+   (gami_sessao_token vazio) via tudo vazio EM SILENCIO (mural, ponto_config, etc.)
+   porque o interceptor, sem token, cai no anon (que volta [] 200, nao 401) e o aviso
+   reativo nao dispara. Aqui, no boot, se esta logado e sem token -> forca re-login. */
+function _gamiExigeTokenSessao(){
+  try{ if(sessionStorage.getItem('_gami_impersonacao')) return; }catch(e){}  // Modo Teste: nao forca
+  var u=null; try{ u=JSON.parse(localStorage.getItem('gami_usuario_logado')||'null'); }catch(e){}
+  if(!u || !u.id) return;  // nao logado -> tela de login normal
+  var tok=''; try{ tok=localStorage.getItem('gami_sessao_token')||''; }catch(e){}
+  if(tok) return;  // tem token -> ok
+  try{ localStorage.removeItem('gami_usuario_logado'); }catch(e){}
+  try{ localStorage.removeItem('gami_sessao_token'); }catch(e){}
+  alert('🔒 O sistema foi atualizado com mais segurança. Faça login de novo (usuário + PIN) pra continuar. Seus dados estão todos salvos.');
+  try{ location.reload(); }catch(e){}
+}
+document.addEventListener('DOMContentLoaded', function(){ setTimeout(_gamiExigeTokenSessao, 1200); });
 
 function _getUsuarioLogadoReal(){
   var saved = localStorage.getItem('gami_usuario_logado');
