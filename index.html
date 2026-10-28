@@ -1,3 +1,4 @@
+<!-- v33.49 - FIX Maceio/Teresina sumidos do mapa: o mapa carrega TODOS os prospects de todas as cidades de uma vez (order updated_at desc) com teto de 30k no _campoFetchTodos. Com os imports novos (Recife+Natal+Aracaju ~12k) o total passou de ~40k, e as cidades MAIS ANTIGAS (Maceio 23/10, Teresina 26/10) caiam depois do offset 30k = cortadas. Teto subido pra 120k (detec. de fim para no total real). Proximo: carregar prospects POR CIDADE pra nao baixar 40k toda vez (perf). - 28/10/2026 -->
 <!-- v33.48 - PERF do mapa: (1) supabase-read cacheia a validacao de sessao por (user|token) por 2min (Map de modulo, container quente) -> corta 1 round-trip ao Supabase em quase toda leitura (o mapa fazia ~10+ validacoes repetidas por cidade). (2) _campoFetchTodos pagina em PARALELO (4 paginas por vez) em vez de serial. Mapa fica bem mais rapido sem perder a seguranca. - 28/10/2026 -->
 <!-- v33.47 - Vendedor: dashboard de volta como pagina inicial. v32.87 tinha tirado o 'dashboard' das abas do vendedor (so calendario/tarefas/campo), entao ele caia na Prospecao. Readicionado 'dashboard' em MATRIZ_PERMISSOES.vendedor.abas (ordem _abaHomePermitida ja prioriza dashboard) -> vendedor abre no dashboard. - 28/10/2026 -->
 <!-- v33.46 - FIX URGENTE (time sem pontos/ponto/mural): usuarios logados pelo CACHE sem token de sessao viam tudo vazio em silencio (leitura exige token agora; o interceptor sem token cai no anon que volta [] 200, entao o aviso reativo da v33.41 nao disparava). Trava de BOOT: logado + sem gami_sessao_token -> alerta + re-login na hora (guarda pro Modo Teste/impersonacao). Server-side estava OK (ponto_bater DEFINER, pontos_log/recados escrevem pelo servidor). Cura = re-login (gera token). - 28/10/2026 -->
@@ -9115,8 +9116,11 @@ async function _campoFetchTodos(url, opts){
   if(viaProxy){
     // 🚀 v33.48: paginação PARALELA (4 páginas por vez) via proxy. Antes era serial
     // (1 página por round-trip) -> mapa lento. Agora busca em janelas simultâneas.
+    // v33.49: teto 120k (a soma de prospects de todas as cidades passou de 40k com
+    // os imports novos; o teto antigo de 30k cortava as cidades mais antigas = Maceió/Teresina).
+    // A detecção de fim (página < step) para no total real, então não over-fetch.
     var WIN=4, off=0, done=false;
-    while(!done && off<30000){
+    while(!done && off<120000){
       var batch=[];
       for(var w=0; w<WIN; w++){
         var q=(parsed.query?parsed.query+'&':'')+'limit='+step+'&offset='+(off+w*step);
