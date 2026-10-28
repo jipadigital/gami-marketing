@@ -1,3 +1,4 @@
+<!-- v33.42 - CRM (#1 cadastro honesto): lead que JA esta na Machine (tipo cadastrado_nao_ativado/churn/em_queda) tem o item "Cadastro concluido" auto-marcado como "ja estava na Machine" (autor=sistema, travado 🔒) -> NAO conta como cadastro feito pelo vendedor. So lead 'novo' (prospect fora da Machine) tem cadastro manual, que conta. _crmChecarCadastros roda ao abrir o CRM (como a auto-ativacao). Resolve a inflacao (pegar lead ja cadastrado e clicar cadastrei). Regra de credito: ganho = lead no CRM do vendedor + ativacao via Machine. Proximo: painel de produtividade por vendedor/periodo (#3). - 28/10/2026 -->
 <!-- v33.41 - FIX pos-travas: (1) LEITURA sem token (usuario mantido logado pelo cache sem token fresco) dava 401 silencioso em tudo (mapa/ranking/tarefas) -> supaLer/supaLerRPC agora detectam sessao sem token e pedem re-login UMA vez (sem spam). (2) ESCRITA de gamificacao (pontos_log, badges, calendario_pessoal, streaks, reconhecimentos_pares, stories_log, vencedores_mensais) quebrou no lote 2 (travou anon mas o cliente escreve direto) -> add em PERMITIDAS+COLAB do supabase-write (escreve via service key). anotacoes_cidade/ranking_mensal tambem em COLAB. - 28/10/2026 -->
 <!-- v33.40 - FIX CRITICO: o interceptor de fetch (v33.35) referenciava SUPA_URL no corpo da IIFE, mas nesse ponto SUPA_URL ainda nao existia (declarado depois/outro bloco) -> ReferenceError -> window.fetch NUNCA era substituido -> TODAS as leituras sensiveis (mapa de prospeccao, ranking, Machine, etc.) iam direto com a chave publica -> 401 -> telas vazias. Conserto: calcular _REST dentro da funcao (tempo de chamada). Agora o proxy volta a funcionar. - 28/10/2026 -->
 <!-- v33.39 - SEGURANCA etapa 3 R5 (varredura final): auditoria achou mais exposicoes que nao estavam no mapa (o cliente quase nao le): audit_log, acessos_log, push_subscriptions (credenciais de push) e push_agendados liam pela chave publica; RPC listar_backups_diarios idem. Entram no conjunto sensivel (leem pelo proxy). Escrita de audit_log/acessos_log vai pro servidor (add em PERMITIDAS+COLAB) p/ poder travar. SQL: seguranca-rls-leitura-r5-varredura.sql. Confirmado seguro: usuarios_login 401, trocar_pin/registrar_feedback nao executaveis por anon. - 27/10/2026 -->
@@ -6335,6 +6336,9 @@ function _fatRender(root, dados){
 /* ============================================================ */
 var _CRM = { leads:[], tarefas:[], checklist:[], metas:[], scripts:[], carregado:false, tab:'hoje', config:null };
 var _CRM_CHECK_ITENS = [['cadastro','Cadastro concluído na plataforma'],['ativacao','Ativação (1ª entrega) — automático'],['ifood','Integração iFood'],['99','Integração 99'],['outra','Outras plataformas de logística']];
+// 🆕 v33.42: tipos de lead que JÁ estão na Machine (cadastro não conta como feito pelo vendedor).
+// 'novo' = prospect fora da Machine (aí o cadastro é do vendedor e conta).
+var _CRM_TIPO_NA_MACHINE = { cadastrado_nao_ativado:1, churn:1, em_queda:1 };
 var _CRM_ETAPAS = {
   inside:['Prospectando','Contato realizado','Oportunidade','Fechamento'],
   field :['Lead na rota','Visita realizada','Oportunidade','Cadastramento']
@@ -6396,7 +6400,7 @@ async function _crmFetch(force){
 function initCRM(){
   if(!_podeVerCRM()){ var r0=document.getElementById('crm-root'); if(r0) r0.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3)">Sem acesso ao CRM.</div>'; return; }
   _crmRenderShell();
-  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmReativarRetornos(); }catch(e){} try{ _crmChecarAtivacoes(true); }catch(e){} var pp=_crmPapel(); if(pp==='admin'||pp==='gestor') try{ _crmDevolverInativos(); }catch(e){} }); // retornos + ativações + devolve inativos
+  _crmFetch().then(function(){ _crmRenderTab(); try{ _crmReativarRetornos(); }catch(e){} try{ _crmChecarAtivacoes(true); }catch(e){} try{ _crmChecarCadastros(true); }catch(e){} var pp=_crmPapel(); if(pp==='admin'||pp==='gestor') try{ _crmDevolverInativos(); }catch(e){} }); // retornos + ativações + cadastros-da-machine + devolve inativos
 }
 function _crmRenderShell(){
   var root=document.getElementById('crm-root'); if(!root) return;
@@ -6976,18 +6980,23 @@ function _crmCheckGet(leadId,item){ return _CRM.checklist.find(function(x){ retu
 function _crmChecklistHTML(leadId){
   var html='';
   _CRM_CHECK_ITENS.forEach(function(it){
-    var row=_crmCheckGet(leadId,it[0]); var feito=row&&row.feito; var auto=it[0]==='ativacao';
+    var row=_crmCheckGet(leadId,it[0]); var feito=row&&row.feito;
+    // cadastro vira AUTO (travado) quando o sistema marcou que já estava na Machine (autor='sistema')
+    var cadDaMachine = (it[0]==='cadastro') && row && row.autor_id==='sistema';
+    var auto = (it[0]==='ativacao') || cadDaMachine;
+    var label = it[1] + (cadDaMachine ? ' (já estava na Machine)' : '');
     html+='<div '+(auto?'':'onclick="_crmToggleChecklist(\''+leadId+'\',\''+it[0]+'\')"')+' style="display:flex;align-items:center;gap:8px;padding:6px 2px;border-top:1px solid var(--border);cursor:'+(auto?'default':'pointer')+'">'
       +'<div style="width:18px;height:18px;border-radius:5px;border:1.5px solid '+(feito?'#1D9E75':'var(--border)')+';background:'+(feito?'#1D9E75':'transparent')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex:none">'+(feito?'✓':'')+'</div>'
-      +'<div style="flex:1;font-size:12px;color:var(--text)'+(feito?';text-decoration:line-through;opacity:.65':'')+'">'+it[1]+(auto?' 🔒':'')+'</div>'
+      +'<div style="flex:1;font-size:12px;color:var(--text)'+(feito?';text-decoration:line-through;opacity:.65':'')+'">'+label+(auto?' 🔒':'')+'</div>'
       +(feito&&row&&row.feito_em?('<div style="font-size:9.5px;color:var(--text3)">'+new Date(row.feito_em).toLocaleDateString('pt-BR')+'</div>'):'')
       +'</div>';
   });
   return html;
 }
-async function _crmChecklistUpsert(leadId,item,feito){
+async function _crmChecklistUpsert(leadId,item,feito,autorOverride){
   var u=_crmUser(); var now=new Date().toISOString(); var row=_crmCheckGet(leadId,item);
-  var obj={ id:leadId+'|'+item, lead_id:leadId, item:item, feito:!!feito, feito_em:feito?(row&&row.feito_em||now):null, autor_id:(u?u.id:'auto') };
+  var autor = autorOverride || (u?u.id:'auto');
+  var obj={ id:leadId+'|'+item, lead_id:leadId, item:item, feito:!!feito, feito_em:feito?(row&&row.feito_em||now):null, autor_id:autor };
   if(row){ row.feito=obj.feito; row.feito_em=obj.feito_em; row.autor_id=obj.autor_id; } else { _CRM.checklist.push(obj); }
   try{ await _crmEscrever('crm_checklist','upsert',{ dados:[obj] }); return true; }catch(e){ return false; }
 }
@@ -7025,6 +7034,27 @@ async function _crmChecarAtivacoes(silent){
   }
   if(mudou.length){ _crmRenderTab(); }
   if(!silent&&typeof toast==='function') toast(mudou.length?('🎉 '+mudou.length+' lead(s) ativado(s)!'):'Nenhuma ativação nova por enquanto.');
+}
+
+/* 🆕 v33.42: reconhece CADASTRO que já existia na Machine. Leads cujo tipo é
+   de origem-Machine (cadastrado_nao_ativado/churn/em_queda) têm o item "cadastro"
+   auto-marcado com autor='sistema' -> NÃO conta como cadastro feito pelo vendedor
+   (resolve a inflação: pegar lead já cadastrado e clicar "cadastrei"). Só o lead
+   'novo' (prospect fora da Machine) tem cadastro manual, que aí SIM conta pro vendedor. */
+async function _crmChecarCadastros(silent){
+  var alvos=_CRM.leads.filter(function(l){
+    if(l.pipeline!=='field' || !_CRM_TIPO_NA_MACHINE[l.tipo]) return false;
+    var row=_crmCheckGet(l.id,'cadastro');
+    return !(row && row.feito && row.autor_id==='sistema'); // ainda não reconhecido pelo sistema
+  });
+  var n=0;
+  for(var i=0;i<alvos.length;i++){ var l=alvos[i];
+    try{ await _crmChecklistUpsert(l.id,'cadastro',true,'sistema');
+         await _crmLog(l.id,'nota','Cadastro já existia na Machine (não conta como cadastro do vendedor).',true);
+         n++; }catch(e){}
+  }
+  if(n){ _crmRenderTab(); }
+  if(!silent&&typeof toast==='function') toast(n?('✓ '+n+' cadastro(s) reconhecido(s) da Machine'):'Nada novo.');
 }
 
 /* --------- POSSE do lead (pool / devolução por inatividade / reatribuir) --------- */
