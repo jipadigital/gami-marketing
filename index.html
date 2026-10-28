@@ -1,3 +1,4 @@
+<!-- v33.44 - CRM (#3 Painel de Produtividade): nova aba "⚡ Produtividade" (so management: super_admin/diretoria/gerencia/gestor/Carlos; vendedor e BDR NAO veem). Filtro por periodo (Hoje/7d/30d/custom) e tabela por vendedor: visitas (crm_atividades tipo=visita), cadastros reais (checklist cadastro autor=pessoa, 'sistema'/ja-na-Machine NAO conta), ativacoes (checklist ativacao -> dono do lead = o ganho real), integracoes (ifood/99/outra). Respeita o filtro de gestao (_crmLeadsView). - 28/10/2026 -->
 <!-- v33.43 - CRM (#1b cadastro auto do lead novo): ao ATIVAR (auto-ativacao ja le a Machine), o sistema tambem marca o "Cadastro concluido" sozinho. Lead novo (fora da Machine) -> credita ao DONO (vendedor que trouxe); lead que ja era da Machine -> 'sistema' (nao credita). Tira o clique manual sem custo de leitura (reaproveita a leitura da ativacao). Casa com a regra: ganho = lead no CRM do vendedor + ativacao. - 28/10/2026 -->
 <!-- v33.42 - CRM (#1 cadastro honesto): lead que JA esta na Machine (tipo cadastrado_nao_ativado/churn/em_queda) tem o item "Cadastro concluido" auto-marcado como "ja estava na Machine" (autor=sistema, travado 🔒) -> NAO conta como cadastro feito pelo vendedor. So lead 'novo' (prospect fora da Machine) tem cadastro manual, que conta. _crmChecarCadastros roda ao abrir o CRM (como a auto-ativacao). Resolve a inflacao (pegar lead ja cadastrado e clicar cadastrei). Regra de credito: ganho = lead no CRM do vendedor + ativacao via Machine. Proximo: painel de produtividade por vendedor/periodo (#3). - 28/10/2026 -->
 <!-- v33.41 - FIX pos-travas: (1) LEITURA sem token (usuario mantido logado pelo cache sem token fresco) dava 401 silencioso em tudo (mapa/ranking/tarefas) -> supaLer/supaLerRPC agora detectam sessao sem token e pedem re-login UMA vez (sem spam). (2) ESCRITA de gamificacao (pontos_log, badges, calendario_pessoal, streaks, reconhecimentos_pares, stories_log, vencedores_mensais) quebrou no lote 2 (travou anon mas o cliente escreve direto) -> add em PERMITIDAS+COLAB do supabase-write (escreve via service key). anotacoes_cidade/ranking_mensal tambem em COLAB. - 28/10/2026 -->
@@ -6408,6 +6409,7 @@ function _crmRenderShell(){
   var u=_crmUser(), papel=_crmPapel(u);
   var abas=[['hoje','📋 Hoje'],['pipeline','🧭 Meu funil']];
   if(papel==='gestor'||papel==='admin') abas.push(['carteira','💰 Carteira']);
+  if(papel==='gestor'||papel==='admin') abas.push(['produtividade','⚡ Produtividade']);
   abas.push(['painel','📊 Painel']);
   if(papel==='admin') abas.push(['config','⚙️ Config']);
   root.innerHTML =
@@ -6435,6 +6437,7 @@ function _crmRenderTab(){
   if(_CRM.tab==='pipeline') return _crmRenderPipeline(b);
   if(_CRM.tab==='carteira') return _crmRenderCarteira(b);
   if(_CRM.tab==='painel') return _crmRenderPainel(b);
+  if(_CRM.tab==='produtividade') return _crmRenderProdutividade(b);
   if(_CRM.tab==='config') return _crmRenderConfig(b);
 }
 
@@ -7326,6 +7329,68 @@ function _crmPainelTime(b, per, papel){
   });
   html+='</tbody></table></div>';
   b.innerHTML=html;
+}
+
+/* --------- PAINEL DE PRODUTIVIDADE por período (gestor/admin) --------- */
+/* visitas (crm_atividades tipo=visita) · cadastros reais (checklist 'cadastro' autor=pessoa, não 'sistema')
+ * · ativações (checklist 'ativacao' → dono do lead) · integrações (ifood/99/outra, autor=pessoa).
+ * Regra: cadastro só conta quando o vendedor trouxe o lead novo; "já estava na Machine" (autor=sistema) não conta. */
+function _crmProdRange(){
+  function iso(d){ return d.toISOString().slice(0,10); }
+  var hoje=new Date(); var preset=_CRM.prodPreset||'7d'; var ate=iso(hoje), de;
+  if(preset==='hoje'){ de=iso(hoje); }
+  else if(preset==='30d'){ de=iso(new Date(hoje.getTime()-29*86400000)); }
+  else if(preset==='custom'){ de=_CRM.prodDe||iso(new Date(hoje.getTime()-6*86400000)); ate=_CRM.prodAte||iso(hoje); }
+  else { preset='7d'; de=iso(new Date(hoje.getTime()-6*86400000)); }
+  return { de:de, ate:ate, preset:preset };
+}
+function _crmProdPreset(p){ _CRM.prodPreset=p; if(p!=='custom'){ _CRM.prodDe=null; _CRM.prodAte=null; } _crmRenderTab(); }
+function _crmProdData(k,v){ if(k==='de') _CRM.prodDe=v; else _CRM.prodAte=v; _CRM.prodPreset='custom'; _crmRenderTab(); }
+async function _crmRenderProdutividade(b){
+  var papel=_crmPapel();
+  if(!(papel==='admin'||papel==='gestor')){ b.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Visão de gestão.</div>'; return; }
+  var r=_crmProdRange();
+  var presets=[['hoje','Hoje'],['7d','7 dias'],['30d','30 dias'],['custom','Período']];
+  var filtro='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
+    + presets.map(function(p){ var on=r.preset===p[0]; return '<button onclick="_crmProdPreset(\''+p[0]+'\')" style="font-size:11px;padding:6px 12px;border:1px solid '+(on?'#0E7AB8':'var(--border)')+';border-radius:8px;background:'+(on?'#0E7AB8':'var(--card)')+';color:'+(on?'#fff':'var(--text2)')+';cursor:pointer;font-weight:600;font-family:inherit">'+p[1]+'</button>'; }).join('')
+    + (r.preset==='custom'?(' <input type="date" value="'+r.de+'" onchange="_crmProdData(\'de\',this.value)" style="padding:5px 7px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text);font-size:11px"> <span style="font-size:11px;color:var(--text3)">até</span> <input type="date" value="'+r.ate+'" onchange="_crmProdData(\'ate\',this.value)" style="padding:5px 7px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--text);font-size:11px">'):'')
+    + '</div>';
+  b.innerHTML='<div style="font-size:12px;font-weight:800;color:var(--text2);margin:0 2px 4px">⚡ Produtividade do time</div>'
+    + '<div style="font-size:10.5px;color:var(--text3);margin:0 2px 10px">Quem fez o quê, por período. Cadastro só conta se o vendedor trouxe o lead novo.</div>'
+    + filtro + '<div id="crm-prod-body" style="padding:20px;text-align:center;color:var(--text3);font-size:12px">Carregando…</div>';
+  var agg={};
+  function g(pid){ if(!pid) return null; if(!agg[pid]) agg[pid]={nome:_crmNomePessoa(pid),visitas:0,cadastros:0,ativacoes:0,integracoes:0}; return agg[pid]; }
+  var deTs=Date.parse(r.de+'T00:00:00'), ateTs=Date.parse(r.ate+'T23:59:59');
+  function inRange(d){ var t=Date.parse(d); return isFinite(t)&&t>=deTs&&t<=ateTs; }
+  var LV=_crmLeadsView(); var donoDe={}, visivel={}; LV.forEach(function(l){ donoDe[l.id]=l.dono_id; visivel[l.id]=true; });
+  (_CRM.checklist||[]).forEach(function(c){
+    if(!c.feito || !c.feito_em || !inRange(c.feito_em)) return;
+    if(c.lead_id && !visivel[c.lead_id]) return;
+    var auto=(c.autor_id==='sistema'||c.autor_id==='auto'||!c.autor_id);
+    if(c.item==='cadastro'){ if(!auto){ var x=g(c.autor_id); if(x) x.cadastros++; } }
+    else if(c.item==='ativacao'){ var y=g(donoDe[c.lead_id]); if(y) y.ativacoes++; }
+    else if(c.item==='ifood'||c.item==='99'||c.item==='outra'){ if(!auto){ var z=g(c.autor_id); if(z) z.integracoes++; } }
+  });
+  try{
+    var ats=await supaLer('crm_atividades','select=autor_id,criado_em&tipo=eq.visita&criado_em=gte.'+encodeURIComponent(r.de+'T00:00:00')+'&criado_em=lte.'+encodeURIComponent(r.ate+'T23:59:59')+'&limit=20000');
+    (ats||[]).forEach(function(a){ var x=g(a.autor_id); if(x) x.visitas++; });
+  }catch(e){}
+  var box=document.getElementById('crm-prod-body'); if(!box) return;
+  var rows=Object.keys(agg).map(function(pid){ return agg[pid]; }).sort(function(a,c){ return (c.ativacoes-a.ativacoes)||(c.cadastros-a.cadastros)||(c.visitas-a.visitas); });
+  if(!rows.length){ box.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sem atividade nesse período.</div>'; return; }
+  var tot={visitas:0,cadastros:0,ativacoes:0,integracoes:0}; rows.forEach(function(r2){ tot.visitas+=r2.visitas; tot.cadastros+=r2.cadastros; tot.ativacoes+=r2.ativacoes; tot.integracoes+=r2.integracoes; });
+  box.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="color:var(--text3);text-align:left">'
+    +'<th style="padding:7px 8px">Vendedor</th><th style="padding:7px 8px;text-align:center">🚶 Visitas</th><th style="padding:7px 8px;text-align:center">📝 Cadastros</th><th style="padding:7px 8px;text-align:center">🎉 Ativações</th><th style="padding:7px 8px;text-align:center">🔗 Integr.</th></tr></thead><tbody>'
+    + rows.map(function(r2){ return '<tr style="border-top:1px solid var(--border)"><td style="padding:8px;font-weight:700">'+_crmEsc(r2.nome)+'</td>'
+        +'<td style="padding:8px;text-align:center">'+r2.visitas+'</td>'
+        +'<td style="padding:8px;text-align:center">'+r2.cadastros+'</td>'
+        +'<td style="padding:8px;text-align:center;font-weight:800;color:#1D9E75">'+r2.ativacoes+'</td>'
+        +'<td style="padding:8px;text-align:center;color:#0E7AB8">'+r2.integracoes+'</td></tr>'; }).join('')
+    + '<tr style="border-top:2px solid var(--border);font-weight:800"><td style="padding:8px">Total</td>'
+    + '<td style="padding:8px;text-align:center">'+tot.visitas+'</td><td style="padding:8px;text-align:center">'+tot.cadastros+'</td>'
+    + '<td style="padding:8px;text-align:center;color:#1D9E75">'+tot.ativacoes+'</td><td style="padding:8px;text-align:center;color:#0E7AB8">'+tot.integracoes+'</td></tr>'
+    + '</tbody></table></div>'
+    + '<div style="font-size:10px;color:var(--text3);margin-top:8px">Período: '+r.de+' a '+r.ate+'. Ativação = 1ª entrega confirmada na Machine (o ganho real), atribuída ao dono do lead. Cadastro conta só pra lead novo trazido pelo vendedor.</div>';
 }
 async function _crmReceitaAtivados(leads){
   if(!leads||!leads.length) return 0;
