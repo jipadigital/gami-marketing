@@ -1,3 +1,4 @@
+<!-- v33.43 - CRM (#1b cadastro auto do lead novo): ao ATIVAR (auto-ativacao ja le a Machine), o sistema tambem marca o "Cadastro concluido" sozinho. Lead novo (fora da Machine) -> credita ao DONO (vendedor que trouxe); lead que ja era da Machine -> 'sistema' (nao credita). Tira o clique manual sem custo de leitura (reaproveita a leitura da ativacao). Casa com a regra: ganho = lead no CRM do vendedor + ativacao. - 28/10/2026 -->
 <!-- v33.42 - CRM (#1 cadastro honesto): lead que JA esta na Machine (tipo cadastrado_nao_ativado/churn/em_queda) tem o item "Cadastro concluido" auto-marcado como "ja estava na Machine" (autor=sistema, travado 🔒) -> NAO conta como cadastro feito pelo vendedor. So lead 'novo' (prospect fora da Machine) tem cadastro manual, que conta. _crmChecarCadastros roda ao abrir o CRM (como a auto-ativacao). Resolve a inflacao (pegar lead ja cadastrado e clicar cadastrei). Regra de credito: ganho = lead no CRM do vendedor + ativacao via Machine. Proximo: painel de produtividade por vendedor/periodo (#3). - 28/10/2026 -->
 <!-- v33.41 - FIX pos-travas: (1) LEITURA sem token (usuario mantido logado pelo cache sem token fresco) dava 401 silencioso em tudo (mapa/ranking/tarefas) -> supaLer/supaLerRPC agora detectam sessao sem token e pedem re-login UMA vez (sem spam). (2) ESCRITA de gamificacao (pontos_log, badges, calendario_pessoal, streaks, reconhecimentos_pares, stories_log, vencedores_mensais) quebrou no lote 2 (travou anon mas o cliente escreve direto) -> add em PERMITIDAS+COLAB do supabase-write (escreve via service key). anotacoes_cidade/ranking_mensal tambem em COLAB. - 28/10/2026 -->
 <!-- v33.40 - FIX CRITICO: o interceptor de fetch (v33.35) referenciava SUPA_URL no corpo da IIFE, mas nesse ponto SUPA_URL ainda nao existia (declarado depois/outro bloco) -> ReferenceError -> window.fetch NUNCA era substituido -> TODAS as leituras sensiveis (mapa de prospeccao, ranking, Machine, etc.) iam direto com a chave publica -> 401 -> telas vazias. Conserto: calcular _REST dentro da funcao (tempo de chamada). Agora o proxy volta a funcionar. - 28/10/2026 -->
@@ -7029,6 +7030,14 @@ async function _crmChecarAtivacoes(silent){
   for(var i=0;i<mudou.length;i++){ var l=mudou[i];
     try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(l.id), patch:{ status:'ativado', ativado_em:l.ativado_em, atualizado_em:new Date().toISOString() } });
          await _crmChecklistUpsert(l.id,'ativacao',true);
+         // 🆕 v33.43: ao ativar, marca o CADASTRO sozinho. Lead novo (fora da Machine) -> credita ao DONO
+         // (ele que trouxe); lead que já era da Machine -> 'sistema' (não credita). Tira o clique manual.
+         var _cadRow=_crmCheckGet(l.id,'cadastro');
+         if(!(_cadRow && _cadRow.feito)){
+           var _autorCad = _CRM_TIPO_NA_MACHINE[l.tipo] ? 'sistema' : (l.dono_id || 'sistema');
+           await _crmChecklistUpsert(l.id,'cadastro',true,_autorCad);
+           if(_autorCad!=='sistema') await _crmLog(l.id,'etapa','✅ Cadastro confirmado (lead novo ativado) — atribuído a '+_crmNomePessoa(_autorCad),true);
+         }
          await _crmLog(l.id,'etapa','🎉 Ativado (1ª entrega confirmada pela Machine)',true);
     }catch(e){}
   }
