@@ -1,3 +1,4 @@
+<!-- v33.51 - CRM export pro CHAT GURU: botao 📲 na aba Hoje baixa CSV com Nome + Telefone (so os meus leads, do dono), telefone LIMPO no formato WhatsApp (55+DDD+numero), ignorando vazios e placeholders (000000000). _crmExportarChatGuru + _crmTelWhats. - 28/10/2026 -->
 <!-- v33.50 - PROSPECCAO por cidade (perf + fim do bug de corte): o mapa NAO carrega mais todos os ~40k prospects de uma vez. Agora clicou na cidade -> carrega SO os dela (prospeccao_lojas filtrado por cidade_slug, cache por slug = reabrir e instantaneo). _campoFetch so puxa visitas; _campoCarregarLojasCidade/_campoSetLojasCidade novos; _campoIrParaCidade async (camera primeiro, pontos depois); _campoSetCidade/_campoMapaBrasil/initCampo adaptados. _campoGarantirMachine tambem: Brasil nao puxa a Machine das 9 cidades (so a selecionada). Brasil = leve (so estados). Chips mostram count/cor so apos visitar a cidade (vem da machineCache). - 28/10/2026 -->
 <!-- v33.49 - FIX Maceio/Teresina sumidos do mapa: o mapa carrega TODOS os prospects de todas as cidades de uma vez (order updated_at desc) com teto de 30k no _campoFetchTodos. Com os imports novos (Recife+Natal+Aracaju ~12k) o total passou de ~40k, e as cidades MAIS ANTIGAS (Maceio 23/10, Teresina 26/10) caiam depois do offset 30k = cortadas. Teto subido pra 120k (detec. de fim para no total real). Proximo: carregar prospects POR CIDADE pra nao baixar 40k toda vez (perf). - 28/10/2026 -->
 <!-- v33.48 - PERF do mapa: (1) supabase-read cacheia a validacao de sessao por (user|token) por 2min (Map de modulo, container quente) -> corta 1 round-trip ao Supabase em quase toda leitura (o mapa fazia ~10+ validacoes repetidas por cidade). (2) _campoFetchTodos pagina em PARALELO (4 paginas por vez) em vez de serial. Mapa fica bem mais rapido sem perder a seguranca. - 28/10/2026 -->
@@ -6456,6 +6457,7 @@ function _crmRenderHoje(b){
     +'<button onclick="_crmIniciarDiaModal()" style="flex:2;min-width:140px;font-size:13px;padding:12px;border:none;border-radius:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;font-weight:800;cursor:pointer;box-shadow:0 8px 20px -10px #0E7AB8;font-family:inherit">🚀 Iniciar o dia</button>'
     +'<button onclick="_crmEscolherModal()" style="flex:1;min-width:120px;font-size:13px;padding:12px;border:1px solid #0E7AB8;border-radius:11px;background:transparent;color:#0E7AB8;font-weight:700;cursor:pointer;font-family:inherit">📋 Escolher</button>'
     +'<button onclick="_crmExportarMeusLeads()" title="Baixar meus leads em planilha (CSV)" style="font-size:14px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:var(--surface2,#f7f9fc);color:var(--text2);font-weight:700;cursor:pointer;font-family:inherit">⬇️</button>'
+    +'<button onclick="_crmExportarChatGuru()" title="Exportar Nome + Telefone (formato WhatsApp) dos meus leads, pro Chat Guru" style="font-size:14px;padding:12px 14px;border:1px solid #1D9E75;border-radius:11px;background:transparent;color:#1D9E75;font-weight:700;cursor:pointer;font-family:inherit">📲</button>'
     +'</div>';
   var rotaBtn = temRota ? '<button onclick="_crmRotaDia()" style="width:100%;font-size:13px;padding:11px;border:none;border-radius:10px;background:linear-gradient(135deg,#1D9E75,#56C597);color:#fff;font-weight:700;cursor:pointer;margin-bottom:10px">🗺️ Abrir rota do dia no Google Maps</button>' : '';
   var fila=_CRM.tarefas.filter(function(t){ return t.dono_id===meuId && !t.feita && !t.pulada && new Date(t.vence_em)<=hoje; }).sort(function(a,x){ return new Date(a.vence_em)-new Date(x.vence_em); });
@@ -6882,6 +6884,36 @@ function _crmExportarMeusLeads(){
   a.href=url; a.download='meus-leads-gami-'+_campoHoje()+'.csv'; document.body.appendChild(a); a.click();
   setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
   if(typeof toast==='function') toast('📄 Planilha baixada ('+meus.length+' leads)','success');
+}
+
+/* 🆕 v33.51: export pro CHAT GURU — só Nome + Telefone, com telefone LIMPO no formato
+   WhatsApp (55 + DDD + número). Ignora vazios e placeholders (ex: "000000000"). */
+function _crmTelWhats(t){
+  var d=(t||'').replace(/\D/g,'');
+  if(!d || /0{8,}/.test(d)) return '';                                   // vazio ou placeholder
+  if(d.indexOf('55')===0 && (d.length===12 || d.length===13)) return d;  // já tem 55 (fixo/celular)
+  if(d.length===10 || d.length===11) return '55'+d;                      // DDD + 8/9 dígitos
+  if(d.length===12 || d.length===13) return d;                           // já internacional
+  return '';                                                             // formato inesperado -> fora
+}
+function _crmExportarChatGuru(){
+  var u=_crmUser(); if(!u) return;
+  var meus=_CRM.leads.filter(function(l){ return l.dono_id===u.id; });
+  if(!meus.length){ if(typeof toast==='function') toast('Você não tem leads pra exportar.'); return; }
+  function esc(s){ s=(s==null?'':String(s)); return '"'+s.replace(/"/g,'""')+'"'; }
+  var rows=[['Nome','Telefone'].map(esc).join(',')], n=0, semTel=0;
+  meus.forEach(function(l){
+    var tel=_crmTelWhats(l.telefone);
+    if(!tel){ semTel++; return; }
+    rows.push([esc(l.empresa_nome||''), esc(tel)].join(','));
+    n++;
+  });
+  if(!n){ if(typeof toast==='function') toast('Nenhum lead com telefone válido pra exportar ('+semTel+' sem número).'); return; }
+  var blob=new Blob(['﻿'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download='chatguru-gami-'+_campoHoje()+'.csv'; document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  if(typeof toast==='function') toast('📲 '+n+' contatos exportados pro Chat Guru'+(semTel?(' · '+semTel+' sem telefone'):''),'success');
 }
 
 /* --------- LEAD: detalhe + ações --------- */
