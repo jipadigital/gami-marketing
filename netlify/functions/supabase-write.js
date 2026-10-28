@@ -314,7 +314,19 @@ exports.handler = async function(event){
     let method;
     let supaBody;
     
-    if(operacao === 'upsert'){
+    if(operacao === 'insert'){
+      // 🔧 v33.54: INSERT puro (append). Usado pelo log de pontos/gamificação
+      // (pontos_log etc). Sem on_conflict: só cria linha nova. Antes o proxy
+      // recusava 'insert' (400) e caía no fallback anon, que a RLS bloqueia ->
+      // os pontos sumiam em silêncio. Agora grava pela service key.
+      if(!Array.isArray(dados) || dados.length === 0){
+        return { statusCode: 400, headers: cors, body: JSON.stringify({error:'dados deve ser array não-vazio pra insert'}) };
+      }
+      method = 'POST';
+      supaBody = JSON.stringify(dados);
+      supaHeaders['Prefer'] = body.retornar ? 'return=representation' : 'return=minimal';
+    }
+    else if(operacao === 'upsert'){
       if(!Array.isArray(dados) || dados.length === 0){
         return { statusCode: 400, headers: cors, body: JSON.stringify({error:'dados deve ser array não-vazio pra upsert'}) };
       }
@@ -361,7 +373,7 @@ exports.handler = async function(event){
       supaBody = JSON.stringify(body.argumentos || {});
     }
     else {
-      return { statusCode: 400, headers: cors, body: JSON.stringify({error:'operacao inválida: '+operacao+' (use upsert/patch/delete/rpc)'}) };
+      return { statusCode: 400, headers: cors, body: JSON.stringify({error:'operacao inválida: '+operacao+' (use insert/upsert/patch/delete/rpc)'}) };
     }
     
     const r = await fetch(url, { method, headers: supaHeaders, body: supaBody });
