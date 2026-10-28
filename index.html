@@ -26299,6 +26299,11 @@ var _SESSAO_CAIU_AVISADO = false;
 function _proxySessaoProblema(status, body){
   if(status !== 401) return false;
   if(!/sess[aã]o n[aã]o informada|token inv[aá]lid|expirad|n[aã]o encontrada|fa[cç]a login/i.test(body||'')) return false;
+  /* 🔧 v33.53: se NÃO há ninguém logado (tela de login), NÃO dispara alerta nem reload.
+     Senão, qualquer leitura de fundo que sobrou vira loop de alert()+reload e TRAVA a
+     digitação do email/PIN (o alert é modal). Caso real: meninas não conseguiam logar. */
+  var _logado=''; try{ _logado = localStorage.getItem('gami_usuario_logado')||''; }catch(e){}
+  if(!_logado) return true;
   if(_SESSAO_CAIU_AVISADO) return true;
   _SESSAO_CAIU_AVISADO = true;
   try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
