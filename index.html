@@ -1,3 +1,4 @@
+<!-- v33.40 - FIX CRITICO: o interceptor de fetch (v33.35) referenciava SUPA_URL no corpo da IIFE, mas nesse ponto SUPA_URL ainda nao existia (declarado depois/outro bloco) -> ReferenceError -> window.fetch NUNCA era substituido -> TODAS as leituras sensiveis (mapa de prospeccao, ranking, Machine, etc.) iam direto com a chave publica -> 401 -> telas vazias. Conserto: calcular _REST dentro da funcao (tempo de chamada). Agora o proxy volta a funcionar. - 28/10/2026 -->
 <!-- v33.39 - SEGURANCA etapa 3 R5 (varredura final): auditoria achou mais exposicoes que nao estavam no mapa (o cliente quase nao le): audit_log, acessos_log, push_subscriptions (credenciais de push) e push_agendados liam pela chave publica; RPC listar_backups_diarios idem. Entram no conjunto sensivel (leem pelo proxy). Escrita de audit_log/acessos_log vai pro servidor (add em PERMITIDAS+COLAB) p/ poder travar. SQL: seguranca-rls-leitura-r5-varredura.sql. Confirmado seguro: usuarios_login 401, trocar_pin/registrar_feedback nao executaveis por anon. - 27/10/2026 -->
 <!-- v33.38 - SEGURANCA etapa 3 R4 (conteudo interno + escrita estoque): recados e tarefas entram no conjunto sensivel (leem pelo proxy); tarefas_minhas (RPC) tambem. ESCRITA do estoque fechada: estoque_registrar_entrada/venda deixam de ser chamaveis pela chave publica (fechava brecha de venda/entrada falsa) e passam pelo supabase-write (operacao rpc, RPCS_PERMITIDAS+RPCS_COLAB; check de tabela pulado p/ rpc). Gamificacao (pontos_log/badges/streaks/rankings) fica aberta de proposito (nome+pontos, dado interno baixo risco, decisao do dono). SQLs: seguranca-rls-leitura-r4-estoque.sql (agora inclui revoke das RPCs de escrita) e seguranca-rls-leitura-r4-recados-tarefas.sql. - 27/10/2026 -->
 <!-- v33.37 - SEGURANCA etapa 3 R4-estoque: estoque_vendas/_agrupadas devolviam nome+telefone de CLIENTE (PII) pela chave publica, e a tabela estoque_mov estava aberta. As 6 RPCs de leitura do estoque (estoque_saldo/vendas/dashboard/vitrine/distribuicao_cidades/vendas_agrupadas) entram no conjunto sensivel (leem pelo proxy via interceptor). Depois de testar a tela de Estoque, rodar docs/seguranca-rls-leitura-r4-estoque.sql (REVOKE execute das RPCs + RLS na estoque_mov). Escrita por RPC (entrada/venda) NAO mexida aqui (passo a parte). - 27/10/2026 -->
@@ -8862,9 +8863,13 @@ function _supaParseUrl(url){
 (function(){
   if(typeof window === 'undefined' || !window.fetch) return;
   var _origFetch = window.fetch.bind(window);
-  var _REST = SUPA_URL + '/rest/v1/';
   window.fetch = function(input, init){
     try {
+      // 🔧 v33.40: calcula _REST aqui DENTRO (em tempo de chamada). Antes estava no
+      // corpo da IIFE e o SUPA_URL ainda nao existia nesse ponto (declarado depois,
+      // outro bloco) -> ReferenceError -> o window.fetch NUNCA era trocado -> todas as
+      // leituras sensiveis iam direto com a chave publica -> 401 -> mapa/ranking vazios.
+      var _REST = (typeof SUPA_URL !== 'undefined' ? SUPA_URL : '') + '/rest/v1/';
       var url = (typeof input === 'string') ? input : (input && input.url);
       var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       // Sem sessão (pré-login / boot) o interceptor NÃO reroteia: cai no fetch
