@@ -1,3 +1,4 @@
+<!-- v33.48 - PERF do mapa: (1) supabase-read cacheia a validacao de sessao por (user|token) por 2min (Map de modulo, container quente) -> corta 1 round-trip ao Supabase em quase toda leitura (o mapa fazia ~10+ validacoes repetidas por cidade). (2) _campoFetchTodos pagina em PARALELO (4 paginas por vez) em vez de serial. Mapa fica bem mais rapido sem perder a seguranca. - 28/10/2026 -->
 <!-- v33.47 - Vendedor: dashboard de volta como pagina inicial. v32.87 tinha tirado o 'dashboard' das abas do vendedor (so calendario/tarefas/campo), entao ele caia na Prospecao. Readicionado 'dashboard' em MATRIZ_PERMISSOES.vendedor.abas (ordem _abaHomePermitida ja prioriza dashboard) -> vendedor abre no dashboard. - 28/10/2026 -->
 <!-- v33.46 - FIX URGENTE (time sem pontos/ponto/mural): usuarios logados pelo CACHE sem token de sessao viam tudo vazio em silencio (leitura exige token agora; o interceptor sem token cai no anon que volta [] 200, entao o aviso reativo da v33.41 nao disparava). Trava de BOOT: logado + sem gami_sessao_token -> alerta + re-login na hora (guarda pro Modo Teste/impersonacao). Server-side estava OK (ponto_bater DEFINER, pontos_log/recados escrevem pelo servidor). Cura = re-login (gera token). - 28/10/2026 -->
 <!-- v33.45 - CRM (Iniciar o dia + Escolher): SEGMENTO agora e multi-selecao (marcar quantos quiser: ex pizzaria+hamburguer+lanche, ou Todos) e novo filtro de BAIRRO (depois de escolher a cidade carrega os bairros da prospeccao; marcar todos/um/varios - ex Maceio norte x sul por vendedor). _crmBuscarCandidatos aceita arrays segs[] e bairros[] (segOk=some, bairroOk=some normalizado). Helpers _crmSegsBoxHTML/_crmCarregarBairros/_crmSegsMarcados/_crmBairrosMarcados. Bairro so com cidade especifica (nao em 'todas as pracas'). - 28/10/2026 -->
@@ -9111,21 +9112,29 @@ async function _campoFetchTodos(url, opts){
   var out=[], step=1000;
   var parsed = _supaParseUrl(url);
   var viaProxy = parsed && _SUPA_SENSIVEL[parsed.tabela];
-  for(var off=0; off<30000; off+=step){
-    if(viaProxy){
-      var q = (parsed.query ? parsed.query + '&' : '') + 'limit='+step+'&offset='+off;
-      var a = await supaLer(parsed.tabela, q);
-      if(!Array.isArray(a)) break;
-      out=out.concat(a);
-      if(a.length<step) break;
-    } else {
-      var h=Object.assign({}, supaHeaders(), (opts&&opts.headers)||{}, { 'Range-Unit':'items', 'Range':off+'-'+(off+step-1) });
-      var r=await fetch(url, Object.assign({}, opts||{}, { headers:h }));
-      if(!r.ok) break;
-      var a2=await r.json(); if(!Array.isArray(a2)) break;
-      out=out.concat(a2);
-      if(a2.length<step) break;
+  if(viaProxy){
+    // 🚀 v33.48: paginação PARALELA (4 páginas por vez) via proxy. Antes era serial
+    // (1 página por round-trip) -> mapa lento. Agora busca em janelas simultâneas.
+    var WIN=4, off=0, done=false;
+    while(!done && off<30000){
+      var batch=[];
+      for(var w=0; w<WIN; w++){
+        var q=(parsed.query?parsed.query+'&':'')+'limit='+step+'&offset='+(off+w*step);
+        batch.push(supaLer(parsed.tabela, q).catch(function(){ return null; }));
+      }
+      var pages=await Promise.all(batch);
+      for(var p=0;p<pages.length;p++){ var a=pages[p]; if(!Array.isArray(a)){ done=true; break; } out=out.concat(a); if(a.length<step){ done=true; break; } }
+      off += WIN*step;
     }
+    return out;
+  }
+  for(var o=0; o<30000; o+=step){
+    var h=Object.assign({}, supaHeaders(), (opts&&opts.headers)||{}, { 'Range-Unit':'items', 'Range':o+'-'+(o+step-1) });
+    var r=await fetch(url, Object.assign({}, opts||{}, { headers:h }));
+    if(!r.ok) break;
+    var a2=await r.json(); if(!Array.isArray(a2)) break;
+    out=out.concat(a2);
+    if(a2.length<step) break;
   }
   return out;
 }

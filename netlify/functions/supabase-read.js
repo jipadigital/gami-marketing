@@ -64,25 +64,43 @@ function corsHeaders(origin){
   };
 }
 
+// 🚀 v33.48: cache de validação de sessão (perf do mapa). O mapa dispara ~10+
+// leituras por cidade, cada uma validava a sessão lendo usuarios_login = 1 round-trip
+// extra ao Supabase por leitura. Aqui cacheamos o resultado por (user|token) por 2 min
+// num Map de módulo (persiste enquanto o container do Netlify fica quente). Corta quase
+// toda validação repetida. Risco: sessão revogada segue valendo por até 2 min (janela curta).
+var _sessCache = new Map();
+var _SESS_TTL = 120000; // 2 min
+
 // Valida a sessão (user + token) contra usuarios_login com a service key.
 // Qualquer usuário logado e ativo pode LER o que está na lista branca
 // (a ameaça aqui é o forasteiro com a chave pública, não o insider;
 //  o escopo por linha/nível o app já trata na UI).
 async function validarSessao(userId, token){
   if(!userId || !token) return { valido:false, erro:'Sessão não informada' };
+  var ck = userId+'|'+token;
+  var now = Date.now();
+  var c = _sessCache.get(ck);
+  if(c && c.exp > now) return c.valido ? { valido:true } : { valido:false, erro:c.erro };
   try {
     const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,token_atual,token_expira_em,ativo&limit=1', {
       headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
-    if(!r.ok) return { valido:false, erro:'Falha ao validar' };
+    if(!r.ok) return { valido:false, erro:'Falha ao validar' };  // erro transitório: não cacheia
     const arr = await r.json();
-    if(!Array.isArray(arr) || !arr.length) return { valido:false, erro:'Usuário não existe' };
-    const u = arr[0];
-    if(u.ativo === false) return { valido:false, erro:'Usuário desativado' };
-    if(!u.token_atual) return { valido:false, erro:'Sessão não encontrada (faça login de novo)' };
-    if(u.token_atual !== token) return { valido:false, erro:'Token inválido' };
-    if(u.token_expira_em && new Date(u.token_expira_em) < new Date()) return { valido:false, erro:'Sessão expirada (faça login de novo)' };
-    return { valido:true };
+    var out;
+    if(!Array.isArray(arr) || !arr.length) out = { valido:false, erro:'Usuário não existe' };
+    else { const u = arr[0];
+      if(u.ativo === false) out = { valido:false, erro:'Usuário desativado' };
+      else if(!u.token_atual) out = { valido:false, erro:'Sessão não encontrada (faça login de novo)' };
+      else if(u.token_atual !== token) out = { valido:false, erro:'Token inválido' };
+      else if(u.token_expira_em && new Date(u.token_expira_em) < new Date()) out = { valido:false, erro:'Sessão expirada (faça login de novo)' };
+      else out = { valido:true };
+    }
+    // cacheia (poda simples quando cresce)
+    if(_sessCache.size > 500) _sessCache.clear();
+    _sessCache.set(ck, { exp: now + _SESS_TTL, valido: out.valido, erro: out.erro });
+    return out;
   } catch(e){
     console.error('[read] validarSessao', e);
     return { valido:false, erro:'Erro ao validar sessão' };
