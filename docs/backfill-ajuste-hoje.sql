@@ -13,7 +13,7 @@
 DO $$
 DECLARE
   hoje  date := (now() AT TIME ZONE 'America/Campo_Grande')::date;
-  valor int  := 10;   -- <<< PONTOS DE AJUSTE POR PESSOA (muda aqui se quiser)
+  valor int  := 20;   -- <<< PONTOS DE AJUSTE POR PESSOA (muda aqui se quiser)
   n int := 0;
 BEGIN
   INSERT INTO pontos_log (pessoa_id, pessoa_nome, tipo_acao, categoria, pontos, descricao, origem, data_acao)
