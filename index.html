@@ -1,3 +1,4 @@
+<!-- v33.50 - PROSPECCAO por cidade (perf + fim do bug de corte): o mapa NAO carrega mais todos os ~40k prospects de uma vez. Agora clicou na cidade -> carrega SO os dela (prospeccao_lojas filtrado por cidade_slug, cache por slug = reabrir e instantaneo). _campoFetch so puxa visitas; _campoCarregarLojasCidade/_campoSetLojasCidade novos; _campoIrParaCidade async (camera primeiro, pontos depois); _campoSetCidade/_campoMapaBrasil/initCampo adaptados. _campoGarantirMachine tambem: Brasil nao puxa a Machine das 9 cidades (so a selecionada). Brasil = leve (so estados). Chips mostram count/cor so apos visitar a cidade (vem da machineCache). - 28/10/2026 -->
 <!-- v33.49 - FIX Maceio/Teresina sumidos do mapa: o mapa carrega TODOS os prospects de todas as cidades de uma vez (order updated_at desc) com teto de 30k no _campoFetchTodos. Com os imports novos (Recife+Natal+Aracaju ~12k) o total passou de ~40k, e as cidades MAIS ANTIGAS (Maceio 23/10, Teresina 26/10) caiam depois do offset 30k = cortadas. Teto subido pra 120k (detec. de fim para no total real). Proximo: carregar prospects POR CIDADE pra nao baixar 40k toda vez (perf). - 28/10/2026 -->
 <!-- v33.48 - PERF do mapa: (1) supabase-read cacheia a validacao de sessao por (user|token) por 2min (Map de modulo, container quente) -> corta 1 round-trip ao Supabase em quase toda leitura (o mapa fazia ~10+ validacoes repetidas por cidade). (2) _campoFetchTodos pagina em PARALELO (4 paginas por vez) em vez de serial. Mapa fica bem mais rapido sem perder a seguranca. - 28/10/2026 -->
 <!-- v33.47 - Vendedor: dashboard de volta como pagina inicial. v32.87 tinha tirado o 'dashboard' das abas do vendedor (so calendario/tarefas/campo), entao ele caia na Prospecao. Readicionado 'dashboard' em MATRIZ_PERMISSOES.vendedor.abas (ordem _abaHomePermitida ja prioriza dashboard) -> vendedor abre no dashboard. - 28/10/2026 -->
@@ -7636,7 +7637,9 @@ function _campoSetCidade(v){
   _CAMPO.cidadeSel = v || '';
   var sel=document.getElementById('campo-f-cidade');
   if(sel){ try{ sel.value=_CAMPO.cidadeSel; }catch(e){} } // mantém o dropdown em sincronia (UI)
-  _campoAplicar();
+  if(!v){ _CAMPO.lojas=[]; _campoAplicar(); return; }  // Brasil: sem prospects na tela
+  // 🚀 v33.50: carrega os prospects da cidade (cache) antes de desenhar
+  _campoCarregarLojasCidade(v).then(function(){ if(_CAMPO.cidadeSel===v){ _campoSetLojasCidade(v); _campoAplicar(); } }).catch(function(){ _campoAplicar(); });
 }
 /* Gestor só enxerga as lojas das cidades dele */
 function _campoPodeVerLoja(loja){
@@ -7659,20 +7662,36 @@ async function initCampo(){
   _campoMontarShell();
   var _bm=document.getElementById('campo-btn-minhas');
   if(_bm){ _bm.classList.toggle('active', !!_CAMPO.soMinhas); }
+  // 🚀 v33.50: se abre já com uma cidade selecionada (ex: gestor/vendedor de 1 cidade), carrega ela
+  var _ci=_campoCidadeSel();
+  if(_ci){ try{ await _campoCarregarLojasCidade(_ci); _campoSetLojasCidade(_ci); }catch(e){} }
   _campoAplicar();
   _campoRenderMapa(); // mapa já aberto ao entrar na aba
 }
 
 async function _campoFetch(){
   try {
-    // PAGINADO: o PostgREST corta em 1000/req; Maceió tem 3.4k+ prospects, então pagina pra trazer TODAS
-    var lojas = await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&order=updated_at.desc&select=*');
+    // 🚀 v33.50: NÃO carrega mais TODOS os prospects de uma vez (passou de 40k = lento e
+    // estourava o teto, cortando as cidades antigas). Agora é POR CIDADE (ao clicar na cidade,
+    // via _campoCarregarLojasCidade). Aqui só as visitas (ranking/filtro de data).
     var visitas = await supaSelect('prospeccao_visitas', 'order=data.desc&limit=5000');
-    _CAMPO.lojas = Array.isArray(lojas) ? lojas : [];
+    _CAMPO.lojas = [];
+    _CAMPO.lojasCache = _CAMPO.lojasCache || {};
     _CAMPO.visitas = Array.isArray(visitas) ? visitas : [];
     _CAMPO.carregado = true;
-  } catch(e){ console.warn('[campo] fetch', e); _CAMPO.carregado = true; }
+  } catch(e){ console.warn('[campo] fetch', e); _CAMPO.carregado = true; _CAMPO.lojas=[]; _CAMPO.lojasCache=_CAMPO.lojasCache||{}; }
 }
+/* 🚀 v33.50: carrega os prospects de UMA cidade (cache por slug). Reabrir a cidade = instantâneo. */
+async function _campoCarregarLojasCidade(slug){
+  if(!slug) return [];
+  _CAMPO.lojasCache = _CAMPO.lojasCache || {};
+  if(_CAMPO.lojasCache[slug]) return _CAMPO.lojasCache[slug];
+  var rows = await _campoFetchTodos(SUPA_URL+'/rest/v1/prospeccao_lojas?ativo=eq.true&cidade_slug=eq.'+encodeURIComponent(slug)+'&order=updated_at.desc&select=*');
+  _CAMPO.lojasCache[slug] = Array.isArray(rows) ? rows : [];
+  return _CAMPO.lojasCache[slug];
+}
+/* Usa os prospects da cidade (do cache) como _CAMPO.lojas; vazio = Brasil (sem prospects na tela). */
+function _campoSetLojasCidade(slug){ _CAMPO.lojas = (slug && _CAMPO.lojasCache && _CAMPO.lojasCache[slug]) ? _CAMPO.lojasCache[slug] : []; }
 
 function _campoMapaWrapHTML(){
   return '<div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--card)">'
@@ -9253,8 +9272,9 @@ async function _campoCarregarMachine(slug){
 function _campoGarantirMachine(){
   if(_campoLoadingMachine) return;
   var slug=_campoCidadeSel();
-  // carrega todas as cidades do filtro (a MV resolveu o timeout do Campo Grande), em paralelo e progressivo
-  var slugs = slug ? [slug] : _campoCidadesAtivasSlugs();
+  // 🚀 v33.50: só carrega a Machine da cidade SELECIONADA. No Brasil (sem cidade) não puxa nada
+  // (antes puxava as 9 cidades de uma vez = lentidão). Clicou na cidade -> carrega os dela.
+  var slugs = slug ? [slug] : [];
   var faltam = slugs.filter(function(s){ return !_CAMPO.machineCache[s]; });
   if(!faltam.length) return;
   _campoLoadingMachine=true;
@@ -9557,7 +9577,7 @@ function _campoCentroide(slug){
   return [la/arr.length, lo/arr.length];
 }
 // abrir uma cidade (seleciona no filtro → mapa de ruas centrado na cidade → carrega pontos)
-function _campoIrParaCidade(slug){
+async function _campoIrParaCidade(slug){
   _CAMPO.cidadeSel = slug || '';   // fonte da verdade (não depende do dropdown "pegar" o value)
   var sel=document.getElementById('campo-f-cidade');
   if(sel){ // sincroniza o dropdown (UI), garantindo a opção
@@ -9566,15 +9586,19 @@ function _campoIrParaCidade(slug){
     try{ sel.value=slug; }catch(e){}
   }
   _campoSetTiles(true);   // fundo vira mapa de ruas (bairros)
-  _campoAplicar();        // desenha os pontos da cidade (NÃO mexe na câmera)
-  // CÂMERA POR ÚLTIMO (igual _campoMapaBrasil): a navegação é a ÚNICA que move o mapa.
-  // Centroide é FIXO (não depende da Machine carregar), então abre NA cidade sempre,
-  // nunca volta pro Brasil — mesmo que os pontos ainda estejam chegando.
+  // CÂMERA PRIMEIRO (responsivo): move pra cidade já, com centroide FIXO, enquanto os pontos carregam.
   var c=_campoCentroide(slug) || _CAMPO_CIDADE_COORD[slug];
   if(c && _campoMapaInst){
     try{ _campoMapaInst.invalidateSize(); }catch(e){}
     try{ _campoMapaInst.setView(c, 12, {animate:true}); }catch(e){}
   }
+  // 🚀 v33.50: carrega os prospects SÓ dessa cidade (cache), aí desenha.
+  var st=document.getElementById('campo-mapa-status'); if(st) st.textContent='Carregando prospecção...';
+  try{ await _campoCarregarLojasCidade(slug); }catch(e){}
+  if(_CAMPO.cidadeSel !== slug) return; // usuário trocou de cidade no meio do carregamento
+  _campoSetLojasCidade(slug);
+  if(st) st.textContent='';
+  _campoAplicar();        // desenha os pontos da cidade
 }
 
 function _campoDrawMarkers(lojas){
@@ -9799,6 +9823,7 @@ function _campoMapaBrasil(){
   _CAMPO.cidadeSel = '';
   var sel=document.getElementById('campo-f-cidade'); if(sel){ try{ sel.value=''; }catch(e){} }
   _campoSetTiles(false);
+  _CAMPO.lojas = [];   // 🚀 v33.50: Brasil = sem prospects na tela (leve); cada cidade carrega os seus
   _campoAplicar();
   if(_campoMapaInst){ try{ _campoMapaInst.fitBounds(_CAMPO_BR_BOUNDS); }catch(e){} }
 }
