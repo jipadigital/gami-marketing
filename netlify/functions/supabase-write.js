@@ -50,7 +50,10 @@ const TABELAS_PERMITIDAS = [
   'push_subscriptions', 'push_agendados',
   'pulse_votos',       // voto do pulse (humor do dia)
   'estoque_itens', 'estoque_mov',  // estoque de brindes (tela admin)
-  'desafios_admin'     // desafios da gamificação (tela admin)
+  'desafios_admin',    // desafios da gamificação (tela admin)
+  // Gamificação escrita pelo cliente (o lote 2 travou o anon; precisa ir pelo servidor)
+  'pontos_log', 'calendario_pessoal', 'streaks', 'reconhecimentos_pares',
+  'stories_log', 'vencedores_mensais'
 ];
 
 // 🆕 Tabelas de COLABORAÇÃO: qualquer usuário com SESSÃO VÁLIDA pode gravar aqui
@@ -64,7 +67,11 @@ const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospecca
   'recados', 'pulse_votos',  // mural e voto do pulse: ação de qualquer usuário logado
   'estoque_itens', 'estoque_mov', 'desafios_admin',  // telas admin (UI já restringe por isAdminPontos / gestor)
   'configuracoes',   // Cloud Mirror: todo usuário logado espelha suas chaves gami_* (blacklist filtra o sensível)
-  'audit_log', 'acessos_log'];  // trilha de auditoria/acesso: qualquer logado registra (log secundário)
+  'audit_log', 'acessos_log',  // trilha de auditoria/acesso: qualquer logado registra (log secundário)
+  // Gamificação: cada colaborador registra os próprios pontos/badges/streak/etc.
+  'pontos_log', 'badges_desbloqueadas', 'calendario_pessoal', 'streaks',
+  'reconhecimentos_pares', 'reconhecimentos', 'stories_log', 'vencedores_mensais',
+  'ranking_mensal', 'anotacoes_cidade'];
 
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [

@@ -1,3 +1,4 @@
+<!-- v33.41 - FIX pos-travas: (1) LEITURA sem token (usuario mantido logado pelo cache sem token fresco) dava 401 silencioso em tudo (mapa/ranking/tarefas) -> supaLer/supaLerRPC agora detectam sessao sem token e pedem re-login UMA vez (sem spam). (2) ESCRITA de gamificacao (pontos_log, badges, calendario_pessoal, streaks, reconhecimentos_pares, stories_log, vencedores_mensais) quebrou no lote 2 (travou anon mas o cliente escreve direto) -> add em PERMITIDAS+COLAB do supabase-write (escreve via service key). anotacoes_cidade/ranking_mensal tambem em COLAB. - 28/10/2026 -->
 <!-- v33.40 - FIX CRITICO: o interceptor de fetch (v33.35) referenciava SUPA_URL no corpo da IIFE, mas nesse ponto SUPA_URL ainda nao existia (declarado depois/outro bloco) -> ReferenceError -> window.fetch NUNCA era substituido -> TODAS as leituras sensiveis (mapa de prospeccao, ranking, Machine, etc.) iam direto com a chave publica -> 401 -> telas vazias. Conserto: calcular _REST dentro da funcao (tempo de chamada). Agora o proxy volta a funcionar. - 28/10/2026 -->
 <!-- v33.39 - SEGURANCA etapa 3 R5 (varredura final): auditoria achou mais exposicoes que nao estavam no mapa (o cliente quase nao le): audit_log, acessos_log, push_subscriptions (credenciais de push) e push_agendados liam pela chave publica; RPC listar_backups_diarios idem. Entram no conjunto sensivel (leem pelo proxy). Escrita de audit_log/acessos_log vai pro servidor (add em PERMITIDAS+COLAB) p/ poder travar. SQL: seguranca-rls-leitura-r5-varredura.sql. Confirmado seguro: usuarios_login 401, trocar_pin/registrar_feedback nao executaveis por anon. - 27/10/2026 -->
 <!-- v33.38 - SEGURANCA etapa 3 R4 (conteudo interno + escrita estoque): recados e tarefas entram no conjunto sensivel (leem pelo proxy); tarefas_minhas (RPC) tambem. ESCRITA do estoque fechada: estoque_registrar_entrada/venda deixam de ser chamaveis pela chave publica (fechava brecha de venda/entrada falsa) e passam pelo supabase-write (operacao rpc, RPCS_PERMITIDAS+RPCS_COLAB; check de tabela pulado p/ rpc). Gamificacao (pontos_log/badges/streaks/rankings) fica aberta de proposito (nome+pontos, dado interno baixo risco, decisao do dono). SQLs: seguranca-rls-leitura-r4-estoque.sql (agora inclui revoke das RPCs de escrita) e seguranca-rls-leitura-r4-recados-tarefas.sql. - 27/10/2026 -->
@@ -26029,10 +26030,27 @@ async function supaLer(tabela, query){
   });
   if(!r.ok){
     var t = await r.text().catch(function(){return '';});
+    _proxySessaoProblema(r.status, t);
     throw new Error('Leitura falhou ('+r.status+'): '+t.slice(0,160));
   }
   var j = await r.json();
   return (j && j.resultado) || [];
+}
+/* 🔧 v33.41: se o proxy recusa por sessao (sem token / token invalido / expirada),
+   pede re-login UMA vez (evita 50 alertas das leituras paralelas). Caso comum:
+   usuario mantido logado pelo cache sem token fresco -> leitura exige token. */
+var _SESSAO_CAIU_AVISADO = false;
+function _proxySessaoProblema(status, body){
+  if(status !== 401) return false;
+  if(!/sess[aã]o n[aã]o informada|token inv[aá]lid|expirad|n[aã]o encontrada|fa[cç]a login/i.test(body||'')) return false;
+  if(_SESSAO_CAIU_AVISADO) return true;
+  _SESSAO_CAIU_AVISADO = true;
+  try { localStorage.removeItem('gami_sessao_token'); } catch(e){}
+  setTimeout(function(){
+    alert('Sua sessão expirou. Faça login de novo pra carregar os dados.');
+    if(typeof logout === 'function') logout(); else location.reload();
+  }, 150);
+  return true;
 }
 /* 🔒 v33.34: RPC sensível pelo servidor. supaLerRPC('mapa_empresas_cidade', {p_cidade:'...'}) */
 async function supaLerRPC(rpc, args){
@@ -26046,6 +26064,7 @@ async function supaLerRPC(rpc, args){
   });
   if(!r.ok){
     var t = await r.text().catch(function(){return '';});
+    _proxySessaoProblema(r.status, t);
     throw new Error('RPC leitura falhou ('+r.status+'): '+t.slice(0,160));
   }
   var j = await r.json();
