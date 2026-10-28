@@ -1,3 +1,4 @@
+<!-- v33.45 - CRM (Iniciar o dia + Escolher): SEGMENTO agora e multi-selecao (marcar quantos quiser: ex pizzaria+hamburguer+lanche, ou Todos) e novo filtro de BAIRRO (depois de escolher a cidade carrega os bairros da prospeccao; marcar todos/um/varios - ex Maceio norte x sul por vendedor). _crmBuscarCandidatos aceita arrays segs[] e bairros[] (segOk=some, bairroOk=some normalizado). Helpers _crmSegsBoxHTML/_crmCarregarBairros/_crmSegsMarcados/_crmBairrosMarcados. Bairro so com cidade especifica (nao em 'todas as pracas'). - 28/10/2026 -->
 <!-- v33.44 - CRM (#3 Painel de Produtividade): nova aba "⚡ Produtividade" (so management: super_admin/diretoria/gerencia/gestor/Carlos; vendedor e BDR NAO veem). Filtro por periodo (Hoje/7d/30d/custom) e tabela por vendedor: visitas (crm_atividades tipo=visita), cadastros reais (checklist cadastro autor=pessoa, 'sistema'/ja-na-Machine NAO conta), ativacoes (checklist ativacao -> dono do lead = o ganho real), integracoes (ifood/99/outra). Respeita o filtro de gestao (_crmLeadsView). - 28/10/2026 -->
 <!-- v33.43 - CRM (#1b cadastro auto do lead novo): ao ATIVAR (auto-ativacao ja le a Machine), o sistema tambem marca o "Cadastro concluido" sozinho. Lead novo (fora da Machine) -> credita ao DONO (vendedor que trouxe); lead que ja era da Machine -> 'sistema' (nao credita). Tira o clique manual sem custo de leitura (reaproveita a leitura da ativacao). Casa com a regra: ganho = lead no CRM do vendedor + ativacao. - 28/10/2026 -->
 <!-- v33.42 - CRM (#1 cadastro honesto): lead que JA esta na Machine (tipo cadastrado_nao_ativado/churn/em_queda) tem o item "Cadastro concluido" auto-marcado como "ja estava na Machine" (autor=sistema, travado 🔒) -> NAO conta como cadastro feito pelo vendedor. So lead 'novo' (prospect fora da Machine) tem cadastro manual, que conta. _crmChecarCadastros roda ao abrir o CRM (como a auto-ativacao). Resolve a inflacao (pegar lead ja cadastrado e clicar cadastrei). Regra de credito: ganho = lead no CRM do vendedor + ativacao via Machine. Proximo: painel de produtividade por vendedor/periodo (#3). - 28/10/2026 -->
@@ -6609,6 +6610,58 @@ function _crmDist(aLat,aLng,bLat,bLng){
   var h=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.sin(dLng/2)*Math.sin(dLng/2)*Math.cos(la1)*Math.cos(la2);
   return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));
 }
+/* ---- Helpers multi-seleção de SEGMENTO e BAIRRO (compartilhados Iniciar/Escolher) ---- */
+function _crmNormB(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
+function _crmSegsBoxHTML(prefix, segs){
+  return '<label style="display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 6px;cursor:pointer;color:#0E7AB8;font-weight:700"><input type="checkbox" id="'+prefix+'-seg-todos" checked onchange="_crmSegTodos(\''+prefix+'\',this)"> Todos os segmentos</label>'
+    +'<div id="'+prefix+'-seg-list" style="display:grid;grid-template-columns:1fr 1fr;gap:2px;max-height:120px;overflow:auto;margin-top:3px;opacity:.45;pointer-events:none">'
+    + (segs.length? segs.map(function(s){ return '<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 6px;cursor:pointer"><input type="checkbox" class="'+prefix+'-seg" value="'+_crmEsc(s)+'"> '+_crmEsc(s)+'</label>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:4px">Sem segmentos na config.</div>')
+    +'</div>';
+}
+function _crmSegTodos(prefix, el){
+  var list=document.getElementById(prefix+'-seg-list'); if(!list) return;
+  if(el.checked){ list.style.opacity='.45'; list.style.pointerEvents='none'; list.querySelectorAll('.'+prefix+'-seg').forEach(function(c){ c.checked=false; }); }
+  else { list.style.opacity='1'; list.style.pointerEvents='auto'; }
+}
+function _crmSegsMarcados(prefix){
+  var todos=document.getElementById(prefix+'-seg-todos'); if(todos && todos.checked) return [];
+  return Array.prototype.slice.call(document.querySelectorAll('.'+prefix+'-seg:checked')).map(function(c){ return c.value; });
+}
+function _crmCidsSlugsSel(prefix){
+  var todas=document.getElementById(prefix+'-cid-todas');
+  var nomes = (todas && todas.checked) ? _crmCidadesSelec() : Array.prototype.slice.call(document.querySelectorAll('.'+prefix+'-cid:checked')).map(function(c){ return c.value; });
+  return { slugs: nomes.map(function(n){ return _campoSlug(n); }), todas: !!(todas && todas.checked) };
+}
+async function _crmCarregarBairros(prefix){
+  var box=document.getElementById(prefix+'-bairro-box'); if(!box) return;
+  var sel=_crmCidsSlugsSel(prefix);
+  if(sel.todas){ box.innerHTML='<div style="font-size:11px;color:var(--text3);padding:4px">Selecione cidade(s) específica(s) pra filtrar por bairro.</div>'; return; }
+  if(!sel.slugs.length){ box.innerHTML='<div style="font-size:11px;color:var(--text3);padding:4px">Escolha a cidade primeiro.</div>'; return; }
+  box.innerHTML='<div style="font-size:11px;color:var(--text3);padding:4px">Carregando bairros…</div>';
+  var set={};
+  try{
+    for(var i=0;i<sel.slugs.length;i++){
+      var rows=await supaLer('prospeccao_lojas','select=bairro&ativo=eq.true&status=eq.prospect&cidade_slug=eq.'+encodeURIComponent(sel.slugs[i])+'&limit=20000');
+      (rows||[]).forEach(function(r){ var b=(r.bairro||'').trim(); if(b) set[b]=1; });
+    }
+  }catch(e){}
+  if(!document.getElementById(prefix+'-bairro-box')) return; // modal fechou
+  var bairros=Object.keys(set).sort(function(a,b){ return a.localeCompare(b,'pt-BR'); });
+  if(!bairros.length){ box.innerHTML='<div style="font-size:11px;color:var(--text3);padding:4px">Sem bairros nessa cidade.</div>'; return; }
+  box.innerHTML='<label style="display:flex;align-items:center;gap:7px;font-size:12px;padding:3px 6px;cursor:pointer;color:#0E7AB8;font-weight:700"><input type="checkbox" id="'+prefix+'-bairro-todos" checked onchange="_crmBairroTodos(\''+prefix+'\',this)"> Todos os bairros ('+bairros.length+')</label>'
+    +'<div id="'+prefix+'-bairro-list" style="display:grid;grid-template-columns:1fr 1fr;gap:2px;max-height:150px;overflow:auto;margin-top:3px;opacity:.45;pointer-events:none">'
+    + bairros.map(function(b){ return '<label style="display:flex;align-items:center;gap:6px;font-size:11.5px;padding:3px 6px;cursor:pointer"><input type="checkbox" class="'+prefix+'-bairro" value="'+_crmEsc(b)+'"> '+_crmEsc(b)+'</label>'; }).join('')
+    +'</div>';
+}
+function _crmBairroTodos(prefix, el){
+  var list=document.getElementById(prefix+'-bairro-list'); if(!list) return;
+  if(el.checked){ list.style.opacity='.45'; list.style.pointerEvents='none'; list.querySelectorAll('.'+prefix+'-bairro').forEach(function(c){ c.checked=false; }); }
+  else { list.style.opacity='1'; list.style.pointerEvents='auto'; }
+}
+function _crmBairrosMarcados(prefix){
+  var todos=document.getElementById(prefix+'-bairro-todos'); if(!todos || todos.checked) return [];
+  return Array.prototype.slice.call(document.querySelectorAll('.'+prefix+'-bairro:checked')).map(function(c){ return c.value; });
+}
 function _crmIniciarDiaModal(){
   var cids=_crmCidadesSelec();
   var segs=(_CRM.config&&_CRM.config.segmentos)||[];
@@ -6621,13 +6674,13 @@ function _crmIniciarDiaModal(){
         +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:5px;cursor:pointer"><input type="radio" name="idia-tipo" value="novo" checked> 🆕 Novos leads <span style="color:var(--text3);font-size:11px">(nunca ativados)</span></label>'
         +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;cursor:pointer"><input type="radio" name="idia-tipo" value="cadastrado_nao_ativado"> 👻 Cadastrados e não ativos</label>'
       +'</div>'
-      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Segmento</div>'
-        +'<select id="idia-seg" style="'+inp+'"><option value="">Todos os segmentos</option>'+segs.map(function(s){ return '<option value="'+_crmEsc(s)+'">'+_crmEsc(s)+'</option>'; }).join('')+'</select></div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Segmento <span style="color:var(--text3);font-weight:400">(marque quantos quiser)</span></div>'+_crmSegsBoxHTML('idia', segs)+'</div>'
       +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Cidade <span style="color:var(--text3);font-weight:400">(até 2)</span></div>'
         +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 8px;cursor:pointer;color:#0E7AB8;font-weight:700"><input type="checkbox" id="idia-cid-todas" onchange="_crmIdiaLimite(this)"> Todas as minhas praças</label>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:150px;overflow:auto;margin-top:4px">'
         + (cids.length? cids.map(function(c){ return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 7px;cursor:pointer"><input type="checkbox" class="idia-cid" value="'+_crmEsc(c)+'" onchange="_crmIdiaLimite(this)"> '+_crmEsc(c)+'</label>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:6px">Sem praça definida pra você.</div>')
         +'</div></div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Bairro</div><div id="idia-bairro-box"><div style="font-size:11px;color:var(--text3);padding:4px">Escolha a cidade primeiro.</div></div></div>'
       +'<button onclick="_crmIniciarDiaConfirmar()" style="font-size:14px;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#0E7AB8,#1AB8F0);color:#fff;font-weight:800;cursor:pointer;font-family:inherit">Iniciar o dia →</button>'
       +'<div id="idia-res"></div>'
     +'</div>';
@@ -6637,18 +6690,21 @@ function _crmIdiaLimite(el){
   var todas=document.getElementById('idia-cid-todas');
   var checks=Array.prototype.slice.call(document.querySelectorAll('.idia-cid'));
   if(el && el.id==='idia-cid-todas'){
-    if(el.checked){ checks.forEach(function(c){ c.checked=false; c.disabled=true; }); return; }
-    checks.forEach(function(c){ c.disabled=false; }); return;
+    if(el.checked){ checks.forEach(function(c){ c.checked=false; c.disabled=true; }); }
+    else { checks.forEach(function(c){ c.disabled=false; }); }
+    try{ _crmCarregarBairros('idia'); }catch(e){} return;
   }
   if(todas && todas.checked){ todas.checked=false; checks.forEach(function(c){ c.disabled=false; }); }
   var sel=checks.filter(function(c){ return c.checked; });
   checks.forEach(function(c){ if(!c.checked) c.disabled = sel.length>=2; });
+  try{ _crmCarregarBairros('idia'); }catch(e){}
 }
 async function _crmIniciarDiaConfirmar(){
   var u=_crmUser(); if(!u){ if(typeof toast==='function') toast('Faça login.','error'); return; }
   var qtd=Math.max(1, Math.min(50, parseInt((document.getElementById('idia-qtd')||{}).value)||10));
   var tipo=(document.querySelector('input[name=idia-tipo]:checked')||{}).value||'novo';
-  var seg=((document.getElementById('idia-seg')||{}).value||'').trim();
+  var segsSel=_crmSegsMarcados('idia');
+  var bairrosSel=_crmBairrosMarcados('idia');
   var todas=(document.getElementById('idia-cid-todas')||{}).checked;
   var nomes = todas ? _crmCidadesSelec()
                     : Array.prototype.slice.call(document.querySelectorAll('.idia-cid:checked')).map(function(c){ return c.value; });
@@ -6657,7 +6713,7 @@ async function _crmIniciarDiaConfirmar(){
   var slugs=nomes.map(function(n){ return _campoSlug(n); });
   if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:var(--text3);font-size:12px">⏳ Buscando os melhores leads…</div>';
   try{
-    var r=await _crmBuscarCandidatos(slugs, seg, tipo);
+    var r=await _crmBuscarCandidatos(slugs, segsSel, tipo, bairrosSel);
     var chosen=r.cands.slice(0,qtd);
     if(!chosen.length){
       var msg = tipo==='cadastrado_nao_ativado'
@@ -6672,7 +6728,9 @@ async function _crmIniciarDiaConfirmar(){
   }catch(e){ if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">Erro ao buscar leads. Tente de novo.</div>'; }
 }
 /* Busca compartilhada: pool de prospeccao + proximidade de lojas ativas (Machine) + exclusão do que já está no CRM */
-async function _crmBuscarCandidatos(slugs, seg, tipo){
+async function _crmBuscarCandidatos(slugs, segs, tipo, bairros){
+  segs = Array.isArray(segs) ? segs : (segs ? [segs] : []);        // compat: aceita string antiga
+  bairros = Array.isArray(bairros) ? bairros : (bairros ? [bairros] : []);
   // lojas ATIVAS (pedindo) p/ ranquear proximidade — Machine (mv_prospeccao_mapa)
   var ativas=[]; var limiteAtiva=Date.now()-60*86400000;
   for(var a=0;a<slugs.length;a++){
@@ -6702,9 +6760,10 @@ async function _crmBuscarCandidatos(slugs, seg, tipo){
       if(Array.isArray(rows)) pool=pool.concat(rows);
     }
   }
-  function segOk(l){ if(!seg) return true; return (((l.segmento||'')+'').toLowerCase().indexOf(seg.toLowerCase())>=0); }
+  function segOk(l){ if(!segs.length) return true; var s=(((l.segmento||'')+'').toLowerCase()); return segs.some(function(x){ return s.indexOf((x||'').toLowerCase())>=0; }); }
+  function bairroOk(l){ if(!bairros.length) return true; var b=_crmNormB(l.bairro); return bairros.some(function(x){ return _crmNormB(x)===b; }); }
   function livre(l){ return (!l.id || !exLoja[l.id]) && !exNome[((l.nome||'').trim().toLowerCase())+'|'+(l.cidade_slug||'')]; }
-  var cands=pool.filter(function(l){ return coordOk(l.lat,l.lng) && segOk(l) && livre(l); });
+  var cands=pool.filter(function(l){ return coordOk(l.lat,l.lng) && segOk(l) && bairroOk(l) && livre(l); });
   cands.forEach(function(l){ var best=Infinity; for(var k=0;k<ativas.length;k++){ var d=_crmDist(l.lat,l.lng,ativas[k].lat,ativas[k].lng); if(d<best) best=d; } l._d=best; });
   cands.sort(function(a,b){ return (a._d-b._d); });
   return { cands:cands, poolLen:pool.length };
@@ -6744,15 +6803,14 @@ function _crmEscolherModal(){
   var inner=''
     +'<div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:12px">Escolha os filtros, busque e <b>marque os leads</b> que quer na sua lista.</div>'
     +'<div style="display:flex;flex-direction:column;gap:11px">'
-      +'<div style="display:flex;gap:8px">'
-        +'<div style="flex:1"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Tipo</div><select id="esc-tipo" style="'+inp+'"><option value="novo">🆕 Novos leads</option><option value="cadastrado_nao_ativado">👻 Cadastrados e não ativos</option></select></div>'
-        +'<div style="flex:1"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Segmento</div><select id="esc-seg" style="'+inp+'"><option value="">Todos</option>'+segs.map(function(s){ return '<option value="'+_crmEsc(s)+'">'+_crmEsc(s)+'</option>'; }).join('')+'</select></div>'
-      +'</div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Tipo</div><select id="esc-tipo" style="'+inp+'"><option value="novo">🆕 Novos leads</option><option value="cadastrado_nao_ativado">👻 Cadastrados e não ativos</option></select></div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Segmento <span style="color:var(--text3);font-weight:400">(marque quantos quiser)</span></div>'+_crmSegsBoxHTML('esc', segs)+'</div>'
       +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Cidade <span style="color:var(--text3);font-weight:400">(até 2)</span></div>'
         +'<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;padding:6px 8px;cursor:pointer;color:#0E7AB8;font-weight:700"><input type="checkbox" id="esc-cid-todas" onchange="_crmEscLimite(this)"> Todas</label>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;max-height:120px;overflow:auto;margin-top:4px">'
         + (cids.length? cids.map(function(c){ return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 7px;cursor:pointer"><input type="checkbox" class="esc-cid" value="'+_crmEsc(c)+'" onchange="_crmEscLimite(this)"> '+_crmEsc(c)+'</label>'; }).join('') : '<div style="font-size:11px;color:var(--text3);padding:6px">Sem cidade.</div>')
         +'</div></div>'
+      +'<div><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px">Bairro</div><div id="esc-bairro-box"><div style="font-size:11px;color:var(--text3);padding:4px">Escolha a cidade primeiro.</div></div></div>'
       +'<button onclick="_crmEscolherBuscar()" style="font-size:13px;padding:11px;border:none;border-radius:10px;background:#0E7AB8;color:#fff;font-weight:700;cursor:pointer;font-family:inherit">🔎 Buscar leads</button>'
       +'<div id="esc-res"></div>'
     +'</div>';
@@ -6761,21 +6819,23 @@ function _crmEscolherModal(){
 function _crmEscLimite(el){
   var todas=document.getElementById('esc-cid-todas');
   var checks=Array.prototype.slice.call(document.querySelectorAll('.esc-cid'));
-  if(el && el.id==='esc-cid-todas'){ if(el.checked){ checks.forEach(function(c){ c.checked=false; c.disabled=true; }); } else { checks.forEach(function(c){ c.disabled=false; }); } return; }
+  if(el && el.id==='esc-cid-todas'){ if(el.checked){ checks.forEach(function(c){ c.checked=false; c.disabled=true; }); } else { checks.forEach(function(c){ c.disabled=false; }); } try{ _crmCarregarBairros('esc'); }catch(e){} return; }
   if(todas && todas.checked){ todas.checked=false; checks.forEach(function(c){ c.disabled=false; }); }
   var sel=checks.filter(function(c){ return c.checked; });
   checks.forEach(function(c){ if(!c.checked) c.disabled = sel.length>=2; });
+  try{ _crmCarregarBairros('esc'); }catch(e){}
 }
 async function _crmEscolherBuscar(){
   var tipo=(document.getElementById('esc-tipo')||{}).value||'novo';
-  var seg=((document.getElementById('esc-seg')||{}).value||'').trim();
+  var segsSel=_crmSegsMarcados('esc');
+  var bairrosSel=_crmBairrosMarcados('esc');
   var todas=(document.getElementById('esc-cid-todas')||{}).checked;
   var nomes = todas ? _crmCidadesSelec() : Array.prototype.slice.call(document.querySelectorAll('.esc-cid:checked')).map(function(c){ return c.value; });
   var res=document.getElementById('esc-res');
   if(!nomes.length){ if(res) res.innerHTML='<div style="padding:8px;text-align:center;color:#E24B4A;font-size:12px">Escolha ao menos 1 cidade.</div>'; return; }
   if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:var(--text3);font-size:12px">⏳ Buscando…</div>';
   try{
-    var r=await _crmBuscarCandidatos(nomes.map(function(n){ return _campoSlug(n); }), seg, tipo);
+    var r=await _crmBuscarCandidatos(nomes.map(function(n){ return _campoSlug(n); }), segsSel, tipo, bairrosSel);
     _CRM_ESC.cands=r.cands;
     if(!r.cands.length){ if(res) res.innerHTML='<div style="padding:10px;text-align:center;color:#E24B4A;font-size:12px">Nenhum lead livre com esse filtro.</div>'; return; }
     var lista=r.cands.slice(0,150);
