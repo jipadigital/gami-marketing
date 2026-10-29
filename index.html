@@ -15910,17 +15910,19 @@ async function obterExtratoPessoa(pessoaId){
 
 /* SESSION HELPERS */
 function getUsuarioLogado(){
-  // 🎭 IMPERSONAÇÃO (só funciona se o usuário REAL é super_admin)
+  // 🎭 IMPERSONAÇÃO (super_admin dono OU allowlist do Modo Teste, ex: Carlos)
   try {
     var imp = sessionStorage.getItem('_gami_impersonacao');
     if(imp){
       var real = _getUsuarioLogadoReal();
-      // Só permite impersonar se realmente é super_admin
-      if(real && real.email === 'jipadigital@gmail.com'){
-        var perfil = JSON.parse(imp);
-        return perfil;
-      } else {
-        // Não é super_admin: limpa impersonação
+      var ehDono = !!(real && real.email === 'jipadigital@gmail.com');
+      var fnReady = (typeof _gamiPodeModoTeste === 'function');
+      var podeTeste = ehDono || (fnReady && _gamiPodeModoTeste());
+      if(podeTeste){
+        return JSON.parse(imp);
+      } else if(fnReady && real && real.id){
+        // já sabemos que não pode: limpa. (se a função ainda não carregou no
+        // boot, NÃO apaga pra não derrubar a impersonação cedo demais)
         sessionStorage.removeItem('_gami_impersonacao');
       }
     }
@@ -58657,8 +58659,23 @@ function _gamiEhSuperAdminReal(){
   
   // Check 3: cargo Marketing/Owner
   if(real.cargo && /marketing|owner|admin/i.test(real.cargo)) return true;
-  
+
   return false;
+}
+
+// 🆕 Allowlist extra do Modo Teste (além do super_admin): pra reunião/treinamento.
+var _MODO_TESTE_EXTRA_IDS = ['pecarlosvinicius']; // Carlos (comercial) — demo BDR/Vendedor
+function _gamiPodeModoTeste(){
+  if(_gamiEhSuperAdminReal()) return true;
+  try { var r = _getUsuarioLogadoReal(); return !!(r && _MODO_TESTE_EXTRA_IDS.indexOf(r.id) >= 0); }
+  catch(e){ return false; }
+}
+// Perfis liberados: super_admin vê todos; os extras (Carlos) veem só o foco de reunião:
+// voltar-pro-real + BDR + Vendedor.
+function _gamiPerfisPermitidos(){
+  if(_gamiEhSuperAdminReal()) return PERFIS_TESTE;
+  var foco = { 'teste-bdr':1, 'teste-vendedor-maceio':1 };
+  return PERFIS_TESTE.filter(function(p){ return p.perfil === null || foco[p.id]; });
 }
 
 function _gamiEstaImpersonando(){
@@ -58677,8 +58694,8 @@ function _gamiPerfilImpersonado(){
 
 // ============ Impersonar / Sair ============
 function gamiImpersonar(perfilId){
-  if(!_gamiEhSuperAdminReal()){
-    alert('🚫 Apenas o super_admin pode usar o modo teste.');
+  if(!_gamiPodeModoTeste()){
+    alert('🚫 Você não tem acesso ao modo teste.');
     return;
   }
   var p = PERFIS_TESTE.find(function(x){ return x.id === perfilId; });
@@ -58735,8 +58752,8 @@ function gamiRenderBannerImpersonacao(){
 }
 
 function gamiRenderBotaoModoTeste(){
-  // Só pra super_admin REAL
-  if(!_gamiEhSuperAdminReal()) return;
+  // super_admin REAL ou allowlist extra (Carlos)
+  if(!_gamiPodeModoTeste()) return;
   // Evita duplicação
   if(document.getElementById('btn-modo-teste')) return;
   
@@ -58752,13 +58769,15 @@ function gamiRenderBotaoModoTeste(){
 }
 
 function gamiAbrirModalImpersonar(){
-  if(!_gamiEhSuperAdminReal()){
-    alert('🚫 Apenas você pode usar o modo teste.');
+  if(!_gamiPodeModoTeste()){
+    alert('🚫 Você não tem acesso ao modo teste.');
     return;
   }
-  
+
   var atual = _gamiPerfilImpersonado();
   var atualEmail = atual ? atual.email : null;
+  var _real = (typeof _getUsuarioLogadoReal==='function') ? _getUsuarioLogadoReal() : null;
+  var _realNome = (_real && (_real.nome || _real.email)) || 'mim';
   
   var overlay = document.createElement('div');
   overlay.id = 'modal-impersonar';
@@ -58770,14 +58789,15 @@ function gamiAbrirModalImpersonar(){
         + '<div style="font-size:18px;font-weight:700;color:var(--text)">🎭 Modo Teste</div>'
         + '<button onclick="document.getElementById(\'modal-impersonar\').remove()" style="border:none;background:transparent;font-size:22px;color:var(--text3);cursor:pointer;line-height:1">✕</button>'
       + '</div>'
-      + '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">Escolha um perfil pra ver como o sistema fica pra cada nível. Apenas você (super_admin) tem acesso. Os perfis de teste não aparecem em Pessoas.</div>'
+      + '<div style="font-size:12px;color:var(--text3);margin-bottom:18px">Escolha um perfil pra ver como o sistema fica pra cada nível. Os perfis de teste não aparecem em Pessoas e não contam pontos.</div>'
       + '<div style="display:flex;flex-direction:column;gap:8px">'
-        + PERFIS_TESTE.map(function(p){
+        + _gamiPerfisPermitidos().map(function(p){
             var ativo = p.perfil ? (p.perfil.email === atualEmail) : (atualEmail === null);
+            var _lbl = (p.perfil === null) ? ('🛡️ ' + _realNome + ' (você - REAL)') : p.nome;
             return '<button onclick="gamiImpersonar(\'' + p.id + '\')" '
               + 'style="padding:12px 14px;border:2px solid ' + (ativo ? p.cor : 'var(--border)') + ';background:' + (ativo ? p.cor + '15' : 'var(--surface2)') + ';color:var(--text);font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;font-family:inherit;text-align:left;display:flex;align-items:center;gap:10px;transition:all .15s">'
                 + '<div style="flex:1">'
-                  + '<div style="display:flex;align-items:center;gap:6px"><span>' + p.nome + '</span>' + (ativo ? '<span style="font-size:10px;background:' + p.cor + ';color:white;padding:2px 6px;border-radius:4px;letter-spacing:0.5px">ATIVO</span>' : '') + '</div>'
+                  + '<div style="display:flex;align-items:center;gap:6px"><span>' + _lbl + '</span>' + (ativo ? '<span style="font-size:10px;background:' + p.cor + ';color:white;padding:2px 6px;border-radius:4px;letter-spacing:0.5px">ATIVO</span>' : '') + '</div>'
                   + '<div style="font-size:10px;color:var(--text3);font-weight:500;margin-top:2px">' + p.descricao + '</div>'
                 + '</div>'
                 + '<span style="color:' + p.cor + ';font-size:18px;font-weight:700">→</span>'
