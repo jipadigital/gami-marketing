@@ -60417,8 +60417,23 @@ function _msgErroGeo(err){
 function dashPedirGeoPonto(){
   return new Promise(function(resolve, reject){
     var statusEl = document.getElementById('dash-ponto-geo');
+
+    // 🆕 v33.55: home office / liberação NÃO precisa de GPS/IP. Mostra "Liberação ativa"
+    // e esconde a caixa de justificativa, igual ao fluxo "Meu Ponto" (_mpAtualizarStatusValidacao).
+    // Antes, o card do dashboard mostrava "⚠️ Fora do escritório · XXXXm" + abria justificativa
+    // pra quem é isento (Jheniffer/Jessica/Andréia). A batida já passava (dashBaterPontoRapido
+    // trata liberada), mas a tela dizia o contrário e confundia/assustava. Agora bate com o resto.
+    if(MP_PESSOA && typeof _pessoaLiberadaValidacao === 'function' && _pessoaLiberadaValidacao(MP_PESSOA)){
+      var _hoFixo = (typeof _pontoHomeOfficeFixo === 'function') && _pontoHomeOfficeFixo(MP_PESSOA);
+      if(statusEl) statusEl.innerHTML = '🆓 <strong style="color:#1D9E75">Liberação ativa</strong> ' + (_hoFixo ? '(home office)' : '') + ' — pode bater normal, sem GPS.';
+      var jbLib = document.getElementById('dash-ponto-justif-box');
+      if(jbLib) jbLib.style.display = 'none';
+      resolve({ liberada: true });
+      return;
+    }
+
     if(statusEl) statusEl.innerHTML = '<span style="color:#0E7AB8">📡 Detectando localização...</span>';
-    
+
     _obterLocalizacao().then(function(result){
       var coords = result.coords;
       MP_GEO = { lat: coords.latitude, lng: coords.longitude, precisao: coords.accuracy, viaFallback: result.viaFallback };
