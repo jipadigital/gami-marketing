@@ -52,6 +52,7 @@
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
+<!-- v33.00b - CRM PRO embutido + SSO: clicar em "CRM Pro" agora abre o app DENTRO do dashboard (painel/iframe overlay #crmpro-overlay, botao Fechar) em vez de aba nova, e ja ENTRA LOGADO (SSO): abrirCrmPro faz auto-POST pro /api/sso do CRM com pessoa_id + gami_sessao_token (no corpo, nao na URL); o CRM (ssoPorToken) valida esse token contra usuarios_login (token_atual/sessoes_ativas) e cria a sessao sozinho, sem PIN. Precisou no CRM: cookie SameSite=None+Secure em prod (pra valer dentro do iframe cross-site) + CSP frame-ancestors liberando gami-marketing.netlify.app. ARMADILHA iOS: Safari bloqueia cookie de terceiro em iframe (ITP); se nao entrar no iPhone, cair pra mesma-origem (proxy) depois. - 30/10/2026 -->
 <!-- v32.99 - CRM PRO no menu: item "🚀 CRM Pro" (sidebar, secao Gestao) que abre o app dedicado gami-crm (Netlify, cerulean-monstera-3f332f.netlify.app) em outra aba. Gate data-perm-crmpro -> visivel SO pro piloto Cleyton(pe016)+Carlos(pecarlosvinicius) por enquanto (_CRMPRO_IDS); funcao abrirCrmPro (_CRMPRO_URL, trocar se renomear o site). O CRM tambem tranca o login so pros dois (CRM_ACESSO_IDS no app). - 30/10/2026 -->
 <!-- v32.98 - LOGIN multi-dispositivo (fim do logout ao trocar de aparelho): o servidor guardava UM unico token por usuario (usuarios_login.token_atual), entao logar no celular sobrescrevia o token do notebook (e vice-versa) e a cada troca caia em "sessao expirou"/re-login. Agora o login ACUMULA as sessoes ativas (coluna sessoes_ativas jsonb, ultimas 10 sem as expiradas) e as funcoes supabase-read/supabase-write aceitam QUALQUER token ativo da lista (helper _tokenAtivo). Notebook + celular logados juntos. token_atual segue gravado (compat). RODAR docs/sessoes-multi-dispositivo.sql (ADD COLUMN). Cada aparelho loga UMA ultima vez pos-deploy e dai para. - 30/10/2026 -->
 <!-- v32.97 - PROSPECCAO mapa (3 ajustes pedidos): (1) SOBREPOSICAO: geocode do iFood e nivel rua/CEP, entao varias lojas da mesma rua caiam na MESMA coordenada e empilhavam (so a de cima clicava). _campoDesempilhar: o 1o fica no lugar, os demais abrem em espiral (aneis de 8, ~10m), vale pros pontos da Machine E da prospeccao; o overlay de emoji usa a coord ja deslocada (_mlat/_mlng). (2) TAMANHO POR AVALIACOES (Power Data iFood): a bolinha CINZA do prospect agora cresce com numero_avaliacoes (sqrt, 6 sem dado -> ate 11); popup mostra a nota + nº de avaliacoes. Precisa rodar docs/prospeccao-avaliacoes.sql e o proximo import carregar os 2 campos (sem o dado, fica no tamanho de sempre). (3) FALSAS PERDAS POR NOME: docs/prospeccao-sinal-machine-v2.sql normaliza o nome dos 2 lados (tira acento/pontuacao/sufixo LTDA-ME-etc) antes de casar prospect x Machine, reduzindo loja ativa que ficava cinza/perdida por divergencia de nome. - 30/10/2026 -->
@@ -6386,7 +6387,41 @@ function _podeVerCRM(){ return !!_crmPapel(); }
 // isto já é gateado pra Cleyton + Carlos (data-perm-crmpro). Se renomear o site na
 // Netlify, trocar a URL aqui.
 var _CRMPRO_URL = 'https://cerulean-monstera-3f332f.netlify.app';
-function abrirCrmPro(){ try{ window.open(_CRMPRO_URL, '_blank', 'noopener'); }catch(e){ location.href=_CRMPRO_URL; } }
+// Abre o CRM Pro DENTRO do dashboard (painel/iframe) e já loga a pessoa via SSO:
+// faz um auto-POST pro /api/sso do CRM com quem está logado + o token de sessão do
+// dashboard (no CORPO, não na URL). O CRM valida e cria a própria sessão, sem PIN.
+function abrirCrmPro(){
+  var u = (typeof getUsuarioLogado==='function') ? (getUsuarioLogado()||{}) : {};
+  var uid = u.id || u.pessoa_id || '';
+  var tok=''; try{ tok=localStorage.getItem('gami_sessao_token')||''; }catch(e){}
+  var ov = document.getElementById('crmpro-overlay');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id='crmpro-overlay';
+    ov.style.cssText='position:fixed;inset:0;z-index:99999;background:#0B2542;display:flex;flex-direction:column';
+    ov.innerHTML =
+      '<div style="height:44px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#0B2542;color:#fff;font-family:inherit">'
+      + '<span style="font-size:13px;font-weight:700">🚀 CRM Pro</span>'
+      + '<button onclick="fecharCrmPro()" style="background:rgba(255,255,255,.14);border:0;color:#fff;font-size:13px;font-weight:700;padding:5px 12px;border-radius:7px;cursor:pointer;font-family:inherit">✕ Fechar</button>'
+      + '</div>'
+      + '<iframe id="crmpro-frame" style="flex:1;border:0;width:100%;background:#fff"></iframe>';
+    document.body.appendChild(ov);
+  }
+  var esc=function(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); };
+  var ifr = document.getElementById('crmpro-frame');
+  ifr.srcdoc = '<!doctype html><meta charset="utf-8"><body style="margin:0;font-family:sans-serif;color:#64748B;display:flex;align-items:center;justify-content:center;height:100vh" onload="document.forms[0].submit()">Abrindo o CRM…'
+    + '<form method="POST" action="'+_CRMPRO_URL+'/api/sso" style="display:none">'
+    + '<input type="hidden" name="u" value="'+esc(uid)+'">'
+    + '<input type="hidden" name="t" value="'+esc(tok)+'">'
+    + '</form></body>';
+  ov.style.display='flex';
+  try{ document.body.style.overflow='hidden'; }catch(e){}
+}
+function fecharCrmPro(){
+  var ov=document.getElementById('crmpro-overlay');
+  if(ov){ ov.style.display='none'; var f=document.getElementById('crmpro-frame'); if(f){ try{ f.srcdoc=''; f.removeAttribute('src'); }catch(e){} } }
+  try{ document.body.style.overflow=''; }catch(e){}
+}
 function _crmPipelineUser(u){ var p=_crmPapel(u); if(p==='bdr') return 'inside'; if(p==='vendedor'||p==='gestor') return 'field'; return 'ambos'; }
 function _crmEsc(s){ return (typeof _campoEsc==='function')?_campoEsc(s):String(s==null?'':s); }
 function _crmUID(){ return 'lead_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
