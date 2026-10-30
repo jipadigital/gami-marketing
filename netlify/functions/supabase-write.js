@@ -122,7 +122,9 @@ async function validarSessao(userId, token){
   try {
     // Busca o usuário em usuarios_login (que tem token + expiração)
     // 🔒 Fase 1c: usa SERVICE KEY — token_atual não é mais legível pela anon key.
-    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,nome,token_atual,token_expira_em,sessoes_ativas,ativo&limit=1', {
+    // select=* pra não quebrar se a coluna sessoes_ativas ainda não existir (ALTER
+    // pendente): _tokenAtivo cai no token_atual quando a lista vier indefinida.
+    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=*&limit=1', {
       headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
     if(!r.ok) return { valido: false, erro: 'Falha ao validar' };

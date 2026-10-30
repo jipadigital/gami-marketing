@@ -155,20 +155,32 @@ exports.handler = async function(event){
     } catch(e){}
     _sessoes.push({ t: sessaoToken, e: sessaoExpira, ua: userAgent || null, em: new Date().toISOString() });
     if(_sessoes.length > 10) _sessoes = _sessoes.slice(_sessoes.length - 10);
+    // base SEM sessoes_ativas (sempre grava token_atual, mesmo se o SQL da coluna
+    // ainda não rodou — senão o login quebraria até rodar o ALTER)
+    const _patchBase = {
+      ultimo_login: new Date().toISOString(),
+      tentativas_falhas: 0,
+      bloqueado_ate: null,
+      token_atual: sessaoToken,
+      token_expira_em: sessaoExpira,
+      ultimo_user_agent: userAgent
+    };
+    const _patchUrl = SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(usuario.pessoa_id);
     try {
-      await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(usuario.pessoa_id), {
+      const rPatch = await fetch(_patchUrl, {
         method: 'PATCH',
         headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
-        body: JSON.stringify({
-          ultimo_login: new Date().toISOString(),
-          tentativas_falhas: 0,
-          bloqueado_ate: null,
-          token_atual: sessaoToken,
-          token_expira_em: sessaoExpira,
-          sessoes_ativas: _sessoes,
-          ultimo_user_agent: userAgent
-        })
+        body: JSON.stringify(Object.assign({ sessoes_ativas: _sessoes }, _patchBase))
       });
+      // se a coluna sessoes_ativas ainda não existe (ALTER não rodou), PostgREST
+      // recusa o PATCH inteiro → refaz sem ela pra não deixar o usuário sem token.
+      if(!rPatch.ok){
+        await fetch(_patchUrl, {
+          method: 'PATCH',
+          headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+          body: JSON.stringify(_patchBase)
+        });
+      }
     } catch(e){}
 
     // 4) Busca dados completos da pessoa
