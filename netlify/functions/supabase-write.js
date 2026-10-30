@@ -102,32 +102,41 @@ function corsHeaders(origin){
   };
 }
 
+// aceita a sessão se o token bate com o token_atual (compat) OU com qualquer
+// sessão ativa não expirada da lista (multi-dispositivo: notebook + celular juntos).
+function _tokenAtivo(u, token){
+  var agora = new Date();
+  if(u.token_atual && u.token_atual === token && (!u.token_expira_em || new Date(u.token_expira_em) >= agora)) return true;
+  if(Array.isArray(u.sessoes_ativas)){
+    for(var i=0;i<u.sessoes_ativas.length;i++){
+      var s=u.sessoes_ativas[i];
+      if(s && s.t === token && (!s.e || new Date(s.e) >= agora)) return true;
+    }
+  }
+  return false;
+}
 // Valida o usuário + token de sessão
 async function validarSessao(userId, token){
   if(!userId) return { valido: false, erro: 'Usuário não informado' };
-  
+
   try {
     // Busca o usuário em usuarios_login (que tem token + expiração)
     // 🔒 Fase 1c: usa SERVICE KEY — token_atual não é mais legível pela anon key.
-    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,nome,token_atual,token_expira_em,ativo&limit=1', {
+    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,nome,token_atual,token_expira_em,sessoes_ativas,ativo&limit=1', {
       headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
     if(!r.ok) return { valido: false, erro: 'Falha ao validar' };
     const arr = await r.json();
     if(!Array.isArray(arr) || arr.length === 0) return { valido: false, erro: 'Usuário não existe' };
-    
+
     const u = arr[0];
-    
+
     if(u.ativo === false) return { valido: false, erro: 'Usuário desativado' };
-    
+
     // Se token foi enviado, valida (mais seguro)
     // Se token não foi enviado (sistema antigo), valida só user_id (compatibilidade)
     if(token){
-      if(!u.token_atual) return { valido: false, erro: 'Sessão não encontrada (faça login de novo)' };
-      if(u.token_atual !== token) return { valido: false, erro: 'Token inválido' };
-      if(u.token_expira_em && new Date(u.token_expira_em) < new Date()){
-        return { valido: false, erro: 'Sessão expirada (faça login de novo)' };
-      }
+      if(!_tokenAtivo(u, token)) return { valido: false, erro: 'Sessão expirada (faça login de novo)' };
     }
     
     // Busca o nivel na tabela pessoas (super_admin pode estar em várias colunas)

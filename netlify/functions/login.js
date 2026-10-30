@@ -142,6 +142,19 @@ exports.handler = async function(event){
     // v31.40: token de sessao de 7 dias (era 24h). Evita que o servidor recuse a
     // escrita do ponto quando o cliente ainda se considera logado, e reduz re-logins.
     const sessaoExpira = new Date(Date.now() + 7*24*60*60*1000).toISOString();
+    // 🔓 MULTI-DISPOSITIVO: antes guardava UM token por usuário (token_atual), então
+    // logar no celular derrubava o notebook (e vice-versa) a cada troca de aparelho.
+    // Agora mantemos a LISTA de sessões ativas: notebook + celular ficam logados juntos.
+    // Tira as expiradas e limita às 10 mais recentes. token_atual segue gravado (compat).
+    const _agora = Date.now();
+    let _sessoes = [];
+    try {
+      if(Array.isArray(usuario.sessoes_ativas)){
+        _sessoes = usuario.sessoes_ativas.filter(function(s){ return s && s.t && s.e && new Date(s.e).getTime() > _agora; });
+      }
+    } catch(e){}
+    _sessoes.push({ t: sessaoToken, e: sessaoExpira, ua: userAgent || null, em: new Date().toISOString() });
+    if(_sessoes.length > 10) _sessoes = _sessoes.slice(_sessoes.length - 10);
     try {
       await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(usuario.pessoa_id), {
         method: 'PATCH',
@@ -152,6 +165,7 @@ exports.handler = async function(event){
           bloqueado_ate: null,
           token_atual: sessaoToken,
           token_expira_em: sessaoExpira,
+          sessoes_ativas: _sessoes,
           ultimo_user_agent: userAgent
         })
       });

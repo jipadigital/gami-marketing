@@ -76,6 +76,19 @@ var _SESS_TTL = 120000; // 2 min
 // Qualquer usuário logado e ativo pode LER o que está na lista branca
 // (a ameaça aqui é o forasteiro com a chave pública, não o insider;
 //  o escopo por linha/nível o app já trata na UI).
+// aceita a sessão se o token bate com o token_atual (compat) OU com qualquer
+// sessão ativa não expirada da lista (multi-dispositivo: notebook + celular juntos).
+function _tokenAtivo(u, token){
+  var agora = new Date();
+  if(u.token_atual && u.token_atual === token && (!u.token_expira_em || new Date(u.token_expira_em) >= agora)) return true;
+  if(Array.isArray(u.sessoes_ativas)){
+    for(var i=0;i<u.sessoes_ativas.length;i++){
+      var s=u.sessoes_ativas[i];
+      if(s && s.t === token && (!s.e || new Date(s.e) >= agora)) return true;
+    }
+  }
+  return false;
+}
 async function validarSessao(userId, token){
   if(!userId || !token) return { valido:false, erro:'Sessão não informada' };
   var ck = userId+'|'+token;
@@ -83,7 +96,7 @@ async function validarSessao(userId, token){
   var c = _sessCache.get(ck);
   if(c && c.exp > now) return c.valido ? { valido:true } : { valido:false, erro:c.erro };
   try {
-    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,token_atual,token_expira_em,ativo&limit=1', {
+    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,token_atual,token_expira_em,sessoes_ativas,ativo&limit=1', {
       headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
     if(!r.ok) return { valido:false, erro:'Falha ao validar' };  // erro transitório: não cacheia
@@ -92,10 +105,8 @@ async function validarSessao(userId, token){
     if(!Array.isArray(arr) || !arr.length) out = { valido:false, erro:'Usuário não existe' };
     else { const u = arr[0];
       if(u.ativo === false) out = { valido:false, erro:'Usuário desativado' };
-      else if(!u.token_atual) out = { valido:false, erro:'Sessão não encontrada (faça login de novo)' };
-      else if(u.token_atual !== token) out = { valido:false, erro:'Token inválido' };
-      else if(u.token_expira_em && new Date(u.token_expira_em) < new Date()) out = { valido:false, erro:'Sessão expirada (faça login de novo)' };
-      else out = { valido:true };
+      else if(_tokenAtivo(u, token)) out = { valido:true };
+      else out = { valido:false, erro:'Sessão expirada (faça login de novo)' };
     }
     // cacheia (poda simples quando cresce)
     if(_sessCache.size > 500) _sessCache.clear();
