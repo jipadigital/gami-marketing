@@ -52,6 +52,7 @@
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
+<!-- v32.99 - CRM PRO no menu: item "🚀 CRM Pro" (sidebar, secao Gestao) que abre o app dedicado gami-crm (Netlify, cerulean-monstera-3f332f.netlify.app) em outra aba. Gate data-perm-crmpro -> visivel SO pro piloto Cleyton(pe016)+Carlos(pecarlosvinicius) por enquanto (_CRMPRO_IDS); funcao abrirCrmPro (_CRMPRO_URL, trocar se renomear o site). O CRM tambem tranca o login so pros dois (CRM_ACESSO_IDS no app). - 30/10/2026 -->
 <!-- v32.98 - LOGIN multi-dispositivo (fim do logout ao trocar de aparelho): o servidor guardava UM unico token por usuario (usuarios_login.token_atual), entao logar no celular sobrescrevia o token do notebook (e vice-versa) e a cada troca caia em "sessao expirou"/re-login. Agora o login ACUMULA as sessoes ativas (coluna sessoes_ativas jsonb, ultimas 10 sem as expiradas) e as funcoes supabase-read/supabase-write aceitam QUALQUER token ativo da lista (helper _tokenAtivo). Notebook + celular logados juntos. token_atual segue gravado (compat). RODAR docs/sessoes-multi-dispositivo.sql (ADD COLUMN). Cada aparelho loga UMA ultima vez pos-deploy e dai para. - 30/10/2026 -->
 <!-- v32.97 - PROSPECCAO mapa (3 ajustes pedidos): (1) SOBREPOSICAO: geocode do iFood e nivel rua/CEP, entao varias lojas da mesma rua caiam na MESMA coordenada e empilhavam (so a de cima clicava). _campoDesempilhar: o 1o fica no lugar, os demais abrem em espiral (aneis de 8, ~10m), vale pros pontos da Machine E da prospeccao; o overlay de emoji usa a coord ja deslocada (_mlat/_mlng). (2) TAMANHO POR AVALIACOES (Power Data iFood): a bolinha CINZA do prospect agora cresce com numero_avaliacoes (sqrt, 6 sem dado -> ate 11); popup mostra a nota + nº de avaliacoes. Precisa rodar docs/prospeccao-avaliacoes.sql e o proximo import carregar os 2 campos (sem o dado, fica no tamanho de sempre). (3) FALSAS PERDAS POR NOME: docs/prospeccao-sinal-machine-v2.sql normaliza o nome dos 2 lados (tira acento/pontuacao/sufixo LTDA-ME-etc) antes de casar prospect x Machine, reduzindo loja ativa que ficava cinza/perdida por divergencia de nome. - 30/10/2026 -->
 <!-- v32.96 - PROSPECCAO mapa: emoji dentro da bolinha um pouco menor (7.5px) a pedido, pra ficar mais discreto. - 23/10/2026 -->
@@ -2568,6 +2569,15 @@ function aplicarPermissoesVisuais(){
     el.style.display = podeFat ? '' : 'none';
   });
 
+  // 🚀 CRM Pro (app dedicado novo): menu só pro piloto (Cleyton + Carlos) por enquanto.
+  // Pra liberar mais gente depois, é só acrescentar o pessoa_id em _CRMPRO_IDS.
+  var _CRMPRO_IDS = ['pe016','pecarlosvinicius'];
+  var _uidPro = u && (u.id || u.pessoa_id);
+  var podeCrmPro = !!_uidPro && _CRMPRO_IDS.indexOf(_uidPro) >= 0;
+  document.querySelectorAll('[data-perm-crmpro="true"]').forEach(function(el){
+    el.style.display = podeCrmPro ? '' : 'none';
+  });
+
   // v31.52: ranking geral liberado pra TODOS (colaborador tambem ve o dos outros).
   // O colaborador segue vendo os proprios pontos no hero "voce" e na linha destacada.
   // (Era so super_admin/diretoria/gerencia na v31.24.)
@@ -2916,6 +2926,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'cidades')">🏙️ Cidades</div>
     <div class="nav-item" onclick="nav(this,'campo')">📍 Prospecção em Campo</div>
     <div class="nav-item" id="nav-crm" onclick="nav(this,'crm')" style="display:none">💼 CRM</div>
+    <div class="nav-item" id="nav-crmpro" data-perm-crmpro="true" onclick="abrirCrmPro()" style="display:none" title="CRM dedicado (app novo, em teste)">🚀 CRM Pro</div>
     <div class="nav-item" onclick="nav(this,'pessoas')">👥 Pessoas</div>
     <div class="nav-item" onclick="abrirVerificarMotoristas(this)" title="Consulta de antecedentes, mandados de prisão e CNH por CPF">🚗 Verificação de Motoristas</div>
     <div class="nav-item" onclick="nav(this,'ranking')">🏆 Ranking Gâmi</div>
@@ -6371,6 +6382,11 @@ function _crmPapel(u){
   return null;
 }
 function _podeVerCRM(){ return !!_crmPapel(); }
+// 🚀 abre o CRM Pro (app dedicado, fora do dashboard) em outra aba. O menu que chama
+// isto já é gateado pra Cleyton + Carlos (data-perm-crmpro). Se renomear o site na
+// Netlify, trocar a URL aqui.
+var _CRMPRO_URL = 'https://cerulean-monstera-3f332f.netlify.app';
+function abrirCrmPro(){ try{ window.open(_CRMPRO_URL, '_blank', 'noopener'); }catch(e){ location.href=_CRMPRO_URL; } }
 function _crmPipelineUser(u){ var p=_crmPapel(u); if(p==='bdr') return 'inside'; if(p==='vendedor'||p==='gestor') return 'field'; return 'ambos'; }
 function _crmEsc(s){ return (typeof _campoEsc==='function')?_campoEsc(s):String(s==null?'':s); }
 function _crmUID(){ return 'lead_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
