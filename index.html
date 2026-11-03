@@ -52,6 +52,7 @@
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
+<!-- v33.08 - LTV (novo modulo RESTRITO, estudo CAC x LTV do Matheus): aba 📈 LTV (secao Gestao, data-perm-ltv) visivel SO pro Matheus + diretoria (pe001/pe002/pe003/pematheusfedrizzi + super_admin), SEM o Carlos (_podeVerLtv). Server-side: netlify/functions/ltv.js valida sessao (token_atual OU sessoes_ativas) + allowlist e le as MVs com service key (mv_ltv_empresa/mv_ltv_mes/v_ltv_cidade, revogadas do anon). Painel: resumo por cidade (chips), KPIs (LTV gerado=GMV*14%, GMV, ativos, ticket, LTV medio/parceiro), grafico de empresas ativas por mes, e lista de parceiros com BUSCA. Base: docs/ltv-mv.sql (ja rodado). CAC fica pra quando o Matheus fechar a regra de custo. - 03/11/2026 -->
 <!-- v33.07 - CRM Pro DENTRO do dashboard (nao tela cheia): o painel #crmpro-overlay agora ocupa SO a area de conteudo (.main), deixando a BARRA LATERAL do dashboard visivel do lado (left = largura da .sidebar, calculado ao abrir; mobile <900px = tela toda). Clicar em QUALQUER aba do menu (menos o proprio CRM Pro) fecha o painel e mostra a aba (listener de captura em .nav-item). Assim da pra ir na Prospecao puxar lead e voltar pelo menu, sem sair do dashboard. Pedido: "tem que ser dentro, mostrar as abas laterais". - 03/11/2026 -->
 <!-- v33.06 - CRM Pro LIBERADO pra equipe + substituiu o CRM antigo: (1) botao "🚀 CRM Pro" agora aparece pra toda a equipe comercial (gate _podeVerCRM, antes era so Cleyton+Carlos). (2) menu do CRM antigo (nav-crm) ESCONDIDO (substituido) - as funcoes "Puxar pro meu CRM" seguem no codigo (gravam em crm_leads, aparecem no Pro). (3) No app gami-crm: CRM_ACESSO_IDS default '*' (qualquer logado entra, recorte por papel). Dados: os 2 CRMs usam a MESMA tabela crm_leads, entao os 235 leads ja estavam no Pro; etapas de 'field' identicas, 'inside' alinhadas, so 2 leads orfaos em etapa 6 (funil antigo de 6) movidos p/ etapa 5 (Fechamento). - 03/11/2026 -->
 <!-- v33.05 - Ponto: TODOS home office. Nao tem mais ninguem no escritorio, entao o ponto nao valida GPS/IP de ninguem. Flag global PONTO_TODOS_HOME_OFFICE=true no topo de _pessoaLiberadaValidacao (cobre os 2 fluxos: Meu Ponto + card do dashboard). Reverter = por o flag em false (volta a lista fixa + IP/GPS). A lista PONTO_HOME_OFFICE_FIXO e os IPs do escritorio continuam no codigo, so inertes enquanto o flag estiver ligado. - 03/11/2026 -->
@@ -2154,6 +2155,17 @@ function _podeVerFaturamento(){
   return FATURAMENTO_IDS.indexOf(u.id) >= 0;
 }
 
+// LTV (estudo CAC x LTV do Matheus): SÓ Matheus + diretoria, SEM o Carlos (pedido do dono).
+var LTV_IDS = ['pe001','pe002','pe003','pematheusfedrizzi']; // Rafhael, Tainara, João Duarte (diretores) + Matheus
+function _podeVerLtv(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  if(!u) return false;
+  if(u.id === 'pecarlosvinicius') return false; // Carlos não vê o LTV por enquanto
+  if(u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com') return true;
+  if(typeof detectarNivelPermissao==='function' && detectarNivelPermissao(u)==='super_admin') return true;
+  return LTV_IDS.indexOf(u.id) >= 0;
+}
+
 /* 📍 PROSPECÇÃO EM CAMPO — quem vê a aba:
    - gestor/vendedor: pela MATRIZ (campo na aba) + restrito à CIDADE dele (cidadesQueUsuarioAtende)
    - diretoria/gerência/super: MATRIZ, mapa GERAL
@@ -2576,6 +2588,11 @@ function aplicarPermissoesVisuais(){
   document.querySelectorAll('[data-perm-faturamento="true"]').forEach(function(el){
     el.style.display = podeFat ? '' : 'none';
   });
+  // 📈 LTV: menu só pro Matheus + diretoria (sem Carlos)
+  var podeLtv = (typeof _podeVerLtv==='function') && _podeVerLtv();
+  document.querySelectorAll('[data-perm-ltv="true"]').forEach(function(el){
+    el.style.display = podeLtv ? '' : 'none';
+  });
 
   // 🚀 CRM Pro (app dedicado, substituiu o CRM antigo 03/11/2026): liberado pra toda a
   // equipe comercial (mesmo público do CRM antigo = _podeVerCRM: admin/gestor/vendedor/BDR).
@@ -2603,6 +2620,7 @@ function aplicarPermissoesVisuais(){
     if(!match) return;
     var aba = match[1];
     if(aba === 'faturamento') return; // gate próprio (data-perm-faturamento), não pela MATRIZ de cargos
+    if(aba === 'ltv') return; // gate próprio (data-perm-ltv)
     if(aba === 'campo'){ item.style.display = (typeof _podeVerCampo==='function' && _podeVerCampo()) ? '' : 'none'; return; } // gate próprio (gestor/vendedor/diretoria/gerência + BDRs)
     if(aba === 'crm'){ item.style.display = 'none'; return; } // CRM antigo SUBSTITUIDO pelo CRM Pro (03/11/2026) - esconde o menu; funcoes seguem no codigo pra "Puxar pro meu CRM" (grava em crm_leads, aparece no Pro)
     if(perms.abas.indexOf(aba) === -1){
@@ -2690,6 +2708,7 @@ function bloquearAcessoAba(aba){
   if(!u){ mostrarTelaLogin(); return true; }
   // 🔒 Faturamento: gate próprio (allowlist + super_admin), não pela MATRIZ de cargos
   if(aba === 'faturamento'){ return _podeVerFaturamento() ? false : _blocoRestrito(); }
+  if(aba === 'ltv'){ return _podeVerLtv() ? false : _blocoRestrito(); }
   if(aba === 'campo'){ return _podeVerCampo() ? false : _blocoRestrito(); }
   if(aba === 'crm'){ return (typeof _podeVerCRM==='function' && _podeVerCRM()) ? false : _blocoRestrito(); }
   if(!temPermissao('aba:' + aba)){
@@ -2877,6 +2896,7 @@ window.nav = function(el, page){
         'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
         'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
         'faturamento':     function(){ if(typeof initFaturamento==='function') initFaturamento(); },
+        'ltv':             function(){ if(typeof initLtv==='function') initLtv(); },
         'campo':           function(){ if(typeof initCampo==='function') initCampo(); },
         'crm':             function(){ if(typeof initCRM==='function') initCRM(); },
         'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); }
@@ -2952,6 +2972,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'portal')">🌐 Portal Gâmi</div>
     <div class="nav-item" onclick="nav(this,'relatorios')">📊 Relatórios</div>
     <div class="nav-item" id="nav-faturamento" data-perm-faturamento="true" style="display:none" onclick="nav(this,'faturamento')">💰 Faturamento</div>
+    <div class="nav-item" id="nav-ltv" data-perm-ltv="true" style="display:none" onclick="nav(this,'ltv')" title="Estudo LTV por cidade (restrito)">📈 LTV</div>
     <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')">🩺 Saúde</div>
     <div class="nav-item" onclick="mntReportarAbrir()" title="Reportar bug, sugestão ou dúvida">💬 Reportar</div>
     <div class="nav-item" data-permissao="clima" id="nav-clima" onclick="nav(this,'clima'); setTimeout(function(){ if(typeof renderClimaTime==='function') renderClimaTime(window._climaPeriodoAtual || 'hoje', true); }, 200);">💙 Clima do time</div>
@@ -6190,6 +6211,123 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
   <div id="faturamento-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
 </div>
+
+<!-- ==================== LTV (restrito , Matheus + diretoria) ==================== -->
+<div class="page" id="pg-ltv">
+  <div class="page-header">
+    <div><div class="page-title">📈 LTV , Lifetime Value</div><div class="page-sub">Restrito · por cidade e parceiro · margem de contribuição 14% · dados de abr/2026</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost" onclick="initLtv()" style="font-size:11px">🔄 Atualizar</button></div>
+  </div>
+  <div id="ltv-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
+</div>
+<script>
+/* LTV (restrito). Segurança real no servidor (ltv.js valida a allowlist); aqui só
+   montamos o painel com o que o servidor autorizar. Base = valor_corrida finalizado,
+   margem 14% (modelo do deck do Matheus). */
+var _LTV = { cidades:[], meses:[], empresas:[], cidadeSel:'', busca:'' };
+function _ltvEsc(s){ return (typeof tfEsc==='function')?tfEsc(s==null?'':String(s)):String(s==null?'':s); }
+function _ltvMoeda(v){ v=Number(v)||0; if(v>=1e6) return 'R$ '+(v/1e6).toFixed(2).replace('.',',')+'M'; if(v>=1e3) return 'R$ '+(v/1e3).toFixed(0)+'k'; return 'R$ '+Math.round(v).toLocaleString('pt-BR'); }
+function _ltvMoedaFull(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function _ltvCidadeNome(slug){ return (typeof _fatNomeCidade==='function')?_fatNomeCidade(slug):(slug||'').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); }
+function _ltvMesNome(ym){ var p=(ym||'').split('-'); if(p.length<2) return ym||'—'; var m=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']; return (m[parseInt(p[1],10)-1]||p[1])+'/'+p[0].slice(2); }
+
+async function initLtv(){
+  var root=document.getElementById('ltv-root'); if(!root) return;
+  if(typeof _podeVerLtv==='function' && !_podeVerLtv()){ root.innerHTML='<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">🔒 Acesso restrito.</div>'; return; }
+  root.innerHTML='<div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando LTV...</div>';
+  var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; var token=''; try{ token=localStorage.getItem('gami_sessao_token')||''; }catch(e){}
+  try {
+    var r=await fetch('/.netlify/functions/ltv', { method:'POST', headers:{'Content-Type':'application/json','X-Gami-User':(u&&u.id)||'','X-Gami-Token':token} });
+    var j=await r.json();
+    if(!r.ok || !j.ok){ root.innerHTML='<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">'+(j&&j.erro?_ltvEsc(j.erro):'Não consegui carregar.')+'</div>'; return; }
+    _LTV.cidades=j.cidades||[]; _LTV.meses=j.meses||[]; _LTV.empresas=j.empresas||[]; _LTV.cidadeSel=''; _LTV.busca='';
+    _ltvRender();
+  } catch(e){ root.innerHTML='<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">Erro: '+_ltvEsc(e.message)+'</div>'; }
+}
+function _ltvSetCidade(slug){ _LTV.cidadeSel=slug||''; _ltvRender(); }
+function _ltvBusca(v){ _LTV.busca=(v||'').toLowerCase(); _ltvRenderLista(); }
+
+function _ltvKpis(){
+  // escopo: cidade selecionada ou rede (soma)
+  if(_LTV.cidadeSel){ var c=_LTV.cidades.find(function(x){return x.cidade_slug===_LTV.cidadeSel;})||{}; return {
+    gmv:+c.gmv_total||0, ltv:+c.margem_total||0, parc:c.parceiros||0, ativos:c.parceiros_ativos||0, ticket:+c.ticket_medio||0, ltvm:+c.ltv_medio_parceiro||0 }; }
+  var g=0,l=0,p=0,a=0,tk=0,n=0;
+  _LTV.cidades.forEach(function(c){ g+=+c.gmv_total||0; l+=+c.margem_total||0; p+=c.parceiros||0; a+=c.parceiros_ativos||0; tk+=+c.ticket_medio||0; n++; });
+  return { gmv:g, ltv:l, parc:p, ativos:a, ticket:(n?tk/n:0), ltvm:(p?l/p:0) };
+}
+function _ltvMesesEscopo(){
+  var por={}; _LTV.meses.forEach(function(m){ if(_LTV.cidadeSel && m.cidade_slug!==_LTV.cidadeSel) return;
+    var k=m.mes; por[k]=por[k]||{ativos:0,pedidos:0,gmv:0}; por[k].ativos+=m.parceiros_ativos||0; por[k].pedidos+=Number(m.pedidos)||0; por[k].gmv+=Number(m.gmv)||0; });
+  return Object.keys(por).sort().map(function(k){ return {mes:k, ativos:por[k].ativos, pedidos:por[k].pedidos, gmv:por[k].gmv}; });
+}
+function _ltvBarAtivas(serie){
+  if(!serie.length) return '<div style="color:var(--text3);font-size:12px;padding:20px;text-align:center">Sem dados.</div>';
+  var max=Math.max.apply(null, serie.map(function(s){return s.ativos;}).concat([1]));
+  var n=serie.length, gap=Math.max(70, 700/n), W=n*gap, H=170, padB=28, padT=22, bw=Math.min(54, gap-20);
+  var bars=serie.map(function(s,i){ var h=Math.round((H-padB-padT)*(s.ativos/max)); var x=i*gap+(gap-bw)/2, y=H-padB-h;
+    return '<rect x="'+x.toFixed(1)+'" y="'+y+'" width="'+bw.toFixed(1)+'" height="'+h+'" rx="5" fill="#0E7AB8"/>'
+      +'<text x="'+(x+bw/2).toFixed(1)+'" y="'+(y-6)+'" text-anchor="middle" font-size="12" font-weight="700" fill="#5b6472">'+s.ativos+'</text>'
+      +'<text x="'+(x+bw/2).toFixed(1)+'" y="'+(H-padB+16)+'" text-anchor="middle" font-size="11" fill="#8a929e">'+_ltvMesNome(s.mes)+'</text>'; }).join('');
+  return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;height:auto">'+bars+'</svg>';
+}
+function _ltvListaDados(){
+  var arr=_LTV.empresas.filter(function(e){ if(_LTV.cidadeSel && e.cidade_slug!==_LTV.cidadeSel) return false;
+    if(_LTV.busca && (e.parceiro||'').toLowerCase().indexOf(_LTV.busca)<0) return false; return true; });
+  return arr; // já vem ordenado por ltv_atual desc do servidor
+}
+function _ltvRenderLista(){
+  var host=document.getElementById('ltv-lista'); if(!host) return;
+  var arr=_ltvListaDados(); var TETO=300; var mostra=arr.slice(0,TETO);
+  var rows=mostra.map(function(e){
+    var st=e.ativo?'<span style="color:#1D9E75;font-weight:700">🟢 ativo</span>':'<span style="color:#E24B4A;font-weight:700">🔴 parou</span>';
+    return '<tr style="border-top:1px solid var(--border)">'
+      +'<td style="padding:6px 8px;font-weight:600">'+_ltvEsc((e.parceiro||'').slice(0,40))+(_LTV.cidadeSel?'':'<div style="font-size:10px;color:var(--text3)">'+_ltvEsc(_ltvCidadeNome(e.cidade_slug))+'</div>')+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+(Number(e.pedidos)||0).toLocaleString('pt-BR')+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+_ltvMoedaFull(e.gmv)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+_ltvMoedaFull(e.ticket_medio)+'</td>'
+      +'<td style="padding:6px 8px;text-align:center">'+(e.meses_ativos||0)+'m</td>'
+      +'<td style="padding:6px 8px;text-align:right;font-weight:800;color:#0E7AB8">'+_ltvMoedaFull(e.ltv_atual)+'</td>'
+      +'<td style="padding:6px 8px;text-align:center">'+st+'</td></tr>';
+  }).join('');
+  host.innerHTML='<div style="font-size:11px;color:var(--text3);margin-bottom:6px">'+arr.length+' parceiro(s)'+(arr.length>TETO?(' · mostrando os '+TETO+' maiores por LTV'):'')+'</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+    +'<thead><tr style="background:var(--bg2,#f1f5f9);color:var(--text2);text-align:left">'
+    +'<th style="padding:7px 8px">Parceiro</th><th style="padding:7px 8px;text-align:right">Pedidos</th><th style="padding:7px 8px;text-align:right">GMV</th><th style="padding:7px 8px;text-align:right">Ticket</th><th style="padding:7px 8px;text-align:center">Meses</th><th style="padding:7px 8px;text-align:right">LTV (14%)</th><th style="padding:7px 8px;text-align:center">Status</th></tr></thead>'
+    +'<tbody>'+(rows||'<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum parceiro.</td></tr>')+'</tbody></table></div>';
+}
+function _ltvRender(){
+  var root=document.getElementById('ltv-root'); if(!root) return;
+  var k=_ltvKpis();
+  // chips de cidade
+  var chips='<button onclick="_ltvSetCidade(\'\')" class="btn '+(!_LTV.cidadeSel?'btn-primary':'btn-ghost')+'" style="font-size:11px;padding:5px 10px">🌐 Rede (todas)</button>';
+  chips+=_LTV.cidades.map(function(c){ return '<button onclick="_ltvSetCidade(\''+c.cidade_slug+'\')" class="btn '+(_LTV.cidadeSel===c.cidade_slug?'btn-primary':'btn-ghost')+'" style="font-size:11px;padding:5px 10px">'+_ltvEsc(_ltvCidadeNome(c.cidade_slug))+' · '+_ltvMoeda(c.margem_total)+'</button>'; }).join('');
+  function kpi(t,v,s){ return '<div style="flex:1;min-width:150px;background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">'+t+'</div><div style="font-size:21px;font-weight:800;color:var(--text)">'+v+'</div>'+(s?'<div style="font-size:11px;color:var(--text3)">'+s+'</div>':'')+'</div>'; }
+  var esc=_LTV.cidadeSel?_ltvCidadeNome(_LTV.cidadeSel):'Rede (todas as cidades)';
+  var kpis='<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">'
+    +kpi('LTV total gerado', _ltvMoeda(k.ltv), 'margem de contribuição 14%')
+    +kpi('GMV (bruto dos pedidos)', _ltvMoeda(k.gmv), '')
+    +kpi('Parceiros ativos', (k.ativos||0).toLocaleString('pt-BR'), 'de '+(k.parc||0).toLocaleString('pt-BR')+' no total')
+    +kpi('Ticket médio', _ltvMoedaFull(k.ticket), 'por pedido (entrega)')
+    +kpi('LTV médio / parceiro', _ltvMoedaFull(k.ltvm), '')
+    +'</div>';
+  var serie=_ltvMesesEscopo();
+  root.innerHTML=''
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">'+chips+'</div>'
+    +'<div style="font-size:12px;color:var(--text2);margin-top:8px"><b>'+_ltvEsc(esc)+'</b></div>'
+    +kpis
+    +'<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">'
+    +  '<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">📅 Empresas ativas por mês</div>'+_ltvBarAtivas(serie)
+    +'</div>'
+    +'<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
+    +  '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+    +    '<div style="font-size:12px;font-weight:700;color:var(--text2)">🏢 Parceiros (LTV)</div>'
+    +    '<input oninput="_ltvBusca(this.value)" value="'+_ltvEsc(_LTV.busca)+'" placeholder="buscar empresa..." style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;min-width:200px;outline:none">'
+    +  '</div>'
+    +  '<div id="ltv-lista"></div>'
+    +'</div>';
+  _ltvRenderLista();
+}
+</script>
 <script>
 /* FATURAMENTO (restrito). A segurança real é no servidor (faturamento.js valida
    a allowlist); aqui só montamos a tabela com o que o servidor autorizar. */
