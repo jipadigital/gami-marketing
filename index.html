@@ -52,6 +52,7 @@
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
+<!-- v33.05 - Ponto: TODOS home office. Nao tem mais ninguem no escritorio, entao o ponto nao valida GPS/IP de ninguem. Flag global PONTO_TODOS_HOME_OFFICE=true no topo de _pessoaLiberadaValidacao (cobre os 2 fluxos: Meu Ponto + card do dashboard). Reverter = por o flag em false (volta a lista fixa + IP/GPS). A lista PONTO_HOME_OFFICE_FIXO e os IPs do escritorio continuam no codigo, so inertes enquanto o flag estiver ligado. - 03/11/2026 -->
 <!-- v33.04 - Card "Campeao do mes": numero ERRADO (Jheniffer aparecia 220 em vez de 592 em outubro). Causa: renderCampeaoMesBanner lia pontos_log numa requisicao unica (limit=5000), mas o Supabase corta em 1000 linhas/request (db-max-rows); outubro tem 2566 linhas, entao somava so o 1o terco. Corrigido pra PAGINAR em blocos de 1000 (offset). Confirmado: paginado = 592. ARMADILHA GERAL: qualquer leitura client-side de pontos_log sem paginar sofre o teto de 1000 (as VIEWs ranking_mensal/historico/trimestral ja vem agregadas = 1 linha/pessoa, nao sofrem). - 03/11/2026 -->
 <!-- v33.03 - Ponto: Estefânia Cavalcante (pe021) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO por nome ("estefânia cavalcante" com acento + "estefania cavalcante" sem, rede de seguranca), isenta de GPS/IP igual Bruna/Jheniffer/Ane. Cobre os 2 fluxos via _pessoaLiberadaValidacao. - 03/11/2026 -->
 <!-- v33.02 - Ponto: Bruna Eduarda (pe018, dudasamu2006@gmail.com) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Ane). Por email + nome "bruna eduarda". Caso: ela nao conseguia bater (IP 160.238.163.x fora do escritorio + localizacao bloqueada). Isencao cobre os 2 fluxos (Meu Ponto + card do dashboard) via _pessoaLiberadaValidacao. - 03/11/2026 -->
@@ -60883,6 +60884,10 @@ async function dashBaterPontoSemGPS(){
 // 🏠 HOME OFFICE PERMANENTE — isento de GPS/IP no ponto, sem data limite
 // (mesmo estilo das listas fixas de acesso do sistema). Casa por e-mail
 // (preciso) ou por nome. Reversivel: e so tirar da lista aqui.
+// 🏠 TODOS HOME OFFICE (03/11/2026): não tem mais ninguém no escritório, então o ponto
+// NÃO valida GPS/IP de ninguém (qualquer local vale). Pra voltar a exigir escritório pra
+// alguém, é só por este flag em false (aí volta a valer a lista fixa abaixo + IP/GPS).
+var PONTO_TODOS_HOME_OFFICE = true;
 var PONTO_HOME_OFFICE_FIXO = [
   'jheny.andradesilva@gmail.com', // Jheniffer Andrade — suporte remota, bate ponto de casa
   'jheniffer andrade',            // rede de segurança por nome (caso o login não traga o e-mail)
@@ -60909,6 +60914,7 @@ function _pontoHomeOfficeFixo(pessoa){
 // 1) home office PERMANENTE (lista fixa acima), ou
 // 2) liberação temporária via pessoas.ponto_sem_validacao_ate (data limite).
 function _pessoaLiberadaValidacao(pessoa){
+  if(typeof PONTO_TODOS_HOME_OFFICE!=='undefined' && PONTO_TODOS_HOME_OFFICE) return true; // 🏠 todos home office → ninguém valida GPS/IP
   if(_pontoHomeOfficeFixo(pessoa)) return true;
   if(!pessoa || !pessoa.ponto_sem_validacao_ate) return false;
   try {
