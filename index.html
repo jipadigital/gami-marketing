@@ -52,6 +52,7 @@
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
+<!-- v33.04 - Card "Campeao do mes": numero ERRADO (Jheniffer aparecia 220 em vez de 592 em outubro). Causa: renderCampeaoMesBanner lia pontos_log numa requisicao unica (limit=5000), mas o Supabase corta em 1000 linhas/request (db-max-rows); outubro tem 2566 linhas, entao somava so o 1o terco. Corrigido pra PAGINAR em blocos de 1000 (offset). Confirmado: paginado = 592. ARMADILHA GERAL: qualquer leitura client-side de pontos_log sem paginar sofre o teto de 1000 (as VIEWs ranking_mensal/historico/trimestral ja vem agregadas = 1 linha/pessoa, nao sofrem). - 03/11/2026 -->
 <!-- v33.03 - Ponto: Estefânia Cavalcante (pe021) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO por nome ("estefânia cavalcante" com acento + "estefania cavalcante" sem, rede de seguranca), isenta de GPS/IP igual Bruna/Jheniffer/Ane. Cobre os 2 fluxos via _pessoaLiberadaValidacao. - 03/11/2026 -->
 <!-- v33.02 - Ponto: Bruna Eduarda (pe018, dudasamu2006@gmail.com) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Ane). Por email + nome "bruna eduarda". Caso: ela nao conseguia bater (IP 160.238.163.x fora do escritorio + localizacao bloqueada). Isencao cobre os 2 fluxos (Meu Ponto + card do dashboard) via _pessoaLiberadaValidacao. - 03/11/2026 -->
 <!-- v33.01 - PROSPECCAO export Excel: BUG a Vanessa filtrou Recife+Prospect+bairro "boa viagem" e o Excel dizia "nenhuma empresa", porque _campoExportarExcel so exportava a Machine (_campoMachineFiltrada) e IGNORAVA os prospects (prospeccao_lojas). Agora o export junta PROSPECTS (_campoLojasFiltradas: nome/status/segmento/endereco/bairro/cidade/telefone/CNPJ/avaliacoes/coord) + Machine, com colunas novas Segmento e "Avaliacoes (iFood)". Toast conta prospects+Machine. - 03/11/2026 -->
@@ -38884,12 +38885,21 @@ async function renderCampeaoMesBanner(){
     // já fechou o banner deste mês?
     try { if(localStorage.getItem('gami_campeao_visto_' + chave)) return; } catch(e){}
 
-    // busca os pontos do mês anterior e acha o Nº1
-    var url = SUPA_URL + '/rest/v1/pontos_log?data_acao=gte.' + ini + '&data_acao=lte.' + fim + '&select=pessoa_id,pessoa_nome,pontos&limit=5000';
-    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
-    if(!r.ok) return;
-    var linhas = await r.json();
-    if(!Array.isArray(linhas) || !linhas.length) return;
+    // busca os pontos do mês anterior e acha o Nº1.
+    // ⚠️ o Supabase corta em 1000 linhas por requisição (db-max-rows), então um mês
+    // cheio (ex: outubro = 2566 linhas) vinha SÓ o 1º terço e o total saía errado
+    // (Jheniffer aparecia 220 em vez de 592). Por isso PAGINA em blocos de 1000.
+    var linhas = [];
+    for(var _off=0; _off<30000; _off+=1000){
+      var url = SUPA_URL + '/rest/v1/pontos_log?data_acao=gte.' + ini + '&data_acao=lte.' + fim + '&select=pessoa_id,pessoa_nome,pontos&order=id.asc&limit=1000&offset=' + _off;
+      var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+      if(!r.ok) break;
+      var d = await r.json();
+      if(!Array.isArray(d) || !d.length) break;
+      linhas = linhas.concat(d);
+      if(d.length < 1000) break;
+    }
+    if(!linhas.length) return;
     var soma = {};
     linhas.forEach(function(x){
       if(!x.pessoa_id) return;
