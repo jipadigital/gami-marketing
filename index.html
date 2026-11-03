@@ -52,6 +52,7 @@
 <!-- v33.00 - CRM GAMI (Fase 1, inicio): novo menu 💼 CRM (gate _podeVerCRM: admin/gestor/vendedor/BDR), modulo crm_* isolado. Telas Hoje (fila)/Meu funil (kanban inside+field)/Painel; pegar lead do mapa (botao "Puxar pro meu CRM" na ficha da Prospeccao), mover etapa, perder (motivo obrigatorio), registrar atividade, ligar/WhatsApp com log. Tabelas crm_* (docs/crm-schema.sql - RODAR no Supabase). supabase-write libera crm_*. Carteira/metas/cadencias/config = proximos pacotes. - 26/10/2026 -->
 <!-- v32.98 - PROSPECCAO: cada categoria agora tem um emoji DIFERENTE (45 unicos, 0 repetido) a pedido. Evitados emojis muito novos que viram quadradinho em aparelho antigo. Aliases (plural/sinonimo) repetem o da categoria-mae; fallback 🏪 pra categoria nova. - 23/10/2026 -->
 <!-- v32.97 - PROSPECCAO: tabela de emoji por categoria completada (as 45 categorias do iFood, incluindo plurais Frangos/Peixes e as que faltavam: Africana, Baiana, Congelados, Casa de Sucos, Portuguesa, etc.) + fallback 🍴 pra qualquer categoria nova. Agora toda categoria tem emoji no dropdown e no mapa. - 23/10/2026 -->
+<!-- v33.01 - PROSPECCAO export Excel: BUG a Vanessa filtrou Recife+Prospect+bairro "boa viagem" e o Excel dizia "nenhuma empresa", porque _campoExportarExcel so exportava a Machine (_campoMachineFiltrada) e IGNORAVA os prospects (prospeccao_lojas). Agora o export junta PROSPECTS (_campoLojasFiltradas: nome/status/segmento/endereco/bairro/cidade/telefone/CNPJ/avaliacoes/coord) + Machine, com colunas novas Segmento e "Avaliacoes (iFood)". Toast conta prospects+Machine. - 03/11/2026 -->
 <!-- v33.00b - CRM PRO embutido + SSO: clicar em "CRM Pro" agora abre o app DENTRO do dashboard (painel/iframe overlay #crmpro-overlay, botao Fechar) em vez de aba nova, e ja ENTRA LOGADO (SSO): abrirCrmPro faz auto-POST pro /api/sso do CRM com pessoa_id + gami_sessao_token (no corpo, nao na URL); o CRM (ssoPorToken) valida esse token contra usuarios_login (token_atual/sessoes_ativas) e cria a sessao sozinho, sem PIN. Precisou no CRM: cookie SameSite=None+Secure em prod (pra valer dentro do iframe cross-site) + CSP frame-ancestors liberando gami-marketing.netlify.app. ARMADILHA iOS: Safari bloqueia cookie de terceiro em iframe (ITP); se nao entrar no iPhone, cair pra mesma-origem (proxy) depois. - 30/10/2026 -->
 <!-- v32.99 - CRM PRO no menu: item "🚀 CRM Pro" (sidebar, secao Gestao) que abre o app dedicado gami-crm (Netlify, cerulean-monstera-3f332f.netlify.app) em outra aba. Gate data-perm-crmpro -> visivel SO pro piloto Cleyton(pe016)+Carlos(pecarlosvinicius) por enquanto (_CRMPRO_IDS); funcao abrirCrmPro (_CRMPRO_URL, trocar se renomear o site). O CRM tambem tranca o login so pros dois (CRM_ACESSO_IDS no app). - 30/10/2026 -->
 <!-- v32.98 - LOGIN multi-dispositivo (fim do logout ao trocar de aparelho): o servidor guardava UM unico token por usuario (usuarios_login.token_atual), entao logar no celular sobrescrevia o token do notebook (e vice-versa) e a cada troca caia em "sessao expirou"/re-login. Agora o login ACUMULA as sessoes ativas (coluna sessoes_ativas jsonb, ultimas 10 sem as expiradas) e as funcoes supabase-read/supabase-write aceitam QUALQUER token ativo da lista (helper _tokenAtivo). Notebook + celular logados juntos. token_atual segue gravado (compat). RODAR docs/sessoes-multi-dispositivo.sql (ADD COLUMN). Cada aparelho loga UMA ultima vez pos-deploy e dai para. - 30/10/2026 -->
@@ -9404,27 +9405,40 @@ function _campoMachineFiltrada(){
    com todos os campos da ficha. Abre direto no Excel (colunas/acentos certos). */
 function _campoExportarExcel(){
   var emp = _campoMachineFiltrada();
-  if(!emp.length){ if(typeof toast==='function') toast('Nenhuma empresa pra exportar com os filtros atuais','warn'); return; }
+  var lojas = (typeof _campoLojasFiltradas==='function') ? _campoLojasFiltradas() : []; // 🆕 inclui os PROSPECTS (prospeccao_lojas), antes o export só pegava a Machine
+  if(!emp.length && !lojas.length){ if(typeof toast==='function') toast('Nenhuma empresa pra exportar com os filtros atuais','warn'); return; }
   var oculta = (typeof _campoOcultaValores==='function') ? _campoOcultaValores() : false;
   function _xe(v){ return String(v==null?'':v).replace(/[&<>]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[ch];}); }
   function _em(e){ return (Array.isArray(e.admins)&&e.admins[0]&&e.admins[0].email)?e.admins[0].email:''; }
   function _resp(e){ return (Array.isArray(e.admins)&&e.admins[0]&&e.admins[0].nome)?e.admins[0].nome:''; }
-  var stLbl = {ativa:'Pedindo', perdida:'Parou de pedir', fantasma:'Cadastrou e nunca pediu', ativada:'Sem sucesso', sem_sucesso:'Sem sucesso', prospect:'Prospect'};
+  var stLbl = {ativa:'Pedindo', perdida:'Parou de pedir', fantasma:'Cadastrou e nunca pediu', ativada:'Ativada (aguardando 1º pedido)', sem_sucesso:'Sem sucesso', prospect:'Prospect'};
   var sitLbl = {A:'Ativo', I:'Inativo', S:'Suspenso'};
-  var headers = ['Nome','Status','Endereço','Bairro','Cidade','UF','CEP','Telefone','E-mail','Responsável','CNPJ/CPF','Contrato','Cadastro','Situação','Pedidos (120d)','Finalizados','Cancelados'];
+  var headers = ['Nome','Status','Segmento','Endereço','Bairro','Cidade','UF','CEP','Telefone','E-mail','Responsável','CNPJ/CPF','Contrato','Cadastro','Situação','Avaliações (iFood)','Pedidos (120d)','Finalizados','Cancelados'];
   if(!oculta){ headers.push('Faturamento (R$)'); headers.push('Ticket médio (R$)'); }
   headers.push('Último pedido','Lat','Lng');
   var idxTexto = {}; headers.forEach(function(h,i){ if(/CNPJ|CPF|Telefone|CEP|Contrato|Lat|Lng/i.test(h)) idxTexto[i]=1; });
-  var rows = emp.map(function(e){
+  // PROSPECTS (prospeccao_lojas): nome/status/segmento/endereço/bairro/cidade/telefone/CNPJ/avaliações/coord; campos de Machine ficam vazios
+  var rowsLojas = lojas.map(function(l){
+    var _av = l.avaliacao ? (l.avaliacao + (l.numero_avaliacoes?(' ('+l.numero_avaliacoes+')'):'')) : (l.numero_avaliacoes||'');
+    var row = [ l.nome||'', stLbl[l.status||'prospect']||l.status||'Prospect', l.segmento||'', l.endereco||'',
+      l.bairro||'', l.cidade||'', '', '', l.telefone||'', '', '',
+      l.cnpj||'', '', (l.created_at?_campoDataBR(l.created_at):''), '', _av,
+      '', '', '' ];
+    if(!oculta){ row.push(''); row.push(''); }
+    row.push((l.primeiro_pedido_em?_campoDataBR(l.primeiro_pedido_em):''), (l.lat||''), (l.lng||''));
+    return row;
+  });
+  var rowsEmp = emp.map(function(e){
     var q=parseInt(e.qtd_pedidos)||0, fin=parseInt(e.qtd_finalizadas)||0, can=parseInt(e.qtd_canceladas)||0, val=parseFloat(e.valor_total)||0;
-    var row = [ e.nome||'', stLbl[e._status]||e._status||'', [e.endereco,e.complemento].filter(Boolean).join(', '),
+    var row = [ e.nome||'', stLbl[e._status]||e._status||'', (e.segmento||e.categoria||''), [e.endereco,e.complemento].filter(Boolean).join(', '),
       e.bairro||'', e._cidade||'', e.uf||'', e.cep||'', e.telefone||'', _em(e), _resp(e),
       e.documento||'', (e.contrato?('nº '+e.contrato):''), (e.cadastro?_campoDataBR(e.cadastro):''), (sitLbl[e.status_empresa]||e.status_empresa||''),
-      q, fin, can ];
+      '', q, fin, can ];
     if(!oculta){ row.push(val.toFixed(2).replace('.',',')); row.push(fin>0?(val/fin).toFixed(2).replace('.',','):'0,00'); }
     row.push(e.ultimo?_campoDataBR(e.ultimo):'', (e.lat||''), (e.lng||''));
     return row;
   });
+  var rows = rowsLojas.concat(rowsEmp);
   var stNum='border:1px solid #cdd;padding:3px 8px';
   var stTxt="mso-number-format:'\\@';border:1px solid #cdd;padding:3px 8px"; // CNPJ/telefone/CEP/lat/lng como TEXTO
   var ths = headers.map(function(h){ return '<th style="background:#0E7AB8;color:#fff;border:1px solid #9bb;padding:5px 8px;text-align:left">'+_xe(h)+'</th>'; }).join('');
@@ -9438,7 +9452,7 @@ function _campoExportarExcel(){
   a.href=url; a.download='empresas_campo_'+cid+'_'+_campoHoje()+'.xls';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){URL.revokeObjectURL(url);},100);
-  if(typeof toast==='function') toast('Exportando '+emp.length+' empresas 📊');
+  if(typeof toast==='function') toast('Exportando '+rows.length+' registros 📊'+(lojas.length?(' ('+lojas.length+' em prospecção)'):''));
 }
 
 /* ---------- MAPA (Parte 2) — pontos geocodificados por status ---------- */
