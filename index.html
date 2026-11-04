@@ -6215,7 +6215,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 <!-- ==================== LTV (restrito , Matheus + diretoria) ==================== -->
 <div class="page" id="pg-ltv">
   <div class="page-header">
-    <div><div class="page-title">📈 LTV , Lifetime Value</div><div class="page-sub">Restrito · por cidade e parceiro · margem de contribuição 14% · dados de abr/2026</div></div>
+    <div><div class="page-title">📈 LTV , Lifetime Value</div><div class="page-sub">Restrito · LTV + CAC + churn · por cidade e parceiro · margem 14% · meses fechados (confiável de mai/2026)</div></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost" onclick="initLtv()" style="font-size:11px">🔄 Atualizar</button></div>
   </div>
   <div id="ltv-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
@@ -6295,6 +6295,83 @@ function _ltvRenderLista(){
     +'<th style="padding:7px 8px">Parceiro</th><th style="padding:7px 8px;text-align:right">Pedidos</th><th style="padding:7px 8px;text-align:right">GMV</th><th style="padding:7px 8px;text-align:right">Ticket</th><th style="padding:7px 8px;text-align:center">Meses</th><th style="padding:7px 8px;text-align:right">LTV (14%)</th><th style="padding:7px 8px;text-align:center">Status</th></tr></thead>'
     +'<tbody>'+(rows||'<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--text3)">Nenhum parceiro.</td></tr>')+'</tbody></table></div>';
 }
+function _ltvMesAnt(ym){ var p=(ym||'').split('-'); if(p.length<2) return ''; var y=+p[0], m=+p[1]-1; if(m<1){ m=12; y--; } return y+'-'+String(m).padStart(2,'0'); }
+function _ltvMesCorrente(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+// agrega por mês no escopo (cidade ou rede), com os campos de CAC/churn
+function _ltvScopeMeses(){
+  var por={};
+  _LTV.meses.forEach(function(m){
+    if(_LTV.cidadeSel && m.cidade_slug!==_LTV.cidadeSel) return;
+    var o=por[m.mes]||(por[m.mes]={mes:m.mes,ativas:0,novos:0,custo:0,temCusto:false,ativos_anterior:0,churnados:0,churn_monet:0,gmv:0});
+    o.ativas+=m.parceiros_ativos||0; o.novos+=m.novos_ativados||0;
+    if(m.custo!=null){ o.custo+=Number(m.custo)||0; o.temCusto=true; }
+    o.ativos_anterior+=m.ativos_anterior||0; o.churnados+=m.churnados||0;
+    o.churn_monet+=Number(m.churn_monetario)||0; o.gmv+=Number(m.gmv)||0;
+  });
+  return Object.keys(por).sort().map(function(k){ return por[k]; });
+}
+function _ltvSalvarCusto(mes){
+  if(!_LTV.cidadeSel) return;
+  var el=document.getElementById('ltv-custo-'+mes); if(!el) return;
+  var custo=Number(String(el.value).replace(/\./g,'').replace(',','.'));
+  if(!isFinite(custo)||custo<0){ alert('Custo inválido'); return; }
+  var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; var token=''; try{ token=localStorage.getItem('gami_sessao_token')||''; }catch(e){}
+  el.disabled=true;
+  fetch('/.netlify/functions/ltv',{ method:'POST', headers:{'Content-Type':'application/json','X-Gami-User':(u&&u.id)||'','X-Gami-Token':token}, body:JSON.stringify({ acao:'set_custo', cidade_slug:_LTV.cidadeSel, mes:mes, custo:custo }) })
+    .then(function(r){ return r.json(); }).then(function(j){ if(j&&j.ok){ initLtv(); } else { alert((j&&j.erro)||'Falhou'); el.disabled=false; } })
+    .catch(function(){ alert('Erro de conexão'); el.disabled=false; });
+}
+function _ltvDetalhe(mes){
+  if(!_LTV.cidadeSel) return;
+  var box=document.getElementById('ltv-detalhe'); if(box) box.innerHTML='<div style="padding:10px;color:var(--text3);font-size:12px">Carregando quais...</div>';
+  var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; var token=''; try{ token=localStorage.getItem('gami_sessao_token')||''; }catch(e){}
+  fetch('/.netlify/functions/ltv',{ method:'POST', headers:{'Content-Type':'application/json','X-Gami-User':(u&&u.id)||'','X-Gami-Token':token}, body:JSON.stringify({ acao:'detalhe', cidade_slug:_LTV.cidadeSel, mes:mes }) })
+    .then(function(r){ return r.json(); }).then(function(j){ if(!box) return; if(!j||!j.ok){ box.innerHTML='<div style="padding:10px;color:#E24B4A;font-size:12px">'+_ltvEsc((j&&j.erro)||'Falhou')+'</div>'; return; } _ltvRenderDetalhe(box, j); })
+    .catch(function(){ if(box) box.innerHTML='<div style="padding:10px;color:#E24B4A;font-size:12px">Erro</div>'; });
+}
+function _ltvRenderDetalhe(box, j){
+  function lista(titulo, arr, fmt){ var r=(arr||[]).slice(0,80).map(function(x){ return '<tr style="border-top:1px solid var(--border)"><td style="padding:4px 8px">'+_ltvEsc((x.parceiro||'').slice(0,36))+'</td><td style="padding:4px 8px;text-align:right;white-space:nowrap">'+fmt(x)+'</td></tr>'; }).join('');
+    return '<div style="flex:1;min-width:240px"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">'+titulo+' ('+((arr&&arr.length)||0)+')</div><div style="overflow:auto;max-height:280px;border:1px solid var(--border);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>'+(r||'<tr><td style="padding:8px;color:var(--text3)">nenhum</td></tr>')+'</tbody></table></div></div>'; }
+  box.innerHTML='<div style="display:flex;gap:14px;flex-wrap:wrap;border-top:1px dashed var(--border);padding-top:10px;margin-top:4px">'
+    + lista('🟢 Novos em '+_ltvMesNome(j.mes), j.novos, function(x){ return (x.pedidos||0)+' ped · '+_ltvMoedaFull(x.gmv); })
+    + lista('🔴 Pararam (ativas em '+_ltvMesNome(j.mes_ant)+', sem pedido em '+_ltvMesNome(j.mes)+')', j.parados, function(x){ return (x.pedidos_ant||0)+' ped · '+_ltvMoedaFull(x.gmv_ant); })
+    + '</div>';
+}
+function _ltvSecaoCacChurn(){
+  var serie=_ltvScopeMeses(); var corrente=_ltvMesCorrente();
+  var gmvPorMes={}; serie.forEach(function(s){ gmvPorMes[s.mes]=s.gmv; });
+  var fechados=serie.filter(function(s){ return s.mes!==corrente; });
+  var editavel=!!_LTV.cidadeSel;
+  var rows=fechados.map(function(s){
+    var prevGmv=gmvPorMes[_ltvMesAnt(s.mes)]||0;
+    var cac=(s.temCusto && s.novos>0)?(s.custo/s.novos):null;
+    var logo=s.ativos_anterior>0?(s.churnados/s.ativos_anterior*100):null;
+    var monetPct=prevGmv>0?(s.churn_monet/prevGmv*100):null;
+    var corM=s.churn_monet>0?'#E24B4A':(s.churn_monet<0?'#1D9E75':'var(--text)');
+    var custoCell=editavel
+      ? '<input id="ltv-custo-'+s.mes+'" value="'+(s.temCusto?Math.round(s.custo):'')+'" placeholder="R$" style="width:84px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;text-align:right;outline:none"> <button onclick="_ltvSalvarCusto(\''+s.mes+'\')" class="btn btn-ghost" style="font-size:10px;padding:3px 7px">salvar</button>'
+      : (s.temCusto?_ltvMoedaFull(s.custo):'<span style="color:var(--text3)">—</span>');
+    return '<tr style="border-top:1px solid var(--border)">'
+      +'<td style="padding:6px 8px;font-weight:600">'+_ltvMesNome(s.mes)+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+s.ativas+'</td>'
+      +'<td style="padding:6px 8px;text-align:right;font-weight:700;color:#0E7AB8">'+s.novos+'</td>'
+      +'<td style="padding:6px 8px;text-align:right;white-space:nowrap">'+custoCell+'</td>'
+      +'<td style="padding:6px 8px;text-align:right;font-weight:800">'+(cac!=null?_ltvMoedaFull(cac):'<span style="color:var(--text3)">—</span>')+'</td>'
+      +'<td style="padding:6px 8px;text-align:right">'+(logo!=null?logo.toFixed(1)+'%':'—')+(s.churnados?'<div style="font-size:9px;color:var(--text3)">'+s.churnados+' pararam</div>':'')+'</td>'
+      +'<td style="padding:6px 8px;text-align:right;font-weight:700;color:'+corM+'">'+_ltvMoedaFull(Math.abs(s.churn_monet))+(monetPct!=null?' <span style="font-size:10px;font-weight:400">('+Math.abs(monetPct).toFixed(1)+'%)</span>':'')+(s.churn_monet<0?'<div style="font-size:9px;color:#1D9E75">cresceu</div>':'')+'</td>'
+      +'<td style="padding:6px 8px;text-align:center">'+(editavel?'<button onclick="_ltvDetalhe(\''+s.mes+'\')" class="btn btn-ghost" style="font-size:10px;padding:3px 7px">ver</button>':'')+'</td>'
+      +'</tr>';
+  }).join('');
+  var dica=editavel?'Lance o custo de vendas+marketing do mês e salve , o CAC calcula na hora. Positivo no churn monetário = perda; verde = a base cresceu.':'Selecione uma cidade pra lançar o custo e calcular o CAC.';
+  return '<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px"><div style="font-size:12px;font-weight:700;color:var(--text2)">📊 CAC & Churn , mês a mês (fechados)</div><div style="font-size:10px;color:var(--text3);max-width:360px;text-align:right">'+dica+'</div></div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+    +'<thead><tr style="background:var(--bg2,#f1f5f9);color:var(--text2)">'
+    +'<th style="padding:7px 8px;text-align:left">Mês</th><th style="padding:7px 8px;text-align:right">Ativas</th><th style="padding:7px 8px;text-align:right">Novos</th><th style="padding:7px 8px;text-align:right">Custo V+M</th><th style="padding:7px 8px;text-align:right">CAC</th><th style="padding:7px 8px;text-align:right">Logo churn</th><th style="padding:7px 8px;text-align:right">Churn monetário</th><th style="padding:7px 8px;text-align:center">Quais</th></tr></thead>'
+    +'<tbody>'+(rows||'<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--text3)">Sem meses fechados.</td></tr>')+'</tbody></table></div>'
+    +'<div id="ltv-detalhe" style="margin-top:8px"></div>'
+    +'</div>';
+}
 function _ltvRender(){
   var root=document.getElementById('ltv-root'); if(!root) return;
   var k=_ltvKpis();
@@ -6318,6 +6395,7 @@ function _ltvRender(){
     +'<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">'
     +  '<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">📅 Empresas ativas por mês</div>'+_ltvBarAtivas(serie)
     +'</div>'
+    +_ltvSecaoCacChurn()
     +'<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px">'
     +  '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
     +    '<div style="font-size:12px;font-weight:700;color:var(--text2)">🏢 Parceiros (LTV)</div>'
