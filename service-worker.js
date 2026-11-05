@@ -2,7 +2,7 @@
 // PWA Gâmi Marketing — v23.182
 // SEGURANÇA: cache só de assets estáticos. APIs sempre fresh.
 
-const CACHE_VERSION = 'v23-331-2026-11-04';
+const CACHE_VERSION = 'v23-332-2026-11-05';
 const CACHE_NAME = 'gami-' + CACHE_VERSION;
 
 // 🚫 NUNCA cacheia: APIs, functions, autenticação

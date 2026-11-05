@@ -6224,7 +6224,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 /* LTV (restrito). Segurança real no servidor (ltv.js valida a allowlist); aqui só
    montamos o painel com o que o servidor autorizar. Base = valor_corrida finalizado,
    margem 14% (modelo do deck do Matheus). */
-var _LTV = { cidades:[], meses:[], empresas:[], cidadeSel:'', busca:'' };
+var _LTV = { cidades:[], meses:[], empresas:[], cidadeSel:'', busca:'', periodo:null, periodoDados:null, periodoLoading:false };
 function _ltvEsc(s){ return (typeof tfEsc==='function')?tfEsc(s==null?'':String(s)):String(s==null?'':s); }
 function _ltvMoeda(v){ v=Number(v)||0; if(v>=1e6) return 'R$ '+(v/1e6).toFixed(2).replace('.',',')+'M'; if(v>=1e3) return 'R$ '+(v/1e3).toFixed(0)+'k'; return 'R$ '+Math.round(v).toLocaleString('pt-BR'); }
 function _ltvMoedaFull(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
@@ -6244,10 +6244,47 @@ async function initLtv(){
     _ltvRender();
   } catch(e){ root.innerHTML='<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">Erro: '+_ltvEsc(e.message)+'</div>'; }
 }
-function _ltvSetCidade(slug){ _LTV.cidadeSel=slug||''; _ltvRender(); }
+function _ltvSetCidade(slug){ _LTV.cidadeSel=slug||''; if(_LTV.periodo){ _ltvFetchPeriodo(_LTV.periodo.de,_LTV.periodo.ate); } else { _ltvRender(); } }
 function _ltvBusca(v){ _LTV.busca=(v||'').toLowerCase(); _ltvRenderLista(); }
 
+// ---- Filtro de PERÍODO (calendário, pedido do Matheus) , filtra KPIs de volume + ranking.
+// CAC/churn e o gráfico de ativas/mês seguem mensais (não dá pra fatiar em 15 dias).
+function _ltvDataBr(ymd){ var p=(ymd||'').split('-'); return p.length===3?(p[2]+'/'+p[1]):ymd; }
+function _ltvPreset(dias){ var ate=new Date(); var de=new Date(Date.now()-(dias-1)*86400000); var f=function(d){return d.toISOString().slice(0,10);}; _ltvFetchPeriodo(f(de), f(ate)); }
+function _ltvEsteMes(){ var d=new Date(); var de=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01'; _ltvFetchPeriodo(de, d.toISOString().slice(0,10)); }
+function _ltvAplicarCustom(){ var a=document.getElementById('ltv-pde'), b=document.getElementById('ltv-pate'); if(!a||!b||!a.value||!b.value){ alert('Escolha as duas datas'); return; } if(a.value>b.value){ alert('A data inicial é depois da final'); return; } _ltvFetchPeriodo(a.value, b.value); }
+function _ltvLimparPeriodo(){ _LTV.periodo=null; _LTV.periodoDados=null; _LTV.periodoLoading=false; _ltvRender(); }
+async function _ltvFetchPeriodo(de, ate){
+  _LTV.periodo={de:de, ate:ate}; _LTV.periodoLoading=true; _ltvRender();
+  var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; var token=''; try{ token=localStorage.getItem('gami_sessao_token')||''; }catch(e){}
+  try{
+    var r=await fetch('/.netlify/functions/ltv',{ method:'POST', headers:{'Content-Type':'application/json','X-Gami-User':(u&&u.id)||'','X-Gami-Token':token}, body:JSON.stringify({ acao:'periodo', cidade_slug:_LTV.cidadeSel, de:de, ate:ate }) });
+    var j=await r.json();
+    _LTV.periodoLoading=false;
+    if(!r.ok||!j.ok){ _LTV.periodoDados=null; _LTV.periodo=null; alert((j&&j.erro)||'Falhou o período'); _ltvRender(); return; }
+    _LTV.periodoDados=j; _ltvRender();
+  }catch(e){ _LTV.periodoLoading=false; _LTV.periodoDados=null; _LTV.periodo=null; alert('Erro de conexão'); _ltvRender(); }
+}
+function _ltvBarraPeriodo(){
+  var p=_LTV.periodo;
+  var lbl = _LTV.periodoLoading ? 'Período: <b style="color:#0E7AB8">calculando...</b>' : (p ? ('Período: <b style="color:var(--text2)">'+_ltvDataBr(p.de)+' a '+_ltvDataBr(p.ate)+'</b>') : 'Período: <b style="color:var(--text2)">tudo</b>');
+  var presets=[7,15,30,90].map(function(d){ return '<button onclick="_ltvPreset('+d+')" class="btn btn-ghost" style="font-size:11px;padding:4px 8px">'+d+'d</button>'; }).join('');
+  return '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+    + '<div style="font-size:11px;color:var(--text3)">'+lbl+'</div>'
+    + '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
+    +   '<span style="font-size:10px;color:var(--text3)">últimos:</span>'+presets
+    +   '<button onclick="_ltvEsteMes()" class="btn btn-ghost" style="font-size:11px;padding:4px 8px">este mês</button>'
+    +   '<input type="date" id="ltv-pde" value="'+(p?p.de:'')+'" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--card,#fff)">'
+    +   '<input type="date" id="ltv-pate" value="'+(p?p.ate:'')+'" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--card,#fff)">'
+    +   '<button onclick="_ltvAplicarCustom()" class="btn btn-primary" style="font-size:11px;padding:4px 8px">aplicar</button>'
+    +   (p?'<button onclick="_ltvLimparPeriodo()" class="btn btn-ghost" style="font-size:11px;padding:4px 8px">× tudo</button>':'')
+    + '</div></div>';
+}
+
 function _ltvKpis(){
+  // período ativo: KPIs vêm do intervalo escolhido (volume no período)
+  if(_LTV.periodoDados && _LTV.periodoDados.kpis){ var pk=_LTV.periodoDados.kpis; return {
+    gmv:+pk.gmv||0, ltv:+pk.ltv||0, parc:pk.ativas||0, ativos:pk.ativas||0, ticket:+pk.ticket||0, ltvm:(pk.ativas?((+pk.ltv||0)/pk.ativas):0) }; }
   // escopo: cidade selecionada ou rede (soma)
   if(_LTV.cidadeSel){ var c=_LTV.cidades.find(function(x){return x.cidade_slug===_LTV.cidadeSel;})||{}; return {
     gmv:+c.gmv_total||0, ltv:+c.margem_total||0, parc:c.parceiros||0, ativos:c.parceiros_ativos||0, ticket:+c.ticket_medio||0, ltvm:+c.ltv_medio_parceiro||0 }; }
@@ -6271,6 +6308,12 @@ function _ltvBarAtivas(serie){
   return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:'+W+'px;height:auto">'+bars+'</svg>';
 }
 function _ltvListaDados(){
+  // período ativo: lista = ranking de parceiros do intervalo (já vem do servidor)
+  if(_LTV.periodoDados && Array.isArray(_LTV.periodoDados.ranking)){
+    var rk=_LTV.periodoDados.ranking.map(function(e){ return { parceiro:e.parceiro, cidade_slug:e.cidade_slug, pedidos:e.pedidos, gmv:e.gmv, ticket_medio:(e.pedidos>0?e.gmv/e.pedidos:0), meses_ativos:null, ltv_atual:e.ltv, ativo:true }; });
+    if(_LTV.busca) rk=rk.filter(function(e){ return (e.parceiro||'').toLowerCase().indexOf(_LTV.busca)>=0; });
+    return rk;
+  }
   var arr=_LTV.empresas.filter(function(e){ if(_LTV.cidadeSel && e.cidade_slug!==_LTV.cidadeSel) return false;
     if(_LTV.busca && (e.parceiro||'').toLowerCase().indexOf(_LTV.busca)<0) return false; return true; });
   return arr; // já vem ordenado por ltv_atual desc do servidor
@@ -6388,10 +6431,13 @@ function _ltvRender(){
     +kpi('LTV médio / parceiro', _ltvMoedaFull(k.ltvm), '')
     +'</div>';
   var serie=_ltvMesesEscopo();
+  var avisoPeriodo = _LTV.periodoDados ? '<div style="font-size:10px;color:var(--text3);margin:-6px 0 10px">KPIs e ranking = período selecionado. O gráfico de ativas/mês e a tabela de CAC & churn seguem mensais (meses fechados).</div>' : '';
   root.innerHTML=''
+    +_ltvBarraPeriodo()
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">'+chips+'</div>'
     +'<div style="font-size:12px;color:var(--text2);margin-top:8px"><b>'+_ltvEsc(esc)+'</b></div>'
     +kpis
+    +avisoPeriodo
     +'<div style="background:var(--card,#fff);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px">'
     +  '<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">📅 Empresas ativas por mês</div>'+_ltvBarAtivas(serie)
     +'</div>'

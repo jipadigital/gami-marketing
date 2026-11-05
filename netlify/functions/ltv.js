@@ -64,6 +64,24 @@ function mesAnterior(ym){
   return y + '-' + String(m).padStart(2,'0');
 }
 
+// Agrega por parceiro no período via RPC ltv_periodo (GROUP BY no servidor, bounded pelo
+// nº de parceiros). PAGINA porque o PostgREST corta em 1000 linhas e cidade grande tem mais.
+async function periodoCidade(cid, de, ate){
+  var rows = [];
+  for(var off=0; off<60000; off+=1000){
+    var r = await fetch(SUPA_URL + '/rest/v1/rpc/ltv_periodo?limit=1000&offset=' + off, {
+      method:'POST', headers: svc({ 'Content-Type':'application/json' }),
+      body: JSON.stringify({ p_cidade_slug: cid, p_de: de, p_ate: ate })
+    });
+    if(!r.ok){ if(off===0){ var t=await r.text().catch(function(){return '';}); throw new Error('Falha ltv_periodo (rodou o ltv-periodo.sql?): '+t.slice(0,140)); } break; }
+    var pg = await r.json();
+    if(!Array.isArray(pg) || !pg.length) break;
+    rows = rows.concat(pg);
+    if(pg.length < 1000) break;
+  }
+  return rows;
+}
+
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -125,6 +143,30 @@ exports.handler = async function(event){
       var novos = Object.keys(noMes).filter(function(k){ return primeiro[k]===dmes; }).map(function(k){ return { parceiro:noMes[k].nome, pedidos:noMes[k].pedidos, gmv:noMes[k].gmv }; }).sort(function(a,b){return (b.gmv||0)-(a.gmv||0);});
       var parados = Object.keys(noAnt).filter(function(k){ return !noMes[k]; }).map(function(k){ return { parceiro:noAnt[k].nome, pedidos_ant:noAnt[k].pedidos, gmv_ant:noAnt[k].gmv }; }).sort(function(a,b){return (b.gmv_ant||0)-(a.gmv_ant||0);});
       return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, cidade_slug:dcid, mes:dmes, mes_ant:dant, novos:novos, parados:parados }) };
+    }
+
+    // ---- AÇÃO: período (filtro de calendário) , KPIs de volume + ranking no intervalo ----
+    if(acao === 'periodo'){
+      var pde = String(body.de||'').trim(), pate = String(body.ate||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(pde) || !/^\d{4}-\d{2}-\d{2}$/.test(pate)) return { statusCode:400, headers:cors, body:JSON.stringify({ ok:false, erro:'de/ate (YYYY-MM-DD) obrigatórios' }) };
+      var pcid = String(body.cidade_slug||'').trim();
+      var cids;
+      if(pcid){ cids = [pcid]; }
+      else {
+        var rc = await fetch(SUPA_URL + '/rest/v1/v_ltv_cidade?select=cidade_slug', { headers: svc() });
+        cids = (rc.ok ? await rc.json() : []).map(function(x){ return x.cidade_slug; });
+      }
+      var todos = [];
+      for(var ci=0; ci<cids.length; ci++){
+        var rows = await periodoCidade(cids[ci], pde, pate);
+        for(var k=0;k<rows.length;k++){ rows[k]._cid = cids[ci]; todos.push(rows[k]); }
+      }
+      var gmv=0, ped=0; todos.forEach(function(x){ gmv += Number(x.gmv)||0; ped += Number(x.pedidos)||0; });
+      var ativas = todos.length; // cada linha = 1 parceiro que pediu no período
+      var ranking = todos.slice().sort(function(a,b){ return (Number(b.gmv)||0)-(Number(a.gmv)||0); }).slice(0,300)
+        .map(function(x){ return { parceiro:x.parceiro, cidade_slug:x._cid, pedidos:x.pedidos, gmv:x.gmv, ltv: Math.round((Number(x.gmv)||0)*0.14*100)/100 }; });
+      return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, periodo:{ de:pde, ate:pate },
+        kpis:{ gmv:gmv, pedidos:ped, ativas:ativas, ticket:(ped>0?gmv/ped:0), ltv:gmv*0.14 }, ranking:ranking }) };
     }
 
     // ---- AÇÃO padrão: dados do painel ----
