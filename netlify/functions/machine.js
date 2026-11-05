@@ -131,10 +131,26 @@ exports.handler = async function(event){
     pass: process.env['MACHINE_PASS_' + sufixo] ? ('MACHINE_PASS_' + sufixo) : (process.env.MACHINE_PASS ? 'MACHINE_PASS (global)' : null)
   };
   
+  // DIAGNÓSTICO SEGURO (?debug=1): mostra QUAIS variáveis estão sendo usadas e se têm
+  // valor , só os NOMES e um tamanho, NUNCA o valor em si. Ajuda a achar config errada.
+  if(p.debug === '1'){
+    var _tam = function(v){ return v ? String(v).length : 0; };
+    return { statusCode:200, headers:cors, body: JSON.stringify({
+      success:true, debug:true, cidade:cidade, sufixo:sufixo,
+      usando: credenciaisOrigem,
+      presente: { apikey: !!apiKey, user: !!user, pass: !!pass },
+      tamanho: { apikey:_tam(apiKey), user:_tam(user), pass:_tam(pass) },
+      tem_city_user: !!process.env['MACHINE_USER_' + sufixo],
+      tem_city_pass: !!process.env['MACHINE_PASS_' + sufixo],
+      tem_global_user: !!process.env.MACHINE_USER,
+      tem_global_pass: !!process.env.MACHINE_PASS
+    }) };
+  }
+
   if(!apiKey || !user || !pass){
     return { statusCode:400, headers:cors, body: JSON.stringify({
-      success:false, 
-      error:'Credenciais nao configuradas pra esta cidade', 
+      success:false,
+      error:'Credenciais nao configuradas pra esta cidade',
       cidade: cidade,
       sufixo: sufixo,
       faltando: {
