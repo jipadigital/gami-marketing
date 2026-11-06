@@ -55745,7 +55745,14 @@ function _estCidadesPermitidas(u){
   if(!u) return [];
   var nivel = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(u) : null;
   if(nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia') return null;
-  
+
+  // 🆕 (06/11/2026, pedido do dono) SUPORTE vê o estoque de TODAS as cidades (null = tudo),
+  // antes do mapa curado por cidade.
+  if((u.cargo || '').toLowerCase().indexOf('suporte') >= 0){
+    console.log('[Estoque] ✓ Suporte ('+(u.cargo||'')+') → TODAS as cidades');
+    return null;
+  }
+
   // 🆕 v26.93: Busca robusta — tenta múltiplas fontes do nome
   var normalizar = function(s){
     return (s||'').toString().toLowerCase()
@@ -55781,8 +55788,35 @@ function _estCidadesPermitidas(u){
       return EST_SUPORTE_PERMISSOES[chave].slice();
     }
   }
+  // 🆕 (06/11/2026, pedido do dono) GESTOR que não está no mapa curado acima libera o
+  // estoque da(s) CIDADE(S) do cadastro dele (pessoas.cidade). Suporte é tratado lá em
+  // cima (todas as cidades), antes do mapa.
+  if(nivel === 'gestor'){
+    var _slugs = _estCidadesDoUsuario(u);
+    if(_slugs.length){
+      console.log('[Estoque] ✓ Gestor ('+(u.cargo||'')+') → cidades:', _slugs);
+      return _slugs;
+    }
+  }
   console.warn('[Estoque] ✕ Acesso negado. Fontes verificadas:', fontes, '· Chaves disponíveis:', Object.keys(EST_SUPORTE_PERMISSOES));
   return [];
+}
+
+// Cidades (slugs) do cadastro do usuário: aceita string única, array ou JSON de nomes.
+// Ex.: "João Pessoa" -> ['joao-pessoa']; ["Fortaleza","João Pessoa"] -> ['fortaleza','joao-pessoa'].
+function _estCidadesDoUsuario(u){
+  var raw = u && u.cidade;
+  var arr = [];
+  if(Array.isArray(raw)) arr = raw;
+  else if(typeof raw === 'string'){
+    var s = raw.trim();
+    if(s.charAt(0) === '['){ try { arr = JSON.parse(s); } catch(e){ arr = [s]; } }
+    else if(s) arr = [s];
+  }
+  var slug = function(n){ return (n||'').toString().trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'-'); };
+  var out = [];
+  arr.forEach(function(n){ var sl = slug(n); if(sl && out.indexOf(sl) < 0) out.push(sl); });
+  return out;
 }
 
 // 🆕 v26.93: Diagnóstico de acesso ao Estoque (console)
@@ -55865,7 +55899,8 @@ function _estSincronizarSessao(){
   
   // 🆕 v26.73: Suporte com permissão por cidade pode acessar (lista filtrada)
   var cidadesPermitidas = _estCidadesPermitidas(u);
-  var podeAcessar = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia') 
+  var podeAcessar = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia')
+                    || cidadesPermitidas === null   // null = todas as cidades (ex: Suporte)
                     || (cidadesPermitidas && cidadesPermitidas.length > 0);
   
   if(!podeAcessar){
@@ -55895,6 +55930,7 @@ async function estVerificarAcessoSidebar(){
   // 🆕 v26.73: Aceita Suporte com cidades atribuídas
   var cidades = _estCidadesPermitidas(u);
   var podeAcessar = (nivel === 'super_admin' || nivel === 'diretoria' || nivel === 'gerencia')
+                    || cidades === null   // null = todas as cidades (ex: Suporte)
                     || (cidades && cidades.length > 0);
   navEstoque.style.display = podeAcessar ? '' : 'none';
 }
