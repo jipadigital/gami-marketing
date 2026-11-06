@@ -7,7 +7,9 @@
 //   ?action=apagar&id=…                   — DELETE
 
 const SUPA_URL  = process.env.SUPABASE_URL  || '';
-const SUPA_KEY  = process.env.SUPABASE_KEY  || process.env.SUPABASE_SERVICE_KEY || '';
+// Service key PRIMEIRO (ignora RLS): permite travar a leitura anon de posts_agendados
+// sem quebrar esta function. Mantém fallbacks por compatibilidade de nome de env.
+const SUPA_KEY  = process.env.SUPA_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || '';
 
 const HEADERS = {
   'Access-Control-Allow-Origin': '*',

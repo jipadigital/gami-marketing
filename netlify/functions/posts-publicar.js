@@ -11,7 +11,8 @@
 
 const META_USER_TOKEN = process.env.META_USER_TOKEN || '';
 const SUPA_URL = process.env.SUPABASE_URL || '';
-const SUPA_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+// Service key PRIMEIRO (ignora RLS), pra sobreviver à trava de leitura anon.
+const SUPA_KEY = process.env.SUPA_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || '';
 
 const HEADERS = {
   'Access-Control-Allow-Origin': '*',

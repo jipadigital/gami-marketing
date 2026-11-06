@@ -124,28 +124,9 @@ exports.handler = async function(event){
   var user = process.env['MACHINE_USER_' + sufixo] || process.env.MACHINE_USER;
   var pass = process.env['MACHINE_PASS_' + sufixo] || process.env.MACHINE_PASS;
   
-  // Pra debug: indica quais credenciais foram usadas
-  var credenciaisOrigem = {
-    apikey: process.env['MACHINE_API_KEY_' + sufixo] ? ('MACHINE_API_KEY_' + sufixo) : null,
-    user: process.env['MACHINE_USER_' + sufixo] ? ('MACHINE_USER_' + sufixo) : (process.env.MACHINE_USER ? 'MACHINE_USER (global)' : null),
-    pass: process.env['MACHINE_PASS_' + sufixo] ? ('MACHINE_PASS_' + sufixo) : (process.env.MACHINE_PASS ? 'MACHINE_PASS (global)' : null)
-  };
-  
-  // DIAGNÓSTICO SEGURO (?debug=1): mostra QUAIS variáveis estão sendo usadas e se têm
-  // valor , só os NOMES e um tamanho, NUNCA o valor em si. Ajuda a achar config errada.
-  if(p.debug === '1'){
-    var _tam = function(v){ return v ? String(v).length : 0; };
-    return { statusCode:200, headers:cors, body: JSON.stringify({
-      success:true, debug:true, cidade:cidade, sufixo:sufixo,
-      usando: credenciaisOrigem,
-      presente: { apikey: !!apiKey, user: !!user, pass: !!pass },
-      tamanho: { apikey:_tam(apiKey), user:_tam(user), pass:_tam(pass) },
-      tem_city_user: !!process.env['MACHINE_USER_' + sufixo],
-      tem_city_pass: !!process.env['MACHINE_PASS_' + sufixo],
-      tem_global_user: !!process.env.MACHINE_USER,
-      tem_global_pass: !!process.env.MACHINE_PASS
-    }) };
-  }
+  // (Endpoint ?debug=1 removido em 06/11/2026 por segurança: expunha, sem login, o
+  // esquema de variáveis de ambiente por cidade. Diagnóstico de credencial agora só
+  // pelos logs da function no Netlify.)
 
   if(!apiKey || !user || !pass){
     return { statusCode:400, headers:cors, body: JSON.stringify({
