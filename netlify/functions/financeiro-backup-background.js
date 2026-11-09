@@ -23,8 +23,10 @@ const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'f
                  'fin_lancamentos', 'fin_conciliacoes', 'fin_alertas', 'fin_benef_confiaveis', 'fin_auditoria',
                  // v2 (réplica do Kamino); se a tabela não existir ainda, o backup pula e avisa
                  'fin_unidades', 'fin_centros_custo', 'fin_classificacoes', 'fin_pessoas', 'fin_baixas', 'fin_transferencias',
-                 'fin_regras_extrato', 'fin_anexos', 'fin_entradas'];
-const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
+                 'fin_regras_extrato', 'fin_anexos', 'fin_entradas',
+                 // v3 (FLYP): vai pros mesmos cofres privados
+                 'fin_flyp_importacoes', 'fin_flyp_transacoes', 'fin_flyp_acesso', 'fin_flyp_leituras'];
+const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
 const h = extra => Object.assign({ apikey: KEY, Authorization: 'Bearer ' + KEY }, extra || {});
 
 async function lerTabela(t){

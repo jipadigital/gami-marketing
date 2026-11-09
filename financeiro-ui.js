@@ -131,6 +131,8 @@ window.initFinanceiro = async function(){
     var j = await api('me');
     F.papel = j.papel; F.nomes = j.nomes || {}; F.categorias = j.categorias || [];
     var c = await api('contas'); F.contas = c.contas || [];
+    F.flypPode = false;
+    try { F.flypPode = (await api('flyp_pode')).pode === true; } catch(e){ F.flypPode = false; }  // trava própria (servidor)
   } catch(e){
     root.innerHTML = '<div class="fin-vazio" style="color:#C0392B">🔒 ' + esc(e.semAcesso ? 'Acesso restrito. Peça liberação ao administrador.' : e.message) + '</div>';
     return;
@@ -150,6 +152,7 @@ function menu(){
     { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças']] },
     { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
+    { id: 'flyp', t: '🛵 FLYP', p: 'leitor', flyp: true, subs: [['flyp_resumo', 'Saques e recargas por dia'], ['flyp_lista', 'Transações'], ['flyp_importar', 'Importar da FLYP', 'conferente'], ['flyp_acessos', 'Quem vê e quem consultou', 'super']] },
     { id: 'alertas', t: '🚨 Alertas', p: 'leitor', subs: [['alertas', 'Alertas']] },
     { id: 'cadastros', t: '🗂️ Cadastros', p: 'leitor', subs: [['pessoas', 'Pessoas e empresas'], ['plano', 'Plano de contas'], ['unidades', 'Unidades e centros de custo'], ['regras', 'Regras de extrato'], ['config', 'Contas, regras antifraude e acessos', 'gestor']] },
     { id: 'auditoria', t: '🔏 Auditoria', p: 'gestor', subs: [['auditoria', 'Registro permanente']] }
@@ -157,7 +160,7 @@ function menu(){
   return M.map(function(a){
     a.subs = a.subs.filter(function(s){ return t(s[0]) && pode(s[2] || a.p); }).map(function(s){ return { id: s[0], t: s[1], fn: t(s[0]) }; });
     return a;
-  }).filter(function(a){ return pode(a.p) && a.subs.length; });
+  }).filter(function(a){ return pode(a.p) && a.subs.length && (!a.flyp || F.flypPode === true); });
 }
 function render(){
   var root = $('fin-root');

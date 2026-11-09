@@ -353,16 +353,26 @@ BEGIN
   RETURN NEW;
 END $$;
 
--- Auditoria: grava antes/depois de TODA escrita, com o ator da transação
+-- Auditoria: grava antes/depois de TODA escrita, com o ator da transação.
+-- (mesma função do financeiro-v3-flyp.sql: das tabelas da FLYP guarda só a impressão digital,
+--  sem nomes nem valores; rodar este arquivo de novo NÃO pode desfazer essa blindagem)
 CREATE OR REPLACE FUNCTION fin_trg_audit() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = public, extensions AS $$
 DECLARE v_antes jsonb; v_depois jsonb; v_id text;
 BEGIN
   IF TG_OP = 'UPDATE' THEN v_antes := to_jsonb(OLD); END IF;
   v_depois := to_jsonb(NEW);
-  IF TG_TABLE_NAME = 'fin_importacoes' THEN
+  IF TG_TABLE_NAME IN ('fin_importacoes','fin_flyp_importacoes') THEN
     v_depois := v_depois - 'conteudo';
     IF v_antes IS NOT NULL THEN v_antes := v_antes - 'conteudo'; END IF;
+  END IF;
+  IF TG_TABLE_NAME IN ('fin_flyp_transacoes','fin_flyp_leituras') THEN
+    v_depois := jsonb_build_object('id', v_depois->'id', 'status', v_depois->'status',
+                  'impressao', encode(extensions.digest(to_jsonb(NEW)::text, 'sha256'), 'hex'));
+    IF v_antes IS NOT NULL THEN
+      v_antes := jsonb_build_object('id', v_antes->'id', 'status', v_antes->'status',
+                  'impressao', encode(extensions.digest(to_jsonb(OLD)::text, 'sha256'), 'hex'));
+    END IF;
   END IF;
   v_id := coalesce(v_depois->>'id', v_depois->>'chave', v_depois->>'pessoa_id');
   INSERT INTO fin_auditoria (seq, ator, acao, tabela, registro_id, antes, depois, hash_anterior, hash)

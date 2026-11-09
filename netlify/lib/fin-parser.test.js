@@ -132,4 +132,53 @@ t('Lançamentos sem id: iguais não se fundem', () => {
   assert.notStrictEqual(r.linhas[0].chave, r.linhas[1].chave);
 });
 
+// CSV exatamente como o botão "CSV" do ZL Hub exporta (linhas reais da tela, 09/11/2026)
+const FLYP_CSV = '"","Direção","Tipo","Contraparte","Valor","Valor Liquidado","Data","Status","Ações"\r\n' +
+  '"","","Pix","Condutor Teste Um","R$ 22,38","R$ 15,38","09/11/2026 - 17:42:38","Concluído",""\r\n' +
+  '"","","Pix","Empresa Teste Alfa                                                    Emitir Nota","R$ 70,00","R$ 69,00","09/11/2026 - 12:05:24","Efetivado",""\r\n' +
+  '"","","Boleto","EMPRESA TESTE BETA","R$ 3.146,13","R$ 3.146,13","09/11/2026","Aberto",""\r\n' +
+  '"","","Pix","Condutor Teste Dois","R$ 13,56","R$ 6,56","07/11/2026 - 17:45:24","Em análise",""\r\n' +
+  '"","","Pix","Condutor Teste Tres","R$ 148,84","R$ 141,84","04/11/2026 - 11:28:47","Rejeitado",""\r\n' +
+  '"","","Pix","Condutor Teste Tres","R$ 148,84","R$ 141,84","04/11/2026 - 11:22:47","Rejeitado",""\r\n' +
+  '"","","Pix","Empresa X","R$ 50,00","R$ 49,00","03/11/2026 - 10:00:00","Expirado",""\r\n' +
+  '"","","A Receber","Loja Y","R$ 80,00","R$ 80,00","01/11/2026","Vencido",""\r\n';
+
+t('FLYP: CSV real do ZL Hub, direção deduzida', () => {
+  const r = P.parseFlyp(FLYP_CSV);
+  assert.ok(r.ok, r.erro);
+  assert.strictEqual(r.linhas.length, 8);
+  const [saque, recarga, boleto, analise, rej1, rej2, recExp, aRec] = r.linhas;
+  assert.deepStrictEqual([saque.direcao, saque.categoria, saque.status, saque.taxa, saque.hora], ['saida', 'saque', 'concluido', 7, '17:42:38']);
+  assert.deepStrictEqual([recarga.direcao, recarga.categoria, recarga.contraparte, recarga.tem_nota, recarga.taxa], ['entrada', 'recarga', 'Empresa Teste Alfa', true, 1]);
+  assert.deepStrictEqual([boleto.direcao, boleto.categoria, boleto.valor, boleto.hora, boleto.status], ['entrada', 'boleto', 3146.13, null, 'aberto']);
+  assert.strictEqual(analise.status, 'em_analise');
+  assert.notStrictEqual(rej1.hash, rej2.hash, 'dois saques iguais em horários diferentes são 2');
+  assert.deepStrictEqual([recExp.direcao, recExp.categoria], ['entrada', 'recarga'], 'recarga expirada (taxa R$ 1) é entrada');
+  assert.deepStrictEqual([aRec.direcao, aRec.categoria, aRec.status], ['entrada', 'a_receber', 'vencido']);
+  assert.strictEqual(r.periodo_ini, '2026-11-01'); assert.strictEqual(r.periodo_fim, '2026-11-09');
+});
+
+t('FLYP: mudança de status não muda o hash; mesma linha repetida vira 2', () => {
+  const a = P.parseFlyp(FLYP_CSV).linhas[3];
+  const b = P.parseFlyp(FLYP_CSV.replace('"Em análise"', '"Concluído"')).linhas[3];
+  assert.strictEqual(a.hash, b.hash);
+  assert.strictEqual(b.status, 'concluido');
+  const dup = '"","Direção","Tipo","Contraparte","Valor","Valor Liquidado","Data","Status","Ações"\n' +
+    '"","","Boleto","Z","R$ 10,00","R$ 10,00","09/11/2026","Aberto",""\n"","","Boleto","Z","R$ 10,00","R$ 10,00","09/11/2026","Aberto",""\n';
+  const d = P.parseFlyp(dup);
+  assert.ok(d.ok, d.erro); assert.notStrictEqual(d.linhas[0].hash, d.linhas[1].hash);
+});
+
+t('FLYP: Direção preenchida, colado do "Copy" (tab) e arquivo errado', () => {
+  const tsv = 'ZL Hub - Gestão\n\n\tDireção\tTipo\tContraparte\tValor\tValor Liquidado\tData\tStatus\tAções\n' +
+    '\tEntrada\tPix\tFulano\tR$ 22,38\tR$ 15,38\t09/11/2026 - 17:42:38\tConcluído\t\n';
+  const r = P.parseFlyp(tsv);
+  assert.ok(r.ok, r.erro); assert.strictEqual(r.linhas[0].direcao, 'entrada');
+  const f = P.parseFlyp(FLYP_CSV, { direcao: 'saida' });
+  assert.strictEqual(f.linhas[1].categoria, 'saque', 'filtro forçado manda');
+  assert.strictEqual(P.parseFlyp('Data;Historico;Valor\n01/11/2026;x;10,00\n').ok, false);
+  const ruim = P.parseFlyp(FLYP_CSV.replace('"R$ 22,38"', '"R$ abc"'));
+  assert.strictEqual(ruim.ok, false); assert.ok(/Nada foi importado/.test(ruim.erro));
+});
+
 console.log(ok + ' testes passaram' + (process.exitCode ? ' (HÁ FALHAS)' : ''));

@@ -350,4 +350,87 @@ function parseLancamentos(texto, tipoPadrao){
   return { ok: true, formato: 'csv', linhas, sha256: sha256(texto), periodo_ini: ds[0] || null, periodo_fim: ds[ds.length - 1] || null };
 }
 
-module.exports = { parseExtrato, parseLancamentos, parseValor, parseData, extrairContraparte, extrairDoc, norm, sha256 };
+// ------------------------------------------------------------ FLYP / ZL Hub (Transações Financeiras)
+// CSV do botão "CSV" da tela ?p=pix: "","Direção","Tipo","Contraparte","Valor","Valor Liquidado","Data","Status","Ações".
+// A Direção vem VAZIA no CSV (na tela é só um ícone), então é deduzida. Regra validada em 6.121 linhas reais
+// (01/01 a 09/11/2026, 100% de acerto): boleto/a receber = entrada; Pix com "Emitir/Ver Nota", status
+// "Efetivado" ou taxa de exatamente R$ 1,00 = entrada (recarga de empresa); o resto do Pix = saída (saque do condutor).
+// Se o arquivo trouxer a Direção preenchida (ou a pessoa exportar filtrando só Entrada/Saída), ela manda.
+const COL_FLYP = {
+  direcao: ['direcao'],
+  tipo: ['tipo'],
+  contraparte: ['contraparte'],
+  valor: ['valor'],
+  liquido: ['valor liquidado', 'valor liquido'],
+  data: ['data'],
+  status: ['status', 'situacao']
+};
+const STATUS_FLYP = {
+  'CONCLUIDO': 'concluido', 'EFETIVADO': 'efetivado', 'ABERTO': 'aberto', 'EM ANALISE': 'em_analise', 'EXPIRADO': 'expirado',
+  'REJEITADO': 'rejeitado', 'VENCIDO': 'vencido', 'QUITADO': 'quitado', 'AGUARDANDO APROVACAO': 'aguardando_aprovacao',
+  'PAGO': 'quitado', 'CANCELADO': 'cancelado'
+};
+function parseFlyp(texto, opcoes){
+  const forcar = opcoes && (opcoes.direcao === 'entrada' || opcoes.direcao === 'saida') ? opcoes.direcao : null;
+  // o separador sai da linha do CABEÇALHO (o texto do botão "Copy" vem com uma linha de título antes)
+  const limpo = String(texto).replace(/^﻿/, '');
+  const linhaCab = limpo.split('\n').slice(0, 30).find(l => /contraparte/i.test(l) && /status/i.test(l)) || '';
+  const rows = splitCSV(limpo, detectarSeparador(linhaCab));
+  if(rows.length < 2) return { ok: false, erro: 'Arquivo vazio.' };
+  const hi = acharCabecalho(rows, [COL_FLYP.contraparte, COL_FLYP.liquido, COL_FLYP.status]);
+  if(hi < 0) return { ok: false, erro: 'Não parece o CSV da FLYP (preciso das colunas Contraparte, Valor Liquidado e Status da tela Transações Financeiras).' };
+  const cab = rows[hi];
+  const c = {}; for(const k in COL_FLYP) c[k] = achaColuna(cab, COL_FLYP[k]);
+  // "Valor" não pode cair em "Valor Liquidado"
+  c.valor = cab.findIndex(h => norm(h) === 'VALOR');
+  c.tipo = cab.findIndex(h => norm(h) === 'TIPO');
+  c.data = cab.findIndex(h => norm(h) === 'DATA');
+  if(c.valor < 0 || c.data < 0 || c.tipo < 0) return { ok: false, erro: 'Faltam as colunas Tipo, Valor ou Data no CSV da FLYP.' };
+  const linhas = [], erros = [];
+  for(let i = hi + 1; i < rows.length; i++){
+    const r = rows[i];
+    const get = k => (c[k] >= 0 ? String(r[c[k]] || '').trim() : '');
+    if(r.filter(x => x).length <= 2) continue;
+    const valor = parseValor(get('valor')), liq = parseValor(get('liquido'));
+    if(valor == null || liq == null){ erros.push('Linha ' + (i + 1) + ': valor inválido ("' + get('valor') + '" / "' + get('liquido') + '")'); continue; }
+    const dt = get('data');
+    const data = parseData(dt);
+    if(!data){ erros.push('Linha ' + (i + 1) + ': data inválida ("' + dt + '")'); continue; }
+    const mh = dt.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    const hora = mh ? pad(+mh[1]) + ':' + mh[2] + ':' + (mh[3] || '00') : null;
+    if(mh && (+mh[1] > 23 || +mh[2] > 59 || +(mh[3] || 0) > 59)){ erros.push('Linha ' + (i + 1) + ': hora inválida ("' + dt + '")'); continue; }
+    const cpBruto = get('contraparte');
+    const temNota = /\b(EMITIR|VER)\s+NOTA\b/.test(norm(cpBruto));
+    const contraparte = cpBruto.replace(/\s*(Emitir|Ver)\s+Nota\s*$/i, '').replace(/\s+/g, ' ').trim();
+    if(!contraparte){ erros.push('Linha ' + (i + 1) + ': sem contraparte'); continue; }
+    const tipoTxt = norm(get('tipo'));
+    const tipo = /BOLETO/.test(tipoTxt) ? 'boleto' : /RECEBER/.test(tipoTxt) ? 'a_receber' : /PIX/.test(tipoTxt) ? 'pix' : /CARTAO/.test(tipoTxt) ? 'cartao' : 'outros';
+    const stNorm = norm(get('status'));
+    const status = STATUS_FLYP[stNorm] || 'outro';
+    const taxa = round2(valor - liq);
+    const dirTxt = norm(get('direcao'));
+    let direcao = /ENTRADA/.test(dirTxt) ? 'entrada' : /SAIDA/.test(dirTxt) ? 'saida' : forcar;
+    if(!direcao){
+      if(tipo === 'boleto' || tipo === 'a_receber') direcao = 'entrada';
+      else if(tipo === 'pix') direcao = (temNota || status === 'efetivado' || taxa === 1) ? 'entrada' : 'saida';
+      else { erros.push('Linha ' + (i + 1) + ': não sei se "' + get('tipo') + '" é entrada ou saída (exporte filtrando a Direção e escolha na importação)'); continue; }
+    }
+    const categoria = tipo === 'boleto' ? 'boleto' : tipo === 'a_receber' ? 'a_receber'
+      : tipo === 'pix' ? (direcao === 'saida' ? 'saque' : 'recarga') : 'outro';
+    linhas.push({ data, hora, direcao, tipo, categoria, contraparte: contraparte.slice(0, 200), valor: round2(valor), valor_liquido: round2(liq), taxa,
+                  status, status_original: get('status').slice(0, 40) || '?', tem_nota: temNota });
+  }
+  if(!linhas.length) return { ok: false, erro: 'Nenhuma transação encontrada.' + (erros.length ? ' ' + erros.slice(0, 3).join(' | ') : '') };
+  if(erros.length) return { ok: false, erro: erros.length + ' linha(s) com problema. Nada foi importado: ' + erros.slice(0, 5).join(' | ') };
+  // hash sem o status (o status muda com o tempo e a linha continua sendo a mesma) + nº da ocorrência
+  const cont = {};
+  for(const l of linhas){
+    const base = ['FLYP', l.data, l.hora || '', l.tipo, l.direcao, norm(l.contraparte), l.valor.toFixed(2), l.valor_liquido.toFixed(2)].join('|');
+    const n = cont[base] = (cont[base] || 0) + 1;
+    l.hash = sha256(base + '|' + n);
+  }
+  const ds = linhas.map(l => l.data).sort();
+  return { ok: true, formato: 'flyp_csv', linhas, sha256: sha256(texto), periodo_ini: ds[0], periodo_fim: ds[ds.length - 1] };
+}
+
+module.exports = { parseExtrato, parseLancamentos, parseFlyp, parseValor, parseData, extrairContraparte, extrairDoc, norm, sha256 };

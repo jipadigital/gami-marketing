@@ -310,7 +310,8 @@ const ACOES = {
     const pagina = Math.max(0, Number(b.pagina) || 0);
     const f = [];
     if(b.ator) f.push('ator=eq.' + encodeURIComponent(txt(b.ator, 60)));
-    if(b.tabela && /^fin_[a-z_]+$/.test(b.tabela)) f.push('tabela=eq.' + b.tabela);
+    if(b.tabela && /^fin_[a-z_]+$/.test(b.tabela) && b.tabela.indexOf('fin_flyp') !== 0) f.push('tabela=eq.' + b.tabela);
+    f.push('tabela=not.like.fin_flyp*');   // FLYP tem trava própria: nunca aparece na auditoria geral
     const { data, headers } = await rest('fin_auditoria?select=seq,ts,ator,acao,tabela,registro_id,antes,depois,hash' + (f.length ? '&' + f.join('&') : '') + '&order=seq.desc', {
       headers: svc({ 'Range-Unit': 'items', 'Range': (pagina * 100) + '-' + (pagina * 100 + 99), 'Prefer': 'count=exact' })
     });
@@ -373,6 +374,14 @@ catch(e){ console.error('[financeiro] v2 indisponível:', e.message); }
 if(V2){
   Object.keys(V2.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); ACOES[k] = V2.acoes[k]; PERM[k] = V2.perm[k]; });
   Object.keys(V2.acoes).forEach(k => { if(!PERM[k]) throw new Error('Ação sem permissão definida: ' + k); });
+}
+
+// ---------- v3: dados da FLYP (ZL Hub). Trava própria dentro do módulo (fin_flyp_acesso).
+let FLYP = null;
+try { FLYP = require('../lib/fin-acoes-flyp')({ rpc, lerTodos, ErroUsuario, txt, dataOk, P }); }
+catch(e){ console.error('[financeiro] flyp indisponível:', e.message); }
+if(FLYP){
+  Object.keys(FLYP.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); if(!FLYP.perm[k]) throw new Error('Ação sem permissão: ' + k); ACOES[k] = FLYP.acoes[k]; PERM[k] = FLYP.perm[k]; });
 }
 
 async function nomesPessoas(ids){
