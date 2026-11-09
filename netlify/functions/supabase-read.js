@@ -28,7 +28,10 @@ const TABELAS_LEITURA = [
   // conteúdo interno
   'recados','tarefas',
   // varredura final: auditoria e push
-  'audit_log','acessos_log','push_subscriptions','push_agendados'
+  'audit_log','acessos_log','push_subscriptions','push_agendados',
+  // R6: gamificação/interno (nome de funcionário + pontos). ranking_mensal é VIEW.
+  'pontos_log','desafios_admin','badges_desbloqueadas','pulse_votos',
+  'stories_log','estoque_itens','ranking_mensal'
 ];
 
 // RPCs sensíveis (leitura de dado comercial/Machine/prospecção) que o proxy aceita chamar.
