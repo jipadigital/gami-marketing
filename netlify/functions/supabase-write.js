@@ -73,6 +73,12 @@ const TABELAS_COLAB = ['tarefas', 'notificacoes', 'prospeccao_lojas', 'prospecca
   'reconhecimentos_pares', 'reconhecimentos', 'stories_log', 'vencedores_mensais',
   'ranking_mensal', 'anotacoes_cidade'];
 
+// 🕵️ CONTAS SOMENTE-LEITURA (auditoria/pentest): têm sessão válida e podem LER
+// tudo, mas NÃO escrevem NADA pelo servidor (nem tabela de colaboração, nem RPC).
+// A trava de verdade é aqui — bloquear só na interface não segura um testador que
+// bate direto na API. Casa pelo pessoa_id do convidado oculto (ver login.js).
+const CONTAS_SOMENTE_LEITURA = ['auditor-seg'];
+
 // Funções RPC permitidas (whitelist)
 const RPCS_PERMITIDAS = [
   'refresh_machine_views',
@@ -314,6 +320,13 @@ exports.handler = async function(event){
   catch(e){ return { statusCode: 400, headers: cors, body: JSON.stringify({error:'Body inválido'}) }; }
 
   const { tabela, operacao, dados, filtro, patch } = body;
+
+  // 🕵️ Conta somente-leitura (auditoria): barra QUALQUER escrita/RPC aqui, antes
+  // de tocar no banco. Cada tentativa vira alerta (útil pro próprio pentest).
+  if(CONTAS_SOMENTE_LEITURA.indexOf(userId) >= 0){
+    alertar('escrita_bloqueada_auditoria', 'info', 'Conta de auditoria tentou escrever (bloqueado)', { userId, operacao: operacao || null, tabela: tabela || (body.funcao || null), ip });
+    return { statusCode: 403, headers: cors, body: JSON.stringify({ error: 'Conta somente-leitura: escrita não permitida.' }) };
+  }
 
   // Valida tabela (rpc não usa tabela; a função é validada mais abaixo por RPCS_PERMITIDAS)
   if(operacao !== 'rpc' && TABELAS_PERMITIDAS.indexOf(tabela) < 0){
