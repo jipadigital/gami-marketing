@@ -1,3 +1,4 @@
+<!-- v33.60 - "Testar conexao" dava FALSO ALARME: batia em usuarios_login com a chave publica, que agora esta FECHADA pela blindagem, tomava 401 e rotulava "servidor sobrecarregado / Backend com problema" mesmo com tudo funcionando (caso Gustavo Lopes, assustou e nao logou). Agora 401/403 = "protegido (backend no ar)"; so 5xx/timeout conta como problema. O login em si sempre foi pelo servidor (login.js), nao afetado. SW v23-344. - 09/11/2026 -->
 <!-- v33.59 - PII fora da fonte (e-mails de gate viram HASH): os e-mails de allowlist que ficavam em texto no index (convidados Dealwise + prospeccao Cristina/Micaelle/Vanessa) sairam do codigo. Agora o gate casa por sha256 do e-mail (funcao _sha256Hex sincrona + _emailHash cacheado), mesma pessoa = mesmo hash = mesmo acesso, sem gap (vale ja pras sessoes em cache). Persona de teste e placeholders tambem genericizados. Resta so o e-mail do DONO (jipadigital), que e a trava de super_admin (nao da pra remover sem risco de lockout; e o proprio e-mail da conta). Conta de auditoria somente-leitura reforcada no supabase-write. SW v23-343. - 09/11/2026 -->
 <!-- v33.58 - LOGIN DE AUDITORIA (convidado OCULTO p/ pentest): novo nivel 'auditor' que ve TODAS as abas pra testar o painel, mas e READ-ONLY e NAO ve valores em R$ (abas de dinheiro nem entram + gate proprio por pessoa_id no servidor). NAO entra em `pessoas`, entao nao aparece em canto nenhum (Pessoas/ranking/ponto); nome/e-mail neutros (sem nome real). O login.js PROVISIONA sozinho no 1o acesso (CONVIDADOS), sem SQL: usuario 'auditor', PIN inicial gami2026 (troca no 1o login). Gate por e-mail sentinela auditor@seg.gami, prioridade maxima. SW v23-342. - 09/11/2026 -->
 <!-- v33.57 - SUPORTE ve RELATORIOS: cargo "Suporte Home"/"Suporte Operacional" (e atendimento/sucesso) agora resolve pro novo nivel 'suporte' = o que o colaborador ja via + a aba Relatorios, SEM valores em R$. A regra roda ANTES do nivel_permissao canonico e so promove quem esta em branco ou 'colaborador' (quem foi posto em nivel maior mantem). Antes os "Suporte Operacional" caiam em colaborador e ficavam sem Relatorios. Casa por CARGO, sem e-mail no codigo. SW v23-341. - 09/11/2026 -->
@@ -6332,7 +6333,8 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
   <div id="fin-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
 </div>
-<script src="/financeiro-ui.js?v=1" defer></script>
+<script src="/financeiro-ui.js?v=2" defer></script>
+<script src="/financeiro-ui-v2.js?v=1" defer></script>
 
 <div class="page" id="pg-faturamento">
   <div class="page-header">
@@ -16690,10 +16692,14 @@ async function testarConexaoSupabase(){
     });
     clearTimeout(to);
     var ms = Date.now() - t0;
-    if(r.ok){
-      resultados.push({ etapa: 'Supabase REST', ok: true, ms: ms, info: 'HTTP ' + r.status });
+    if(r.ok || r.status === 401 || r.status === 403){
+      // 401/403 = a RLS está PROTEGENDO a tabela (esperado desde a blindagem de
+      // segurança). O que importa é que o Supabase RESPONDEU → backend no ar. Só
+      // 5xx/timeout é problema de verdade. Antes isso aparecia como "sobrecarregado"
+      // e assustava quem ia logar, mesmo com tudo funcionando.
+      resultados.push({ etapa: 'Supabase REST', ok: true, ms: ms, info: 'HTTP ' + r.status + (r.ok ? '' : ' (protegido)') });
     } else {
-      resultados.push({ etapa: 'Supabase REST', ok: false, ms: ms, info: 'HTTP ' + r.status + ' — servidor sobrecarregado' });
+      resultados.push({ etapa: 'Supabase REST', ok: false, ms: ms, info: 'HTTP ' + r.status + (r.status >= 500 ? ' — servidor sobrecarregado' : '') });
     }
   } catch(e){
     var ms = Date.now() - t0;
