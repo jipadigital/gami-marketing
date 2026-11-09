@@ -1,0 +1,68 @@
+// netlify/functions/financeiro-backup-background.js
+// 💾 Backup DIÁRIO do financeiro (todas as tabelas fin_*) num bucket PRIVADO
+// do Supabase Storage (fin-backups). Nunca sobrescreve e nunca apaga: cada dia
+// é um arquivo novo. Junto vai o "último hash" da auditoria: se um dia alguém
+// mexer no banco por fora, dá pra provar comparando com o backup.
+// Agendado no netlify.toml (10h UTC = 7h Brasília).
+// ============================================================
+'use strict';
+const { schedule } = require('@netlify/functions');
+const zlib = require('zlib');
+
+const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
+const KEY = process.env.SUPA_SERVICE_KEY;
+const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'fin_extrato', 'fin_conferencias',
+                 'fin_lancamentos', 'fin_conciliacoes', 'fin_alertas', 'fin_benef_confiaveis', 'fin_auditoria'];
+const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
+const h = extra => Object.assign({ apikey: KEY, Authorization: 'Bearer ' + KEY }, extra || {});
+
+async function lerTabela(t){
+  let out = [];
+  for(let off = 0; off < 2000000; off += 1000){
+    const r = await fetch(SUPA_URL + '/rest/v1/' + t + '?select=*&order=' + (ORDEM[t] || 'id') + '.asc', { headers: h({ 'Range-Unit': 'items', Range: off + '-' + (off + 999) }) });
+    if(!r.ok) throw new Error(t + ': HTTP ' + r.status + ' ' + (await r.text()).slice(0, 200));
+    const pg = await r.json();
+    out = out.concat(pg);
+    if(pg.length < 1000) break;
+  }
+  return out;
+}
+
+const handler = async function(){
+  if(!KEY) return { statusCode: 500, body: 'sem SUPA_SERVICE_KEY' };
+  const inicio = Date.now();
+  try {
+    const dump = { gerado_em: new Date().toISOString(), versao: 1, tabelas: {}, contagens: {} };
+    for(const t of TABELAS){ dump.tabelas[t] = await lerTabela(t); dump.contagens[t] = dump.tabelas[t].length; }
+    const aud = dump.tabelas.fin_auditoria;
+    dump.ultimo_hash_auditoria = aud.length ? aud[aud.length - 1].hash : null;
+    const ri = await fetch(SUPA_URL + '/rest/v1/rpc/fin_verificar_cadeia', { method: 'POST', headers: h({ 'Content-Type': 'application/json' }), body: '{}' });
+    dump.integridade = ri.ok ? await ri.json() : { ok: false, erro: 'HTTP ' + ri.status };
+
+    const gz = zlib.gzipSync(Buffer.from(JSON.stringify(dump)));
+    const d = new Date(Date.now() - 3 * 3600e3).toISOString();
+    const caminho = d.slice(0, 4) + '/' + d.slice(5, 7) + '/fin-' + d.slice(0, 10) + '-' + d.slice(11, 19).replace(/:/g, '') + '.json.gz';
+    const up = await fetch(SUPA_URL + '/storage/v1/object/fin-backups/' + caminho, {
+      method: 'POST', headers: h({ 'Content-Type': 'application/gzip', 'x-upsert': 'false' }), body: gz
+    });
+    if(!up.ok) throw new Error('upload: HTTP ' + up.status + ' ' + (await up.text()).slice(0, 200));
+    console.log('✅ backup financeiro', caminho, JSON.stringify(dump.contagens), 'integridade=' + JSON.stringify(dump.integridade), Math.round((Date.now() - inicio) / 1000) + 's');
+    if(dump.integridade && dump.integridade.ok === false) await alertar('Cadeia de auditoria do financeiro QUEBRADA', dump.integridade);
+    return { statusCode: 200, body: JSON.stringify({ ok: true, caminho, contagens: dump.contagens }) };
+  } catch(e){
+    console.error('❌ backup financeiro falhou:', e.message);
+    await alertar('Backup do financeiro falhou', { erro: e.message });
+    return { statusCode: 500, body: JSON.stringify({ ok: false, erro: e.message }) };
+  }
+};
+
+async function alertar(msg, det){
+  try {
+    await fetch(SUPA_URL + '/rest/v1/alertas_log', {
+      method: 'POST', headers: h({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify([{ tipo: 'financeiro_backup', severidade: 'critico', origem: 'financeiro-backup-background', mensagem: msg, detalhes: det }])
+    });
+  } catch(e){}
+}
+
+exports.handler = schedule('0 10 * * *', handler);
