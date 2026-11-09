@@ -26,6 +26,32 @@
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+-- pg_cron (rotina diária das regras). Num projeto Supabase novo, cria aqui; se não der, ative em Database > Extensions.
+DO $$ BEGIN CREATE EXTENSION IF NOT EXISTS pg_cron; EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'pg_cron: ative em Database > Extensions'; END $$;
+
+-- Nomes da equipe (só o nome, nada mais) pra regra "pagamento pra alguém da equipe".
+-- Quem preenche é a função financeiro.js, copiando da tabela pessoas do dashboard.
+CREATE TABLE IF NOT EXISTS fin_equipe (
+  pessoa_id     text PRIMARY KEY,
+  nome          text NOT NULL,
+  atualizado_em timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE fin_equipe ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON fin_equipe FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON fin_equipe TO service_role;
+
+CREATE OR REPLACE FUNCTION fin_sincronizar_equipe(p_lista jsonb) RETURNS int
+LANGUAGE plpgsql AS $$
+DECLARE n int;
+BEGIN
+  IF jsonb_typeof(p_lista) <> 'array' OR jsonb_array_length(p_lista) = 0 THEN RETURN 0; END IF;  -- lista vazia nunca apaga a equipe
+  INSERT INTO fin_equipe (pessoa_id, nome)
+  SELECT x->>'id', x->>'nome' FROM jsonb_array_elements(p_lista) x WHERE coalesce(x->>'id','') <> '' AND coalesce(x->>'nome','') <> ''
+  ON CONFLICT (pessoa_id) DO UPDATE SET nome = EXCLUDED.nome, atualizado_em = now() WHERE fin_equipe.nome IS DISTINCT FROM EXCLUDED.nome;
+  DELETE FROM fin_equipe WHERE pessoa_id NOT IN (SELECT x->>'id' FROM jsonb_array_elements(p_lista) x);
+  GET DIAGNOSTICS n = ROW_COUNT;
+  RETURN n;
+END $$;
 
 -- ------------------------------------------------------------
 -- 1) TABELAS
@@ -549,12 +575,14 @@ BEGIN
   END IF;
   tot := tot || jsonb_build_object('FAVORECIDO_NOVO', k);
 
-  -- R4 FAVORECIDO É DA EQUIPE: pagamento pra nome igual ao de alguém cadastrado em pessoas
+  -- R4 FAVORECIDO É DA EQUIPE: pagamento pra nome igual ao de alguém da equipe
+  -- (fin_equipe = cópia só dos NOMES da tabela pessoas do dashboard, sincronizada pela função
+  --  financeiro.js; assim funciona igual com o financeiro num banco separado)
   k := 0;
   FOR r IN
     SELECT DISTINCT ON (e.id) e.*, p.nome AS pessoa_nome
     FROM fin_extrato e
-    JOIN pessoas p ON fin_norm(p.nome) IS NOT NULL AND length(fin_norm(p.nome)) >= 8
+    JOIN fin_equipe p ON fin_norm(p.nome) IS NOT NULL AND length(fin_norm(p.nome)) >= 8
       AND (e.contraparte_norm = fin_norm(p.nome)
            OR (length(e.contraparte_norm) >= 10 AND position(e.contraparte_norm IN fin_norm(p.nome)) = 1)
            OR position(fin_norm(p.nome) IN e.contraparte_norm) = 1)

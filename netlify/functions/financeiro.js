@@ -12,8 +12,15 @@
 'use strict';
 const P = require('../lib/fin-parser');
 
-const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
-const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
+// DOIS BANCOS:
+//  - MAIN (dashboard): só pra validar a sessão (usuarios_login) e ler nomes da equipe (pessoas).
+//  - FIN (exclusivo do financeiro): TODO dado financeiro. Projeto Supabase separado, com chave própria.
+//    Sem FIN_SUPA_URL/FIN_SUPA_SERVICE_KEY configurados, usa o MAIN (como antes).
+const MAIN_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
+const MAIN_KEY = process.env.SUPA_SERVICE_KEY;
+const SUPA_URL = process.env.FIN_SUPA_URL || MAIN_URL;
+const SUPA_SERVICE_KEY = process.env.FIN_SUPA_URL ? process.env.FIN_SUPA_SERVICE_KEY : MAIN_KEY;
+const BANCO_EXCLUSIVO = !!process.env.FIN_SUPA_URL;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
 const MAX_ARQUIVO = 4 * 1024 * 1024; // 4 MB de texto (limite do Netlify é 6 MB no corpo)
 
@@ -29,6 +36,7 @@ function corsHeaders(origin){
   };
 }
 function svc(extra){ return Object.assign({ 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer ' + SUPA_SERVICE_KEY, 'Content-Type': 'application/json' }, extra || {}); }
+function svcMain(extra){ return Object.assign({ 'apikey': MAIN_KEY, 'Authorization': 'Bearer ' + MAIN_KEY, 'Content-Type': 'application/json' }, extra || {}); }
 
 // Hierarquia: super > gestor > conferente > leitor
 const NIVEL = { leitor: 1, conferente: 2, gestor: 3, super: 4 };
@@ -54,8 +62,10 @@ const CATEGORIAS = [
 
 class ErroUsuario extends Error { constructor(msg, status){ super(msg); this.status = status || 400; } }
 
-async function rest(path, opts){
-  const r = await fetch(SUPA_URL + '/rest/v1/' + path, Object.assign({ headers: svc() }, opts || {}));
+async function rest(path, opts){ return restEm(SUPA_URL, svc, path, opts); }
+async function restMain(path, opts){ return restEm(MAIN_URL, svcMain, path, opts); }
+async function restEm(base, hdr, path, opts){
+  const r = await fetch(base + '/rest/v1/' + path, Object.assign({ headers: hdr() }, opts || {}));
   const txt = await r.text();
   let j = null; try { j = txt ? JSON.parse(txt) : null; } catch(e){}
   if(!r.ok){
@@ -65,10 +75,12 @@ async function rest(path, opts){
   return { data: j, headers: r.headers };
 }
 async function rpc(fn, args){ return (await rest('rpc/' + fn, { method: 'POST', body: JSON.stringify(args || {}) })).data; }
-async function lerTodos(path, max){
+async function lerTodos(path, max){ return lerTodosEm(rest, svc, path, max); }
+async function lerTodosMain(path, max){ return lerTodosEm(restMain, svcMain, path, max); }
+async function lerTodosEm(fn, hdr, path, max){
   let out = [];
   for(let off = 0; off < (max || 20000); off += 1000){
-    const { data } = await rest(path, { headers: svc({ 'Range-Unit': 'items', 'Range': off + '-' + (off + 999) }) });
+    const { data } = await fn(path, { headers: hdr({ 'Range-Unit': 'items', 'Range': off + '-' + (off + 999) }) });
     if(!Array.isArray(data) || !data.length) break;
     out = out.concat(data);
     if(data.length < 1000) break;
@@ -117,7 +129,7 @@ const ACOES = {
     const acessos = await lerTodos('fin_acesso?ativo=eq.true&select=pessoa_id');
     const ids = acessos.map(a => a.pessoa_id).concat([ctx.pessoaId]);
     const nomes = await nomesPessoas(ids);
-    return { papel: ctx.papel, pessoa_id: ctx.pessoaId, nomes, categorias: CATEGORIAS };
+    return { papel: ctx.papel, pessoa_id: ctx.pessoaId, nomes, categorias: await categoriasDisponiveis() };
   },
 
   async resumo(b){
@@ -164,7 +176,7 @@ const ACOES = {
     const obs = txt(b.observacao, 1000);
     if(status !== 'ok' && obs.length < 10) throw new ErroUsuario('Explique o problema (mínimo 10 letras)');
     const categoria = b.categoria ? txt(b.categoria, 120) : null;
-    if(categoria && CATEGORIAS.indexOf(categoria) < 0) throw new ErroUsuario('Categoria inválida');
+    if(categoria && (await categoriasDisponiveis()).indexOf(categoria) < 0) throw new ErroUsuario('Categoria inválida');
     const idem = txt(b.idem, 80) || null;
     const r = await rpc('fin_conferir', { p_ator: ctx.pessoaId, p_extrato: id, p_status: status, p_categoria: categoria,
       p_obs: obs || null, p_ref: txt(b.referencia, 200) || null, p_idem: idem });
@@ -201,7 +213,7 @@ const ACOES = {
   },
 
   async importar_preview(b, ctx){ return importar(b, ctx, true); },
-  async importar_extrato(b, ctx){ return importar(b, ctx, false); },
+  async importar_extrato(b, ctx){ await sincronizarEquipe(); return importar(b, ctx, false); },
 
   async importar_lancamentos(b, ctx){
     const conteudo = validarArquivo(b);
@@ -260,7 +272,7 @@ const ACOES = {
     return rpc('fin_desfazer_conciliacao', { p_ator: ctx.pessoaId, p_extrato: e, p_motivo: motivo });
   },
 
-  async categorias(){ return { categorias: CATEGORIAS }; },
+  async categorias(){ return { categorias: await categoriasDisponiveis() }; },
 
   async salvar_conta(b, ctx){
     const nome = txt(b.nome, 80); if(nome.length < 3) throw new ErroUsuario('Nome da conta obrigatório');
@@ -303,7 +315,11 @@ const ACOES = {
     return { registros: data || [], total: Number(String(headers.get('content-range') || '').split('/')[1]) || 0, pagina };
   },
   async verificar_integridade(){ return { integridade: await rpc('fin_verificar_cadeia', {}) }; },
-  async rodar_regras(b, ctx){ return { novos: await rpc('fin_rodar_regras', { p_ator: ctx.pessoaId }) }; },
+  async rodar_regras(b, ctx){
+    await sincronizarEquipe();
+    try { return { novos: await rpc('fin_rodar_regras_todas', { p_ator: ctx.pessoaId }) }; }
+    catch(e){ return { novos: await rpc('fin_rodar_regras', { p_ator: ctx.pessoaId }) }; }   // banco ainda sem a v2
+  },
 
   async exportar_csv(b){
     const filtro = filtroExtrato(b);
@@ -317,22 +333,50 @@ const ACOES = {
 
   async acesso_listar(){
     const acessos = await lerTodos('fin_acesso?select=*&order=criado_em.asc');
-    const pessoas = await lerTodos('pessoas?select=id,nome,cargo,email&order=nome.asc', 3000);
+    const pessoas = await lerTodosMain('pessoas?select=id,nome,cargo,email&order=nome.asc', 3000);
     return { acessos, pessoas: pessoas.map(p => ({ id: p.id, nome: p.nome, cargo: p.cargo })) };
   },
   async acesso_salvar(b, ctx){
     const pid = txt(b.pessoa_id, 80); if(!/^[A-Za-z0-9_\-]{2,80}$/.test(pid)) throw new ErroUsuario('Pessoa inválida');
     if(['gestor', 'conferente', 'leitor'].indexOf(b.papel) < 0) throw new ErroUsuario('Papel inválido');
-    const existe = (await rest('pessoas?id=eq.' + encodeURIComponent(pid) + '&select=id&limit=1')).data || [];
+    const existe = (await restMain('pessoas?id=eq.' + encodeURIComponent(pid) + '&select=id&limit=1')).data || [];
     if(!existe.length) throw new ErroUsuario('Pessoa não encontrada');
     return rpc('fin_salvar_acesso', { p_ator: ctx.pessoaId, p_pessoa: pid, p_papel: b.papel, p_ativo: b.ativo !== false });
   }
 };
 
+// Copia só os NOMES da equipe (pessoas do dashboard) pro banco do financeiro, pra regra
+// "pagamento pra alguém da equipe". Falha aqui não impede a importação (a regra só fica desatualizada).
+async function sincronizarEquipe(){
+  try {
+    const p = await lerTodosMain('pessoas?select=id,nome', 5000);
+    if(p.length) await rpc('fin_sincronizar_equipe', { p_lista: p.filter(x => x.id && x.nome).map(x => ({ id: String(x.id), nome: String(x.nome) })) });
+  } catch(e){ console.error('[financeiro] sincronizarEquipe', e.message); }
+}
+
+// Categorias da conferência = plano de contas (fin_classificacoes, v2). Sem a v2 rodada, cai na lista fixa.
+async function categoriasDisponiveis(){
+  try {
+    const cl = await lerTodos('fin_classificacoes?ativo=eq.true&select=nome,grupo&order=ordem.asc,nome.asc');
+    if(cl.length) return [...new Set(cl.map(c => c.nome))].concat(['Não identificado']);
+  } catch(e){}
+  return CATEGORIAS;
+}
+
+// ---------- v2: réplica do Kamino (Pagar, Receber, Contas, Relatórios, Cadastros)
+// (se o arquivo da v2 não estiver no deploy, a v1 continua funcionando sozinha)
+let V2 = null;
+try { V2 = require('../lib/fin-acoes-v2')({ rest, rpc, lerTodos, ErroUsuario, svc, txt, dataOk, uuidOk, intOk, textoBusca, P, SUPA_URL }); }
+catch(e){ console.error('[financeiro] v2 indisponível:', e.message); }
+if(V2){
+  Object.keys(V2.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); ACOES[k] = V2.acoes[k]; PERM[k] = V2.perm[k]; });
+  Object.keys(V2.acoes).forEach(k => { if(!PERM[k]) throw new Error('Ação sem permissão definida: ' + k); });
+}
+
 async function nomesPessoas(ids){
   const uniq = [...new Set(ids.filter(x => x && /^[A-Za-z0-9_\-]+$/.test(x)))];
   if(!uniq.length) return {};
-  const lista = (await rest('pessoas?id=in.(' + uniq.map(encodeURIComponent).join(',') + ')&select=id,nome')).data || [];
+  const lista = (await restMain('pessoas?id=in.(' + uniq.map(encodeURIComponent).join(',') + ')&select=id,nome')).data || [];
   const m = {}; lista.forEach(p => { m[p.id] = p.nome; });
   return m;
 }
@@ -396,7 +440,7 @@ async function autenticar(event){
   const token = event.headers['x-gami-token'] || event.headers['X-Gami-Token'] || '';
   if(!pessoaId || !token) throw new ErroUsuario('Sessão não informada', 401);
   if(!/^[A-Za-z0-9_\-]{2,80}$/.test(pessoaId)) throw new ErroUsuario('Sessão inválida', 401);
-  const arr = (await rest('usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=pessoa_id,email,token_atual,token_expira_em,ativo&limit=1')).data;
+  const arr = (await restMain('usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=pessoa_id,email,token_atual,token_expira_em,ativo&limit=1')).data;
   if(!Array.isArray(arr) || !arr.length) throw new ErroUsuario('Sessão não encontrada', 401);
   const u = arr[0];
   if(u.ativo === false) throw new ErroUsuario('Usuário desativado', 403);
@@ -417,7 +461,8 @@ exports.handler = async function(event){
   const resp = (status, obj) => ({ statusCode: status, headers: cors, body: JSON.stringify(obj) });
   if(event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors, body: '' };
   if(event.httpMethod !== 'POST') return resp(405, { ok: false, erro: 'Use POST' });
-  if(!SUPA_SERVICE_KEY) return resp(500, { ok: false, erro: 'Servidor sem SUPA_SERVICE_KEY' });
+  if(!MAIN_KEY) return resp(500, { ok: false, erro: 'Servidor sem SUPA_SERVICE_KEY' });
+  if(!SUPA_SERVICE_KEY) return resp(500, { ok: false, erro: 'Banco do financeiro configurado sem FIN_SUPA_SERVICE_KEY' });
 
   let b;
   try { b = JSON.parse(event.body || '{}'); } catch(e){ return resp(400, { ok: false, erro: 'JSON inválido' }); }

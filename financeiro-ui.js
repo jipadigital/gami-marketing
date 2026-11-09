@@ -7,7 +7,7 @@
 (function(){
 'use strict';
 
-var F = window._FIN = window._FIN || { papel: null, nomes: {}, categorias: [], contas: [], aba: 'geral', filtros: {}, pagina: 0 };
+var F = window._FIN = window._FIN || { papel: null, nomes: {}, categorias: [], contas: [], aba: 'painel', filtros: {}, pagina: 0 };
 var NIVEL = { leitor: 1, conferente: 2, gestor: 3, super: 4 };
 function pode(p){ return F.papel && NIVEL[F.papel] >= NIVEL[p]; }
 
@@ -70,6 +70,9 @@ function css(){
     '.fin-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid var(--border);padding-bottom:8px}',
     '.fin-tab{padding:7px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text2);background:transparent;border:1px solid transparent}',
     '.fin-tab.on{background:var(--surface2);border-color:var(--border);color:var(--text)}',
+    '.fin-subtabs{display:flex;gap:2px;flex-wrap:wrap;margin:-6px 0 14px}',
+    '.fin-subtab{padding:6px 11px;font-size:12px;cursor:pointer;color:var(--text3);border-bottom:2px solid transparent}',
+    '.fin-subtab.on{color:var(--text);border-bottom-color:#0E7AB8;font-weight:700}',
     '.fin-card{background:var(--surface2);border:1px solid var(--border);border-radius:11px;padding:13px}',
     '.fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}',
     '.fin-kl{font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:700;letter-spacing:.4px}',
@@ -135,20 +138,46 @@ window.initFinanceiro = async function(){
   render();
 };
 
+/* Menu igual ao do Kamino (abas + sub-abas). A v2 (financeiro-ui-v2.js) registra as telas novas
+   em window._FIN_TELAS; se a v2 não carregar, as telas da v1 continuam funcionando. */
+var TELAS_V1 = { geral: telaGeral, extrato: telaExtrato, alertas: telaAlertas, importar: telaImportar, lancamentos: telaLancamentos, config: telaConfig, auditoria: telaAuditoria };
+function menu(){
+  var T = window._FIN_TELAS || {};
+  var t = function(id){ return T[id] || TELAS_V1[id]; };
+  var M = [
+    { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel'], ['geral', 'Conferência do mês']] },
+    { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['entradas', 'Caixa de entrada']] },
+    { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças']] },
+    { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
+    { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
+    { id: 'alertas', t: '🚨 Alertas', p: 'leitor', subs: [['alertas', 'Alertas']] },
+    { id: 'cadastros', t: '🗂️ Cadastros', p: 'leitor', subs: [['pessoas', 'Pessoas e empresas'], ['plano', 'Plano de contas'], ['unidades', 'Unidades e centros de custo'], ['regras', 'Regras de extrato'], ['config', 'Contas, regras antifraude e acessos', 'gestor']] },
+    { id: 'auditoria', t: '🔏 Auditoria', p: 'gestor', subs: [['auditoria', 'Registro permanente']] }
+  ];
+  return M.map(function(a){
+    a.subs = a.subs.filter(function(s){ return t(s[0]) && pode(s[2] || a.p); }).map(function(s){ return { id: s[0], t: s[1], fn: t(s[0]) }; });
+    return a;
+  }).filter(function(a){ return pode(a.p) && a.subs.length; });
+}
 function render(){
   var root = $('fin-root');
-  var abas = [['geral', '📊 Visão geral', 'leitor'], ['extrato', '🏦 Extrato', 'leitor'], ['alertas', '🚨 Alertas', 'leitor'],
-              ['importar', '📥 Importar', 'conferente'], ['lancamentos', '🧾 Lançamentos', 'leitor'],
-              ['config', '⚙️ Configurações', 'gestor'], ['auditoria', '🔏 Auditoria', 'gestor']];
-  if(!abas.some(function(a){ return a[0] === F.aba && pode(a[2]); })) F.aba = 'geral';
-  root.innerHTML = '<div class="fin-tabs">' + abas.filter(function(a){ return pode(a[2]); }).map(function(a){
-      return '<div class="fin-tab' + (F.aba === a[0] ? ' on' : '') + '" data-aba="' + a[0] + '">' + a[1] + '</div>'; }).join('') +
+  var M = menu();
+  // compatibilidade: F.aba antigo (ex.: 'alertas', 'extrato') vira a sub-aba
+  var achar = function(sub){ for(var i = 0; i < M.length; i++) for(var k = 0; k < M[i].subs.length; k++) if(M[i].subs[k].id === sub) return [M[i], M[i].subs[k]]; return null; };
+  var atual = achar(F.sub || F.aba) || achar('painel') || [M[0], M[0].subs[0]];
+  F.aba = atual[0].id; F.sub = atual[1].id;
+  root.innerHTML = '<div class="fin-tabs">' + M.map(function(a){ return '<div class="fin-tab' + (a.id === F.aba ? ' on' : '') + '" data-aba="' + a.id + '">' + a.t + '</div>'; }).join('') +
     '<div style="flex:1"></div><span class="fin-sub" style="align-self:center">Você: <b>' + esc(nome(((typeof getUsuarioLogado === 'function') && getUsuarioLogado() || {}).id)) + '</b> · ' + esc({ super: 'Super admin', gestor: 'Gestor', conferente: 'Conferente', leitor: 'Leitura' }[F.papel] || F.papel) + '</span></div>' +
+    (atual[0].subs.length > 1 ? '<div class="fin-subtabs">' + atual[0].subs.map(function(s){ return '<div class="fin-subtab' + (s.id === F.sub ? ' on' : '') + '" data-sub="' + s.id + '">' + esc(s.t) + '</div>'; }).join('') + '</div>' : '') +
     '<div id="fin-corpo"></div>';
-  root.querySelectorAll('.fin-tab').forEach(function(t){ t.onclick = function(){ F.aba = t.getAttribute('data-aba'); F.pagina = 0; render(); }; });
-  var corpo = $('fin-corpo');
-  ({ geral: telaGeral, extrato: telaExtrato, alertas: telaAlertas, importar: telaImportar, lancamentos: telaLancamentos, config: telaConfig, auditoria: telaAuditoria }[F.aba])(corpo);
+  root.querySelectorAll('.fin-tab').forEach(function(t){ t.onclick = function(){ var a = M.filter(function(x){ return x.id === t.getAttribute('data-aba'); })[0]; F.sub = a.subs[0].id; F.pagina = 0; render(); }; });
+  root.querySelectorAll('.fin-subtab').forEach(function(t){ t.onclick = function(){ F.sub = t.getAttribute('data-sub'); F.pagina = 0; render(); }; });
+  try { atual[1].fn($('fin-corpo')); } catch(e){ $('fin-corpo').innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; console.error(e); }
 }
+// a v2 usa os mesmos utilitários (um lugar só pra regra de tela, escape e chamada ao servidor)
+window._FINUI = { api: api, esc: esc, moeda: moeda, dataBR: dataBR, dataHoraBR: dataHoraBR, nome: nome, hoje: hoje, inicioMes: inicioMes, uid: uid,
+  pode: pode, toast: toast, modal: modal, baixar: baixar, abrirLinha: abrirLinha, chipStatus: chipStatus, chipSev: chipSev, render: render, $: $,
+  irPara: function(sub){ F.sub = sub; render(); } };
 function carregando(el){ el.innerHTML = '<div class="fin-vazio">Carregando...</div>'; }
 function erroEm(el, e){ el.innerHTML = '<div class="fin-erro">' + esc(e.message || e) + '</div>'; }
 function optsContas(sel, todas){
@@ -180,7 +209,7 @@ async function telaGeral(el){
       kpi('Alertas abertos', String(nAl), (al.critico || al.alto) ? '#C0392B' : '', (al.critico ? al.critico + ' crítico · ' : '') + (al.alto || 0) + ' alto · ' + (al.medio || 0) + ' médio · ' + (al.baixo || 0) + ' baixo') +
       (integ ? kpi('Registro permanente', integ.ok ? '✅ Íntegro' : '⛔ QUEBRADO', integ.ok ? '#1D9E75' : '#C0392B', integ.ok ? (integ.total + ' registros encadeados') : esc(integ.motivo || '') + (integ.quebra_seq ? ' (registro ' + integ.quebra_seq + ')' : '')) : '') +
       '</div>';
-    if(al.critico) h += '<div class="fin-erro" style="cursor:pointer" onclick="window._FIN.aba=\'alertas\';window._FIN.filtroAlerta={severidade:\'critico\'};document.querySelector(\'.fin-tab[data-aba=alertas]\').click()">⛔ Há ' + al.critico + ' alerta(s) CRÍTICO(s). Clique para ver.</div>';
+    if(al.critico) h += '<div class="fin-erro" style="cursor:pointer" onclick="window._FIN.filtroAlerta={severidade:\'critico\'};window._FINUI.irPara(\'alertas\')">⛔ Há ' + al.critico + ' alerta(s) CRÍTICO(s). Clique para ver.</div>';
     // pendências de conferência
     var pend = ['pendente', 'aguardando_2a', 'divergente', 'suspeito'].filter(function(k){ return st[k]; });
     if(pend.length){
@@ -207,7 +236,7 @@ async function telaGeral(el){
         cats.map(function(c){ return '<tr><td>' + esc(c.categoria) + '</td><td class="fin-ent" style="text-align:right">' + (c.entradas ? moeda(c.entradas) : '-') + '</td><td class="fin-sai" style="text-align:right">' + (c.saidas ? moeda(c.saidas) : '-') + '</td></tr>'; }).join('') + '</tbody></table></div>';
     }
     out.innerHTML = h;
-    out.querySelectorAll('[data-st]').forEach(function(b){ b.onclick = function(){ F.filtros = { ini: f.ini, fim: f.fim, status: b.getAttribute('data-st') }; F.aba = 'extrato'; render(); }; });
+    out.querySelectorAll('[data-st]').forEach(function(b){ b.onclick = function(){ F.filtros = { ini: f.ini, fim: f.fim, status: b.getAttribute('data-st') }; F.sub = 'extrato'; render(); }; });
   } catch(e){ erroEm(out, e); }
 }
 function kpi(l, v, cor, sub, extra){ return '<div class="fin-card"><div class="fin-kl">' + l + '</div><div class="fin-kv"' + (cor ? ' style="color:' + cor + '"' : '') + '>' + v + '</div>' + (sub ? '<div class="fin-sub" style="margin-top:2px">' + sub + '</div>' : '') + (extra || '') + '</div>'; }
@@ -487,7 +516,7 @@ function telaImportar(el){
       out.innerHTML = h;
       $('fk-ok').onclick = async function(){
         var b2 = this; b2.disabled = true; b2.textContent = 'Importando...';
-        try { var k = await api('importar_lancamentos', Object.assign({ confirmar: true }, dados)); out.innerHTML = '<div class="fin-card" style="margin-top:10px;border-color:#1D9E75">✅ ' + k.linhas + ' lançamento(s), ' + k.novas + ' novo(s), ' + k.conciliadas + ' vinculado(s) automaticamente ao extrato.</div>'; historico(); }
+        try { var k = await api('importar_lancamentos', Object.assign({ confirmar: true }, dados)); out.innerHTML = '<div class="fin-card" style="margin-top:10px;border-color:#1D9E75">✅ ' + k.linhas + ' lançamento(s), ' + k.novas + ' novo(s), ' + k.conciliadas + ' vinculado(s) automaticamente ao extrato.' + (k.pessoas_novas ? ' ' + k.pessoas_novas + ' pessoa(s) cadastrada(s) automaticamente.' : '') + (k.sem_classificacao ? ' <b>' + k.sem_classificacao + ' sem classificação reconhecida</b>: confira em Pagar › Lista.' : '') + '</div>'; historico(); }
         catch(e){ out.insertAdjacentHTML('beforeend', '<div class="fin-erro">' + esc(e.message) + '</div>'); b2.disabled = false; b2.textContent = 'Tentar de novo'; }
       };
     } catch(e){ out.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }

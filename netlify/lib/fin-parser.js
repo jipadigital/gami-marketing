@@ -294,12 +294,14 @@ const COL_LANC = {
   pessoa_doc: ['cpf cnpj', 'cnpj cpf', 'documento', 'cpf', 'cnpj'],
   descricao: ['descricao', 'historico', 'observacao', 'detalhes'],
   categoria: ['classificacao', 'categoria', 'conta gerencial', 'plano de contas', 'conta contabil'],
-  unidade: ['unidade de negocio', 'unidade', 'centro de custo'],
+  unidade: ['unidade de negocio', 'unidade'],
   conta_nome: ['conta', 'conta bancaria', 'conta pagadora', 'conta de pagamento', 'banco'],
   valor: ['valor', 'valor bruto', 'valor total', 'valor liquido', 'valor original', 'valor r'],
   vencimento: ['vencimento', 'data de vencimento', 'data vencimento', 'dt vencimento'],
   data_pagamento: ['data de pagamento', 'data pagamento', 'pagamento', 'pago em', 'data do pagamento', 'data de recebimento', 'data recebimento', 'data baixa', 'data de baixa'],
-  situacao: ['situacao', 'status', 'estado']
+  situacao: ['situacao', 'status', 'estado'],
+  competencia: ['competencia', 'data de competencia', 'mes de competencia'],
+  centro_custo: ['centro de custo', 'centro custo']
 };
 
 function parseLancamentos(texto, tipoPadrao){
@@ -333,7 +335,7 @@ function parseLancamentos(texto, tipoPadrao){
     const l = {
       tipo, valor: Math.abs(valor), pessoa: get('pessoa') || null, pessoa_doc: (get('pessoa_doc') || '').replace(/[^\d*]/g, '') || null,
       descricao: get('descricao') || null, categoria: get('categoria') || null, unidade: get('unidade') || null,
-      conta_nome: get('conta_nome') || null, vencimento: venc, data_pagamento: pag, situacao: get('situacao') || null, raw
+      conta_nome: get('conta_nome') || null, centro_custo: get('centro_custo') || null, competencia: get('competencia') ? parseData(get('competencia')) : null, vencimento: venc, data_pagamento: pag, situacao: get('situacao') || null, raw
     };
     const idExt = get('id');
     l.chave = idExt ? ('ID:' + idExt) : ('H:' + sha256([tipo, l.valor.toFixed(2), norm(l.pessoa), venc, norm(l.descricao), norm(l.categoria)].join('|')));
