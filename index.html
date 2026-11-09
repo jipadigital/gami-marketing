@@ -8157,7 +8157,7 @@ function _campoMontarShell(){
     +     [['prospect','⚪ Prospect'],['ativa','🟢 Ativa'],['perdida','🔴 Perdida'],['sem_sucesso','🟡 Sem sucesso'],['fantasma','👻 Nunca pediu'],['suspensa','🟤 Suspensa']].map(function(s){ return '<button type="button" data-st="'+s[0]+'" onclick="_campoStatusToggle(\''+s[0]+'\')" class="campo-stchip" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:16px;background:var(--card);color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap">'+s[1]+'</button>'; }).join('')
     +   '</div>'
     +   '<select id="campo-f-categoria" onchange="_campoAplicar()" title="Filtra os prospects por categoria" style="'+selCss+'"><option value="">Todas as categorias</option></select>'
-    +   '<input id="campo-f-busca" oninput="_campoAplicar()" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
+    +   '<input id="campo-f-busca" oninput="_campoBusca(this.value)" placeholder="🔎 Buscar loja / bairro" style="'+selCss+';min-width:180px;flex:1">'
     +   '<span style="font-size:11px;color:var(--text3)">Visitas de</span>'
     +   '<input id="campo-f-de" type="date" onchange="_campoAplicar()" style="'+selCss+'">'
     +   '<span style="font-size:11px;color:var(--text3)">até</span>'
@@ -8181,6 +8181,7 @@ function _campoMontarShell(){
     + '<div id="campo-rota" style="display:none;margin-bottom:12px"></div>'
     + '<div id="campo-numeros" style="display:none;margin-bottom:12px"></div>'
     + '<div id="campo-import" style="display:none;margin-bottom:12px"></div>'
+    + '<div style="margin:2px 2px 10px"><input id="campo-f-busca-topo" oninput="_campoBusca(this.value)" placeholder="🔎 Buscar empresa pelo nome..." style="width:100%;box-sizing:border-box;padding:11px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font-size:14px;font-family:inherit;outline:none"></div>'
     + '<div id="campo-lista"></div>';
   _CAMPO.montado = true;
   _CAMPO.mapaAberto = true;
@@ -8217,14 +8218,14 @@ function _campoToggleMinhas(){
   var b = document.getElementById('campo-btn-minhas'); if(b) b.classList.toggle('active', !!_CAMPO.soMinhas);
   if(_CAMPO.soMinhas){
     // "as minhas" = TODAS as suas: limpa os filtros que escondem (status/data/categoria/cidade)
-    ['campo-f-cidade','campo-f-categoria','campo-f-busca','campo-f-de','campo-f-ate'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+    ['campo-f-cidade','campo-f-categoria','campo-f-busca','campo-f-busca-topo','campo-f-de','campo-f-ate'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
     _CAMPO.statusSel=[]; _CAMPO.cidadeSel=''; try{ _campoStatusChipsUI(); }catch(e){}
   }
   _campoRepintar();
 }
 
 function _campoLimparFiltro(){
-  ['campo-f-cidade','campo-f-categoria','campo-f-busca','campo-f-de','campo-f-ate'].forEach(function(id){
+  ['campo-f-cidade','campo-f-categoria','campo-f-busca','campo-f-busca-topo','campo-f-de','campo-f-ate'].forEach(function(id){
     var el=document.getElementById(id); if(el) el.value='';
   });
   _CAMPO.statusSel = []; _campoStatusChipsUI(); // zera os chips de status
@@ -8324,6 +8325,15 @@ function _campoLojasFiltradas(){
   });
 }
 
+// Busca com DUAS caixas (a do painel de filtros + a lupa fixa acima da lista):
+// escreve o mesmo valor nas duas e reaplica. Assim dá pra buscar sem rolar lá pra cima.
+function _campoBusca(v){
+  try {
+    var a=document.getElementById('campo-f-busca'); if(a && a.value!==v) a.value=v;
+    var b=document.getElementById('campo-f-busca-topo'); if(b && b.value!==v) b.value=v;
+  } catch(e){}
+  _campoAplicar();
+}
 function _campoAplicar(){
   if(!_CAMPO.montado) return;
   _campoGarantirMachine();
