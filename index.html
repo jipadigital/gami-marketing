@@ -1,3 +1,4 @@
+<!-- v33.59 - PII fora da fonte (e-mails de gate viram HASH): os e-mails de allowlist que ficavam em texto no index (convidados Dealwise + prospeccao Cristina/Micaelle/Vanessa) sairam do codigo. Agora o gate casa por sha256 do e-mail (funcao _sha256Hex sincrona + _emailHash cacheado), mesma pessoa = mesmo hash = mesmo acesso, sem gap (vale ja pras sessoes em cache). Persona de teste e placeholders tambem genericizados. Resta so o e-mail do DONO (jipadigital), que e a trava de super_admin (nao da pra remover sem risco de lockout; e o proprio e-mail da conta). Conta de auditoria somente-leitura reforcada no supabase-write. SW v23-343. - 09/11/2026 -->
 <!-- v33.58 - LOGIN DE AUDITORIA (convidado OCULTO p/ pentest): novo nivel 'auditor' que ve TODAS as abas pra testar o painel, mas e READ-ONLY e NAO ve valores em R$ (abas de dinheiro nem entram + gate proprio por pessoa_id no servidor). NAO entra em `pessoas`, entao nao aparece em canto nenhum (Pessoas/ranking/ponto); nome/e-mail neutros (sem nome real). O login.js PROVISIONA sozinho no 1o acesso (CONVIDADOS), sem SQL: usuario 'auditor', PIN inicial gami2026 (troca no 1o login). Gate por e-mail sentinela auditor@seg.gami, prioridade maxima. SW v23-342. - 09/11/2026 -->
 <!-- v33.57 - SUPORTE ve RELATORIOS: cargo "Suporte Home"/"Suporte Operacional" (e atendimento/sucesso) agora resolve pro novo nivel 'suporte' = o que o colaborador ja via + a aba Relatorios, SEM valores em R$. A regra roda ANTES do nivel_permissao canonico e so promove quem esta em branco ou 'colaborador' (quem foi posto em nivel maior mantem). Antes os "Suporte Operacional" caiam em colaborador e ficavam sem Relatorios. Casa por CARGO, sem e-mail no codigo. SW v23-341. - 09/11/2026 -->
 <!-- v33.56b - SEGURANCA (PII fora da fonte): removidos do index.html os 3 e-mails pessoais da lista de ponto home office (jheny/jessica/andreia) - o match agora e so por NOME (padrao que Bruna/Estefania ja usavam); e esvaziado o INBOX_DEMO do Instagram (conversas fake @motoboy_al etc. que o Lucas conseguia ler na fonte). Inbox comeca vazio ate conectar o IG real. - 09/11/2026 -->
@@ -190,9 +191,9 @@
 <!-- v31.18 - Relatorios: telefone "—" em Clientes novos/Empresas em alta (RPCs sem telefone) E cobertura ruim em cidades grandes (Campo Grande=3750 empresas, mas o join so pegava as 1000 primeiras - cap do PostgREST). Criado helper _rlTelefonesEmpresas(slug) que PAGINA de 1000 em 1000 (cache por slug) e aplicado em clientes_novos, empresas_alta, top_clientes, taxa_cancelamento e pareto_empresas - 03/07/2026 -->
 <!-- v31.17 - Estoque: Julio Cesar (user 'julio') liberado no estoque de Campo Grande (completa o grupo da CAPA DE BAG JUMA). Chave 'julio' casa via normalizador que remove acento de 'Julio' - 03/07/2026 -->
 <!-- v31.16 - Estoque: liberado acesso ao estoque de Campo Grande (item CAPA DE BAG JUMA) para Jheniffer, Isli e Alice (EST_SUPORTE_PERMISSOES); Bruna ganhou Campo Grande alem das que ja tinha. Julio ainda nao esta cadastrado no sistema - 03/07/2026 -->
-<!-- v31.15 - Permissoes: Cristina Oliveira (cristinaoliveira.gami) adicionada ao PROSPECCAO_RESTRITA com ['*'] = TODAS as cidades. Cargo Prospeccao, nivel prospeccao (relatorios sem R$), igual Flavia/Micaelle - 03/07/2026 -->
+<!-- v31.15 - Permissoes: Cristina Oliveira adicionada ao PROSPECCAO_RESTRITA com ['*'] = TODAS as cidades. Cargo Prospeccao, nivel prospeccao (relatorios sem R$), igual Flavia/Micaelle - 03/07/2026 -->
 <!-- v31.14 - Relatorios: adicionada coluna Telefone (join machine_empresas por nome) nos relatorios de empresa que nao tinham: Top clientes, Taxa de cancelamento e Pareto empresas. Agora TODOS os relatorios de cliente/empresa mostram telefone (com link WhatsApp). Motoboys nao tem fonte de telefone no banco. Escapado nome (tfEsc) onde faltava - 03/07/2026 -->
-<!-- v31.13 - Permissoes: Micaelle (micaelle.gami) liberada para TODAS as cidades (PROSPECCAO_RESTRITA de [joao-pessoa,recife,natal] para ['*']). Mantem nivel prospeccao (relatorios sem R$), igual Flavia - 03/07/2026 -->
+<!-- v31.13 - Permissoes: Micaelle liberada para TODAS as cidades (PROSPECCAO_RESTRITA de [joao-pessoa,recife,natal] para ['*']). Mantem nivel prospeccao (relatorios sem R$), igual Flavia - 03/07/2026 -->
 <!-- v31.12 - Estoque: modal "Editar venda" (Historico) agora permite trocar a CIDADE de onde saiu a camisa (colaboradora errava a cidade). Ao salvar, o saldo se corrige sozinho (cidade errada recupera a unidade, a certa perde) pois estoque_saldo soma por cidade. Respeita cidades_permitidas do usuario - 03/07/2026 -->
 <!-- v31.11 - Inbox Instagram escondido de TODOS: 'inbox' removido das abas do super_admin em MATRIZ_PERMISSOES (era o unico nivel com 'inbox', e aplicarPermissoesVisuais sobrepunha o display:none inline, entao so o Cleyton via). Integracao Meta/IG nao configurada ainda - 02/07/2026 -->
 <!-- v31.10 - Ponto: adicionada Internet 5 do escritorio de Ji-Parana (177.222.212.140 + faixa /24 177.222.212.) na lista de IPs autorizados. As meninas nao conseguiam bater ponto pq o escritorio trocou de internet e o IP novo nao estava autorizado (e GPS bloqueado no navegador) - 02/07/2026 -->
@@ -1950,6 +1951,63 @@ window.renderReactionsHTML = renderReactionsHTML;
 /* SISTEMA DE PERMISSÕES POR CARGO                               */
 /* ============================================================== */
 
+// 🔒 SHA-256 síncrono (ASCII). Serve só pra casar e-mails de allowlist por HASH,
+// em vez de deixar o e-mail em texto na fonte: o dado sensível sai do código e a
+// comparação por igualdade fica idêntica (mesma pessoa = mesmo hash = mesmo
+// acesso). Retorna '' se vier char não-ASCII (aí cai na detecção normal).
+function _sha256Hex(ascii){
+  function rotr(n,x){ return (x>>>n)|(x<<(32-n)); }
+  var mathPow=Math.pow, maxWord=mathPow(2,32), result='';
+  var words=[], asciiBitLength=ascii.length*8;
+  var hash=_sha256Hex.h=_sha256Hex.h||[], k=_sha256Hex.k=_sha256Hex.k||[], primeCounter=k.length;
+  var isComposite={};
+  for(var candidate=2; primeCounter<64; candidate++){
+    if(!isComposite[candidate]){
+      for(var i=0;i<313;i+=candidate){ isComposite[i]=candidate; }
+      hash[primeCounter]=(mathPow(candidate,0.5)*maxWord)|0;
+      k[primeCounter++]=(mathPow(candidate,1/3)*maxWord)|0;
+    }
+  }
+  ascii+='\x80';
+  while(ascii.length%64-56) ascii+='\x00';
+  for(i=0;i<ascii.length;i++){
+    var j=ascii.charCodeAt(i);
+    if(j>>8) return '';
+    words[i>>2]|=j<<((3-i)%4)*8;
+  }
+  words[words.length]=((asciiBitLength/maxWord)|0);
+  words[words.length]=(asciiBitLength);
+  for(var jj=0;jj<words.length;){
+    var w=words.slice(jj,jj+=16), oldHash=hash;
+    hash=hash.slice(0,8);
+    for(i=0;i<64;i++){
+      var w15=w[i-15], w2=w[i-2];
+      var a=hash[0], e=hash[4];
+      var temp1=hash[7]+(rotr(6,e)^rotr(11,e)^rotr(25,e))+((e&hash[5])^((~e)&hash[6]))+k[i]+
+        (w[i]=i<16?w[i]:(w[i-16]+(rotr(7,w15)^rotr(18,w15)^(w15>>>3))+w[i-7]+(rotr(17,w2)^rotr(19,w2)^(w2>>>10)))|0);
+      var temp2=(rotr(2,a)^rotr(13,a)^rotr(22,a))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+      hash=[(temp1+temp2)|0].concat(hash);
+      hash[4]=(hash[4]+temp1)|0;
+    }
+    for(i=0;i<8;i++){ hash[i]=(hash[i]+oldHash[i])|0; }
+  }
+  for(i=0;i<8;i++){
+    for(j=3;j+1;j--){
+      var b=(hash[i]>>(j*8))&255;
+      result+=((b<16)?0:'')+b.toString(16);
+    }
+  }
+  return result;
+}
+// hash do e-mail do usuário logado (cacheado no objeto pra não recalcular)
+function _emailHash(u){
+  try{
+    if(!u || !u.email) return '';
+    if(u.__eh) return u.__eh;
+    return (u.__eh = _sha256Hex(String(u.email).toLowerCase()));
+  }catch(e){ return ''; }
+}
+
 /* Detecta nível de permissão baseado no cargo da pessoa */
 function detectarNivelPermissao(usuario){
   if(!usuario) return 'visitante';
@@ -1971,17 +2029,20 @@ function detectarNivelPermissao(usuario){
   // `nivel_permissao` do cadastro esteja desatualizada. Sem isso o acesso
   // "piscava": aparecia no load (via lista) e sumia quando o resync trazia o
   // nivel_permissao antigo do banco — que vencia por estar checado antes.
-  // 🆕 CONVIDADOS EXTERNOS — acesso completo (igual diretoria) sem aparecer em Pessoas
-  var EMAILS_CONVIDADOS = [
-    'iasmin.endringer@dealwise.com.br',  // Iasmin Endringer - Dealwise
-    'clara.leite@dealwise.com.br'        // Clara Leite - Dealwise
+  // 🆕 CONVIDADOS EXTERNOS (consultoria) — acesso completo (igual diretoria) sem
+  // aparecer em Pessoas. Casado por HASH do e-mail (o e-mail não fica em texto na
+  // fonte; só o sha256). Iasmin Endringer / Clara Leite (Dealwise).
+  var _CONVIDADOS_H = [
+    'eb8eeec3d83c65666a44e748500d3b103af5b4ab9cbf8d69faae20e7e6cd81ac',
+    'c925893e1184b8b332d1fbb4bce946ab868b88e3dc2a925a275b8ec4a0fa4e8e'
   ];
-  if(usuario.email && EMAILS_CONVIDADOS.indexOf(usuario.email.toLowerCase()) !== -1){
+  if(_CONVIDADOS_H.indexOf(_emailHash(usuario)) !== -1){
     return 'diretoria';
   }
 
-  // 🆕 PROSPECÇÃO RESTRITA — vê só cidades específicas, sem valores monetários
-  if(usuario.email && PROSPECCAO_RESTRITA[usuario.email.toLowerCase()]){
+  // 🆕 PROSPECÇÃO RESTRITA — vê só cidades específicas, sem valores monetários.
+  // Casado por HASH do e-mail (chaves do mapa são sha256, não texto).
+  if(PROSPECCAO_RESTRITA[_emailHash(usuario)]){
     return 'prospeccao';
   }
 
@@ -2038,11 +2099,13 @@ function detectarNivelPermissao(usuario){
 }
 
 // 🆕 PROSPECÇÃO RESTRITA — emails que veem só algumas cidades, sem valores monetários
+// Chaveado por HASH sha256 do e-mail (o e-mail não fica em texto na fonte). Valor
+// ['*'] = TODAS as cidades. Cristina Oliveira / Micaelle / Vanessa (prospecção).
+// Pra adicionar alguém: rode sha256(email_em_minúsculas) e use o hash como chave.
 var PROSPECCAO_RESTRITA = {
-  'cristinaoliveira.gami@gmail.com': ['*'],                              // Cristina Oliveira — TODAS as cidades (prospecção geral, add v31.15 03/07/2026)
-  'micaelle.gami@gmail.com':     ['*'],                                  // Micaelle — TODAS as cidades (prospecção geral, add v31.13 03/07/2026)
-  'vfranklopes@gmail.com':       ['*']                                   // Vanessa — relatórios (prospecção), TODAS as cidades - v31.28 15/07/2026
-  // Ana Flávia (flaviagomes) e Rhayanna (ingridycsgami) removidas — desligadas 27/07/2026
+  '22f392c3b68237971e08b83a6541a2500f4a81540ac8772b5369c08e37feda88': ['*'],
+  '92c287d6c3914f5784beb08073aab432b05fadff0633563b4e11ab1c7451d521': ['*'],
+  '69d163a7485bdc449976fca2cb54cb411cb92796366cad576164d9fdf8906d45': ['*']
 };
 // '*' na lista de uma pessoa de prospecção = acesso a TODAS as cidades (mantém o nível prospecção)
 
@@ -2292,8 +2355,7 @@ function cidadesQueUsuarioAtende(u){
   
   // 🆕 🎯 PROSPECÇÃO RESTRITA → cidades específicas do mapa
   if(nivel === 'prospeccao'){
-    var email = (u.email || '').toLowerCase();
-    var lst = PROSPECCAO_RESTRITA[email];
+    var lst = PROSPECCAO_RESTRITA[_emailHash(u)]; // chave = hash sha256 do e-mail
     if(!lst || lst.indexOf('*') >= 0) return null; // '*' (ou sem lista) = TODAS as cidades
     return lst;
   }
@@ -2641,6 +2703,8 @@ function aplicarPermissoesVisuais(){
   document.querySelectorAll('[data-perm-faturamento="true"]').forEach(function(el){
     el.style.display = podeFat ? '' : 'none';
   });
+  // 🛡️ Financeiro: o servidor diz se a pessoa tem papel (financeiro-ui.js)
+  if(typeof _finChecarMenu==='function') _finChecarMenu();
   // 📈 LTV: menu só pro Matheus + diretoria (sem Carlos)
   var podeLtv = (typeof _podeVerLtv==='function') && _podeVerLtv();
   document.querySelectorAll('[data-perm-ltv="true"]').forEach(function(el){
@@ -2673,6 +2737,7 @@ function aplicarPermissoesVisuais(){
     if(!match) return;
     var aba = match[1];
     if(aba === 'faturamento') return; // gate próprio (data-perm-faturamento), não pela MATRIZ de cargos
+    if(aba === 'financeiro') return; // gate próprio (servidor decide; _finChecarMenu mostra o menu)
     if(aba === 'ltv') return; // gate próprio (data-perm-ltv)
     if(aba === 'campo'){ item.style.display = (typeof _podeVerCampo==='function' && _podeVerCampo()) ? '' : 'none'; return; } // gate próprio (gestor/vendedor/diretoria/gerência + BDRs)
     if(aba === 'crm'){ item.style.display = 'none'; return; } // CRM antigo SUBSTITUIDO pelo CRM Pro (03/11/2026) - esconde o menu; funcoes seguem no codigo pra "Puxar pro meu CRM" (grava em crm_leads, aparece no Pro)
@@ -2761,6 +2826,7 @@ function bloquearAcessoAba(aba){
   if(!u){ mostrarTelaLogin(); return true; }
   // 🔒 Faturamento: gate próprio (allowlist + super_admin), não pela MATRIZ de cargos
   if(aba === 'faturamento'){ return _podeVerFaturamento() ? false : _blocoRestrito(); }
+  if(aba === 'financeiro') return false; // 🛡️ gate 100% no servidor (financeiro.js valida sessão + papel); sem papel a página mostra "acesso restrito"
   if(aba === 'ltv'){ return _podeVerLtv() ? false : _blocoRestrito(); }
   if(aba === 'campo'){ return _podeVerCampo() ? false : _blocoRestrito(); }
   if(aba === 'crm'){ return (typeof _podeVerCRM==='function' && _podeVerCRM()) ? false : _blocoRestrito(); }
@@ -2949,6 +3015,7 @@ window.nav = function(el, page){
         'relatorio-diario':function(){ if(typeof initRelatorio==='function') initRelatorio(); },
         'relatorios':      function(){ if(typeof initRelatoriosAba==='function') initRelatoriosAba(); },
         'faturamento':     function(){ if(typeof initFaturamento==='function') initFaturamento(); },
+        'financeiro':      function(){ if(typeof initFinanceiro==='function') initFinanceiro(); },
         'ltv':             function(){ if(typeof initLtv==='function') initLtv(); },
         'campo':           function(){ if(typeof initCampo==='function') initCampo(); },
         'crm':             function(){ if(typeof initCRM==='function') initCRM(); },
@@ -3025,6 +3092,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" onclick="nav(this,'portal')">🌐 Portal Gâmi</div>
     <div class="nav-item" onclick="nav(this,'relatorios')">📊 Relatórios</div>
     <div class="nav-item" id="nav-faturamento" data-perm-faturamento="true" style="display:none" onclick="nav(this,'faturamento')">💰 Faturamento</div>
+    <div class="nav-item" id="nav-financeiro" style="display:none" onclick="nav(this,'financeiro')" title="Conferência de extrato e antifraude (restrito)">🛡️ Financeiro</div>
     <div class="nav-item" id="nav-ltv" data-perm-ltv="true" style="display:none" onclick="nav(this,'ltv')" title="Estudo LTV por cidade (restrito)">📈 LTV</div>
     <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')">🩺 Saúde</div>
     <div class="nav-item" onclick="mntReportarAbrir()" title="Reportar bug, sugestão ou dúvida">💬 Reportar</div>
@@ -6257,6 +6325,15 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
 </div>
 
 <!-- ==================== FATURAMENTO (restrito) ==================== -->
+<!-- ==================== FINANCEIRO / ANTIFRAUDE (restrito, UI em /financeiro-ui.js) ==================== -->
+<div class="page" id="pg-financeiro">
+  <div class="page-header">
+    <div><div class="page-title">🛡️ Financeiro</div><div class="page-sub">Conferência de extrato · antifraude · registro permanente</div></div>
+  </div>
+  <div id="fin-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
+</div>
+<script src="/financeiro-ui.js?v=1" defer></script>
+
 <div class="page" id="pg-faturamento">
   <div class="page-header">
     <div><div class="page-title">💰 Faturamento</div><div class="page-sub">Dados restritos · comparativo mensal por cidade</div></div>
@@ -20123,7 +20200,7 @@ function openPessoaModal(id){
       </div>
       <div class="field span2">
         <div class="field-label">📧 Email (usado pra login)</div>
-        <input id="pf-email" class="inp" type="email" value="${d.email || ''}" placeholder="Ex: joao@gamidelivery.com.br"/>
+        <input id="pf-email" class="inp" type="email" value="${d.email || ''}" placeholder="Ex: nome@gamidelivery.com.br"/>
         <div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic">É o email que a pessoa vai usar pra fazer login no dashboard</div>
       </div>
       <div class="field span2">
@@ -59086,7 +59163,7 @@ var PERFIS_TESTE = [
     perfil: {
       id: 'teste-prospeccao-fake-id',
       pessoa_id: 'teste-prospeccao-fake-id',
-      email: 'cristinaoliveira.gami@gmail.com',  // email de prospecção válido → detecta como prospecção
+      email: 'teste-prospeccao@teste.gami',  // persona de teste; o cargo 'Prospecção' já detecta o nível
       nome: 'Prospecção (teste)',
       cargo: 'Prospecção',
       cidade: 'maceio',
