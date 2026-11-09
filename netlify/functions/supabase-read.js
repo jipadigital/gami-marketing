@@ -31,7 +31,9 @@ const TABELAS_LEITURA = [
   'audit_log','acessos_log','push_subscriptions','push_agendados',
   // R6: gamificação/interno (nome de funcionário + pontos). ranking_mensal é VIEW.
   'pontos_log','desafios_admin','badges_desbloqueadas','pulse_votos',
-  'stories_log','estoque_itens','ranking_mensal'
+  'stories_log','estoque_itens','ranking_mensal',
+  // R7: configuracoes (Cloud Mirror)
+  'configuracoes'
 ];
 
 // RPCs sensíveis (leitura de dado comercial/Machine/prospecção) que o proxy aceita chamar.

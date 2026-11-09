@@ -9414,7 +9414,9 @@ var _SUPA_SENSIVEL = {
   // R6 (09/11/2026): gamificação/interno que a chave anônima ainda lia (nome de
   // funcionário + pontos/ações). Roteia pelo proxy; depois dropa as policies _sel.
   pontos_log:1, desafios_admin:1, badges_desbloqueadas:1, pulse_votos:1,
-  stories_log:1, estoque_itens:1, ranking_mensal:1
+  stories_log:1, estoque_itens:1, ranking_mensal:1,
+  // R7: configuracoes (Cloud Mirror). Lida/escrita só logado; roteia a leitura.
+  configuracoes:1
 };
 // R2b: RPCs que devolvem dado comercial/Machine/prospecção (vão pelo proxy).
 var _SUPA_SENSIVEL_RPC = {
@@ -16138,6 +16140,20 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
   // Atribuição MANUAL (admin) ignora os limites diário/semanal — admin tem autoridade pra ajustar
   var _ehManual = opcoes.origem === 'manual' || !!opcoes.atribuido_por;
 
+  // 🔒 Trava SÍNCRONA anti-corrida (v23-337): a MESMA ação limitada não dispara 2x
+  // na mesma sessão. O dedup do servidor é assíncrono; se a ação for chamada 2x em
+  // sequência (re-render), as duas passavam pelo pontosFezHoje antes do 1º gravar =
+  // ponto em dobro. Esta trava roda ANTES de qualquer await, então corta a 2ª na hora.
+  if((catalogo.limite_dia || catalogo.limite_semana) && !_ehManual){
+    try {
+      window._pontosEmVoo = window._pontosEmVoo || {};
+      var _hojeK = (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().split('T')[0];
+      var _k = pessoaId + '|' + tipoAcao + '|' + (catalogo.limite_dia ? _hojeK : 'semana');
+      if(window._pontosEmVoo[_k]) return false;
+      window._pontosEmVoo[_k] = true;
+    } catch(e){}
+  }
+
   // Verifica limite diário (se existir)
   if(catalogo.limite_dia && !_ehManual){
     var jaFezHoje = await pontosFezHoje(pessoaId, tipoAcao);
@@ -16185,17 +16201,26 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
 /* Verifica se pessoa já fez essa ação hoje */
 async function pontosFezHoje(pessoaId, tipoAcao){
   var hoje = (typeof tfHojeLocal==='function') ? tfHojeLocal() : new Date().toISOString().split('T')[0];
+  // 1) CACHE LOCAL primeiro (não depende de rede): se já há registro de hoje, já fez.
+  // Isso cobre o caso em que a leitura no servidor falha (token velho/proxy) e evita
+  // o ponto em dobro, que antes acontecia porque o erro de rede retornava "não fez".
   try {
-    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
-      + '&tipo_acao=eq.' + tipoAcao 
-      + '&data_acao=eq.' + hoje
-      + '&select=id&limit=1';
-    var r = await fetch(url, {
-      headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
-    });
-    if(r.ok){
-      var d = await r.json();
-      return d.length > 0;
+    var _cache = JSON.parse(localStorage.getItem('gami_pontos_cache') || '[]');
+    if(Array.isArray(_cache) && _cache.some(function(c){
+      return c && c.pessoa_id === pessoaId && c.tipo_acao === tipoAcao && c.data_acao === hoje;
+    })) return true;
+  } catch(e){}
+  // 2) SERVIDOR (via proxy quando a tabela é sensível, senão fetch direto).
+  try {
+    var q = 'pessoa_id=eq.' + pessoaId + '&tipo_acao=eq.' + tipoAcao + '&data_acao=eq.' + hoje + '&select=id&limit=1';
+    if(typeof supaLer === 'function'){
+      var d = await supaLer('pontos_log', q);
+      if(Array.isArray(d)) return d.length > 0;
+    } else {
+      var r = await fetch(SUPA_URL + '/rest/v1/pontos_log?' + q, {
+        headers: (typeof supaHeaders==='function') ? supaHeaders() : { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+      });
+      if(r.ok){ var d2 = await r.json(); return d2.length > 0; }
     }
   } catch(e){}
   return false;
