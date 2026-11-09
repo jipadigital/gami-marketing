@@ -125,6 +125,37 @@ async function validarSessao(userId, token){
   }
 }
 
+// 🛡️ RATE LIMIT por usuário (anti-raspagem , 2ª base de segurança). Janela fixa de
+// 60s por pessoa_id, num Map de módulo (vive no container quente do Netlify, mesmo
+// padrão do cache de sessão). O uso normal fica MUITO abaixo do teto; raspar a base
+// (centenas/milhar de requisições) estoura e toma 429. Ao estourar, grava 1 alerta no
+// audit_log pra você revisar quem foi. Limitação serverless: a contagem é por container
+// (um atacante bem distribuído dilui), mas o burst de raspagem comum é cortado.
+var _rl = new Map();
+var _RL_JANELA = 60000;   // 60s
+var _RL_MAX = 400;        // requisições por usuário por janela (ajuste se precisar)
+async function rateLimit(userId){
+  var now = Date.now();
+  var e = _rl.get(userId);
+  if(!e || now - e.ini > _RL_JANELA){ e = { ini: now, n: 0, alertou: false }; _rl.set(userId, e); }
+  e.n++;
+  if(e.n > _RL_MAX){
+    if(!e.alertou){ // registra o alerta 1x por janela (não spamma)
+      e.alertou = true;
+      try {
+        await fetch(SUPA_URL+'/rest/v1/audit_log', {
+          method:'POST',
+          headers: { 'apikey':SUPA_SERVICE_KEY, 'Authorization':'Bearer '+SUPA_SERVICE_KEY, 'Content-Type':'application/json', 'Prefer':'return=minimal' },
+          body: JSON.stringify([{ pessoa_id:userId, pessoa_nome:'(proxy-read)', acao:'rate_limit', recurso:'supabase-read', detalhes:{ reqs:e.n, janela_s:60 } }])
+        });
+      } catch(_){}
+    }
+    return false;
+  }
+  if(_rl.size > 2000) _rl.clear();
+  return true;
+}
+
 // Bloqueia querystring que tente embutir OUTRA tabela (ex.: select=*,outra(*))
 // ou que não seja a shape esperada. Mantém o proxy restrito à tabela pedida.
 function querySegura(q){
@@ -156,6 +187,11 @@ exports.handler = async function(event){
 
   const sessao = await validarSessao(userId, token);
   if(!sessao.valido) return { statusCode:401, headers:cors, body:JSON.stringify({error:sessao.erro}) };
+
+  // 2ª base: corta raspagem (muitas leituras num minuto) mesmo de sessão válida/roubada.
+  if(!(await rateLimit(userId))){
+    return { statusCode:429, headers:cors, body:JSON.stringify({error:'Muitas requisições num curto período. Aguarde um instante.'}) };
+  }
 
   let body;
   try { body = JSON.parse(event.body || '{}'); }

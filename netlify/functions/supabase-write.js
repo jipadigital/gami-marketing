@@ -244,6 +244,18 @@ async function alertar(tipo, severidade, mensagem, detalhes){
   } catch(e){}
 }
 
+// 🛡️ Rate limit por usuário (anti-abuso de escrita). Teto menor que a leitura, por
+// container quente (serverless). Ao estourar, usa o alertar() que já existe.
+var _rlW = new Map();
+function rateLimitWrite(userId){
+  var now = Date.now();
+  var e = _rlW.get(userId);
+  if(!e || now - e.ini > 60000){ e = { ini: now, n: 0 }; _rlW.set(userId, e); }
+  e.n++;
+  if(_rlW.size > 2000) _rlW.clear();
+  return e.n <= 150; // 150 escritas/min por usuário
+}
+
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -289,6 +301,12 @@ exports.handler = async function(event){
   }
   
   const usuario = sessao.usuario;
+
+  // 2ª base: corta abuso de escrita (rajada anormal) mesmo de sessão válida.
+  if(!rateLimitWrite(userId)){
+    alertar('rate_limit', 'aviso', 'Muitas escritas num minuto', { userId, ip });
+    return { statusCode: 429, headers: cors, body: JSON.stringify({error:'Muitas requisições num curto período. Aguarde um instante.'}) };
+  }
 
   // Parse do body
   let body;
