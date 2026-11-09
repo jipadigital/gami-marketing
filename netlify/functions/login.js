@@ -14,6 +14,17 @@ const ORIGENS_PERMITIDAS = [
   'http://localhost:3000'
 ];
 
+// 🕵️ CONVIDADOS OCULTOS (auditoria/consultoria externa). NÃO entram em `pessoas`,
+// então não aparecem em canto nenhum do painel (Pessoas, ranking, ponto). O login
+// PROVISIONA o acesso no 1º uso com PIN inicial gami2026 (troca no 1º login). nome
+// e e-mail aqui são NEUTROS de propósito — o convidado não expõe nome real. O nível
+// de permissão é decidido no cliente pelo e-mail sentinela (ex.: 'auditor' vê todas
+// as abas, read-only, sem R$). Aceita o username OU o e-mail sentinela como login.
+const CONVIDADOS = {
+  'auditor':          { pessoa_id: 'auditor-seg', nome: 'Auditor', email: 'auditor@seg.gami', username: 'auditor' },
+  'auditor@seg.gami': { pessoa_id: 'auditor-seg', nome: 'Auditor', email: 'auditor@seg.gami', username: 'auditor' }
+};
+
 function corsHeaders(origin){
   var permitido = ORIGENS_PERMITIDAS.indexOf(origin) >= 0 ? origin : ORIGENS_PERMITIDAS[0];
   return {
@@ -98,6 +109,32 @@ exports.handler = async function(event){
             }
           }
         } catch(e){ console.warn('[login] auto-provision erro', e && e.message); }
+      }
+      // 🕵️ Convidado oculto (auditoria): não está em `pessoas`, provisiona aqui.
+      if(!novoUsuario && CONVIDADOS[identificador]){
+        const c = CONVIDADOS[identificador];
+        try {
+          const rIns = await fetch(SUPA_URL + '/rest/v1/usuarios_login', {
+            method: 'POST',
+            headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=representation' }),
+            body: JSON.stringify([{
+              pessoa_id: c.pessoa_id,
+              nome: c.nome,
+              email: c.email,
+              username: c.username,
+              pin_hash: 'gami2026_init',
+              pin_trocado: false,
+              ativo: true,
+              tentativas_falhas: 0
+            }])
+          });
+          if(rIns.ok){
+            const li = await rIns.json();
+            if(Array.isArray(li) && li.length) novoUsuario = li[0];
+          } else {
+            console.warn('[login] convidado provision falhou HTTP', rIns.status, (await rIns.text().catch(function(){return '';})).slice(0,150));
+          }
+        } catch(e){ console.warn('[login] convidado provision erro', e && e.message); }
       }
       if(!novoUsuario){
         return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Email ou username não encontrado' }) };

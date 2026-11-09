@@ -1,3 +1,4 @@
+<!-- v33.58 - LOGIN DE AUDITORIA (convidado OCULTO p/ pentest): novo nivel 'auditor' que ve TODAS as abas pra testar o painel, mas e READ-ONLY e NAO ve valores em R$ (abas de dinheiro nem entram + gate proprio por pessoa_id no servidor). NAO entra em `pessoas`, entao nao aparece em canto nenhum (Pessoas/ranking/ponto); nome/e-mail neutros (sem nome real). O login.js PROVISIONA sozinho no 1o acesso (CONVIDADOS), sem SQL: usuario 'auditor', PIN inicial gami2026 (troca no 1o login). Gate por e-mail sentinela auditor@seg.gami, prioridade maxima. SW v23-342. - 09/11/2026 -->
 <!-- v33.57 - SUPORTE ve RELATORIOS: cargo "Suporte Home"/"Suporte Operacional" (e atendimento/sucesso) agora resolve pro novo nivel 'suporte' = o que o colaborador ja via + a aba Relatorios, SEM valores em R$. A regra roda ANTES do nivel_permissao canonico e so promove quem esta em branco ou 'colaborador' (quem foi posto em nivel maior mantem). Antes os "Suporte Operacional" caiam em colaborador e ficavam sem Relatorios. Casa por CARGO, sem e-mail no codigo. SW v23-341. - 09/11/2026 -->
 <!-- v33.56b - SEGURANCA (PII fora da fonte): removidos do index.html os 3 e-mails pessoais da lista de ponto home office (jheny/jessica/andreia) - o match agora e so por NOME (padrao que Bruna/Estefania ja usavam); e esvaziado o INBOX_DEMO do Instagram (conversas fake @motoboy_al etc. que o Lucas conseguia ler na fonte). Inbox comeca vazio ate conectar o IG real. - 09/11/2026 -->
 <!-- v33.52 - FIX login iPhone (keychain travava a digitacao): o campo PIN era type=password -> o iOS ignora autocomplete=off e forca "Preencher Senha" (keychain do netlify.app), preenchia o PIN com lixo e NAO deixava digitar (caso Jheniffer, visto no video). Conserto: PIN vira type=text com mascara CSS (-webkit-text-security:disc), que o iOS NAO trata como senha; email autocomplete=username->off; form autocomplete=off; _alternarMostrarPin alterna a mascara em vez do type. - 28/10/2026 -->
@@ -1956,7 +1957,15 @@ function detectarNivelPermissao(usuario){
   // SUPER ADMIN — Cleyton (via email único). Trava de segurança: nunca se
   // tranca fora, mesmo se o dado estiver errado.
   if(usuario.email && usuario.email.toLowerCase() === 'jipadigital@gmail.com') return 'super_admin';
-  
+
+  // 🕵️ AUDITORIA DE SEGURANÇA (convidado OCULTO). Vê TODAS as abas pra testar o
+  // painel, mas é READ-ONLY, NÃO vê valores em R$, e NÃO está em `pessoas` — por
+  // isso não aparece em canto nenhum (Pessoas, ranking, ponto). Identificado por
+  // e-mail sentinela interno (sem nome real). Provisionado via CONVIDADOS no
+  // login.js. Trava de prioridade máxima (logo após o super_admin).
+  var _AUDITORES = ['auditor@seg.gami'];
+  if(usuario.email && _AUDITORES.indexOf(usuario.email.toLowerCase()) !== -1) return 'auditor';
+
   // 🆕 LISTAS CURADAS POR EMAIL — prioridade máxima (logo após super_admin).
   // São concessões explícitas de acesso e devem valer mesmo que a coluna
   // `nivel_permissao` do cadastro esteja desatualizada. Sem isso o acesso
@@ -1993,7 +2002,7 @@ function detectarNivelPermissao(usuario){
   // 🆕 P0.2 — CAMPO CANÔNICO. Quando `nivel_permissao` está preenchido em
   // `pessoas`, ele manda — acaba a adivinhação por texto livre do cargo
   // (que jogava gente pra colaborador em silêncio).
-  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','vendedor','financeiro','prospeccao','suporte','colaborador','visitante'];
+  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','vendedor','financeiro','prospeccao','suporte','auditor','colaborador','visitante'];
   var _np = String(usuario.nivel_permissao || '').toLowerCase().trim();
   if(_np && NIVEIS_VALIDOS.indexOf(_np) !== -1) return _np;
 
@@ -2106,6 +2115,21 @@ var MATRIZ_PERMISSOES = {
   },
   colaborador: {
     abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','manual'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false,
+    ocultar_valores: true
+  },
+  // 🕵️ Auditor de segurança (convidado oculto): vê TODAS as abas pra testar o
+  // painel, mas é READ-ONLY (nada de editar/deletar/postar) e SEM valores em R$.
+  // As abas de dinheiro (faturamento/ltv) nem entram aqui e têm gate próprio por
+  // pessoa_id no servidor, então ele não as vê. v33.58 - 09/11/2026
+  auditor: {
+    abas: ['dashboard','calendario','tarefas','marketing','cidades','campo','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
