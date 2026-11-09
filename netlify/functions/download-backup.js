@@ -30,7 +30,7 @@ async function validarSessao(userId, token){
   
   try {
     const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,nome,token_atual,token_expira_em,ativo&limit=1', {
-      headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer '+SUPA_ANON_KEY }
+      headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
     if(!r.ok) return { valido: false, erro: 'Falha ao validar' };
     const arr = await r.json();
@@ -48,7 +48,7 @@ async function validarSessao(userId, token){
     }
     
     const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,super_admin&limit=1', {
-      headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer '+SUPA_ANON_KEY }
+      headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
     const arrP = await rP.json();
     const pessoa = (Array.isArray(arrP) && arrP[0]) ? arrP[0] : null;
