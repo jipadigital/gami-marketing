@@ -1,3 +1,5 @@
+<!-- v33.57 - SUPORTE ve RELATORIOS: cargo "Suporte Home"/"Suporte Operacional" (e atendimento/sucesso) agora resolve pro novo nivel 'suporte' = o que o colaborador ja via + a aba Relatorios, SEM valores em R$. A regra roda ANTES do nivel_permissao canonico e so promove quem esta em branco ou 'colaborador' (quem foi posto em nivel maior mantem). Antes os "Suporte Operacional" caiam em colaborador e ficavam sem Relatorios. Casa por CARGO, sem e-mail no codigo. SW v23-341. - 09/11/2026 -->
+<!-- v33.56b - SEGURANCA (PII fora da fonte): removidos do index.html os 3 e-mails pessoais da lista de ponto home office (jheny/jessica/andreia) - o match agora e so por NOME (padrao que Bruna/Estefania ja usavam); e esvaziado o INBOX_DEMO do Instagram (conversas fake @motoboy_al etc. que o Lucas conseguia ler na fonte). Inbox comeca vazio ate conectar o IG real. - 09/11/2026 -->
 <!-- v33.52 - FIX login iPhone (keychain travava a digitacao): o campo PIN era type=password -> o iOS ignora autocomplete=off e forca "Preencher Senha" (keychain do netlify.app), preenchia o PIN com lixo e NAO deixava digitar (caso Jheniffer, visto no video). Conserto: PIN vira type=text com mascara CSS (-webkit-text-security:disc), que o iOS NAO trata como senha; email autocomplete=username->off; form autocomplete=off; _alternarMostrarPin alterna a mascara em vez do type. - 28/10/2026 -->
 <!-- v33.51 - CRM export pro CHAT GURU: botao 📲 na aba Hoje baixa CSV com Nome + Telefone (so os meus leads, do dono), telefone LIMPO no formato WhatsApp (55+DDD+numero), ignorando vazios e placeholders (000000000). _crmExportarChatGuru + _crmTelWhats. - 28/10/2026 -->
 <!-- v33.50 - PROSPECCAO por cidade (perf + fim do bug de corte): o mapa NAO carrega mais todos os ~40k prospects de uma vez. Agora clicou na cidade -> carrega SO os dela (prospeccao_lojas filtrado por cidade_slug, cache por slug = reabrir e instantaneo). _campoFetch so puxa visitas; _campoCarregarLojasCidade/_campoSetLojasCidade novos; _campoIrParaCidade async (camera primeiro, pontos depois); _campoSetCidade/_campoMapaBrasil/initCampo adaptados. _campoGarantirMachine tambem: Brasil nao puxa a Machine das 9 cidades (so a selecionada). Brasil = leve (so estados). Chips mostram count/cor so apos visitar a cidade (vem da machineCache). - 28/10/2026 -->
@@ -58,7 +60,7 @@
 <!-- v33.05 - Ponto: TODOS home office. Nao tem mais ninguem no escritorio, entao o ponto nao valida GPS/IP de ninguem. Flag global PONTO_TODOS_HOME_OFFICE=true no topo de _pessoaLiberadaValidacao (cobre os 2 fluxos: Meu Ponto + card do dashboard). Reverter = por o flag em false (volta a lista fixa + IP/GPS). A lista PONTO_HOME_OFFICE_FIXO e os IPs do escritorio continuam no codigo, so inertes enquanto o flag estiver ligado. - 03/11/2026 -->
 <!-- v33.04 - Card "Campeao do mes": numero ERRADO (Jheniffer aparecia 220 em vez de 592 em outubro). Causa: renderCampeaoMesBanner lia pontos_log numa requisicao unica (limit=5000), mas o Supabase corta em 1000 linhas/request (db-max-rows); outubro tem 2566 linhas, entao somava so o 1o terco. Corrigido pra PAGINAR em blocos de 1000 (offset). Confirmado: paginado = 592. ARMADILHA GERAL: qualquer leitura client-side de pontos_log sem paginar sofre o teto de 1000 (as VIEWs ranking_mensal/historico/trimestral ja vem agregadas = 1 linha/pessoa, nao sofrem). - 03/11/2026 -->
 <!-- v33.03 - Ponto: Estefânia Cavalcante (pe021) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO por nome ("estefânia cavalcante" com acento + "estefania cavalcante" sem, rede de seguranca), isenta de GPS/IP igual Bruna/Jheniffer/Ane. Cobre os 2 fluxos via _pessoaLiberadaValidacao. - 03/11/2026 -->
-<!-- v33.02 - Ponto: Bruna Eduarda (pe018, dudasamu2006@gmail.com) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Ane). Por email + nome "bruna eduarda". Caso: ela nao conseguia bater (IP 160.238.163.x fora do escritorio + localizacao bloqueada). Isencao cobre os 2 fluxos (Meu Ponto + card do dashboard) via _pessoaLiberadaValidacao. - 03/11/2026 -->
+<!-- v33.02 - Ponto: Bruna Eduarda (pe018) passou a home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Ane). Por email + nome "bruna eduarda". Caso: ela nao conseguia bater (IP 160.238.163.x fora do escritorio + localizacao bloqueada). Isencao cobre os 2 fluxos (Meu Ponto + card do dashboard) via _pessoaLiberadaValidacao. - 03/11/2026 -->
 <!-- v33.01 - PROSPECCAO export Excel: BUG a Vanessa filtrou Recife+Prospect+bairro "boa viagem" e o Excel dizia "nenhuma empresa", porque _campoExportarExcel so exportava a Machine (_campoMachineFiltrada) e IGNORAVA os prospects (prospeccao_lojas). Agora o export junta PROSPECTS (_campoLojasFiltradas: nome/status/segmento/endereco/bairro/cidade/telefone/CNPJ/avaliacoes/coord) + Machine, com colunas novas Segmento e "Avaliacoes (iFood)". Toast conta prospects+Machine. - 03/11/2026 -->
 <!-- v33.00b - CRM PRO embutido + SSO: clicar em "CRM Pro" agora abre o app DENTRO do dashboard (painel/iframe overlay #crmpro-overlay, botao Fechar) em vez de aba nova, e ja ENTRA LOGADO (SSO): abrirCrmPro faz auto-POST pro /api/sso do CRM com pessoa_id + gami_sessao_token (no corpo, nao na URL); o CRM (ssoPorToken) valida esse token contra usuarios_login (token_atual/sessoes_ativas) e cria a sessao sozinho, sem PIN. Precisou no CRM: cookie SameSite=None+Secure em prod (pra valer dentro do iframe cross-site) + CSP frame-ancestors liberando gami-marketing.netlify.app. ARMADILHA iOS: Safari bloqueia cookie de terceiro em iframe (ITP); se nao entrar no iPhone, cair pra mesma-origem (proxy) depois. - 30/10/2026 -->
 <!-- v32.99 - CRM PRO no menu: item "🚀 CRM Pro" (sidebar, secao Gestao) que abre o app dedicado gami-crm (Netlify, cerulean-monstera-3f332f.netlify.app) em outra aba. Gate data-perm-crmpro -> visivel SO pro piloto Cleyton(pe016)+Carlos(pecarlosvinicius) por enquanto (_CRMPRO_IDS); funcao abrirCrmPro (_CRMPRO_URL, trocar se renomear o site). O CRM tambem tranca o login so pros dois (CRM_ACESSO_IDS no app). - 30/10/2026 -->
@@ -137,7 +139,7 @@
 <!-- v31.68 - Banner Campeao do mes: preview (?campeao=preview) agora mostra o mes CORRENTE (agosto), nao o anterior (julho), e ignora o "ja fechei". Comportamento real segue: dia 01-03 mostra o mes anterior - 30/08/2026 -->
 <!-- v31.67 - Dashboard: banner "Campeao(a) do mes" acima do Mural de Recados. Aparece SO nos dias 01, 02 e 03 de cada mes, celebrando o Nº1 do ranking do MES ANTERIOR (calculado do pontos_log por data_acao). Visual festivo: coroa flutuando na foto, glow dourado, brilho e confete. Dismissivel (por mes). Preview via ?campeao=preview. renderCampeaoMesBanner no initDashboard - 30/08/2026 -->
 <!-- v31.66 - Ponto: quem e home office/liberado NAO precisa mais justificar atraso. O check de atraso (exige justificativa) vinha ANTES do atalho de liberacao, entao home office (Jheniffer etc.) tinha que justificar toda batida fora do horario esperado (ela colocava so "."). Agora o check de atraso pula quem passa no _pessoaLiberadaValidacao - nos 2 fluxos (Meu Ponto + ponto do dashboard) - 30/08/2026 -->
-<!-- v31.65 - Ponto: Andreia Luiza Damke (pe027, andreiazk45@gmail.com) passou a trabalhar home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Jessica). Por email + nome "luiza damke" (sem acento) - 30/08/2026 -->
+<!-- v31.65 - Ponto: Andreia Luiza Damke (pe027) passou a trabalhar home office - adicionada ao PONTO_HOME_OFFICE_FIXO (isenta de GPS/IP, sem data limite, igual Jheniffer/Jessica). Por email + nome "luiza damke" (sem acento) - 30/08/2026 -->
 <!-- v31.64 - Gestor de Vitoria: Wesley Dias -> Jean Alves Guerra. CIDADES_DATA_DEFAULT (c10) trocado (gestor+tel 27997779290); textos do manual e prompt atualizados. Pessoa+login do Jean criados. No ranking o Wesley some com refresh (ranking_mensal/pontos_log ja limpos no servidor) - 28/08/2026 -->
 <!-- v31.63 - Desligamento: Wesley Dias (pe013), ex-gestor de Vitoria, adicionado ao PESSOAS_DESLIGADAS (some de Pessoas e o syncPessoas apaga do servidor). Login desativado + pontos_log limpos via SQL. Vitoria fica sem gestor ate cadastrar o novo - 28/08/2026 -->
 <!-- v31.62 - Ranking\Pontos (curadoria): foi_reconhecido 15->10 (era passivo e valia 3x quem reconhece), aniversario_dia 20->10 (presente, nao merito), e "visitou_3_abas" REMOVIDO do catalogo e do gatilho (hookNavAba) - era farm de presenca. Login diario (2) e tarefa concluida (1) mantidos por decisao do dono - 26/08/2026 -->
@@ -1974,10 +1976,24 @@ function detectarNivelPermissao(usuario){
     return 'prospeccao';
   }
 
+  // 🆕 SUPORTE / ATENDIMENTO / SUCESSO DO CLIENTE → nível 'suporte'
+  // (o que o colaborador já vê + a aba RELATÓRIOS, SEM valores em R$). As
+  // meninas do suporte usam os relatórios pra recuperação de cliente. Vem ANTES
+  // do nivel_permissao canônico de propósito: muita delas ficou salva como
+  // 'colaborador' no cadastro e por isso perdia a aba Relatórios. Casa por
+  // CARGO (texto livre) — sem e-mail no código. Só promove quem está em branco
+  // ou 'colaborador'; quem foi posto num nível maior (gestor/diretoria) mantém.
+  var _cargoSup = (usuario.cargo || '').toLowerCase();
+  var _npAtual  = String(usuario.nivel_permissao || '').toLowerCase().trim();
+  if((_cargoSup.indexOf('suporte') >= 0 || _cargoSup.indexOf('atendimento') >= 0 || _cargoSup.indexOf('sucesso') >= 0)
+     && (!_npAtual || _npAtual === 'colaborador')){
+    return 'suporte';
+  }
+
   // 🆕 P0.2 — CAMPO CANÔNICO. Quando `nivel_permissao` está preenchido em
   // `pessoas`, ele manda — acaba a adivinhação por texto livre do cargo
   // (que jogava gente pra colaborador em silêncio).
-  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','vendedor','financeiro','prospeccao','colaborador','visitante'];
+  var NIVEIS_VALIDOS = ['super_admin','diretoria','gerencia','gestor','vendedor','financeiro','prospeccao','suporte','colaborador','visitante'];
   var _np = String(usuario.nivel_permissao || '').toLowerCase().trim();
   if(_np && NIVEIS_VALIDOS.indexOf(_np) !== -1) return _np;
 
@@ -2090,6 +2106,19 @@ var MATRIZ_PERMISSOES = {
   },
   colaborador: {
     abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','manual'],
+    pode_editar_pessoas: false,
+    pode_admin_pontos: false,
+    pode_criar_desafios: false,
+    pode_deletar: false,
+    pode_postar_stories: false,
+    pode_editar_marketing: false,
+    pode_ver_financeiro: false,
+    ocultar_valores: true
+  },
+  // Suporte / atendimento: igual ao colaborador + a aba RELATÓRIOS (pra
+  // recuperação de cliente). Sem valores em R$, sem edição. v33.57 - 09/11/2026
+  suporte: {
+    abas: ['dashboard','calendario','tarefas','cidades','pessoas','ranking','culture','carreira','portal','relatorios','manual'],
     pode_editar_pessoas: false,
     pode_admin_pontos: false,
     pode_criar_desafios: false,
@@ -42401,33 +42430,10 @@ function gerarRelatorioSemanal(){
 
 // ===================== INBOX INSTAGRAM =====================
 
-// Demo conversations (before connecting real Instagram)
-var INBOX_DEMO = [
-  { id:'m1', cidade:'Fortaleza', usuario:'@motoboy_ce', avatar:'🏍️', ultima:'Olá, quero me cadastrar como motoboy em Fortaleza!', hora:'09:42', lida:false, status:'pendente', msgs:[
-    { de:'usuario', texto:'Olá, quero me cadastrar como motoboy em Fortaleza!', hora:'09:42' },
-  ]},
-  { id:'m2', cidade:'Recife', usuario:'@restaurante_pe', avatar:'🍽️', ultima:'Tenho interesse em fazer parceria com a Gâmi.', hora:'08:15', lida:false, status:'pendente', msgs:[
-    { de:'usuario', texto:'Bom dia! Tenho um restaurante no Recife e queria saber como funciona a parceria.', hora:'08:10' },
-    { de:'usuario', texto:'Tenho interesse em fazer parceria com a Gâmi.', hora:'08:15' },
-  ]},
-  { id:'m3', cidade:'Natal', usuario:'@cliente_rn', avatar:'👤', ultima:'Qual o prazo médio de entrega de vocês?', hora:'Ontem', lida:true, status:'respondida', msgs:[
-    { de:'usuario', texto:'Qual o prazo médio de entrega de vocês?', hora:'Ontem 14:30' },
-    { de:'gami', texto:'Olá! Nosso prazo médio é de 30 a 45 minutos dependendo da região. Posso te ajudar com mais alguma informação? 😊', hora:'Ontem 14:35' },
-  ]},
-  { id:'m4', cidade:'Maceió', usuario:'@motoboy_al', avatar:'🏍️', ultima:'Fiz meu cadastro mas não recebi retorno', hora:'Ontem', lida:true, status:'pendente', msgs:[
-    { de:'usuario', texto:'Fiz meu cadastro há 3 dias mas não recebi nenhum retorno...', hora:'Ontem 11:20' },
-  ]},
-  { id:'m5', cidade:'Fortaleza', usuario:'@parceiro_ce', avatar:'🤝', ultima:'Quando vocês começam as entregas no nosso bairro?', hora:'Seg', lida:true, status:'respondida', msgs:[
-    { de:'usuario', texto:'Quando vocês começam as entregas no bairro Aldeota?', hora:'Seg 10:00' },
-    { de:'gami', texto:'Olá! Já operamos no Aldeota sim! Você pode solicitar seu cadastro pelo nosso link. 🚀', hora:'Seg 10:15' },
-  ]},
-  { id:'m6', cidade:'João Pessoa', usuario:'@restaurante_pb', avatar:'🍽️', ultima:'Vocês têm taxa mínima por entrega?', hora:'Seg', lida:false, status:'pendente', msgs:[
-    { de:'usuario', texto:'Boa tarde! Tenho uma lanchonete aqui em JP. Vocês têm taxa mínima por entrega?', hora:'Seg 15:30' },
-  ]},
-  { id:'m8', cidade:'São Luís', usuario:'@cliente_ma', avatar:'👤', ultima:'Minha entrega está atrasada', hora:'Dom', lida:false, status:'urgente', msgs:[
-    { de:'usuario', texto:'Oi! Meu pedido está com mais de 1 hora de atraso. O que está acontecendo?', hora:'Dom 20:00' },
-  ]},
-];
+// Inbox do Instagram: começa VAZIO. As conversas reais entram quando o IG
+// for conectado (via função no servidor). Sem dados fake/demo no código — nada
+// de @usuarios nem mensagens inventadas aparecendo pra quem lê a fonte.
+var INBOX_DEMO = [];
 
 var _inboxFiltro = 'todas';
 var _inboxCidade = 'todas';
@@ -61269,12 +61275,11 @@ async function dashBaterPontoSemGPS(){
 // alguém, é só por este flag em false (aí volta a valer a lista fixa abaixo + IP/GPS).
 var PONTO_TODOS_HOME_OFFICE = true;
 var PONTO_HOME_OFFICE_FIXO = [
-  'jheny.andradesilva@gmail.com', // Jheniffer Andrade — suporte remota, bate ponto de casa
-  'jheniffer andrade',            // rede de segurança por nome (caso o login não traga o e-mail)
-  'jessicanayaraaraujo2005@gmail.com', // Jessica Nayara — bate ponto de casa (add v31.49 - 14/08/2026)
-  'jessica nayara',               // rede de segurança por nome
-  'andreiazk45@gmail.com',        // Andréia Luiza Damke — home office (add v31.65 - 30/08/2026)
-  'luiza damke',                  // rede de segurança por nome (sem acento, casa em "andréia luiza damke")
+  // Casamento por NOME (o login sempre traz o nome). E-mails foram tirados do
+  // repo público — o match por nome cobre os dois fluxos (Meu Ponto + card).
+  'jheniffer andrade',            // Jheniffer Andrade — suporte remota, bate ponto de casa
+  'jessica nayara',               // Jessica Nayara — bate ponto de casa (v31.49 - 14/08/2026)
+  'luiza damke',                  // Andréia Luiza Damke — home office (v31.65, sem acento, casa em "andréia luiza damke")
   'ane karoline',                 // Ane Karoline Vieira de Souza (pemullvmlz) — passou a home office 30/10/2026 (v33.56). Casa por nome; se o email dela for confirmado, adicionar aqui tambem.
   'bruna eduarda',                // Bruna Eduarda (pe018) — home office 03/11/2026. Casa por NOME (o login sempre traz o nome, então cobre os dois fluxos); email fora do repo público.
   'estefânia cavalcante',         // Estefânia Cavalcante (pe021) — home office 03/11/2026. Casa por nome COM acento (igual o login traz; a função não tira acento).
