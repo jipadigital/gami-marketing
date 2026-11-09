@@ -15,12 +15,14 @@ const P = require('../lib/fin-parser');
 // DOIS BANCOS:
 //  - MAIN (dashboard): só pra validar a sessão (usuarios_login) e ler nomes da equipe (pessoas).
 //  - FIN (exclusivo do financeiro): TODO dado financeiro. Projeto Supabase separado, com chave própria.
-//    Sem FIN_SUPA_URL/FIN_SUPA_SERVICE_KEY configurados, usa o MAIN (como antes).
+//    Liga quando existe FIN_SUPA_SERVICE_KEY (a URL não é segredo e fica aqui: as env vars das
+//    funções têm limite de 4 KB na AWS). Sem a chave, usa o MAIN (como antes).
 const MAIN_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
+const FIN_URL = process.env.FIN_SUPA_URL || 'https://vyjjdirlgvysbalrmmih.supabase.co';
 const MAIN_KEY = process.env.SUPA_SERVICE_KEY;
-const SUPA_URL = process.env.FIN_SUPA_URL || MAIN_URL;
-const SUPA_SERVICE_KEY = process.env.FIN_SUPA_URL ? process.env.FIN_SUPA_SERVICE_KEY : MAIN_KEY;
-const BANCO_EXCLUSIVO = !!process.env.FIN_SUPA_URL;
+const BANCO_EXCLUSIVO = !!process.env.FIN_SUPA_SERVICE_KEY;
+const SUPA_URL = BANCO_EXCLUSIVO ? FIN_URL : MAIN_URL;
+const SUPA_SERVICE_KEY = BANCO_EXCLUSIVO ? process.env.FIN_SUPA_SERVICE_KEY : MAIN_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
 const MAX_ARQUIVO = 4 * 1024 * 1024; // 4 MB de texto (limite do Netlify é 6 MB no corpo)
 

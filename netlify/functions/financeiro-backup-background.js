@@ -14,8 +14,10 @@ const zlib = require('zlib');
 // se um projeto inteiro tiver problema, o outro ainda tem todos os dias de backup).
 const MAIN_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 const MAIN_KEY = process.env.SUPA_SERVICE_KEY;
-const SUPA_URL = process.env.FIN_SUPA_URL || MAIN_URL;
-const KEY = process.env.FIN_SUPA_URL ? process.env.FIN_SUPA_SERVICE_KEY : MAIN_KEY;
+// Liga o banco exclusivo quando existe FIN_SUPA_SERVICE_KEY (URL fixa aqui: limite de 4 KB de env vars)
+const EXCLUSIVO = !!process.env.FIN_SUPA_SERVICE_KEY;
+const SUPA_URL = EXCLUSIVO ? (process.env.FIN_SUPA_URL || 'https://vyjjdirlgvysbalrmmih.supabase.co') : MAIN_URL;
+const KEY = EXCLUSIVO ? process.env.FIN_SUPA_SERVICE_KEY : MAIN_KEY;
 const hMain = extra => Object.assign({ apikey: MAIN_KEY, Authorization: 'Bearer ' + MAIN_KEY }, extra || {});
 const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'fin_extrato', 'fin_conferencias',
                  'fin_lancamentos', 'fin_conciliacoes', 'fin_alertas', 'fin_benef_confiaveis', 'fin_auditoria',
@@ -47,7 +49,7 @@ const handler = async function(){
       try { dump.tabelas[t] = await lerTabela(t); dump.contagens[t] = dump.tabelas[t].length; }
       catch(e){ if(/404|PGRST205|does not exist/.test(e.message)) dump.faltando.push(t); else throw e; }
     }
-    dump.banco = process.env.FIN_SUPA_URL ? 'exclusivo' : 'dashboard';
+    dump.banco = EXCLUSIVO ? 'exclusivo' : 'dashboard';
     const aud = dump.tabelas.fin_auditoria;
     dump.ultimo_hash_auditoria = aud.length ? aud[aud.length - 1].hash : null;
     const ri = await fetch(SUPA_URL + '/rest/v1/rpc/fin_verificar_cadeia', { method: 'POST', headers: h({ 'Content-Type': 'application/json' }), body: '{}' });
@@ -61,7 +63,7 @@ const handler = async function(){
     });
     if(!up.ok) throw new Error('upload: HTTP ' + up.status + ' ' + (await up.text()).slice(0, 200));
     // 2ª cópia no banco do dashboard (só quando o financeiro está num banco separado)
-    if(process.env.FIN_SUPA_URL && MAIN_KEY){
+    if(EXCLUSIVO && MAIN_KEY){
       const up2 = await fetch(MAIN_URL + '/storage/v1/object/fin-backups/' + caminho, { method: 'POST', headers: hMain({ 'Content-Type': 'application/gzip', 'x-upsert': 'false' }), body: gz });
       if(!up2.ok) await alertar('Backup do financeiro: 2ª cópia (banco do dashboard) falhou', { status: up2.status });
     }
