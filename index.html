@@ -21190,15 +21190,18 @@ function aplicarFiltros(){
 
 // ===================== MÓDULO CIDADES =====================
 var CIDADES_DATA_DEFAULT = [
-  { id:'c1', nome:'Fortaleza',  uf:'CE', gestor:'Alan Patrick Souza Quedevez', tel:'82999558995', status:'ativa',  inicio:'2023-01-20', campanhas:0, posts_semana:0, machine_api:'mch_api_9HUXyIM4TJtglW12J3JAfXLz', instagram_conectado:true  },
-  { id:'c2', nome:'Maceió',     uf:'AL', gestor:'Chayd Wender',                tel:'82991171441', status:'ativa',  inicio:'2023-08-08', campanhas:0, posts_semana:0, machine_api:'mch_api_7qZTetNUI6jLJDUUyc9rylda', instagram_conectado:true  },
-  { id:'c3', nome:'João Pessoa',uf:'PB', gestor:'Harison Sanches',             tel:'69992593847', status:'ativa',  inicio:'2024-01-08', campanhas:0, posts_semana:0, machine_api:'mch_api_GFxZZaTMSyNxHZWxh2AYBBhO', instagram_conectado:true  },
-  { id:'c4', nome:'Recife',     uf:'PE', gestor:'Raimundo Neto (GUGA)',        tel:'82991477777', status:'ativa',  inicio:'2024-09-16', campanhas:0, posts_semana:0, machine_api:'mch_api_1U24cU6Jrpnbo4CDiHW4XzTX', instagram_conectado:true  },
-  { id:'c5', nome:'Natal',      uf:'RN', gestor:'Talis Ferreira',              tel:'84988750937', status:'ativa',  inicio:'2025-03-01', campanhas:0, posts_semana:0, machine_api:'mch_api_h1QuswRFxqNGQfue0RaDgEYb', instagram_conectado:true  },
-  { id:'c6', nome:'Aracaju',    uf:'SE', gestor:'Sidnen da Silva',             tel:'82998278026', status:'ativa',  inicio:'2025-01-29', campanhas:0, posts_semana:0, machine_api:'mch_api_QheteUpBZChzh7SFhbJ99S12', instagram_conectado:true  },
-  { id:'c7', nome:'São Luís',   uf:'MA', gestor:'Bruno Pinto Cutrim',          tel:'98981955252', status:'ativa',  inicio:'2026-03-10', campanhas:0, posts_semana:0, machine_api:'mch_api_9HUXyIM4TJtglW12J3JAfXLz', instagram_conectado:false },
-  { id:'c9', nome:'Teresina',   uf:'PI', gestor:'Rosimar Siqueira (MAZINHO)',  tel:'69984356443', status:'ativa',  inicio:'2025-10-26', campanhas:0, posts_semana:0, machine_api:'mch_api_RjJkmPUGdbcrSyD4cpAiUrEo', instagram_conectado:false },
-  { id:'c11',nome:'Campo Grande',uf:'MS',gestor:'João Duarte',                 tel:'',            status:'atencao',inicio:'2026-05-09', campanhas:0, posts_semana:0, machine_api:'',                                  instagram_conectado:false },
+  // SEGURANÇA (09/11/2026): as chaves da Machine (mch_api_...) foram REMOVIDAS do
+  // front-end (eram públicas). A integração usa as env vars MACHINE_API_KEY_<CIDADE>
+  // no servidor. Aqui fica só um sinalizador machine_ok (não é segredo) pro display.
+  { id:'c1', nome:'Fortaleza',  uf:'CE', gestor:'Alan Patrick Souza Quedevez', tel:'82999558995', status:'ativa',  inicio:'2023-01-20', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:true  },
+  { id:'c2', nome:'Maceió',     uf:'AL', gestor:'Chayd Wender',                tel:'82991171441', status:'ativa',  inicio:'2023-08-08', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:true  },
+  { id:'c3', nome:'João Pessoa',uf:'PB', gestor:'Harison Sanches',             tel:'69992593847', status:'ativa',  inicio:'2024-01-08', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:true  },
+  { id:'c4', nome:'Recife',     uf:'PE', gestor:'Raimundo Neto (GUGA)',        tel:'82991477777', status:'ativa',  inicio:'2024-09-16', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:true  },
+  { id:'c5', nome:'Natal',      uf:'RN', gestor:'Talis Ferreira',              tel:'84988750937', status:'ativa',  inicio:'2025-03-01', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:true  },
+  { id:'c6', nome:'Aracaju',    uf:'SE', gestor:'Sidnen da Silva',             tel:'82998278026', status:'ativa',  inicio:'2025-01-29', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:true  },
+  { id:'c7', nome:'São Luís',   uf:'MA', gestor:'Bruno Pinto Cutrim',          tel:'98981955252', status:'ativa',  inicio:'2026-03-10', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:false },
+  { id:'c9', nome:'Teresina',   uf:'PI', gestor:'Rosimar Siqueira (MAZINHO)',  tel:'69984356443', status:'ativa',  inicio:'2025-10-26', campanhas:0, posts_semana:0, machine_ok:true,  instagram_conectado:false },
+  { id:'c11',nome:'Campo Grande',uf:'MS',gestor:'João Duarte',                 tel:'',            status:'atencao',inicio:'2026-05-09', campanhas:0, posts_semana:0, machine_ok:false, instagram_conectado:false },
   // c10 Vitória/ES (gestor Jean Alves Guerra) — OPERAÇÃO ENCERRADA 28/09/2026, removida (ver CIDADES_REMOVIDAS + PESSOAS_DESLIGADAS)
 ];
 
@@ -21238,8 +21241,9 @@ function getCidadesData(){
       var out = Object.assign({}, def, saved);
       // 🆕 FORCE: gestor SEMPRE vem do default (não permite cache antigo sobrescrever)
       out.gestor = def.gestor;
-      // Se chave Machine API estava vazia no saved e default tem, usa do default
-      if(!saved.machine_api && def.machine_api) out.machine_api = def.machine_api;
+      // machine_ok sempre vem do default (sinalizador, não segredo). Limpa chave antiga
+      // que possa ter ficado no saved (migração: tira o mch_api_ do cache do cliente).
+      out.machine_ok = def.machine_ok; delete out.machine_api;
       if(saved.instagram_conectado === undefined) out.instagram_conectado = def.instagram_conectado;
       return out;
     });
@@ -28674,7 +28678,7 @@ function renderIntegracoesStatus(){
   var cidades = getCidadesData();
   
   var totalCid = cidades.length;
-  var comApi = cidades.filter(function(c){ return c.machine_api && c.machine_api.length > 0; }).length;
+  var comApi = cidades.filter(function(c){ return c.machine_ok; }).length;
   var comInsta = cidades.filter(function(c){ return c.instagram_conectado === true; }).length;
   var pctApi = totalCid ? Math.round(comApi/totalCid*100) : 0;
   var pctInsta = totalCid ? Math.round(comInsta/totalCid*100) : 0;
@@ -28736,9 +28740,9 @@ function renderIntegracoesStatus(){
           '</thead>'+
           '<tbody>'+
           cidades.map(function(c){
-            var apiKey = c.machine_api || '';
-            var apiBadge = apiKey
-              ? '<span style="font-family:ui-monospace,monospace;font-size:10px;color:#1D9E75;background:#1D9E7515;padding:2px 6px;border-radius:4px;cursor:pointer" onclick="navigator.clipboard.writeText(\''+apiKey+'\').then(function(){alert(\'✓ Chave copiada!\');})" title="Clique para copiar">'+apiKey.slice(0,12)+'…✓</span>'
+            // A chave não fica mais no cliente (segurança): mostra só se está configurada.
+            var apiBadge = c.machine_ok
+              ? '<span style="font-size:10px;color:#1D9E75;background:#1D9E7515;padding:2px 8px;border-radius:10px;font-weight:600">✓ configurada</span>'
               : '<span style="font-size:10px;color:var(--text3);font-style:italic">aguardando</span>';
             var instaBadge = c.instagram_conectado
               ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#1D9E7520;color:#1D9E75;font-size:10px;font-weight:600">✓ Conectado</span>'
