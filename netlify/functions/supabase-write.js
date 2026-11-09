@@ -141,11 +141,12 @@ async function validarSessao(userId, token){
 
     if(u.ativo === false) return { valido: false, erro: 'Usuário desativado' };
 
-    // Se token foi enviado, valida (mais seguro)
-    // Se token não foi enviado (sistema antigo), valida só user_id (compatibilidade)
-    if(token){
-      if(!_tokenAtivo(u, token)) return { valido: false, erro: 'Sessão expirada (faça login de novo)' };
-    }
+    // 🔒 Fix segurança (2026-11-09): token OBRIGATÓRIO. Antes, sem token caía no
+    // caminho "compat" e validava só por user_id → qualquer pessoa_id ativo
+    // (enumerável) escrevia com service_role sem sessão. O front (_syncEscrever)
+    // SEMPRE envia X-Gami-Token, então exigir o token não quebra nenhum fluxo.
+    if(!token) return { valido: false, erro: 'Sessão sem token (faça login de novo)' };
+    if(!_tokenAtivo(u, token)) return { valido: false, erro: 'Sessão expirada (faça login de novo)' };
     
     // Busca o nivel na tabela pessoas (super_admin pode estar em várias colunas)
     const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,niveis,cargo,super_admin&limit=1', {
@@ -343,7 +344,23 @@ exports.handler = async function(event){
   if(!usuario.super_admin && !_permColab){
     return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada (não é super_admin)'}) };
   }
-  
+
+  // 🔒 Fix segurança (2026-11-09): papel NÃO é colaborativo. `pessoas` fica em
+  // TABELAS_COLAB pra edição comum (nome/telefone), mas as colunas de PAPEL
+  // (super_admin/nivel/niveis/nivel_permissao/cargo) só o super_admin altera.
+  // Fecha a auto-promoção (o medo do Rafhael): sessão comum não vira admin.
+  if(tabela === 'pessoas' && !usuario.super_admin){
+    var _cols = [];
+    if(operacao === 'patch' && patch) _cols = Object.keys(patch);
+    else if((operacao === 'upsert' || operacao === 'insert') && Array.isArray(dados))
+      dados.forEach(function(d){ if(d) _cols = _cols.concat(Object.keys(d)); });
+    var _papel = ['super_admin', 'nivel', 'niveis', 'nivel_permissao', 'cargo'];
+    if(_cols.some(function(k){ return _papel.indexOf(k) >= 0; })){
+      alertar('escalada_papel_bloqueada', 'alerta', 'Nao-super_admin tentou gravar coluna de papel em pessoas', { userId, operacao: operacao || null, cols: _cols, ip });
+      return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada: alterar papel em pessoas é só super_admin.'}) };
+    }
+  }
+
   // Constrói chamada ao Supabase com SERVICE_KEY (bypassa RLS)
   const supaHeaders = {
     'apikey': SUPA_SERVICE_KEY,
