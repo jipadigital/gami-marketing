@@ -2265,24 +2265,28 @@ function temPermissao(recurso){
    A segurança REAL é no servidor (netlify/functions/faturamento.js valida a
    mesma lista); isto aqui só esconde o menu/página. Os números nunca são
    carregados sem a autorização do servidor. */
-var FATURAMENTO_IDS = ['pe001','pe002','pe003']; // diretoria + super. Carlos/Matheus removidos (acesso limitado 2026-11-10)
+var FATURAMENTO_IDS = ['pe001','pe002','pe003','pecarlosvinicius','pematheusfedrizzi'];
+// Também libera o Matheus por HASH do e-mail (o id do cadastro pode não ser 'pematheusfedrizzi').
+// O e-mail não fica em texto na fonte; só o sha256. Servidor (faturamento.js) valida o mesmo e-mail.
+var _MATHEUS_H = '87273c39279b6ed0acc1dc57d0e288d92ee756adb44f3b690a7139f8b7461c61';
 function _podeVerFaturamento(){
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   if(!u) return false;
-  if(u.id === 'pecarlosvinicius' || u.id === 'pematheusfedrizzi') return false; // acesso ao financeiro limitado 2026-11-10
   if(u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com') return true;
   if(typeof detectarNivelPermissao==='function' && detectarNivelPermissao(u)==='super_admin') return true;
+  if(_emailHash(u) === _MATHEUS_H) return true;
   return FATURAMENTO_IDS.indexOf(u.id) >= 0;
 }
 
-// LTV (estudo CAC x LTV): SÓ diretoria (pe001-3) + super. Carlos e Matheus fora (acesso limitado 2026-11-10).
-var LTV_IDS = ['pe001','pe002','pe003']; // Rafhael, Tainara, João Duarte (diretores)
+// LTV (estudo CAC x LTV do Matheus): SÓ Matheus + diretoria, SEM o Carlos (pedido do dono).
+var LTV_IDS = ['pe001','pe002','pe003','pematheusfedrizzi']; // Rafhael, Tainara, João Duarte (diretores) + Matheus
 function _podeVerLtv(){
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   if(!u) return false;
-  if(u.id === 'pecarlosvinicius' || u.id === 'pematheusfedrizzi') return false; // acesso ao financeiro limitado 2026-11-10
+  if(u.id === 'pecarlosvinicius') return false; // Carlos não vê o LTV por enquanto
   if(u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com') return true;
   if(typeof detectarNivelPermissao==='function' && detectarNivelPermissao(u)==='super_admin') return true;
+  if(_emailHash(u) === _MATHEUS_H) return true;
   return LTV_IDS.indexOf(u.id) >= 0;
 }
 

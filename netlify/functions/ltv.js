@@ -12,9 +12,10 @@ const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
 
-// Quem vê/edita o LTV (pessoa_id). Só diretoria (pe001-3) + super_admin.
-// Acesso limitado 2026-11-10: Carlos e Matheus (pematheusfedrizzi) removidos a pedido.
-const ALLOWLIST = ['pe001', 'pe002', 'pe003'];
+// Quem vê/edita o LTV (pessoa_id). Matheus + diretoria. Carlos NÃO entra (pedido do dono).
+const ALLOWLIST = ['pe001', 'pe002', 'pe003', 'pematheusfedrizzi'];
+// Também libera por E-MAIL (não depende do pessoa_id exato do cadastro). Matheus Fedrizzi.
+const EMAILS_AUTORIZADOS = ['matheus@mfedrizziconsultoria.com'];
 
 const ORIGENS_PERMITIDAS = [
   'https://gami-marketing.netlify.app',
@@ -107,8 +108,9 @@ exports.handler = async function(event){
     if(caller.ativo === false) return { statusCode:403, headers:cors, body:JSON.stringify({ ok:false, erro:'Usuário desativado' }) };
     if(!tokenAtivo(caller, callerToken)) return { statusCode:401, headers:cors, body:JSON.stringify({ ok:false, erro:'Sessão expirada (faça login de novo)' }) };
 
-    const ehSuper = String(caller.email || '').toLowerCase() === SUPER_ADMIN_EMAIL;
-    const autorizado = ehSuper || ALLOWLIST.indexOf(callerId) >= 0;
+    const emailCaller = String(caller.email || '').toLowerCase();
+    const ehSuper = emailCaller === SUPER_ADMIN_EMAIL;
+    const autorizado = ehSuper || ALLOWLIST.indexOf(callerId) >= 0 || EMAILS_AUTORIZADOS.indexOf(emailCaller) >= 0;
     if(!autorizado) return { statusCode:403, headers:cors, body:JSON.stringify({ ok:false, erro:'Sem permissão para ver o LTV' }) };
 
     // ---- AÇÃO: gravar custo de vendas+marketing (cidade/mês) ----

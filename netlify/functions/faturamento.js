@@ -10,13 +10,15 @@ const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
 
 // Quem pode ver o faturamento (pessoa_id). Super_admin sempre pode.
-// Acesso limitado a 2026-11-10: só diretoria (pe001-3) + super_admin.
-// Carlos (pecarlosvinicius) e Matheus (pematheusfedrizzi) removidos a pedido.
 const ALLOWLIST = [
   'pe001',             // Rafhael Nóbrega
   'pe002',             // Tainara Nóbrega
-  'pe003'              // João Duarte
+  'pe003',             // João Duarte
+  'pecarlosvinicius',  // Carlos Vinícius Alves
+  'pematheusfedrizzi'  // Matheus Fedrizzi Marques
 ];
+// Também libera por E-MAIL (não depende do pessoa_id exato do cadastro). Matheus Fedrizzi.
+const EMAILS_AUTORIZADOS = ['matheus@mfedrizziconsultoria.com'];
 
 const ORIGENS_PERMITIDAS = [
   'https://gami-marketing.netlify.app',
@@ -57,8 +59,9 @@ exports.handler = async function(event){
     if(caller.token_expira_em && new Date(caller.token_expira_em) < new Date()) return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Sessão expirada' }) };
 
     // 2) AUTORIZAÇÃO: super_admin OU pessoa_id na allowlist
-    const ehSuper = String(caller.email || '').toLowerCase() === SUPER_ADMIN_EMAIL;
-    const autorizado = ehSuper || ALLOWLIST.indexOf(callerId) >= 0;
+    const emailCaller = String(caller.email || '').toLowerCase();
+    const ehSuper = emailCaller === SUPER_ADMIN_EMAIL;
+    const autorizado = ehSuper || ALLOWLIST.indexOf(callerId) >= 0 || EMAILS_AUTORIZADOS.indexOf(emailCaller) >= 0;
     if(!autorizado) return { statusCode: 403, headers: cors, body: JSON.stringify({ ok:false, erro:'Sem permissão para ver o faturamento' }) };
 
     // 3) Entrega os dados (service key, bypassa RLS). MV diária, paginada (PostgREST corta em 1000).
