@@ -12,8 +12,9 @@ const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
 
-// Quem vê/edita o LTV (pessoa_id). Matheus + diretoria. Carlos NÃO entra (pedido do dono).
-const ALLOWLIST = ['pe001', 'pe002', 'pe003', 'pematheusfedrizzi'];
+// Quem vê/edita o LTV (pessoa_id). Só diretoria (pe001-3) + super_admin.
+// Acesso limitado 2026-11-10: Carlos e Matheus (pematheusfedrizzi) removidos a pedido.
+const ALLOWLIST = ['pe001', 'pe002', 'pe003'];
 
 const ORIGENS_PERMITIDAS = [
   'https://gami-marketing.netlify.app',

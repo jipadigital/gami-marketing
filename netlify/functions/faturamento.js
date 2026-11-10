@@ -10,12 +10,12 @@ const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
 
 // Quem pode ver o faturamento (pessoa_id). Super_admin sempre pode.
+// Acesso limitado a 2026-11-10: só diretoria (pe001-3) + super_admin.
+// Carlos (pecarlosvinicius) e Matheus (pematheusfedrizzi) removidos a pedido.
 const ALLOWLIST = [
   'pe001',             // Rafhael Nóbrega
   'pe002',             // Tainara Nóbrega
-  'pe003',             // João Duarte
-  'pecarlosvinicius',  // Carlos Vinícius Alves
-  'pematheusfedrizzi'  // Matheus Fedrizzi Marques
+  'pe003'              // João Duarte
 ];
 
 const ORIGENS_PERMITIDAS = [
