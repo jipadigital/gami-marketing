@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const X = require('./xlsx-mini');
 const PL = require('./fin-planilhas');
+const MQ = require('./machine-api');
 
 module.exports = function(h){
   const { rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc, NIVEL } = h;
@@ -18,7 +19,9 @@ module.exports = function(h){
     ctl_estornar_receb: 'gestor', ctl_cancelar: 'gestor',
     // v5: as outras planilhas (bags, camisetas, motoboys novos, motoboys semanal, descontos)
     ctl_reg_abas: 'leitor', ctl_reg_listar: 'leitor', ctl_reg_ver: 'leitor',
-    ctl_reg_salvar: 'conferente', ctl_reg_pagar: 'conferente', ctl_reg_estornar_pag: 'gestor'
+    ctl_reg_salvar: 'conferente', ctl_reg_pagar: 'conferente', ctl_reg_estornar_pag: 'gestor',
+    // v6: Motoboys semanal calculado pelas corridas da Machine
+    ctl_moto_previa: 'leitor', ctl_moto_buscar_dia: 'conferente', ctl_moto_gerar: 'conferente'
   };
   const MOTIVOS = ['pagamento_semanal', 'bonus_acao', 'bonus_inicio', 'cortesia', 'reembolso', 'ajuste', 'zeragem', 'teste', 'outro'];
   const SIT = ['aberta', 'vencida', 'parcial', 'quitada', 'cancelada'];
@@ -239,6 +242,32 @@ module.exports = function(h){
     async ctl_reg_estornar_pag(b, ctx){
       const id = intOk(b.id); if(!id) throw new ErroUsuario('Pagamento inválido');
       return rpc('fin_ctl_reg_estornar_pag', { p_ator: ctx.pessoaId, p_id: id, p_motivo: txt(b.motivo, 500) });
+    },
+
+    // ---------------- v6: MOTOBOYS PELA MACHINE ----------------
+    async ctl_moto_buscar_dia(b, ctx){
+      const un = unidade(b.unidade_id), dia = dataOk(b.dia);
+      if(!dia) throw new ErroUsuario('Dia inválido');
+      const hojeBR = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+      if(dia >= hojeBR) throw new ErroUsuario('Só dá pra buscar dias que já terminaram');
+      const [u] = (await rest('fin_unidades?id=eq.' + un + '&select=cidade_slug')).data || [];
+      if(!u || !u.cidade_slug) throw new ErroUsuario('Essa unidade não tem cidade da Machine');
+      let res;
+      try { res = await MQ.corridasDoDia(u.cidade_slug, dia, 20000); } catch(e){ throw new ErroUsuario(e.message); }
+      const r = await rpc('fin_ctl_machine_salvar_dia', { p_ator: ctx.pessoaId, p_unidade: un, p_dia: dia, p_completo: res.completo, p_corridas: res.corridas });
+      return Object.assign({ completo: res.completo }, r);
+    },
+    async ctl_moto_previa(b){
+      const un = unidade(b.unidade_id), ini = dataOk(b.semana_ini); if(!ini) throw new ErroUsuario('Semana inválida');
+      const pct = b.percentual === '' || b.percentual == null ? 21 : Number(String(b.percentual).replace(',', '.'));
+      if(!(pct >= 0 && pct <= 100)) throw new ErroUsuario('Percentual inválido');
+      return { previa: await rpc('fin_ctl_moto_previa', { p_unidade: un, p_ini: ini, p_pct: pct }) };
+    },
+    async ctl_moto_gerar(b, ctx){
+      const un = unidade(b.unidade_id), ini = dataOk(b.semana_ini); if(!ini) throw new ErroUsuario('Semana inválida');
+      const pct = b.percentual === '' || b.percentual == null ? 21 : Number(String(b.percentual).replace(',', '.'));
+      if(!(pct >= 0 && pct <= 100)) throw new ErroUsuario('Percentual inválido');
+      return rpc('fin_ctl_moto_gerar', { p_ator: ctx.pessoaId, p_unidade: un, p_ini: ini, p_pct: pct });
     },
 
     async ctl_importacoes(){

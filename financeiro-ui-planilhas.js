@@ -114,7 +114,7 @@ function tela(chaveP){
     el.innerHTML = '<div class="fin-filtros"><b style="font-size:15px">' + def.titulo + '</b><select id="pl-un">' + optsCidade(st.unidade_id) + '</select>' +
       '<input id="pl-busca" placeholder="Buscar nome" maxlength="60" value="' + esc(st.busca) + '" style="width:150px">' +
       '<select id="pl-conf"><option value="">Confirmação: todas</option><option value="sem"' + (st.conf === 'sem' ? ' selected' : '') + '>Falta conferir</option><option value="ok"' + (st.conf === 'ok' ? ' selected' : '') + '>Conferidas</option><option value="divergente"' + (st.conf === 'divergente' ? ' selected' : '') + '>Divergentes</option></select>' +
-      '<button class="fin-bt pri" id="pl-ok">Filtrar</button></div>' +
+      '<button class="fin-bt pri" id="pl-ok">Filtrar</button>' + (chaveP === 'motoboy_semanal' && podeLancar ? '<button class="fin-bt ok" id="pl-maq" title="Soma as corridas finalizadas de cada motoboy na semana desta aba">⚡ Calcular da Machine</button>' : '') + '</div>' +
       (chaveP === 'descontos' ? '<div class="pl-sub"><button class="fin-bt' + (st.sub === 'desconto_banco' ? ' pri' : '') + '" data-sub="desconto_banco">🏦 Dentro do banco</button><button class="fin-bt' + (st.sub === 'desconto_fora' ? ' pri' : '') + '" data-sub="desconto_fora">📒 Fora do banco</button></div>' : '') +
       '<div class="pl-abas" id="pl-abas"></div><div id="pl-out"><div class="fin-vazio">Carregando...</div></div>';
     $('pl-ok').onclick = function(){ st.unidade_id = $('pl-un').value; st.busca = $('pl-busca').value.trim(); st.conf = $('pl-conf').value; rec(); };
@@ -133,6 +133,7 @@ function tela(chaveP){
       $('pl-abas').innerHTML = abas.map(function(a){ return '<div class="pl-aba' + (a.ini === st.ini ? ' on' : '') + '" data-ini="' + a.ini + '">' + esc(nomeAba(a.ini, a.fim, def.semanal)) + '<span class="q">' + (n(a.qtd) || '') + '</span>' + (n(a.sem_conferencia) ? ' <span title="falta conferir">•</span>' : '') + '</div>'; }).join('');
       $('pl-abas').querySelectorAll('.pl-aba').forEach(function(t){ t.onclick = function(){ st.ini = t.getAttribute('data-ini'); rec(); }; });
       var ativa = $('pl-abas').querySelector('.pl-aba.on'); if(ativa) ativa.scrollIntoView({ block: 'nearest', inline: 'end' });
+      if($('pl-maq')) $('pl-maq').onclick = function(){ calcularMachine(st, rec); };
       var arg = { planilha: chaveP, unidade_id: st.unidade_id, ini: st.ini, fim: st.fim, busca: st.busca || null, conf: st.conf || null };
       if(chaveP === 'descontos') arg.tipo = st.sub;
       var j = await api('ctl_reg_listar', arg);
@@ -193,6 +194,58 @@ function tela(chaveP){
       }
     } catch(e){ $('pl-out').innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }
   };
+}
+
+// ⚡ Motoboys pela Machine: busca os 7 dias (um por vez, pra caber no tempo do servidor), mostra a prévia e gera
+function calcularMachine(st, aoMudar){
+  var ini = st.ini, fim = addDias(ini, 6), fechada = fim < hoje();
+  var nomeCid = ((F.ctlBase.unidades || []).filter(function(u){ return String(u.id) === String(st.unidade_id); })[0] || {}).nome || '';
+  var m = modal('<div style="font-weight:800;font-size:16px">⚡ Motoboys da semana pela Machine</div>' +
+    '<div class="fin-sub" style="margin:4px 0 10px">' + esc(nomeCid) + ' · semana ' + dataBR(ini) + ' a ' + dataBR(fim) + '. Soma as corridas FINALIZADAS de cada motoboy (é a mesma conta da planilha).' +
+    (fechada ? '' : '<br><b style="color:#C0392B">Esta semana ainda não terminou: dá pra ver a prévia, mas só gera depois de domingo.</b>') + '</div>' +
+    '<div class="fin-filtros"><label class="fin-sub">% da Gâmi <input id="mq-pct" value="21" inputmode="decimal" style="width:60px"></label>' +
+    '<button class="fin-bt pri" id="mq-buscar">1. Buscar os 7 dias na Machine</button><button class="fin-bt" id="mq-ver">Só ver a prévia</button></div>' +
+    '<div id="mq-dias" style="margin-top:8px"></div><div id="mq-prev"></div>');
+  var de = function(sel){ return m.el.querySelector(sel); };
+  var pct = function(){ return de('#mq-pct').value; };
+  async function previa(){
+    var out = de('#mq-prev'); out.innerHTML = '<div class="fin-vazio">Calculando...</div>';
+    try {
+      var p = (await api('ctl_moto_previa', { unidade_id: st.unidade_id, semana_ini: ini, percentual: pct() })).previa;
+      var pode = p.semana_fechada && n(p.dias_ok) === 7;
+      var h = '<div class="fin-kpis" style="margin-top:10px">' +
+        '<div class="fin-card"><div class="fin-kl">Dias buscados</div><div class="fin-kv" style="color:' + (n(p.dias_ok) === 7 ? '#1D9E75' : '#D68910') + '">' + n(p.dias_ok) + ' de 7</div></div>' +
+        '<div class="fin-card"><div class="fin-kl">Motoboys</div><div class="fin-kv">' + n(p.motoboys) + '</div></div>' +
+        '<div class="fin-card"><div class="fin-kl">Faturamento</div><div class="fin-kv">' + moeda(p.faturamento) + '</div></div>' +
+        '<div class="fin-card"><div class="fin-kl">Gâmi (' + esc(pct()) + '%)</div><div class="fin-kv" style="color:#1D9E75">' + moeda(p.gami) + '</div><div class="fin-sub">entregadores ' + moeda(n(p.faturamento) - n(p.gami)) + '</div></div></div>';
+      if(n(p.ja_na_aba)) h += '<div class="fin-sub" style="margin:6px 0">Já existem ' + n(p.ja_na_aba) + ' linha(s) nesta aba (' + moeda(p.ja_na_aba_valor) + '), ' + n(p.ja_da_machine) + ' delas já geradas pela Machine. Nada é duplicado: o que já existe fica como está.</div>';
+      if((p.divergencias || []).length) h += '<div class="fin-erro" style="margin:6px 0">⚠️ ' + p.divergencias.length + ' motoboy(s) lançados à mão com valor diferente da Machine:<br>' + p.divergencias.map(function(d){ return esc(d.nome) + ': na aba ' + moeda(d.na_aba) + ', Machine ' + moeda(d.machine); }).join('<br>') + '</div>';
+      h += '<details style="margin:6px 0"><summary class="fin-sub" style="cursor:pointer">Ver os ' + n(p.motoboys) + ' motoboys</summary><div style="max-height:240px;overflow:auto"><table class="fin-tbl"><tbody>' +
+        (p.linhas || []).map(function(l){ return '<tr><td>' + esc(l.nome || '-') + '</td><td class="fin-sub">' + n(l.corridas) + ' corridas</td><td style="text-align:right">' + moeda(l.valor) + '</td></tr>'; }).join('') + '</tbody></table></div></details>';
+      h += '<button class="fin-bt ok" id="mq-gerar"' + (pode ? '' : ' disabled') + '>2. Gerar a semana na planilha</button>' +
+        (pode ? '' : '<span class="fin-sub" style="margin-left:8px">' + (!p.semana_fechada ? 'a semana ainda não terminou' : 'faltam dias completos da Machine') + '</span>');
+      out.innerHTML = h;
+      if(de('#mq-gerar')) de('#mq-gerar').onclick = function(){ var bt = this; travado(bt, async function(){
+        try { var g = await api('ctl_moto_gerar', { unidade_id: st.unidade_id, semana_ini: ini, percentual: pct() });
+          toast(g.novos + ' motoboy(s) lançados'); out.innerHTML = '<div class="fin-card" style="border-color:#1D9E75;margin-top:10px">✅ ' + g.novos + ' motoboy(s) lançados na aba' + (g.ja_gerados ? ', ' + g.ja_gerados + ' já tinham sido gerados antes' : '') + (g.ja_lancados_a_mao ? ', ' + g.ja_lancados_a_mao + ' já estavam lançados à mão (não duplicou)' : '') + '. Agora outra pessoa confere na coluna CONFIRMAÇÃO.</div>';
+          aoMudar && aoMudar(); }
+        catch(e){ toast(e.message, 'erro'); } }); };
+    } catch(e){ out.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }
+  }
+  de('#mq-ver').onclick = previa;
+  de('#mq-buscar').onclick = function(){ var bt = this; travado(bt, async function(){
+    var box = de('#mq-dias'); box.innerHTML = '';
+    for(var i = 0; i < 7; i++){
+      var dia = addDias(ini, i);
+      var linha = document.createElement('div'); linha.className = 'fin-sub'; box.appendChild(linha);
+      if(dia >= hoje()){ linha.textContent = dataBR(dia) + ': ainda não terminou, pulado'; continue; }
+      linha.textContent = dataBR(dia) + ': buscando...';
+      try { var r = await api('ctl_moto_buscar_dia', { unidade_id: st.unidade_id, dia: dia });
+        linha.innerHTML = (r.completo ? '✅ ' : '⚠️ ') + dataBR(dia) + ': ' + n(r.finalizadas) + ' corridas finalizadas · ' + moeda(r.valor) + (r.completo ? '' : ' <b style="color:#C0392B">(a Machine cortou: busque de novo)</b>'); }
+      catch(e){ linha.innerHTML = '❌ ' + dataBR(dia) + ': ' + esc(e.message); }
+    }
+    await previa();
+  }); };
 }
 
 async function verRegistro(id, def, aoMudar){

@@ -29,11 +29,13 @@ const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'f
                  // v4 (Controles: Empresas semanal, Créditos) + equipe
                  'fin_ctl_importacoes', 'fin_ctl_cobrancas', 'fin_ctl_cob_receb', 'fin_ctl_creditos', 'fin_ctl_conferencias', 'fin_equipe',
                  // v5 (as outras planilhas)
-                 'fin_ctl_registros', 'fin_ctl_reg_pag'];
+                 'fin_ctl_registros', 'fin_ctl_reg_pag',
+                 // v6 (Motoboys pela Machine)
+                 'fin_ctl_machine_dias', 'fin_ctl_machine_corridas'];
 // dado da FLYP NUNCA sai do banco exclusivo: a 2ª cópia (no banco do dashboard) vai sem essas tabelas
 const SO_NO_EXCLUSIVO = /^fin_flyp_/;
 const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em',
-                fin_ctl_importacoes: 'importado_em', fin_equipe: 'pessoa_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
+                fin_ctl_importacoes: 'importado_em', fin_equipe: 'pessoa_id', fin_ctl_machine_dias: 'dia', fin_ctl_machine_corridas: 'corrida_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
 const h = extra => Object.assign({ apikey: KEY, Authorization: 'Bearer ' + KEY }, extra || {});
 
 async function lerTabela(t){
