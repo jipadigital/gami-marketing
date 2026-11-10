@@ -27,7 +27,9 @@ const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'f
                  // v3 (FLYP): vai pros mesmos cofres privados
                  'fin_flyp_importacoes', 'fin_flyp_transacoes', 'fin_flyp_acesso', 'fin_flyp_leituras',
                  // v4 (Controles: Empresas semanal, Créditos) + equipe
-                 'fin_ctl_importacoes', 'fin_ctl_cobrancas', 'fin_ctl_cob_receb', 'fin_ctl_creditos', 'fin_ctl_conferencias', 'fin_equipe'];
+                 'fin_ctl_importacoes', 'fin_ctl_cobrancas', 'fin_ctl_cob_receb', 'fin_ctl_creditos', 'fin_ctl_conferencias', 'fin_equipe',
+                 // v5 (as outras planilhas)
+                 'fin_ctl_registros', 'fin_ctl_reg_pag'];
 // dado da FLYP NUNCA sai do banco exclusivo: a 2ª cópia (no banco do dashboard) vai sem essas tabelas
 const SO_NO_EXCLUSIVO = /^fin_flyp_/;
 const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em',

@@ -15,11 +15,18 @@ module.exports = function(h){
     ctl_base: 'leitor', ctl_cob_resumo: 'leitor', ctl_cob_listar: 'leitor', ctl_cob_ver: 'leitor',
     ctl_cred_resumo: 'leitor', ctl_cred_listar: 'leitor', ctl_cred_ver: 'leitor', ctl_importacoes: 'leitor',
     ctl_cob_salvar: 'conferente', ctl_cob_receber: 'conferente', ctl_cred_salvar: 'conferente', ctl_conferir: 'conferente', ctl_importar: 'conferente',
-    ctl_estornar_receb: 'gestor', ctl_cancelar: 'gestor'
+    ctl_estornar_receb: 'gestor', ctl_cancelar: 'gestor',
+    // v5: as outras planilhas (bags, camisetas, motoboys novos, motoboys semanal, descontos)
+    ctl_reg_abas: 'leitor', ctl_reg_listar: 'leitor', ctl_reg_ver: 'leitor',
+    ctl_reg_salvar: 'conferente', ctl_reg_pagar: 'conferente', ctl_reg_estornar_pag: 'gestor'
   };
   const MOTIVOS = ['pagamento_semanal', 'bonus_acao', 'bonus_inicio', 'cortesia', 'reembolso', 'ajuste', 'zeragem', 'teste', 'outro'];
   const SIT = ['aberta', 'vencida', 'parcial', 'quitada', 'cancelada'];
-  const TABELAS = { cobrancas: 'fin_ctl_cobrancas', creditos: 'fin_ctl_creditos' };
+  const TABELAS = { cobrancas: 'fin_ctl_cobrancas', creditos: 'fin_ctl_creditos', registros: 'fin_ctl_registros' };
+  // cada planilha = um ou mais tipos de linha (DESCONTOS tem as abas "banco" e "fora do banco")
+  const PLANILHAS = { bag: ['bag'], camiseta: ['camiseta'], moto_novo: ['moto_novo'], motoboy_semanal: ['motoboy_semanal'], descontos: ['desconto_banco', 'desconto_fora'] };
+  const TIPOS_LINHA = ['bag', 'camiseta', 'moto_novo', 'motoboy_semanal', 'desconto_banco', 'desconto_fora'];
+  const FORMAS = ['pix', 'dinheiro', 'cartao', 'boleto', 'cortesia', 'desconto_semanal', 'outro'];
 
   const valor = (v, nome, zeroOk) => {
     const n = typeof v === 'number' ? v : h.P.parseValor(String(v == null ? '' : v));
@@ -164,13 +171,84 @@ module.exports = function(h){
       if(b.status !== 'ok' && b.status !== 'divergente') throw new ErroUsuario('Status inválido');
       return rpc('fin_ctl_conferir', { p_ator: ctx.pessoaId, p_tabela: t, p_ids: ids, p_status: b.status, p_obs: txt(b.observacao, 1000) });
     },
+    // ---------------- v5: AS OUTRAS PLANILHAS ----------------
+    async ctl_reg_abas(b){
+      const tipos = PLANILHAS[b.planilha]; if(!tipos) throw new ErroUsuario('Planilha inválida');
+      return { abas: await rpc('fin_ctl_reg_abas', { p_tipos: tipos, p_unidade: unidadeOpc(b.unidade_id) }) };
+    },
+    async ctl_reg_listar(b){
+      const tipos = PLANILHAS[b.planilha]; if(!tipos) throw new ErroUsuario('Planilha inválida');
+      const { ini, fim } = periodo(b, 400);
+      const semanal = b.planilha === 'motoboy_semanal';
+      const f = ['tipo=in.(' + tipos.join(',') + ')', (semanal ? 'semana_ini' : 'data') + '=gte.' + ini, (semanal ? 'semana_ini' : 'data') + '=lte.' + fim];
+      const u = unidadeOpc(b.unidade_id); if(u) f.push('unidade_id=eq.' + u);
+      f.push(b.status === 'cancelado' ? 'status=eq.cancelado' : 'status=eq.ativo');
+      if(TIPOS_LINHA.indexOf(b.tipo) >= 0 && tipos.indexOf(b.tipo) >= 0) f.push('tipo=eq.' + b.tipo);
+      if(['pendente', 'parcial', 'pago', 'cortesia'].indexOf(b.situacao) >= 0) f.push('situacao=eq.' + b.situacao);
+      if(b.conf === 'sem') f.push('conf_status=is.null'); else if(b.conf === 'ok' || b.conf === 'divergente') f.push('conf_status=eq.' + b.conf);
+      const busca = textoBusca(b.busca);
+      if(busca) f.push('nome_norm=ilike.*' + encodeURIComponent(h.P.norm(busca)) + '*');
+      const res = await pagina('fin_ctl_v_registros?select=*&' + f.join('&') + '&order=data.asc,id.asc', b.pagina);
+      // linha de TOTAL da aba (como na planilha), calculada no servidor sobre a aba inteira
+      const tot = (await rest('fin_ctl_v_registros?select=valor,pago,saldo,valor_gami,valor_entregador,quantidade&' + f.join('&'))).data || [];
+      const soma = k => Math.round(tot.reduce((a, x) => a + (Number(x[k]) || 0), 0) * 100) / 100;
+      res.totais = { valor: soma('valor'), pago: soma('pago'), saldo: soma('saldo'), valor_gami: soma('valor_gami'), valor_entregador: soma('valor_entregador'), quantidade: soma('quantidade'), linhas: tot.length };
+      return res;
+    },
+    async ctl_reg_ver(b){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Registro inválido');
+      const [r] = (await rest('fin_ctl_v_registros?id=eq.' + id + '&select=*')).data || [];
+      if(!r) throw new ErroUsuario('Registro não encontrado');
+      const pags = (await rest('fin_ctl_reg_pag?registro_id=eq.' + id + '&select=*&order=id.asc')).data || [];
+      const conf = (await rest('fin_ctl_conferencias?tabela=eq.fin_ctl_registros&registro_id=eq.' + id + '&select=*&order=id.desc')).data || [];
+      const hist = (await rest('fin_auditoria?or=(and(tabela.eq.fin_ctl_registros,registro_id.eq.' + id + '),and(tabela.eq.fin_ctl_reg_pag,depois->>registro_id.eq.' + id + '))&select=seq,ts,ator,acao,tabela&order=seq.asc')).data || [];
+      return { registro: r, pagamentos: pags, conferencias: conf, historico: hist };
+    },
+    async ctl_reg_salvar(b, ctx){
+      const id = b.id ? intOk(b.id) : null;
+      const d = { forma: FORMAS.indexOf(b.forma) >= 0 ? b.forma : '', tamanho: txt(b.tamanho, 40), pago_por: txt(b.pago_por, 200),
+        motivo: txt(b.motivo, 300), responsavel: txt(b.responsavel, 100), observacao: txt(b.observacao, 1000) };
+      if(!id){
+        if(TIPOS_LINHA.indexOf(b.tipo) < 0) throw new ErroUsuario('Planilha inválida');
+        d.tipo = b.tipo; d.unidade_id = unidade(b.unidade_id); d.nome = txt(b.nome, 200);
+        if(d.nome.length < 2) throw new ErroUsuario('Nome obrigatório');
+        if(b.tipo === 'motoboy_semanal'){
+          d.semana_ini = dataOk(b.semana_ini); if(!d.semana_ini) throw new ErroUsuario('Semana obrigatória');
+          d.valor = valor(b.valor, 'Faturamento', true);
+          if(b.percentual !== '' && b.percentual != null){ const pc = Number(String(b.percentual).replace(',', '.')); if(!(pc >= 0 && pc <= 100)) throw new ErroUsuario('Percentual inválido'); d.percentual = pc; }
+        } else {
+          d.data = dataOk(b.data); if(!d.data) throw new ErroUsuario('Data obrigatória');
+          if(b.tipo === 'bag' || b.tipo === 'camiseta'){
+            const q = parseInt(b.quantidade, 10); if(!(q >= 1 && q <= 1000)) throw new ErroUsuario('Quantidade inválida'); d.quantidade = q;
+            d.valor_unitario = d.forma === 'cortesia' ? 0 : valor(b.valor_unitario, 'Valor unitário', true);
+          } else d.valor = valor(b.valor, 'Valor');
+          if(b.valor_pago !== '' && b.valor_pago != null && (b.tipo === 'bag' || b.tipo === 'camiseta' || b.tipo === 'moto_novo')){
+            d.valor_pago = valor(b.valor_pago, 'Valor pago', true); d.data_pagamento = dataOk(b.data_pagamento) || d.data;
+          }
+        }
+        d.permitir_repetido = b.permitir_repetido === true;
+      }
+      return rpc('fin_ctl_reg_salvar', { p_ator: ctx.pessoaId, p_id: id, p_d: d });
+    },
+    async ctl_reg_pagar(b, ctx){
+      const id = intOk(b.registro_id); if(!id) throw new ErroUsuario('Registro inválido');
+      const d = { valor: valor(b.valor, 'Valor'), data: dataOk(b.data), forma: FORMAS.indexOf(b.forma) >= 0 ? b.forma : '', pago_por: txt(b.pago_por, 200), observacao: txt(b.observacao, 500) };
+      if(!d.data) throw new ErroUsuario('Data obrigatória');
+      return rpc('fin_ctl_reg_pagar', { p_ator: ctx.pessoaId, p_registro: id, p_d: d });
+    },
+    async ctl_reg_estornar_pag(b, ctx){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Pagamento inválido');
+      return rpc('fin_ctl_reg_estornar_pag', { p_ator: ctx.pessoaId, p_id: id, p_motivo: txt(b.motivo, 500) });
+    },
+
     async ctl_importacoes(){
       const { data } = await rest('fin_ctl_importacoes?select=id,tipo,unidade_id,arquivo_nome,arquivo_bytes,qtd_linhas,qtd_novas,importado_por,importado_em&order=importado_em.desc&limit=100');
       return { importacoes: data || [] };
     },
     // Importa a planilha antiga (.xlsx) inteira: lê no servidor, mostra a prévia e só grava no "confirmar".
     async ctl_importar(b, ctx){
-      const tipo = b.tipo === 'empresas' || b.tipo === 'creditos' ? b.tipo : null; if(!tipo) throw new ErroUsuario('Escolha o tipo da planilha');
+      const tipo = ['empresas', 'creditos', 'bag', 'camiseta', 'moto_novo', 'motoboy_semanal', 'descontos'].indexOf(b.tipo) >= 0 ? b.tipo : null;
+      if(!tipo) throw new ErroUsuario('Escolha o tipo da planilha');
       const un = unidade(b.unidade_id);
       const ano = parseInt(b.ano, 10); if(!(ano >= 2020 && ano <= 2100)) throw new ErroUsuario('Ano inválido');
       const b64 = typeof b.conteudo_b64 === 'string' ? b.conteudo_b64 : '';
@@ -178,14 +256,17 @@ module.exports = function(h){
       const buf = Buffer.from(b64, 'base64');
       if(buf.length < 100 || buf.readUInt32LE(0) !== 0x04034b50) throw new ErroUsuario('Envie a planilha em .xlsx (Excel)');
       let abas; try { abas = X.lerXlsx(buf); } catch(e){ throw new ErroUsuario(e.message || 'Não consegui ler a planilha'); }
-      const res = tipo === 'empresas' ? PL.parseEmpresas(abas, ano) : PL.parseCreditos(abas, ano);
+      const res = tipo === 'empresas' ? PL.parseEmpresas(abas, ano) : tipo === 'creditos' ? PL.parseCreditos(abas, ano)
+        : (tipo === 'bag' || tipo === 'camiseta') ? PL.parseVendas(abas, ano, tipo) : tipo === 'moto_novo' ? PL.parseMotoNovos(abas, ano)
+        : tipo === 'motoboy_semanal' ? PL.parseMotoboys(abas, ano) : PL.parseDescontos(abas, ano);
       const sha = crypto.createHash('sha256').update(buf).digest('hex');
       const soma = Math.round(res.linhas.reduce((a, l) => a + l.valor, 0) * 100) / 100;
       const resumo = { linhas: res.linhas.length, soma, avisos: res.avisos.slice(0, 200), qtd_avisos: res.avisos.length, abas: res.abas };
+      if(PLANILHAS[tipo] && tipo !== 'motoboy_semanal' && tipo !== 'descontos') resumo.recebido = Math.round(res.linhas.reduce((a, l) => a + (l.valor_pago || 0), 0) * 100) / 100;
       if(tipo === 'empresas') resumo.recebido = Math.round(res.linhas.reduce((a, l) => a + (l.recebido || 0), 0) * 100) / 100;
       if(!b.confirmar) return { preview: true, resumo };
       if(!res.linhas.length) throw new ErroUsuario('Nada para importar');
-      const r = await rpc('fin_ctl_importar', { p_ator: ctx.pessoaId, p_tipo: tipo,
+      const r = await rpc(PLANILHAS[tipo] ? 'fin_ctl_reg_importar' : 'fin_ctl_importar', { p_ator: ctx.pessoaId, p_tipo: tipo,
         p_meta: { unidade_id: un, arquivo_nome: txt(b.arquivo_nome, 200), sha256: sha, bytes: buf.length, conteudo_b64: b64, abas: res.abas },
         p_linhas: res.linhas });
       if(r && r.ok === false) throw new ErroUsuario(r.erro);

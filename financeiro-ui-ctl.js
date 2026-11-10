@@ -69,11 +69,22 @@ function historicoHtml(hist){
     hist.map(function(x){ return '<div class="fin-sub" style="padding:3px 0;border-bottom:1px solid var(--border)">' + dataHoraBR(x.ts) + ' · <b>' + esc(nome(x.ator)) + '</b> · ' + esc(x.acao === 'INSERT' ? 'criou' : 'alterou') + (x.tabela && x.tabela.indexOf('receb') >= 0 ? ' (recebimento)' : '') + '</div>'; }).join('') + '</div></details>';
 }
 
+// abas no estilo planilha (Excel): clicar numa aba filtra só aquele período
+var ABA_CSS = 'display:inline-block;padding:7px 12px;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;cursor:pointer;font-size:12px;white-space:nowrap;margin-right:2px';
+function abasHtml(itens, atual){
+  return '<div style="display:flex;overflow-x:auto;border-bottom:2px solid var(--border);margin:6px 0 10px">' + itens.map(function(a){
+    var on = a.id === atual;
+    return '<div class="ctl-aba" data-ini="' + a.ini + '" data-fim="' + a.fim + '" style="' + ABA_CSS + (on ? ';background:#1D9E75;color:#fff;font-weight:700;border-color:#1D9E75' : ';background:var(--surface2)') + '">' + esc(a.t) + (a.q ? ' <span style="opacity:.7;font-size:11px">' + a.q + '</span>' : '') + '</div>';
+  }).join('') + '</div>';
+}
+var MES_NOME = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+function fimDoMes(iso){ var p = iso.split('-').map(Number); return new Date(Date.UTC(p[0], p[1], 0)).toISOString().slice(0, 10); }
+
 /* ================= EMPRESAS (cobrança semanal) ================= */
 T.ctl_empresas = async function(el){
   carregando(el);
   try { await base(); } catch(e){ erroEm(el, e); return; }
-  var f = F.ctlCob = F.ctlCob || { unidade_id: '', ini: addDias(segunda(hoje()), -49), fim: segunda(hoje()), situacao: '', conf: '', busca: '', pagina: 0 };
+  var f = F.ctlCob = F.ctlCob || { unidade_id: '', ini: addDias(segunda(hoje()), -7), fim: addDias(segunda(hoje()), -7), situacao: '', conf: '', busca: '', pagina: 0 };
   var rec = function(){ T.ctl_empresas(el); };
   el.innerHTML = '<div class="fin-filtros"><select id="cc-un">' + optsCidade(f.unidade_id, true) + '</select>' +
     '<span class="fin-sub">Semanas de</span><input type="date" id="cc-ini" value="' + f.ini + '"><span class="fin-sub">até</span><input type="date" id="cc-fim" value="' + f.fim + '">' +
@@ -89,7 +100,12 @@ T.ctl_empresas = async function(el){
     var arg = { unidade_id: f.unidade_id || null, ini: f.ini, fim: f.fim };
     var rs = (await api('ctl_cob_resumo', arg)).resumo || {};
     var j = await api('ctl_cob_listar', Object.assign({}, arg, { situacao: f.situacao || null, conf: f.conf || null, busca: f.busca || null, pagina: f.pagina }));
-    var h = '<div class="fin-kpis">' +
+    var semanas = {}; for(var w = 0; w < 12; w++){ var si = addDias(segunda(hoje()), -7 * w); semanas[si] = { ini: si, fim: addDias(si, 6), q: 0 }; }
+    (rs.semanas || []).forEach(function(x){ semanas[x.semana_ini] = { ini: x.semana_ini, fim: x.semana_fim || addDias(x.semana_ini, 6), q: x.qtd }; });
+    var itensAba = Object.keys(semanas).sort().map(function(k){ var x = semanas[k]; return { id: x.ini + '|' + x.ini, ini: x.ini, fim: x.ini, t: dataBR(x.ini).slice(0, 5) + ' a ' + dataBR(x.fim).slice(0, 5), q: x.q }; });
+    itensAba.push({ id: 'todas', ini: addDias(segunda(hoje()), -77), fim: segunda(hoje()), t: 'Últimas 12 semanas' });
+    var h = abasHtml(itensAba, f.ini === f.fim ? f.ini + '|' + f.fim : (f.ini === addDias(segunda(hoje()), -77) && f.fim === segunda(hoje()) ? 'todas' : '')) +
+      '<div class="fin-kpis">' +
       kpi('A receber (líquido)', moeda(rs.liquido), '', (rs.qtd || 0) + ' cobrança(s) no período') +
       kpi('Recebido', moeda(rs.recebido), '#1D9E75', (rs.quitadas || 0) + ' quitada(s) · ' + (rs.parciais || 0) + ' parcial(is)') +
       kpi('Em aberto', moeda(rs.saldo), n(rs.saldo) ? '#E24B4A' : '', 'inclui multa de ' + moeda(rs.multa)) +
@@ -116,6 +132,7 @@ T.ctl_empresas = async function(el){
     }
     if(j.total > 200) h += '<div class="fin-filtros" style="margin-top:8px">' + (j.pagina > 0 ? '<button class="fin-bt" id="cc-ant">← Anterior</button>' : '') + ((j.pagina + 1) * 200 < j.total ? '<button class="fin-bt" id="cc-prox">Próxima →</button>' : '') + '</div>';
     out.innerHTML = h;
+    out.querySelectorAll('.ctl-aba').forEach(function(a){ a.onclick = function(){ f.ini = a.getAttribute('data-ini'); f.fim = a.getAttribute('data-fim'); f.pagina = 0; rec(); }; });
     out.querySelectorAll('.cc-lin').forEach(function(tr){ tr.onclick = function(){ verCobranca(Number(tr.getAttribute('data-id')), rec); }; });
     if($('cc-ant')) $('cc-ant').onclick = function(){ f.pagina--; rec(); };
     if($('cc-prox')) $('cc-prox').onclick = function(){ f.pagina++; rec(); };
@@ -205,7 +222,7 @@ async function verCobranca(id, aoMudar){
 T.ctl_creditos = async function(el){
   carregando(el);
   try { await base(); } catch(e){ erroEm(el, e); return; }
-  var f = F.ctlCred = F.ctlCred || { unidade_id: '', ini: inicioMes(), fim: hoje(), motivo: '', conf: '', busca: '', operador: '', status: '', pagina: 0 };
+  var f = F.ctlCred = F.ctlCred || { unidade_id: '', ini: inicioMes(), fim: fimDoMes(inicioMes()), motivo: '', conf: '', busca: '', operador: '', status: '', pagina: 0 };
   var rec = function(){ T.ctl_creditos(el); };
   el.innerHTML = '<div class="fin-filtros"><select id="kc-un">' + optsCidade(f.unidade_id, true) + '</select>' +
     '<span class="fin-sub">De</span><input type="date" id="kc-ini" value="' + f.ini + '"><span class="fin-sub">até</span><input type="date" id="kc-fim" value="' + f.fim + '">' +
@@ -224,7 +241,10 @@ T.ctl_creditos = async function(el){
     var j = await api('ctl_cred_listar', Object.assign({}, arg, { motivo: f.motivo || null, conf: f.conf || null, busca: f.busca || null, operador: f.operador || null, status: f.status || null, pagina: f.pagina }));
     var porMot = (rs.por_motivo || []).slice(0, 4).map(function(x){ return esc(MOTIVO[x.motivo] || x.motivo) + ' ' + moeda(x.valor); }).join(' · ');
     var porOp = (rs.por_operador || []).slice(0, 3).map(function(x){ return esc(x.operador) + ' ' + moeda(x.valor); }).join(' · ');
-    var h = '<div class="fin-kpis">' + kpi('Créditos no período', moeda(rs.valor), '', (rs.qtd || 0) + ' lançamento(s)') +
+    var mesesAba = []; var base0 = hoje().slice(0, 8) + '01';
+    for(var mm = 11; mm >= 0; mm--){ var d0 = new Date(base0 + 'T12:00:00Z'); d0.setUTCMonth(d0.getUTCMonth() - mm); var ini0 = d0.toISOString().slice(0, 8) + '01';
+      mesesAba.push({ id: ini0 + '|' + fimDoMes(ini0), ini: ini0, fim: fimDoMes(ini0), t: MES_NOME[+ini0.slice(5, 7) - 1] + ' ' + ini0.slice(0, 4) }); }
+    var h = abasHtml(mesesAba, f.ini + '|' + f.fim) + '<div class="fin-kpis">' + kpi('Créditos no período', moeda(rs.valor), '', (rs.qtd || 0) + ' lançamento(s)') +
       kpi('Falta conferir', String(rs.sem_conferencia || 0), n(rs.sem_conferencia) ? '#D68910' : '#1D9E75', (rs.divergentes || 0) + ' divergente(s)') +
       kpi('Por motivo', '', '', porMot || '-') + kpi('Quem mais lançou', '', '', porOp || '-') + '</div>';
     var lst = j.linhas || [];
@@ -246,6 +266,7 @@ T.ctl_creditos = async function(el){
     }
     if(j.total > 200) h += '<div class="fin-filtros" style="margin-top:8px">' + (j.pagina > 0 ? '<button class="fin-bt" id="kc-ant">← Anterior</button>' : '') + ((j.pagina + 1) * 200 < j.total ? '<button class="fin-bt" id="kc-prox">Próxima →</button>' : '') + '</div>';
     out.innerHTML = h;
+    out.querySelectorAll('.ctl-aba').forEach(function(a){ a.onclick = function(){ f.ini = a.getAttribute('data-ini'); f.fim = a.getAttribute('data-fim'); f.pagina = 0; rec(); }; });
     out.querySelectorAll('.kc-lin').forEach(function(tr){ tr.onclick = function(){ verCredito(Number(tr.getAttribute('data-id')), rec); }; });
     if($('kc-ant')) $('kc-ant').onclick = function(){ f.pagina--; rec(); };
     if($('kc-prox')) $('kc-prox').onclick = function(){ f.pagina++; rec(); };
@@ -311,7 +332,7 @@ T.ctl_importar = async function(el){
   try { await base(); } catch(e){ erroEm(el, e); return; }
   el.innerHTML = '<div class="fin-card" style="max-width:820px"><div style="font-weight:700;font-size:14px;margin-bottom:6px">Importar as planilhas antigas (.xlsx)</div>' +
     '<div class="fin-sub" style="margin-bottom:8px">Traz o histórico para o sistema, sem digitar de novo. Importar a mesma planilha (ou uma versão nova dela) não duplica nada. Abas de “conferência” são cópias e ficam de fora; o que não der pra entender aparece como aviso antes de gravar.</div>' +
-    '<div class="fin-filtros"><select id="ip-tipo"><option value="">Qual planilha?</option><option value="empresas">EMPRESAS (cobrança semanal)</option><option value="creditos">CRÉDITOS</option></select>' +
+    '<div class="fin-filtros"><select id="ip-tipo"><option value="">Qual planilha?</option><option value="empresas">EMPRESAS (cobrança semanal)</option><option value="creditos">CRÉDITOS</option><option value="motoboy_semanal">MOTOBOYS (semanal)</option><option value="moto_novo">MOTOBOYS NOVOS</option><option value="bag">BAGS</option><option value="camiseta">CAMISETAS</option><option value="descontos">DESCONTOS (banco e fora do banco)</option></select>' +
     '<select id="ip-un">' + optsCidade('') + '</select><input id="ip-ano" type="number" min="2020" max="2100" value="' + hoje().slice(0, 4) + '" style="width:80px" title="Ano da planilha">' +
     '<input type="file" id="ip-arq" accept=".xlsx"><button class="fin-bt pri" id="ip-ver">Conferir antes</button></div><div id="ip-out"></div></div><div id="ip-hist" style="margin-top:12px"></div>';
   var b64 = null, nomeArq = '';
@@ -327,7 +348,7 @@ T.ctl_importar = async function(el){
       try {
         b64 = await lerB64(file); nomeArq = file.name;
         var r = (await api('ctl_importar', params())).resumo;
-        out.innerHTML = '<div class="fin-kpis" style="margin-top:10px">' + kpi('Linhas para importar', String(r.linhas), '', 'cidade: ' + esc(nomeCidade($('ip-un').value))) + kpi('Soma', moeda(r.soma), '', r.recebido != null ? 'recebido ' + moeda(r.recebido) : '') + kpi('Avisos', String(r.qtd_avisos), r.qtd_avisos ? '#D68910' : '#1D9E75', r.qtd_avisos ? 'veja abaixo antes de confirmar' : 'nenhum') + '</div>' +
+        out.innerHTML = '<div class="fin-kpis" style="margin-top:10px">' + kpi('Linhas para importar', String(r.linhas), '', 'cidade: ' + esc(nomeCidade($('ip-un').value))) + kpi('Soma', moeda(r.soma), '', r.recebido != null ? 'recebido/pago ' + moeda(r.recebido) : '') + kpi('Avisos', String(r.qtd_avisos), r.qtd_avisos ? '#D68910' : '#1D9E75', r.qtd_avisos ? 'veja abaixo antes de confirmar' : 'nenhum') + '</div>' +
           '<details' + (r.qtd_avisos ? ' open' : '') + '><summary class="fin-sub" style="cursor:pointer">Abas (' + r.abas.length + ') e avisos</summary><div style="max-height:260px;overflow:auto">' +
           r.abas.map(function(a){ return '<div class="fin-sub">• ' + esc(a.aba) + ': ' + (a.linhas != null ? a.linhas + ' linha(s)' + (a.semana ? ' (' + esc(a.semana) + ')' : '') : esc(a.status || '')) + '</div>'; }).join('') +
           (r.avisos.length ? '<div style="margin-top:6px;font-weight:700">Avisos</div>' + r.avisos.map(function(a){ return '<div class="fin-sub" style="color:#B7791F">⚠️ ' + esc(a) + '</div>'; }).join('') : '') + '</div></details>' +
@@ -345,7 +366,7 @@ T.ctl_importar = async function(el){
   };
   async function hist(){
     try { var j = await api('ctl_importacoes'); var l = j.importacoes || [];
-      $('ip-hist').innerHTML = l.length ? '<div class="fin-card" style="overflow-x:auto"><div style="font-weight:700;font-size:13px;margin-bottom:6px">Importações feitas</div><table class="fin-tbl"><tbody>' + l.map(function(x){ return '<tr><td>' + dataHoraBR(x.importado_em) + '</td><td>' + esc(x.tipo === 'empresas' ? 'Empresas' : 'Créditos') + '</td><td>' + esc(nomeCidade(x.unidade_id)) + '</td><td class="fin-sub">' + esc(x.arquivo_nome || '') + '</td><td>' + x.qtd_novas + ' de ' + x.qtd_linhas + '</td><td class="fin-sub">' + esc(nome(x.importado_por)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '';
+      $('ip-hist').innerHTML = l.length ? '<div class="fin-card" style="overflow-x:auto"><div style="font-weight:700;font-size:13px;margin-bottom:6px">Importações feitas</div><table class="fin-tbl"><tbody>' + l.map(function(x){ return '<tr><td>' + dataHoraBR(x.importado_em) + '</td><td>' + esc({ empresas: 'Empresas', creditos: 'Créditos', bag: 'Bags', camiseta: 'Camisetas', moto_novo: 'Motoboys novos', motoboy_semanal: 'Motoboys', descontos: 'Descontos' }[x.tipo] || x.tipo) + '</td><td>' + esc(nomeCidade(x.unidade_id)) + '</td><td class="fin-sub">' + esc(x.arquivo_nome || '') + '</td><td>' + x.qtd_novas + ' de ' + x.qtd_linhas + '</td><td class="fin-sub">' + esc(nome(x.importado_por)) + '</td></tr>'; }).join('') + '</tbody></table></div>' : '';
     } catch(e){ /* histórico é só informativo */ }
   }
   hist();

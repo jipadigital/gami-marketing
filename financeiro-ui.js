@@ -174,7 +174,7 @@ function menu(){
     { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças']] },
     { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
-    { id: 'controles', t: '📋 Controles', p: 'leitor', subs: [['ctl_empresas', 'Empresas (semanal)'], ['ctl_creditos', 'Créditos'], ['ctl_importar', 'Importar planilhas', 'conferente']] },
+    { id: 'controles', t: '📋 Controles', p: 'leitor', subs: [['ctl_empresas', 'Empresas (semanal)'], ['ctl_creditos', 'Créditos'], ['pl_motoboy_semanal', 'Motoboys (semanal)'], ['pl_moto_novo', 'Motoboys novos'], ['pl_bag', 'Bags'], ['pl_camiseta', 'Camisetas'], ['pl_descontos', 'Descontos'], ['ctl_importar', 'Importar planilhas', 'conferente']] },
     { id: 'flyp', t: '🛵 FLYP', p: 'leitor', flyp: true, subs: [['flyp_resumo', 'Saques e recargas por dia'], ['flyp_lista', 'Transações'], ['flyp_importar', 'Importar da FLYP', 'conferente'], ['flyp_acessos', 'Quem vê e quem consultou', 'super']] },
     { id: 'alertas', t: '🚨 Alertas', p: 'leitor', subs: [['alertas', 'Alertas']] },
     { id: 'cadastros', t: '🗂️ Cadastros', p: 'leitor', subs: [['pessoas', 'Pessoas e empresas'], ['plano', 'Plano de contas'], ['unidades', 'Unidades e centros de custo'], ['regras', 'Regras de extrato'], ['config', 'Contas, regras antifraude e acessos', 'gestor']] },

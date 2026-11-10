@@ -156,4 +156,171 @@ function conferirAno(datas, ano, avisos){
   if(futuro) avisos.unshift('ATENÇÃO: ' + futuro + ' linha(s) com data no FUTURO. Provavelmente o ano escolhido está errado.');
 }
 
-module.exports = { parseEmpresas, parseCreditos, semanaDaAba, motivoDe };
+// ================= AS OUTRAS PLANILHAS (uma aba por mês; motoboys uma por semana) =================
+const MESES = { JANEIRO: 1, FEVEREIRO: 2, MARCO: 3, ABRIL: 4, MAIO: 5, JUNHO: 6, JULHO: 7, AGOSTO: 8, SETEMBRO: 9, OUTUBRO: 10, NOVEMBRO: 11, DEZEMBRO: 12 };
+function mesDaAba(nome, ano){
+  const n = norm(nome);
+  for(const k in MESES){ if(n.indexOf(k) >= 0){ const a = /(20\d{2})/.exec(n); return { mes: MESES[k], ano: a ? +a[1] : ano }; } }
+  return null;
+}
+function primeiroDia(m){ return m.ano + '-' + String(m.mes).padStart(2, '0') + '-01'; }
+// valor "solto": "R$15,00 Valor promocional" -> 15 (e devolve o texto que sobrou, pra observação)
+function numSolto(v){
+  if(typeof v === 'number') return { n: Math.round(v * 100) / 100, resto: '' };
+  const s = String(v == null ? '' : v);
+  const n = num(s); if(n != null) return { n, resto: '' };
+  const m = /(\d{1,3}(?:\.\d{3})+,\d{1,2}|\d+,\d{1,2}|\d+(?:\.\d{1,2})?)/.exec(s);
+  if(!m) return { n: null, resto: s };
+  const x = P.parseValor(m[1]); return { n: x, resto: s.replace(m[0], '').replace(/R\$/g, '').replace(/\s+/g, ' ').trim() };
+}
+function formaDe(v){
+  const f = norm(v);
+  if(!f) return null;
+  if(/PIX/.test(f)) return 'pix'; if(/DINHEIRO|ESPECIE/.test(f)) return 'dinheiro'; if(/CORTESIA|DOACAO|BRINDE/.test(f)) return 'cortesia';
+  if(/CARTAO|CREDITO|DEBITO/.test(f)) return 'cartao'; if(/BOLETO/.test(f)) return 'boleto'; if(/SEMANAL|DESCONT/.test(f)) return 'desconto_semanal';
+  return 'outro';
+}
+function ehTotal(nome){ const n = norm(nome); return !n || /^TOTA/.test(n) || n === 'SOMA'; }
+function chaveDe(cont, base){ const k = cont[base] = (cont[base] || 0) + 1; return P.sha256(base + '|' + k); }
+
+// BAGS / CAMISETAS: NOME, (DATA), (TAM), QUANT, FORMA, VALOR UNITÁRIO, VALOR DO 1 PAG, DATA DO 1 PAG, PAGO EM NOME DE QUEM
+function parseVendas(abas, ano, tipo){
+  BASE1904 = !!abas.data1904;
+  const linhas = [], avisos = [], resumoAbas = [], cont = {};
+  for(const ab of abas){
+    const cab = achaCab(ab.linhas, ['NOME', 'QUANT']);
+    if(!cab){ resumoAbas.push({ aba: ab.nome, status: ab.linhas.length > 1 ? 'sem cabeçalho (NOME / QUANT)' : 'vazia' }); continue; }
+    const h = cab.h, m = mesDaAba(ab.nome, ano);
+    const c = { nome: ix(h, ['NOME']), qtd: ix(h, ['QUANT']), tam: ix(h, ['TAM']), forma: ix(h, ['FORMA DE PAGAMENTO', 'FORMA']), unit: ix(h, ['VALOR UNITARIO']),
+                pag1: ix(h, ['VALOR DO 1 PAG', 'VALOR DO 1O PAG', 'VALOR DAS 2', 'VALOR PAGO']), data: ix(h, ['DATA DO PAGAMENTO', 'DATA']),
+                quem: ix(h, ['PAGAMENTO EM NOME DE QUEM']), conf: ix(h, ['CONFIRMACAO', 'CONF']) };
+    let ok = 0;
+    for(let r = cab.r + 1; r < ab.linhas.length; r++){
+      const l = ab.linhas[r]; if(!l) continue;
+      const nome = txt(celV(l[c.nome]), 200);
+      if(ehTotal(nome)) continue;
+      const qtd = Math.max(1, Math.round(Number(num(celV(l[c.qtd]))) || 1));
+      const formaTxt = c.forma >= 0 ? txt(celV(l[c.forma]), 60) : '';
+      const forma = formaDe(formaTxt);
+      const u = numSolto(c.unit >= 0 ? celV(l[c.unit]) : null);
+      let dt = c.data >= 0 ? data(celV(l[c.data])) : null;
+      if(!dt && m) dt = primeiroDia(m);
+      if(!dt){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ': sem data e o nome da aba não é um mês, ignorada.'); continue; }
+      const obs = [];
+      if(forma === 'cortesia') obs.push('cortesia/doação (planilha: ' + (formaTxt || 'cortesia') + ')');
+      if(u.resto) obs.push(u.resto);
+      if(u.n == null && forma !== 'cortesia'){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ' (' + nome + '): valor unitário ilegível, ignorada.'); continue; }
+      const unit = forma === 'cortesia' ? 0 : u.n;
+      const total = Math.round(qtd * unit * 100) / 100;
+      const p1 = numSolto(c.pag1 >= 0 ? celV(l[c.pag1]) : null);
+      let pago = p1.n != null && p1.n > 0 ? Math.min(p1.n, total) : 0;
+      const confTxt = c.conf >= 0 ? norm(celV(l[c.conf])) : '';
+      if(!pago && total > 0 && /\bOK\b/.test(confTxt)) pago = total;   // "ok" sem valor do 1º pag = pago inteiro
+      if(p1.n != null && p1.n > total && total > 0) obs.push('planilha dizia pago ' + p1.n.toFixed(2).replace('.', ','));
+      const quem = c.quem >= 0 ? txt(celV(l[c.quem]), 200) : '';
+      linhas.push({ tipo, data: dt, nome, quantidade: qtd, tamanho: c.tam >= 0 ? txt(celV(l[c.tam]), 40) : '', forma, valor_unitario: unit, valor: total,
+        valor_pago: pago, data_pagamento: dt, pago_por: quem, observacao: obs.join(' · ').slice(0, 500), chave: chaveDe(cont, tipo + '|' + dt + '|' + norm(nome) + '|' + total) });
+      ok++;
+    }
+    resumoAbas.push({ aba: ab.nome, linhas: ok });
+  }
+  conferirAno(linhas.map(l => l.data), ano, avisos);
+  return { linhas, avisos, abas: resumoAbas };
+}
+
+// MOTOBOYS NOVOS: NOME, VALOR, DATA, PAGAMENTO EM NOME DE QUEM, CONF.
+function parseMotoNovos(abas, ano){
+  BASE1904 = !!abas.data1904;
+  const linhas = [], avisos = [], resumoAbas = [], cont = {};
+  for(const ab of abas){
+    const cab = achaCab(ab.linhas, ['NOME', 'VALOR']);
+    if(!cab){ resumoAbas.push({ aba: ab.nome, status: ab.linhas.length > 1 ? 'sem cabeçalho (NOME / VALOR)' : 'vazia' }); continue; }
+    const h = cab.h, m = mesDaAba(ab.nome, ano);
+    const c = { nome: ix(h, ['NOME']), valor: ix(h, ['VALOR']), data: ix(h, ['DATA']), quem: ix(h, ['PAGAMENTO EM NOME DE QUEM']) };
+    let ok = 0;
+    for(let r = cab.r + 1; r < ab.linhas.length; r++){
+      const l = ab.linhas[r]; if(!l) continue;
+      const nome = txt(celV(l[c.nome]), 200); if(ehTotal(nome)) continue;
+      const v = numSolto(celV(l[c.valor]));
+      if(v.n == null || v.n <= 0){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ' (' + nome + '): valor inválido, ignorada.'); continue; }
+      let dt = c.data >= 0 ? data(celV(l[c.data])) : null; if(!dt && m) dt = primeiroDia(m);
+      if(!dt){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ': sem data, ignorada.'); continue; }
+      const quem = c.quem >= 0 ? txt(celV(l[c.quem]), 200) : '';
+      linhas.push({ tipo: 'moto_novo', data: dt, nome, valor: v.n, valor_pago: v.n, data_pagamento: dt, forma: 'pix', pago_por: quem,
+        observacao: v.resto.slice(0, 300), chave: chaveDe(cont, 'moto_novo|' + dt + '|' + norm(nome) + '|' + v.n) });
+      ok++;
+    }
+    resumoAbas.push({ aba: ab.nome, linhas: ok });
+  }
+  conferirAno(linhas.map(l => l.data), ano, avisos);
+  return { linhas, avisos, abas: resumoAbas };
+}
+
+// MOTOBOYS (semanal): aba "0501 a 1101"; Nome, Faturamento, Valor a pagar (21%), Total do entregador
+function parseMotoboys(abas, ano){
+  const linhas = [], avisos = [], resumoAbas = [], cont = {};
+  for(const ab of abas){
+    const sem = semanaDaAba(ab.nome, ano);
+    if(!sem){ resumoAbas.push({ aba: ab.nome, status: 'ignorada (o nome não é uma semana)' }); continue; }
+    const cab = achaCab(ab.linhas, ['NOME', 'FATURAMENTO']);
+    if(!cab){ avisos.push('Aba "' + ab.nome + '": não achei o cabeçalho (Nome / Faturamento).'); resumoAbas.push({ aba: ab.nome, status: 'sem cabeçalho' }); continue; }
+    const h = cab.h;
+    const c = { nome: ix(h, ['NOME']), fat: ix(h, ['FATURAMENTO']), gami: ix(h, ['VALOR A PAGAR']), ent: ix(h, ['TOTAL DO ENTREGADOR']) };
+    let ok = 0, divergentes = 0;
+    for(let r = cab.r + 1; r < ab.linhas.length; r++){
+      const l = ab.linhas[r]; if(!l) continue;
+      const nome = txt(celV(l[c.nome]), 200); if(ehTotal(nome)) continue;
+      const fat = num(celV(l[c.fat]));
+      if(fat == null){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ' (' + nome + '): faturamento ilegível, ignorada.'); continue; }
+      if(fat === 0) continue;
+      const g = c.gami >= 0 ? num(celV(l[c.gami])) : null, e = c.ent >= 0 ? num(celV(l[c.ent])) : null;
+      const gami = g != null ? g : Math.round(fat * 21) / 100, ent = e != null ? e : Math.round((fat - gami) * 100) / 100;
+      const pct = fat > 0 ? Math.round(gami / fat * 10000) / 100 : 21;
+      if(Math.abs(gami + ent - fat) > 0.05) divergentes++;
+      linhas.push({ tipo: 'motoboy_semanal', data: sem.ini, semana_ini: sem.ini, semana_fim: sem.fim, nome, valor: fat, percentual: Math.min(100, Math.max(0, pct)),
+        valor_gami: gami, valor_entregador: ent, observacao: Math.abs(gami + ent - fat) > 0.05 ? 'planilha: Gâmi + entregador não fecha com o faturamento' : '',
+        chave: chaveDe(cont, 'motoboy|' + sem.ini + '|' + norm(nome) + '|' + fat) });
+      ok++;
+    }
+    if(divergentes) avisos.push('Aba "' + ab.nome + '": ' + divergentes + ' linha(s) em que Gâmi + entregador não fecha com o faturamento (marcadas na observação).');
+    resumoAbas.push({ aba: ab.nome, semana: sem.ini + ' a ' + sem.fim, linhas: ok });
+  }
+  return { linhas, avisos, abas: resumoAbas };
+}
+
+// DESCONTOS: abas "MÊS - BANCO" e "MÊS - FORA DO BANCO"; nome, VALOR, MOTIVO, DATA, (RESPONSÁVEL)
+function parseDescontos(abas, ano){
+  BASE1904 = !!abas.data1904;
+  const linhas = [], avisos = [], resumoAbas = [], cont = {};
+  for(const ab of abas){
+    const nAba = norm(ab.nome);
+    if(/CONFERENCIA/.test(nAba)){ resumoAbas.push({ aba: ab.nome, status: 'conferência (cópia), ignorada' }); continue; }
+    const tipo = /FORA/.test(nAba) ? 'desconto_fora' : /BANCO/.test(nAba) ? 'desconto_banco' : null;
+    if(!tipo){ resumoAbas.push({ aba: ab.nome, status: 'ignorada (não diz se é BANCO ou FORA DO BANCO)' }); continue; }
+    const cab = achaCab(ab.linhas, ['VALOR', 'MOTIVO']);
+    if(!cab){ resumoAbas.push({ aba: ab.nome, status: ab.linhas.length > 1 ? 'sem cabeçalho (VALOR / MOTIVO)' : 'vazia' }); continue; }
+    const h = cab.h, m = mesDaAba(ab.nome, ano);
+    const c = { valor: ix(h, ['VALOR']), motivo: ix(h, ['MOTIVO']), data: ix(h, ['DATA']), resp: ix(h, ['RESPONSAVEL']) };
+    c.nome = ix(h, ['NOME DA EMPRESA', 'NOME DO FAVORECIDO', 'NOME']);
+    if(c.nome < 0) c.nome = 0;   // uma aba tem o cabeçalho "C" no lugar do nome: o nome é a 1ª coluna
+    let ok = 0;
+    for(let r = cab.r + 1; r < ab.linhas.length; r++){
+      const l = ab.linhas[r]; if(!l) continue;
+      const nome = txt(celV(l[c.nome]), 200); if(ehTotal(nome)) continue;
+      const v = num(celV(l[c.valor]));
+      if(v == null || v <= 0){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ' (' + nome + '): valor inválido, ignorada.'); continue; }
+      let dt = c.data >= 0 ? data(celV(l[c.data])) : null; if(!dt && m) dt = primeiroDia(m);
+      if(!dt){ avisos.push('Aba "' + ab.nome + '" linha ' + (r + 1) + ': sem data, ignorada.'); continue; }
+      const motivo = txt(celV(l[c.motivo]), 300) || '(sem motivo na planilha)';
+      const resp = c.resp >= 0 ? txt(celV(l[c.resp]), 100) : '';
+      linhas.push({ tipo, data: dt, nome, valor: v, motivo, responsavel: tipo === 'desconto_fora' ? (resp || '(não informado na planilha)') : resp,
+        chave: chaveDe(cont, tipo + '|' + dt + '|' + norm(nome) + '|' + v + '|' + norm(motivo)) });
+      ok++;
+    }
+    resumoAbas.push({ aba: ab.nome, linhas: ok });
+  }
+  conferirAno(linhas.map(l => l.data), ano, avisos);
+  return { linhas, avisos, abas: resumoAbas };
+}
+
+module.exports = { parseEmpresas, parseCreditos, parseVendas, parseMotoNovos, parseMotoboys, parseDescontos, semanaDaAba, motivoDe, mesDaAba, numSolto };
