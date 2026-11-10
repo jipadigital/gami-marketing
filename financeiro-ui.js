@@ -48,19 +48,40 @@ window._finChecarMenu = async function(){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   if(!u){ el.style.display = 'none'; return; }
   var chave = 'fin_papel_' + u.id;
-  try { var c = sessionStorage.getItem(chave); if(c !== null){ el.style.display = c ? '' : 'none'; return; } } catch(e){}
+  try { var c = JSON.parse(sessionStorage.getItem(chave) || 'null'); if(c && c.t && Date.now() - c.t < 5 * 60e3){ el.style.display = c.p ? '' : 'none'; return; } } catch(e){}
   _checando = true;
   try {
     var j = await api('me');
     F.papel = j.papel; F.nomes = j.nomes || {}; F.categorias = j.categorias || [];
     el.style.display = '';
-    try { sessionStorage.setItem(chave, j.papel || ''); } catch(e){}
+    try { sessionStorage.setItem(chave, JSON.stringify({ p: j.papel || '', t: Date.now() })); } catch(e){}
   } catch(e){
     el.style.display = 'none';
-    if(e.semAcesso || e.status === 403){ try { sessionStorage.setItem(chave, ''); } catch(x){} }
+    if(e.semAcesso || e.status === 403){ try { sessionStorage.setItem(chave, JSON.stringify({ p: '', t: Date.now() })); } catch(x){} }
   } finally { _checando = false; }
 };
 document.addEventListener('DOMContentLoaded', function(){ setTimeout(window._finChecarMenu, 1500); });
+document.addEventListener('click', function(e){
+  if(e.detail < 2) return;
+  var t = e.target; if(!t || !t.closest) return;
+  if(!t.closest('#fin-root, .fin-modal-bg')) return;
+  if(/^(INPUT|TEXTAREA|SELECT|OPTION|LABEL)$/.test(t.tagName)) return;
+  e.stopImmediatePropagation(); e.preventDefault();   // 2º clique de um clique duplo: ignora (abria 2 modais / gravava 2x)
+}, true);
+// sair da conta: some tudo do financeiro (tela, modais, cache, rascunhos)
+function limparFinanceiro(){
+  try { var r = document.getElementById('fin-root'); if(r) r.innerHTML = ''; } catch(e){}
+  try { document.querySelectorAll('.fin-modal-bg').forEach(function(x){ x.remove(); }); } catch(e){}
+  try { Object.keys(sessionStorage).forEach(function(k){ if(k.indexOf('fin_') === 0) sessionStorage.removeItem(k); }); } catch(e){}
+  try { var f = window._FIN; Object.keys(f).forEach(function(k){ delete f[k]; }); f.papel = null; f.nomes = {}; f.categorias = []; f.contas = []; f.aba = 'painel'; f.filtros = {}; f.pagina = 0; } catch(e){}
+}
+document.addEventListener('DOMContentLoaded', function(){
+  if(typeof window.fazerLogout === 'function' && !window.fazerLogout._fin){
+    var orig = window.fazerLogout;
+    window.fazerLogout = function(){ limparFinanceiro(); return orig.apply(this, arguments); };
+    window.fazerLogout._fin = true;
+  }
+});
 
 /* ---------- estilos ---------- */
 function css(){
@@ -86,6 +107,7 @@ function css(){
     '.fin-filtros{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center}',
     '.fin-filtros select,.fin-filtros input,.fin-in{padding:7px 9px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px;font-family:inherit}',
     '.fin-in{width:100%;box-sizing:border-box}',
+    '.fin-modal{overflow-x:auto}',
     '.fin-modal-bg{position:fixed;inset:0;background:rgba(11,37,66,.72);z-index:99990;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}',
     '.fin-modal{background:var(--surface);color:var(--text);border-radius:14px;max-width:720px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)}',
     '.fin-bt{padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}',
@@ -152,6 +174,7 @@ function menu(){
     { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças']] },
     { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
+    { id: 'controles', t: '📋 Controles', p: 'leitor', subs: [['ctl_empresas', 'Empresas (semanal)'], ['ctl_creditos', 'Créditos'], ['ctl_importar', 'Importar planilhas', 'conferente']] },
     { id: 'flyp', t: '🛵 FLYP', p: 'leitor', flyp: true, subs: [['flyp_resumo', 'Saques e recargas por dia'], ['flyp_lista', 'Transações'], ['flyp_importar', 'Importar da FLYP', 'conferente'], ['flyp_acessos', 'Quem vê e quem consultou', 'super']] },
     { id: 'alertas', t: '🚨 Alertas', p: 'leitor', subs: [['alertas', 'Alertas']] },
     { id: 'cadastros', t: '🗂️ Cadastros', p: 'leitor', subs: [['pessoas', 'Pessoas e empresas'], ['plano', 'Plano de contas'], ['unidades', 'Unidades e centros de custo'], ['regras', 'Regras de extrato'], ['config', 'Contas, regras antifraude e acessos', 'gestor']] },
@@ -180,7 +203,7 @@ function render(){
 // a v2 usa os mesmos utilitários (um lugar só pra regra de tela, escape e chamada ao servidor)
 window._FINUI = { api: api, esc: esc, moeda: moeda, dataBR: dataBR, dataHoraBR: dataHoraBR, nome: nome, hoje: hoje, inicioMes: inicioMes, uid: uid,
   pode: pode, toast: toast, modal: modal, baixar: baixar, abrirLinha: abrirLinha, chipStatus: chipStatus, chipSev: chipSev, render: render, $: $,
-  irPara: function(sub){ F.sub = sub; render(); } };
+  irPara: function(sub){ F.sub = sub; render(); }, pedirTexto: pedirTexto, lerArquivo: lerArquivo };
 function carregando(el){ el.innerHTML = '<div class="fin-vazio">Carregando...</div>'; }
 function erroEm(el, e){ el.innerHTML = '<div class="fin-erro">' + esc(e.message || e) + '</div>'; }
 function optsContas(sel, todas){
@@ -220,7 +243,7 @@ async function telaGeral(el){
         pend.map(function(k){ return '<div class="fin-bt" data-st="' + k + '" style="display:flex;gap:6px;align-items:center">' + chipStatus(k) + '<b>' + st[k].qtd + '</b><span class="fin-sub">' + moeda(st[k].valor) + '</span></div>'; }).join('') + '</div></div>';
     }
     h += '<div class="fin-card" style="margin-bottom:12px;overflow-x:auto"><div style="font-weight:700;font-size:13px;margin-bottom:8px">Contas bancárias</div>';
-    if(!contas.length) h += '<div class="fin-vazio">Nenhuma conta cadastrada. ' + (pode('gestor') ? 'Cadastre em ⚙️ Configurações.' : 'Peça ao gestor para cadastrar.') + '</div>';
+    if(!contas.length) h += '<div class="fin-vazio">Nenhuma conta cadastrada. ' + (pode('gestor') ? 'Cadastre em 🗂️ Cadastros › Contas, regras antifraude e acessos.' : 'Peça ao gestor para cadastrar.') + '</div>';
     else {
       h += '<table class="fin-tbl"><thead><tr><th>Conta</th><th style="text-align:right">Saldo banco</th><th>Saldo em</th><th>Último extrato</th><th style="text-align:right">Entradas</th><th style="text-align:right">Saídas</th></tr></thead><tbody>';
       contas.forEach(function(c){
@@ -295,9 +318,37 @@ function modal(html){
   var bg = document.createElement('div'); bg.className = 'fin-modal-bg';
   bg.innerHTML = '<div class="fin-modal">' + html + '</div>';
   document.body.appendChild(bg);
-  bg.addEventListener('click', function(e){ if(e.target === bg) fechar(); });
-  function fechar(){ bg.remove(); }
+  var sujo = false;   // alguém digitou? então fechar sem querer pede confirmação
+  bg.addEventListener('input', function(){ sujo = true; });
+  bg.addEventListener('click', function(e){ if(e.target === bg) tentarFechar(); });
+  function tecla(e){ if(e.key === 'Escape' && document.body.lastElementChild === bg) tentarFechar(); }
+  document.addEventListener('keydown', tecla);
+  function tentarFechar(){ if(!sujo || confirm('Fechar sem salvar? O que você digitou será perdido.')) fechar(); }
+  function fechar(){ document.removeEventListener('keydown', tecla); bg.remove(); }
   return { el: bg.firstChild, fechar: fechar };
+}
+// caixa para pedir motivo/valor/data (no lugar do prompt(), que algumas telas de celular bloqueiam)
+function pedirTexto(o){
+  o = o || {};
+  return new Promise(function(ok){
+    var tipo = o.tipo || 'textarea', min = o.min || 0;
+    var campo = tipo === 'textarea' ? '<textarea id="pt-v" rows="3" maxlength="' + (o.max || 500) + '" style="width:100%">' + esc(o.valor || '') + '</textarea>'
+      : '<input id="pt-v" class="fin-in" type="' + (tipo === 'date' ? 'date' : 'text') + '"' + (tipo === 'valor' ? ' inputmode="decimal" placeholder="0,00"' : '') + ' value="' + esc(o.valor || '') + '" style="width:100%">';
+    var m = modal('<div style="font-weight:700;margin-bottom:6px">' + esc(o.titulo || '') + '</div>' + (o.ajuda ? '<div class="fin-sub" style="margin-bottom:6px">' + esc(o.ajuda) + '</div>' : '') + campo +
+      (min ? '<div class="fin-sub" data-pt="cont" style="margin-top:2px"></div>' : '') +
+      '<div style="margin-top:10px;gap:8px;display:flex"><button class="fin-bt pri" data-pt="ok">' + esc(o.botao || 'Confirmar') + '</button><button class="fin-bt" data-pt="x">Voltar</button></div><div data-pt="err"></div>');
+    var inp = m.el.querySelector('#pt-v'), cont = m.el.querySelector('[data-pt=cont]');
+    var conta = function(){ if(cont) cont.textContent = inp.value.trim().length + ' de no mínimo ' + min + ' letras'; };
+    if(cont){ inp.addEventListener('input', conta); conta(); }
+    setTimeout(function(){ try { inp.focus(); } catch(e){} }, 30);
+    m.el.querySelector('[data-pt=x]').onclick = function(){ m.fechar(); ok(null); };
+    m.el.querySelector('[data-pt=ok]').onclick = function(){
+      var v = inp.value.trim();
+      if(min && v.length < min){ m.el.querySelector('[data-pt=err]').innerHTML = '<div class="fin-erro">Escreva pelo menos ' + min + ' letras.</div>'; return; }
+      if(o.obrigatorio && !v){ m.el.querySelector('[data-pt=err]').innerHTML = '<div class="fin-erro">Preencha o campo.</div>'; return; }
+      m.fechar(); ok(v);
+    };
+  });
 }
 
 /* ---------- detalhe + conferência de uma linha ---------- */
@@ -306,7 +357,7 @@ async function abrirLinha(id, aoMudar){
   var d;
   try { d = await api('linha', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" onclick="this.closest(\'.fin-modal-bg\').remove()">Fechar</button>'; return; }
   var l = d.linha;
-  var chaveRasc = 'fin_rasc_' + id;
+  var chaveRasc = 'fin_rasc_' + ((((typeof getUsuarioLogado === 'function') && getUsuarioLogado()) || {}).id || '') + '_' + id;
   var rasc = {}; try { rasc = JSON.parse(sessionStorage.getItem(chaveRasc) || '{}'); } catch(e){}
   var idem = rasc.idem || uid();
   var escolhido = rasc.status || null;
@@ -384,7 +435,7 @@ async function abrirLinha(id, aoMudar){
     catch(e){ toast(e.message, 'erro'); b.disabled = false; }
   }; });
   if($('fl-desf')) $('fl-desf').onclick = async function(){
-    var motivo = prompt('Por que desfazer o vínculo? (mínimo 10 letras)'); if(!motivo) return;
+    var motivo = await pedirTexto({ titulo: 'Desfazer o vínculo com o lançamento', ajuda: 'Fica registrado para sempre, com o seu nome.', min: 10 }); if(!motivo) return;
     try { await api('desfazer_conciliacao', { extrato_id: id, motivo: motivo }); toast('Vínculo desfeito'); m.fechar(); abrirLinha(id, aoMudar); } catch(e){ toast(e.message, 'erro'); }
   };
 }
@@ -451,13 +502,7 @@ function resolverAlerta(id, aoMudar){
 
 /* ================= IMPORTAR ================= */
 async function lerArquivo(file){
-  if(/\.xlsx?$/i.test(file.name)){
-    if(!window.XLSX) await new Promise(function(ok, falha){ var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = ok; s.onerror = function(){ falha(new Error('Não consegui carregar o leitor de Excel. Exporte em CSV.')); }; document.head.appendChild(s); });
-    var buf = await file.arrayBuffer();
-    var wb = window.XLSX.read(buf, { type: 'array', cellDates: false, raw: false });
-    var ws = wb.Sheets[wb.SheetNames[0]];
-    return window.XLSX.utils.sheet_to_csv(ws, { FS: ';', blankrows: false, rawNumbers: false });
-  }
+  if(/\.xlsx?$/i.test(file.name)) throw new Error('Envie o extrato em OFX (melhor) ou CSV. No Excel: Arquivo › Salvar como › CSV.');
   var bytes = await file.arrayBuffer();
   try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
   catch(e){ return new TextDecoder('windows-1252').decode(bytes); }   // OFX de banco BR costuma vir em Latin-1
@@ -489,10 +534,13 @@ function telaImportar(el){
       (r.avisos || []).forEach(function(a){ h += '<div class="fin-aviso">' + esc(a) + '</div>'; });
       if(r.ja_importado) h += '<div class="fin-erro">Este arquivo já foi importado por ' + esc(nome(r.ja_importado.importado_por)) + ' em ' + dataHoraBR(r.ja_importado.importado_em) + '.</div>';
       h += '<table class="fin-tbl" style="margin-top:6px"><tbody>' + r.amostra.map(function(l){ return '<tr><td>' + dataBR(l.data) + '</td><td>' + esc(l.contraparte || l.descricao) + '</td><td style="text-align:right" class="' + (l.valor > 0 ? 'fin-ent' : 'fin-sai') + '">' + moeda(l.valor) + '</td></tr>'; }).join('') + '</tbody></table><div class="fin-sub">Primeiras ' + r.amostra.length + ' linhas</div>';
-      if(!r.ja_importado && r.novas > 0) h += '<div style="margin-top:10px"><button class="fin-bt ok" id="fi-ok">Importar ' + r.novas + ' linha(s) nova(s)</button></div>';
+      var temAtencao = (r.avisos || []).some(function(a){ return /^ATENÇÃO/.test(a); });
+      if(!r.ja_importado && r.novas > 0) h += (temAtencao ? '<label class="fin-sub" style="display:flex;gap:6px;align-items:center;margin-top:8px;color:#C0392B"><input type="checkbox" id="fi-ciente"> Conferi: este arquivo é mesmo da conta escolhida</label>' : '') +
+        '<div style="margin-top:10px"><button class="fin-bt ok" id="fi-ok">Importar ' + r.novas + ' linha(s) nova(s)</button></div>';
       else if(!r.ja_importado) h += '<div class="fin-aviso">Nada novo neste arquivo.</div>';
       out.innerHTML = h;
       if($('fi-ok')) $('fi-ok').onclick = async function(){
+        if($('fi-ciente') && !$('fi-ciente').checked){ toast('O arquivo parece ser de outra conta: confira e marque a caixa', 'aviso'); return; }
         var b2 = this; b2.disabled = true; b2.textContent = 'Importando...';
         try {
           var k = await api('importar_extrato', dados);
@@ -551,7 +599,7 @@ async function telaLancamentos(el){
     var j = await api('lancamentos', f), lista = j.lancamentos;
     if(f.vinc === 'sem') lista = lista.filter(function(l){ return !l.extrato_id; });
     if(f.vinc === 'com') lista = lista.filter(function(l){ return l.extrato_id; });
-    if(!lista.length){ out.innerHTML = '<div class="fin-vazio">Nenhum lançamento. ' + (pode('gestor') ? 'Importe a exportação do Kamino em 📥 Importar.' : '') + '</div>'; return; }
+    if(!lista.length){ out.innerHTML = '<div class="fin-vazio">Nenhum lançamento. ' + (pode('gestor') ? 'Importe a exportação do Kamino em 🏦 Contas › Importar extrato / Kamino.' : '') + '</div>'; return; }
     var tot = lista.reduce(function(a, l){ return a + Number(l.valor); }, 0);
     out.innerHTML = '<div class="fin-sub" style="margin-bottom:6px">' + lista.length + ' lançamento(s) · ' + moeda(tot) + '</div><div class="fin-card" style="padding:0;overflow-x:auto"><table class="fin-tbl"><thead><tr><th></th><th>Pessoa</th><th>Vencimento</th><th>Pago em</th><th style="text-align:right">Valor</th><th>Situação</th><th>Categoria</th><th>Extrato</th></tr></thead><tbody>' +
       lista.slice(0, 1500).map(function(l){ return '<tr' + (l.extrato_id ? ' class="clic" data-ext="' + l.extrato_id + '"' : '') + '><td>' + (l.tipo === 'pagar' ? '🔻' : '🔺') + '</td><td><b>' + esc(l.pessoa || '-') + '</b><div class="fin-sub">' + esc(l.descricao || '') + '</div></td><td>' + dataBR(l.vencimento) + '</td><td>' + dataBR(l.data_pagamento) + '</td><td style="text-align:right;font-weight:700">' + moeda(l.valor) + '</td><td class="fin-sub">' + esc(l.situacao || '') + '</td><td class="fin-sub">' + esc(l.categoria || '') + '</td><td>' + (l.extrato_id ? '🔗 #' + l.extrato_id : (l.data_pagamento ? '<span class="fin-chip" style="background:#D68910;color:#fff">sem saída</span>' : '-')) + '</td></tr>'; }).join('') + '</tbody></table></div>';

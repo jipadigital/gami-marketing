@@ -362,9 +362,9 @@ DECLARE v_antes jsonb; v_depois jsonb; v_id text;
 BEGIN
   IF TG_OP = 'UPDATE' THEN v_antes := to_jsonb(OLD); END IF;
   v_depois := to_jsonb(NEW);
-  IF TG_TABLE_NAME IN ('fin_importacoes','fin_flyp_importacoes') THEN
-    v_depois := v_depois - 'conteudo';
-    IF v_antes IS NOT NULL THEN v_antes := v_antes - 'conteudo'; END IF;
+  IF TG_TABLE_NAME IN ('fin_importacoes','fin_flyp_importacoes','fin_ctl_importacoes') THEN
+    v_depois := v_depois - 'conteudo' - 'conteudo_b64';
+    IF v_antes IS NOT NULL THEN v_antes := v_antes - 'conteudo' - 'conteudo_b64'; END IF;
   END IF;
   IF TG_TABLE_NAME IN ('fin_flyp_transacoes','fin_flyp_leituras') THEN
     v_depois := jsonb_build_object('id', v_depois->'id', 'status', v_depois->'status',

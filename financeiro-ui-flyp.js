@@ -134,15 +134,15 @@ T.flyp_importar = function(el){
     '<div class="fin-filtros"><input type="file" id="fi-arq" accept=".csv,.txt,text/csv">' +
     '<select id="fi-dir"><option value="">Direção: automática</option><option value="saida">Exportei filtrando só Saída</option><option value="entrada">Exportei filtrando só Entrada</option></select>' +
     '<button class="fin-bt pri" id="fi-ver">Conferir antes</button></div><div id="fi-out"></div></div>';
-  var conteudo = null, nomeArq = '';
-  $('fi-arq').onchange = function(){ conteudo = null; $('fi-out').innerHTML = ''; };
+  var conteudo = null, nomeArq = '', dirPrevia = null;
+  $('fi-arq').onchange = $('fi-dir').onchange = function(){ conteudo = null; $('fi-out').innerHTML = ''; };
   $('fi-ver').onclick = async function(){
     var file = $('fi-arq').files[0]; if(!file){ toast('Escolha o arquivo CSV', 'aviso'); return; }
     if(file.size > 4 * 1024 * 1024){ toast('Arquivo grande demais (máx. 4 MB). Exporte um período menor.', 'erro'); return; }
     var out = $('fi-out'); carregando(out);
     try {
-      conteudo = await lerTexto(file); nomeArq = file.name;
-      var j = await api('flyp_importar', { conteudo: conteudo, arquivo_nome: nomeArq, direcao: $('fi-dir').value || null });
+      conteudo = await (U.lerArquivo ? U.lerArquivo(file) : lerTexto(file)); nomeArq = file.name; dirPrevia = $('fi-dir').value || null;
+      var j = await api('flyp_importar', { conteudo: conteudo, arquivo_nome: nomeArq, direcao: dirPrevia });
       var r = j.resumo;
       out.innerHTML = '<div class="fin-kpis" style="margin-top:10px">' +
         kpi('Linhas', String(r.linhas), '', dataBR(r.periodo_ini) + ' a ' + dataBR(r.periodo_fim)) +
@@ -153,7 +153,7 @@ T.flyp_importar = function(el){
       $('fi-ok').onclick = async function(){
         this.disabled = true;
         try {
-          var k = await api('flyp_importar', { conteudo: conteudo, arquivo_nome: nomeArq, direcao: $('fi-dir').value || null, confirmar: true });
+          var k = await api('flyp_importar', { conteudo: conteudo, arquivo_nome: nomeArq, direcao: dirPrevia, confirmar: true });
           conteudo = null; $('fi-arq').value = '';
           out.innerHTML = '<div class="fin-card" style="margin-top:10px;border-color:#1D9E75">✅ Importado: <b>' + k.novas + '</b> novas, <b>' + k.status_mudou + '</b> com status atualizado, ' + k.repetidas + ' já existiam.<div class="fin-sub" style="margin-top:4px">Lembre de apagar o arquivo CSV do computador.</div></div>';
           toast('Importado');
@@ -184,7 +184,7 @@ T.flyp_acessos = async function(el){
       }).join('') + '</tbody></table>' : '<div class="fin-vazio">Ninguém consultou ainda.</div>') + '</div>';
     out.innerHTML = h;
     $('fa-lib').onclick = async function(){ var p = $('fa-p').value; if(!p) return; try { await api('flyp_liberar', { pessoa_id: p, ativo: true }); toast('Liberado'); T.flyp_acessos(el); } catch(e){ toast(e.message, 'erro'); } };
-    out.querySelectorAll('[data-rev]').forEach(function(b){ b.onclick = async function(){ try { await api('flyp_liberar', { pessoa_id: b.getAttribute('data-rev'), ativo: false }); toast('Revogado'); T.flyp_acessos(el); } catch(e){ toast(e.message, 'erro'); } }; });
+    out.querySelectorAll('[data-rev]').forEach(function(b){ b.onclick = async function(){ if(!confirm('Revogar o acesso de ' + nm(b.getAttribute('data-rev')) + ' aos dados da FLYP?')) return; try { await api('flyp_liberar', { pessoa_id: b.getAttribute('data-rev'), ativo: false }); toast('Revogado'); T.flyp_acessos(el); } catch(e){ toast(e.message, 'erro'); } }; });
   } catch(e){ erroEm(out, e); }
 };
 })();

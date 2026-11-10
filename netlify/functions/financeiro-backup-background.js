@@ -25,8 +25,13 @@ const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'f
                  'fin_unidades', 'fin_centros_custo', 'fin_classificacoes', 'fin_pessoas', 'fin_baixas', 'fin_transferencias',
                  'fin_regras_extrato', 'fin_anexos', 'fin_entradas',
                  // v3 (FLYP): vai pros mesmos cofres privados
-                 'fin_flyp_importacoes', 'fin_flyp_transacoes', 'fin_flyp_acesso', 'fin_flyp_leituras'];
-const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
+                 'fin_flyp_importacoes', 'fin_flyp_transacoes', 'fin_flyp_acesso', 'fin_flyp_leituras',
+                 // v4 (Controles: Empresas semanal, Créditos) + equipe
+                 'fin_ctl_importacoes', 'fin_ctl_cobrancas', 'fin_ctl_cob_receb', 'fin_ctl_creditos', 'fin_ctl_conferencias', 'fin_equipe'];
+// dado da FLYP NUNCA sai do banco exclusivo: a 2ª cópia (no banco do dashboard) vai sem essas tabelas
+const SO_NO_EXCLUSIVO = /^fin_flyp_/;
+const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em',
+                fin_ctl_importacoes: 'importado_em', fin_equipe: 'pessoa_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
 const h = extra => Object.assign({ apikey: KEY, Authorization: 'Bearer ' + KEY }, extra || {});
 
 async function lerTabela(t){
@@ -66,7 +71,10 @@ const handler = async function(){
     if(!up.ok) throw new Error('upload: HTTP ' + up.status + ' ' + (await up.text()).slice(0, 200));
     // 2ª cópia no banco do dashboard (só quando o financeiro está num banco separado)
     if(EXCLUSIVO && MAIN_KEY){
-      const up2 = await fetch(MAIN_URL + '/storage/v1/object/fin-backups/' + caminho, { method: 'POST', headers: hMain({ 'Content-Type': 'application/gzip', 'x-upsert': 'false' }), body: gz });
+      const copia = Object.assign({}, dump, { tabelas: {}, contagens: {}, sem_flyp: true });
+      Object.keys(dump.tabelas).forEach(t => { if(!SO_NO_EXCLUSIVO.test(t)){ copia.tabelas[t] = dump.tabelas[t]; copia.contagens[t] = dump.contagens[t]; } });
+      const gz2 = zlib.gzipSync(Buffer.from(JSON.stringify(copia)));
+      const up2 = await fetch(MAIN_URL + '/storage/v1/object/fin-backups/' + caminho, { method: 'POST', headers: hMain({ 'Content-Type': 'application/gzip', 'x-upsert': 'false' }), body: gz2 });
       if(!up2.ok) await alertar('Backup do financeiro: 2ª cópia (banco do dashboard) falhou', { status: up2.status });
     }
     console.log('✅ backup financeiro', caminho, JSON.stringify(dump.contagens), 'integridade=' + JSON.stringify(dump.integridade), Math.round((Date.now() - inicio) / 1000) + 's');

@@ -122,9 +122,9 @@ DECLARE v_antes jsonb; v_depois jsonb; v_id text;
 BEGIN
   IF TG_OP = 'UPDATE' THEN v_antes := to_jsonb(OLD); END IF;
   v_depois := to_jsonb(NEW);
-  IF TG_TABLE_NAME IN ('fin_importacoes','fin_flyp_importacoes') THEN
-    v_depois := v_depois - 'conteudo';
-    IF v_antes IS NOT NULL THEN v_antes := v_antes - 'conteudo'; END IF;
+  IF TG_TABLE_NAME IN ('fin_importacoes','fin_flyp_importacoes','fin_ctl_importacoes') THEN
+    v_depois := v_depois - 'conteudo' - 'conteudo_b64';
+    IF v_antes IS NOT NULL THEN v_antes := v_antes - 'conteudo' - 'conteudo_b64'; END IF;
   END IF;
   IF TG_TABLE_NAME IN ('fin_flyp_transacoes','fin_flyp_leituras') THEN
     v_depois := jsonb_build_object('id', v_depois->'id', 'status', v_depois->'status',
@@ -162,7 +162,7 @@ BEGIN
          l->>'status' AS status, l->>'status_original' AS status_original, coalesce((l->>'tem_nota')::boolean, false) AS tem_nota
   FROM jsonb_array_elements(p_linhas) l;
 
-  SELECT count(*), count(*) FILTER (WHERE t.id IS NULL), count(*) FILTER (WHERE t.id IS NOT NULL AND t.status IS DISTINCT FROM f.status)
+  SELECT count(*), count(*) FILTER (WHERE t.id IS NULL), count(*) FILTER (WHERE t.id IS NOT NULL AND t.status IS DISTINCT FROM f.status AND t.status NOT IN ('concluido','efetivado','quitado','rejeitado','expirado','cancelado'))
     INTO v_total, v_novas, v_mud
   FROM _fl f LEFT JOIN fin_flyp_transacoes t ON t.unidade = v_un AND t.hash = f.hash;
 
@@ -180,7 +180,9 @@ BEGIN
 
   UPDATE fin_flyp_transacoes t SET status = f.status, status_original = f.status_original, tem_nota = t.tem_nota OR f.tem_nota,
          status_atualizado_em = now(), ultima_importacao_id = v_imp
-  FROM _fl f WHERE t.unidade = v_un AND t.hash = f.hash AND t.status IS DISTINCT FROM f.status;
+  FROM _fl f WHERE t.unidade = v_un AND t.hash = f.hash AND t.status IS DISTINCT FROM f.status
+    -- status só AVANÇA: o que já é final (concluído, rejeitado...) não volta com um CSV antigo
+    AND t.status NOT IN ('concluido','efetivado','quitado','rejeitado','expirado','cancelado');
 
   RETURN jsonb_build_object('ok', true, 'importacao_id', v_imp, 'linhas', v_total, 'novas', v_novas,
                             'status_mudou', v_mud, 'repetidas', v_total - v_novas - v_mud);

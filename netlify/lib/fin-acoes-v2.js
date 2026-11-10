@@ -14,11 +14,11 @@ module.exports = function(h){
     pessoas_listar: 'leitor', pessoa_ver: 'leitor', receber_dash: 'leitor',
     rel_dre: 'leitor', rel_fluxo_mensal: 'leitor', rel_fluxo_diario: 'leitor', rel_resultado: 'leitor',
     conciliacao: 'leitor', candidatos: 'leitor', transf_listar: 'leitor', entradas_listar: 'leitor', anexo_baixar: 'leitor',
-    lanc_exportar: 'leitor',
-    lanc_criar: 'conferente', lanc_editar: 'conferente', lanc_cancelar: 'conferente', lanc_split: 'conferente', lanc_baixar: 'conferente',
+    lanc_exportar: 'gestor',   // exporta CPF/CNPJ: mesmo nível do export do extrato
+    lanc_criar: 'conferente', lanc_editar: 'conferente', lanc_split: 'conferente', lanc_baixar: 'conferente',
     lancar_da_linha: 'conferente', transf_criar: 'conferente', conciliar_transf: 'conferente', pessoa_salvar: 'conferente',
     entrada_salvar: 'conferente', anexo_enviar: 'conferente', conciliar_auto: 'conferente',
-    lanc_estornar: 'gestor', transf_cancelar: 'gestor', cadastro_salvar: 'gestor'
+    lanc_estornar: 'gestor', lanc_cancelar: 'gestor', transf_cancelar: 'gestor', cadastro_salvar: 'gestor'
   };
 
   const num = (v, nome) => { if(v === '' || v == null) return 0; const n = typeof v === 'number' ? v : P.parseValor(String(v)); if(n == null || !isFinite(n) || n < 0 || n > 1e9) throw new ErroUsuario((nome || 'Valor') + ' inválido'); return Math.round(n * 100) / 100; };
@@ -116,7 +116,7 @@ module.exports = function(h){
       const [baixas, anexos, historico, parcelas, alertas] = await Promise.all([
         lerTodos('fin_baixas?lancamento_id=eq.' + id + '&select=*&order=id.asc'),
         lerTodos('fin_anexos?lancamento_id=eq.' + id + '&select=id,nome,mime,bytes,por,em&order=id.asc'),
-        lerTodos('fin_auditoria?tabela=in.(fin_lancamentos,fin_baixas)&select=seq,ts,ator,acao,tabela,antes,depois&or=(registro_id.eq.' + id + ',depois->>lancamento_id.eq.' + id + ')&order=seq.asc', 500),
+        lerTodos('fin_auditoria?select=seq,ts,ator,acao,tabela,antes,depois&or=(and(tabela.eq.fin_lancamentos,registro_id.eq.' + id + '),and(tabela.eq.fin_baixas,depois->>lancamento_id.eq.' + id + '))&order=seq.asc', 500),
         l.grupo_parcela ? lerTodos('fin_v_lanc?grupo_parcela=eq.' + l.grupo_parcela + '&select=id,parcela_num,parcela_total,vencimento,valor_final,situacao_calc&order=parcela_num.asc') : Promise.resolve([]),
         lerTodos('fin_alertas?lancamento_id=eq.' + id + '&select=*&order=id.desc')
       ]);
@@ -204,7 +204,7 @@ module.exports = function(h){
       if(b.situacao === 'pendentes') f.push('status=eq.pendente');
       if(b.situacao === 'pagos') f.push('status=eq.pago');
       const q = textoBusca(b.q); if(q) f.push('or=(pessoa_nome.ilike.*' + q + '*,descricao.ilike.*' + q + '*)');
-      const itens = await lerTodos('fin_v_lanc?select=id,pessoa_nome,descricao,classificacao_nome,valor_final,vencimento,status,situacao_calc,conta_nome,forma,extrato_id&' + f.join('&') + '&order=vencimento.asc,id.asc', 20000);
+      const itens = await lerTodos('fin_v_lanc?select=id,tipo,pessoa_nome,descricao,classificacao_nome,valor,valor_final,juros,multa,desconto,vencimento,status,situacao_calc,conta_id,conta_nome,forma,extrato_id&' + f.join('&') + '&order=vencimento.asc,id.asc', 20000);
       const dias = {};
       itens.forEach(l => {
         const d = dias[l.vencimento] = dias[l.vencimento] || { dia: l.vencimento, total: 0, qtd: 0, pagos: 0, pendentes: 0, atrasados: 0, por_class: {}, itens: [] };

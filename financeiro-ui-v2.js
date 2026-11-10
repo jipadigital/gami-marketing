@@ -22,7 +22,15 @@ function diaSemana(iso){ return ['domingo', 'segunda', 'terça', 'quarta', 'quin
 var MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 function carregando(el){ el.innerHTML = '<div class="fin-vazio">Carregando...</div>'; }
 function erroEm(el, e){ el.innerHTML = '<div class="fin-erro">' + esc(e.message || e) + '</div>'; }
-function parseBR(s){ if(s == null) return 0; var t = String(s).trim().replace(/\s|R\$/g, ''); if(/,\d{1,2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.'); var x = Number(t); return isFinite(x) ? Math.round(x * 100) / 100 : NaN; }
+function parseBR(s){
+  if(s == null || s === '') return 0;
+  var t = String(s).trim().replace(/\s|R\$/g, ''); if(!t) return 0;
+  var neg = /^-/.test(t); t = t.replace(/^-/, '');
+  if(t.indexOf(',') >= 0){ if((t.match(/,/g) || []).length > 1) return NaN; t = t.replace(/\./g, '').replace(',', '.'); }   // 1.234,56
+  else if(/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');                                                         // 1.500 = mil e quinhentos
+  if(!/^\d+(\.\d+)?$/.test(t)) return NaN;
+  var x = Number(t); return isFinite(x) ? Math.round((neg ? -x : x) * 100) / 100 : NaN;
+}
 function fmtIn(v){ return v == null || v === '' ? '' : n(v).toFixed(2).replace('.', ','); }
 var SIT = {
   pendente: { t: 'Pendente', c: '#B7791F', bg: 'rgba(214,137,16,.15)' }, atrasado: { t: 'Atrasado', c: '#fff', bg: '#C0392B' },
@@ -147,7 +155,11 @@ async function enviarAnexos(files, alvo){
   }
   if(erros.length) toast('Anexo: ' + erros.join(' | '), 'erro');
 }
-async function abrirAnexo(id){ try { var j = await api('anexo_baixar', { id: id }); window.open(j.url, '_blank', 'noopener'); } catch(e){ toast(e.message, 'erro'); } }
+async function abrirAnexo(id){
+  var w = window.open('', '_blank');   // aberta já no clique (Safari bloqueia window.open depois de um await)
+  try { var j = await api('anexo_baixar', { id: id }); if(w){ w.opener = null; w.location = j.url; } else toast('Libere pop-up para abrir o anexo', 'aviso'); }
+  catch(e){ if(w) w.close(); toast(e.message, 'erro'); }
+}
 
 /* ================= FORMULÁRIO DE LANÇAMENTO (Novo pagamento / Novo recebimento) ================= */
 async function formLanc(tipo, lanc, opcoes){
@@ -291,7 +303,7 @@ async function verLanc(id, aoMudar){
     '<div style="font-size:18px;font-weight:800">' + esc(l.descricao || l.classificacao_nome || '-') + '</div></div><div style="text-align:right"><div style="font-size:20px;font-weight:800" class="' + (tipo === 'pagar' ? 'fin-sai' : 'fin-ent') + '">' + moeda(l.valor_final) + '</div>' + chipSit(l.situacao_calc, tipo) + '</div></div>';
   h += '<div class="fin-row" style="margin:12px 0;gap:6px">';
   if(pend && pode('conferente')) h += '<button class="fin-bt ok" id="lv-baixa">' + (tipo === 'pagar' ? '✓ Baixa manual (paguei)' : '✓ Baixa manual (recebi)') + '</button>';
-  if(pend && pode('conferente')) h += '<button class="fin-bt" id="lv-editar">Editar</button><button class="fin-bt" id="lv-split">Split</button>';
+  if(pend && pode('conferente')) h += '<button class="fin-bt" id="lv-editar">Editar</button><button class="fin-bt" id="lv-split" title="Separa este lançamento em dois (ex.: pagou só uma parte)">Dividir em dois</button>';
   if(pode('conferente')) h += '<button class="fin-bt" id="lv-dup">Duplicar</button>';
   h += '<button class="fin-bt" id="lv-print">Imprimir rateio</button>';
   if(pend && pode('conferente')) h += '<button class="fin-bt sus" id="lv-cancelar">Cancelar lançamento</button>';
@@ -327,17 +339,18 @@ async function verLanc(id, aoMudar){
   if($('lv-dup')) $('lv-dup').onclick = function(){ m.fechar(); var c = Object.assign({}, l); delete c.id; c.vencimento = ''; c.competencia = ''; formLanc(tipo, c, { duplicar: true, aoSalvar: aoMudar }); };
   if($('lv-print')) $('lv-print').onclick = function(){ imprimirRateio(l); };
   if($('lv-split')) $('lv-split').onclick = async function(){
-    var v = prompt('Valor da 2ª parte (o resto fica neste lançamento):'); if(!v) return;
-    var ve = prompt('Vencimento da 2ª parte (dd/mm/aaaa), vazio = mesmo vencimento:', '');
-    var iso = ve ? (ve.split('/').reverse().join('-')) : null;
+    var v = await U.pedirTexto({ titulo: 'Dividir em dois: valor da 2ª parte', ajuda: 'O resto fica neste lançamento.', tipo: 'valor', obrigatorio: true }); if(!v) return;
+    if(!(parseBR(v) > 0)) return toast('Valor inválido', 'erro');
+    var iso = await U.pedirTexto({ titulo: 'Vencimento da 2ª parte', ajuda: 'Deixe em branco para manter o mesmo vencimento.', tipo: 'date' }); if(iso === null) return;
+    iso = iso || null;
     try { var r = await api('lanc_split', { id: id, valor2: parseBR(v), vencimento2: iso }); toast('Dividido: novo lançamento #' + r.novo_id); recarregar(); } catch(e){ toast(e.message, 'erro'); }
   };
   if($('lv-cancelar')) $('lv-cancelar').onclick = async function(){
-    var mo = prompt('Por que cancelar? (mínimo 10 letras). O lançamento não some: fica registrado como cancelado.'); if(!mo) return;
+    var mo = await U.pedirTexto({ titulo: 'Cancelar o lançamento', ajuda: 'Ele não some: fica registrado como cancelado, com o seu nome e o motivo.', min: 10 }); if(!mo) return;
     try { await api('lanc_cancelar', { id: id, motivo: mo }); toast('Cancelado'); recarregar(); } catch(e){ toast(e.message, 'erro'); }
   };
   if($('lv-estornar')) $('lv-estornar').onclick = async function(){
-    var mo = prompt('Por que estornar a baixa? (mínimo 10 letras)'); if(!mo) return;
+    var mo = await U.pedirTexto({ titulo: 'Estornar a baixa', ajuda: 'O lançamento volta a ficar pendente. Fica registrado com o seu nome.', min: 10 }); if(!mo) return;
     try { await api('lanc_estornar', { id: id, motivo: mo }); toast('Baixa estornada'); recarregar(); } catch(e){ toast(e.message, 'erro'); }
   };
 }
@@ -354,7 +367,7 @@ function descHist(x){
 function imprimirRateio(l){
   var un = {}; F.base.unidades.forEach(function(u){ un[u.id] = u.nome; });
   var r = (l.rateio && l.rateio.length) ? l.rateio : [{ unidade_id: l.unidade_id, pct: 100 }];
-  var w = window.open('', '_blank', 'noopener,width=700,height=600'); if(!w) return toast('Libere pop-up pra imprimir', 'aviso');
+  var w = window.open('', '_blank', 'width=700,height=600'); if(!w) return toast('Libere pop-up pra imprimir', 'aviso'); w.opener = null;
   w.document.write('<html><head><title>Rateio #' + l.id + '</title><style>body{font-family:Arial;padding:24px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px;text-align:left}td.n{text-align:right}</style></head><body>' +
     '<h3>Rateio do lançamento #' + l.id + '</h3><p>' + esc(l.pessoa_nome || '') + ' · ' + esc(l.descricao || '') + '<br>Classificação: ' + esc(l.classificacao_nome || '-') + ' · Vencimento ' + dataBR(l.vencimento) + ' · Total ' + moeda(l.valor_final) + '</p>' +
     '<table><tr><th>Unidade</th><th>%</th><th>Valor</th></tr>' + r.map(function(x){ return '<tr><td>' + esc(un[x.unidade_id] || '-') + '</td><td class="n">' + x.pct + '%</td><td class="n">' + moeda(n(l.valor_final) * x.pct / 100) + '</td></tr>'; }).join('') + '</table>' +
@@ -436,8 +449,9 @@ function central(tipo){
       '<button class="fin-bt pri" id="ce-ok">Filtrar</button><div style="flex:1"></div>' + (pode('conferente') ? '<button class="fin-bt ok" id="ce-novo">+ ' + (tipo === 'pagar' ? 'Novo pagamento' : 'Novo recebimento') + '</button>' : '') + '</div><div id="ce-out"></div>';
     var ap = function(){ f.q = $('ce-q').value.trim(); f.ini = $('ce-ini').value; f.fim = $('ce-fim').value; f.situacao = $('ce-sit').value; central(tipo)(el); };
     $('ce-ok').onclick = ap; $('ce-q').onkeydown = function(e){ if(e.key === 'Enter') ap(); };
-    $('ce-ant').onclick = function(){ var d = (new Date(f.fim) - new Date(f.ini)) / 864e5 + 1; f.ini = addDias(f.ini, -d); f.fim = addDias(f.fim, -d); central(tipo)(el); };
-    $('ce-prox').onclick = function(){ var d = (new Date(f.fim) - new Date(f.ini)) / 864e5 + 1; f.ini = addDias(f.ini, d); f.fim = addDias(f.fim, d); central(tipo)(el); };
+    var datasOk = function(){ if(!f.ini || !f.fim || f.fim < f.ini){ toast('Preencha as duas datas (início antes do fim)', 'aviso'); return false; } return true; };
+    $('ce-ant').onclick = function(){ if(!datasOk()) return; var d = (new Date(f.fim) - new Date(f.ini)) / 864e5 + 1; f.ini = addDias(f.ini, -d); f.fim = addDias(f.fim, -d); central(tipo)(el); };
+    $('ce-prox').onclick = function(){ if(!datasOk()) return; var d = (new Date(f.fim) - new Date(f.ini)) / 864e5 + 1; f.ini = addDias(f.ini, d); f.fim = addDias(f.fim, d); central(tipo)(el); };
     if($('ce-novo')) $('ce-novo').onclick = function(){ formLanc(tipo, null, { aoSalvar: function(){ central(tipo)(el); } }); };
     var out = $('ce-out'); carregando(out);
     try {
@@ -501,7 +515,7 @@ function lista(tipo){
       '<div><div class="fin-lbl">Ordenar por</div><select class="fin-in" id="li-ordem"><option value="">Vencimento</option><option value="pagamento"' + (f.ordem === 'pagamento' ? ' selected' : '') + '>Data de pagamento</option><option value="recente"' + (f.ordem === 'recente' ? ' selected' : '') + '>Mais recentes</option></select></div></div>' +
       '<div class="fin-row" style="justify-content:flex-end;margin-top:10px"><button class="fin-bt" id="li-limpar">Limpar</button><button class="fin-bt pri" id="li-buscar">Buscar</button></div></div></div>' +
       '<div class="fin-row" style="margin-bottom:8px"><input class="fin-in" id="li-q" placeholder="Busca rápida: pessoa, descrição, classificação" value="' + esc(f.q || '') + '" style="flex:1;min-width:200px"><button class="fin-bt pri" id="li-qok">Buscar</button>' +
-      (pode('conferente') ? '<button class="fin-bt ok" id="li-baixa">Baixa dos selecionados</button><button class="fin-bt pri" id="li-novo">+ Novo</button>' : '') + '<button class="fin-bt" id="li-csv">⬇️ Exportar</button></div><div id="li-out"></div>';
+      (pode('conferente') ? '<button class="fin-bt ok" id="li-baixa">Baixa dos selecionados</button><button class="fin-bt pri" id="li-novo">+ Novo</button>' : '') + (pode('gestor') ? '<button class="fin-bt" id="li-csv">⬇️ Exportar</button>' : '') + '</div><div id="li-out"></div>';
     ligarPessoa('li-pessoa', tipo);
     $('li-tog').onclick = function(){ F['filtros_abertos_' + tipo] = !F['filtros_abertos_' + tipo]; $('li-filtros').style.display = F['filtros_abertos_' + tipo] ? '' : 'none'; };
     function ler(){
@@ -516,7 +530,7 @@ function lista(tipo){
     $('li-q').onkeydown = function(e){ if(e.key === 'Enter'){ ler(); lista(tipo)(el); } };
     $('li-limpar').onclick = function(){ F['lista_' + tipo] = null; lista(tipo)(el); };
     if($('li-novo')) $('li-novo').onclick = function(){ formLanc(tipo, null, { aoSalvar: function(){ lista(tipo)(el); } }); };
-    $('li-csv').onclick = async function(){ var b = this; b.disabled = true; try { var j = await api('lanc_exportar', Object.assign({ tipo: tipo }, F['lista_' + tipo])); baixar((tipo === 'pagar' ? 'pagamentos' : 'recebimentos') + '-' + hoje() + '.csv', j.csv, 'text/csv;charset=utf-8'); toast(j.qtd + ' linhas exportadas'); } catch(e){ toast(e.message, 'erro'); } b.disabled = false; };
+    if($('li-csv')) $('li-csv').onclick = async function(){ var b = this; b.disabled = true; try { var j = await api('lanc_exportar', Object.assign({ tipo: tipo }, F['lista_' + tipo])); baixar((tipo === 'pagar' ? 'pagamentos' : 'recebimentos') + '-' + hoje() + '.csv', j.csv, 'text/csv;charset=utf-8'); toast(j.qtd + ' linhas exportadas'); } catch(e){ toast(e.message, 'erro'); } b.disabled = false; };
     var out = $('li-out'); carregando(out);
     try {
       var j = await api('lanc_listar', Object.assign({ tipo: tipo, pagina: F['pag_' + tipo] }, f));
@@ -610,7 +624,7 @@ T.receber_dash = async function(el){
       kpi('Inadimplência atual', moeda(d.inadimplencia), n(d.inadimplencia) ? '#C0392B' : '#1D9E75', d.qtd_inadimplentes + ' cliente(s) com atraso') + '</div>';
     h += '<div class="fin-grid2"><div class="fin-card"><b style="font-size:13px">Últimos recebimentos</b>' + tabelaMini(d.ultimos_recebidos, true) + '</div><div class="fin-card"><b style="font-size:13px">Últimos em atraso</b>' + tabelaMini(d.ultimos_atrasados, false) + '</div></div>';
     h += '<div class="fin-grid2" style="margin-top:10px"><div class="fin-card"><b style="font-size:13px">Últimos 6 meses</b><div class="fin-sub">Emitido x recebido (por vencimento)</div>' + barras6(d.meses) + '</div>' +
-      '<div class="fin-card" style="overflow-x:auto"><b style="font-size:13px">Aging list (atrasos por cliente)</b><table class="fin-tbl" style="margin-top:6px"><thead><tr><th>Pessoa</th><th class="fin-num">1-30</th><th class="fin-num">31-60</th><th class="fin-num">61-90</th><th class="fin-num">&gt;90</th><th class="fin-num">%</th><th class="fin-num">% acum.</th></tr></thead><tbody>';
+      '<div class="fin-card" style="overflow-x:auto"><b style="font-size:13px">Atrasos por cliente (dias em atraso)</b><table class="fin-tbl" style="margin-top:6px"><thead><tr><th>Pessoa</th><th class="fin-num">1-30</th><th class="fin-num">31-60</th><th class="fin-num">61-90</th><th class="fin-num">&gt;90</th><th class="fin-num">%</th><th class="fin-num">% acum.</th></tr></thead><tbody>';
     var acum = 0;
     h += d.aging.map(function(a){ var p = n(d.inadimplencia) ? n(a.total) / n(d.inadimplencia) * 100 : 0; acum += p; return '<tr><td>' + esc(a.pessoa) + '</td><td class="fin-num">' + (a.d30 ? moedaCurta(a.d30) : '-') + '</td><td class="fin-num">' + (a.d60 ? moedaCurta(a.d60) : '-') + '</td><td class="fin-num">' + (a.d90 ? moedaCurta(a.d90) : '-') + '</td><td class="fin-num">' + (a.d90mais ? moedaCurta(a.d90mais) : '-') + '</td><td class="fin-num">' + p.toFixed(0) + '%</td><td class="fin-num">' + acum.toFixed(0) + '%</td></tr>'; }).join('') || '<tr><td colspan="7" class="fin-vazio">Ninguém em atraso 🎉</td></tr>';
     h += '</tbody></table></div></div>';
@@ -652,7 +666,7 @@ T.contas_saldos = async function(el){
       '<div class="fin-card"><b style="font-size:13px">Transferências entre contas (90 dias)</b>' + (tr.transferencias.length ? '<table class="fin-tbl" style="margin-top:6px"><tbody>' + tr.transferencias.map(function(t){ return '<tr' + (t.cancelada ? ' style="opacity:.5;text-decoration:line-through"' : '') + '><td>' + dataBR(t.data) + '</td><td>' + esc(cn[t.conta_origem_id] || '') + ' → ' + esc(cn[t.conta_destino_id] || '') + '<div class="fin-sub">' + esc(t.descricao || '') + ' · ' + esc(nome(t.por)) + '</div></td><td class="fin-num">' + moeda(t.valor) + '</td><td>' + (!t.cancelada && pode('gestor') ? '<button class="fin-bt" data-ctr="' + t.id + '">Cancelar</button>' : '') + '</td></tr>'; }).join('') + '</tbody></table>' : '<div class="fin-vazio">Nenhuma.</div>') + '</div></div>';
     if($('cs-tr')) $('cs-tr').onclick = function(){ novaTransf(function(){ T.contas_saldos(el); }); };
     $('cs-conc').onclick = function(){ U.irPara('conciliacao'); };
-    el.querySelectorAll('[data-ctr]').forEach(function(b){ b.onclick = async function(){ var mo = prompt('Motivo do cancelamento (mínimo 10 letras):'); if(!mo) return; try { await api('transf_cancelar', { id: Number(b.getAttribute('data-ctr')), motivo: mo }); toast('Cancelada'); T.contas_saldos(el); } catch(e){ toast(e.message, 'erro'); } }; });
+    el.querySelectorAll('[data-ctr]').forEach(function(b){ b.onclick = async function(){ var mo = await U.pedirTexto({ titulo: 'Cancelar a transferência', min: 10 }); if(!mo) return; try { await api('transf_cancelar', { id: Number(b.getAttribute('data-ctr')), motivo: mo }); toast('Cancelada'); T.contas_saldos(el); } catch(e){ toast(e.message, 'erro'); } }; });
   } catch(e){ erroEm(el, e); }
 };
 function novaTransf(aoSalvar, pre){
@@ -670,7 +684,7 @@ function novaTransf(aoSalvar, pre){
 T.conciliacao = async function(el){
   css2();
   try { await base(); } catch(e){ return erroEm(el, e); }
-  var f = F.conc = F.conc || { conta_id: '', ini: addDias(hoje(), -7), fim: hoje(), mostrar: true };
+  var f = F.conc = F.conc || { conta_id: '', ini: addDias(hoje(), -7), fim: hoje(), mostrar: false };
   el.innerHTML = '<div class="fin-filtros"><select id="cc-conta">' + optsContas(f.conta_id, 'Escolha a conta do extrato...') + '</select><input type="date" id="cc-ini" value="' + f.ini + '"><input type="date" id="cc-fim" value="' + f.fim + '"><button class="fin-bt pri" id="cc-ok">Abrir</button>' +
     '<label class="fin-sub" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="cc-mostrar"' + (f.mostrar ? ' checked' : '') + '>Exibir conciliados</label><div style="flex:1"></div>' +
     (pode('conferente') ? '<button class="fin-bt" id="cc-auto" title="Casa sozinho quando só existe UM lançamento com o mesmo valor e data próxima">⚡ Conciliar automático</button>' : '') + '</div><div id="cc-out"><div class="fin-vazio">Escolha a conta e o período. As linhas vêm do extrato importado (Contas › Importar).</div></div>';
@@ -696,7 +710,7 @@ T.conciliacao = async function(el){
     out.innerHTML = h;
     var recarregar = function(){ T.conciliacao(el); };
     out.querySelectorAll('[data-verl]').forEach(function(a){ a.onclick = function(e){ e.preventDefault(); verLanc(Number(a.getAttribute('data-verl')), recarregar); }; });
-    out.querySelectorAll('[data-desf]').forEach(function(b){ b.onclick = async function(){ var mo = prompt('Por que desfazer? (mínimo 10 letras). Se a baixa veio daqui, ela é estornada junto.'); if(!mo) return; try { await api('desfazer_conciliacao', { extrato_id: Number(b.getAttribute('data-desf')), motivo: mo }); toast('Desfeito'); recarregar(); } catch(e){ toast(e.message, 'erro'); } }; });
+    out.querySelectorAll('[data-desf]').forEach(function(b){ b.onclick = async function(){ var mo = await U.pedirTexto({ titulo: 'Desfazer a conciliação', ajuda: 'Se a baixa veio daqui, ela é estornada junto.', min: 10 }); if(!mo) return; try { await api('desfazer_conciliacao', { extrato_id: Number(b.getAttribute('data-desf')), motivo: mo }); toast('Desfeito'); recarregar(); } catch(e){ toast(e.message, 'erro'); } }; });
     out.querySelectorAll('[data-busca]').forEach(function(b){ b.onclick = function(){ painelBusca(Number(b.getAttribute('data-busca')), 7, '', recarregar); }; });
     out.querySelectorAll('[data-criar]').forEach(function(b){ b.onclick = function(){ criarDaLinha(j.linhas.filter(function(x){ return x.id === Number(b.getAttribute('data-criar')); })[0], recarregar); }; });
   } catch(e){ erroEm(out, e); }
@@ -876,7 +890,7 @@ T.rel_resultado = async function(el){
     var barras = function(lista, cor){ var t = lista.reduce(function(a, x){ return a + n(x.valor); }, 0) || 1, mx = Math.max.apply(null, lista.map(function(x){ return n(x.valor); }).concat([1]));
       return lista.length ? lista.map(function(x){ return '<div class="fin-hbar"><span title="' + esc(x.nome) + '">' + esc(x.nome) + '</span><i style="width:' + (n(x.valor) / mx * 45) + '%;background:' + cor + '"></i><span class="fin-num">' + moedaCurta(x.valor) + ' <span class="fin-sub">' + (n(x.valor) / t * 100).toFixed(0) + '%</span></span></div>'; }).join('') : '<div class="fin-vazio">Sem dados.</div>'; };
     $('rr-csv').onclick = function(){ baixar('resultado-' + f.ini + '-' + f.fim + '.csv', '﻿' + ['Tipo;Nome;Valor'].concat(r.comp_receitas.map(function(x){ return 'Receita;' + x.nome + ';' + n(x.valor).toFixed(2).replace('.', ','); }), r.comp_despesas.map(function(x){ return 'Despesa;' + x.nome + ';' + n(x.valor).toFixed(2).replace('.', ','); })).join('\r\n'), 'text/csv;charset=utf-8'); };
-    out.innerHTML = '<div class="fin-kpis">' + kpi('Receita total', moeda(rec), '#1D9E75') + kpi('Despesas totais', moeda(des), '#E24B4A') + kpi('ROI', roi.toFixed(4).replace('.', ','), roi >= 0 ? '#1D9E75' : '#C0392B', moeda(rec - des) + ' é o resultado líquido') + '</div>' +
+    out.innerHTML = '<div class="fin-kpis">' + kpi('Receita total', moeda(rec), '#1D9E75') + kpi('Despesas totais', moeda(des), '#E24B4A') + kpi('Retorno (resultado ÷ despesas)', (roi * 100).toFixed(1).replace('.', ',') + '%', roi >= 0 ? '#1D9E75' : '#C0392B', moeda(rec - des) + ' é o resultado líquido') + '</div>' +
       '<div class="fin-grid2"><div class="fin-card"><b style="font-size:13px">Composição das receitas</b><div style="margin-top:8px">' + barras(r.comp_receitas, '#1D9E75') + '</div></div><div class="fin-card"><b style="font-size:13px">Composição das despesas</b><div style="margin-top:8px">' + barras(r.comp_despesas, '#E24B4A') + '</div></div></div>' +
       '<div class="fin-grid2" style="margin-top:10px"><div class="fin-card"><b style="font-size:13px">Fontes de receita (clientes)</b><div style="margin-top:8px">' + barras(r.fontes_receita, '#0E7AB8') + '</div></div><div class="fin-card"><b style="font-size:13px">Despesas e investimentos</b><div style="margin-top:8px">' + barras(r.maiores_despesas, '#D68910') + '</div></div></div>';
   } catch(e){ erroEm(out, e); }

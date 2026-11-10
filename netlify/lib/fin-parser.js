@@ -224,7 +224,7 @@ function parseCSVExtrato(texto){
   const cab = rows[hi];
   const c = {}; for(const k in COL_EXT) c[k] = achaColuna(cab, COL_EXT[k]);
   if(c.descricao < 0) return { ok: false, erro: 'CSV sem coluna de descrição/histórico.' };
-  const linhas = [], erros = []; let ultSaldo = null, ultData = null;
+  const linhas = [], erros = [], saldos = []; let ultSaldo = null, ultData = null;
   for(let i = hi + 1; i < rows.length; i++){
     const r = rows[i];
     const get = k => (c[k] >= 0 ? r[c[k]] : '');
@@ -241,14 +241,17 @@ function parseCSVExtrato(texto){
       const tp = norm(get('tipo'));
       if(valor != null && valor > 0 && (tp === 'D' || tp.indexOf('DEBITO') === 0 || tp.indexOf('SAIDA') === 0)) valor = -valor;
     } else {
-      const cr = parseValor(get('credito')), db = parseValor(get('debito'));
-      if(cr) valor = Math.abs(cr); else if(db) valor = -Math.abs(db); else valor = 0;
+      const crT = String(get('credito') || '').trim(), dbT = String(get('debito') || '').trim();
+      const cr = parseValor(crT), db = parseValor(dbT);
+      // célula preenchida que não dá pra ler é ERRO (nunca vira zero calado)
+      if((crT && cr == null) || (dbT && db == null)) valor = null;
+      else if(cr) valor = Math.abs(cr); else if(db) valor = -Math.abs(db); else valor = 0;
     }
     if(valor == null){ erros.push('Linha ' + (i + 1) + ': valor inválido ("' + (get('valor') || get('credito') || get('debito')) + '")'); continue; }
     if(/^saldo/i.test(norm(desc))) continue;               // linha de saldo do dia, não é movimento
     if(valor === 0) continue;
     const sd = c.saldo >= 0 ? parseValor(get('saldo')) : null;
-    if(sd != null && (!ultData || data >= ultData)){ ultSaldo = sd; ultData = data; }
+    if(sd != null) saldos.push({ data, sd });
     const nome = get('contraparte');
     linhas.push({
       data, valor, descricao: (desc || nome || '').slice(0, 500),
@@ -257,6 +260,14 @@ function parseCSVExtrato(texto){
       contraparte_doc: extrairDoc(desc + ' ' + nome),
       fitid: null, tipo_banco: get('tipo') || null
     });
+  }
+  // saldo final = o da ÚLTIMA movimentação do último dia (extrato pode vir do mais novo pro mais velho)
+  if(saldos.length){
+    const crescente = saldos[0].data <= saldos[saldos.length - 1].data;
+    const max = saldos.reduce((m, x) => x.data > m ? x.data : m, saldos[0].data);
+    const doDia = saldos.filter(x => x.data === max);
+    const esc = crescente ? doDia[doDia.length - 1] : doDia[0];
+    ultSaldo = esc.sd; ultData = max;
   }
   const datas = linhas.map(l => l.data).sort();
   return {
@@ -312,6 +323,7 @@ function parseLancamentos(texto, tipoPadrao){
   if(hi < 0) return { ok: false, erro: 'Não achei o cabeçalho (preciso de "Valor" e "Vencimento" ou "Data de pagamento").' };
   const cab = rows[hi];
   const c = {}; for(const k in COL_LANC) c[k] = achaColuna(cab, COL_LANC[k]);
+  { const h = cab.map(x => norm(x)); c.id = -1; for(const sn of COL_LANC.id){ const i = h.indexOf(norm(sn)); if(i >= 0){ c.id = i; break; } } }
   // "Pagamento" sozinho pode ser o tipo; evita confundir coluna de data com tipo
   if(c.data_pagamento >= 0 && c.data_pagamento === c.tipo) c.tipo = -1;
   const linhas = [], erros = [];

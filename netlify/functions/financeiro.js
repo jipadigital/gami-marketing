@@ -24,6 +24,7 @@ const BANCO_EXCLUSIVO = !!process.env.FIN_SUPA_SERVICE_KEY;
 const SUPA_URL = BANCO_EXCLUSIVO ? FIN_URL : MAIN_URL;
 const SUPA_SERVICE_KEY = BANCO_EXCLUSIVO ? process.env.FIN_SUPA_SERVICE_KEY : MAIN_KEY;
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
+const SUPER_ADMIN_PESSOA = 'pe016';   // super = e-mail E pessoa_id certos (trocar o e-mail no dashboard não basta)
 const MAX_ARQUIVO = 4 * 1024 * 1024; // 4 MB de texto (limite do Netlify é 6 MB no corpo)
 
 const ORIGENS_PERMITIDAS = ['https://gami-marketing.netlify.app', 'http://localhost:8888', 'http://localhost:3000'];
@@ -71,7 +72,11 @@ async function restEm(base, hdr, path, opts){
   const txt = await r.text();
   let j = null; try { j = txt ? JSON.parse(txt) : null; } catch(e){}
   if(!r.ok){
-    const msg = (j && (j.message || j.hint)) || txt.slice(0, 200) || ('HTTP ' + r.status);
+    let msg = (j && (j.message || j.hint)) || txt.slice(0, 200) || ('HTTP ' + r.status);
+    if(/violates|syntax|constraint|relation |column |function |permission denied|duplicate key|out of range|null value|invalid input/i.test(msg)){
+      console.error('[financeiro] erro do banco:', String(msg).slice(0, 300));
+      msg = 'Dado inválido ou repetido: nada foi gravado. Confira os campos e tente de novo.';
+    }
     throw new ErroUsuario(String(msg).replace(/^FINANCEIRO:\s*/, ''), r.status >= 500 ? 502 : 400);
   }
   return { data: j, headers: r.headers };
@@ -376,6 +381,14 @@ if(V2){
   Object.keys(V2.acoes).forEach(k => { if(!PERM[k]) throw new Error('Ação sem permissão definida: ' + k); });
 }
 
+// ---------- v4: CONTROLES (planilhas das meninas: Empresas semanal, Créditos)
+let CTL = null;
+try { CTL = require('../lib/fin-acoes-ctl')({ rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc, NIVEL, P }); }
+catch(e){ console.error('[financeiro] controles indisponível:', e.message); }
+if(CTL){
+  Object.keys(CTL.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); if(!CTL.perm[k]) throw new Error('Ação sem permissão: ' + k); ACOES[k] = CTL.acoes[k]; PERM[k] = CTL.perm[k]; });
+}
+
 // ---------- v3: dados da FLYP (ZL Hub). Trava própria dentro do módulo (fin_flyp_acesso).
 let FLYP = null;
 try { FLYP = require('../lib/fin-acoes-flyp')({ rpc, lerTodos, ErroUsuario, txt, dataOk, P }); }
@@ -458,7 +471,7 @@ async function autenticar(event){
   if(!u.token_atual || u.token_atual !== token) throw new ErroUsuario('Token inválido (faça login de novo)', 401);
   if(u.token_expira_em && new Date(u.token_expira_em) < new Date()) throw new ErroUsuario('Sessão expirada', 401);
   let papel = null;
-  if(String(u.email || '').toLowerCase() === SUPER_ADMIN_EMAIL) papel = 'super';
+  if(String(u.email || '').toLowerCase() === SUPER_ADMIN_EMAIL && u.pessoa_id === SUPER_ADMIN_PESSOA) papel = 'super';
   else {
     const a = (await rest('fin_acesso?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&ativo=eq.true&select=papel&limit=1')).data || [];
     if(a.length) papel = a[0].papel;

@@ -892,12 +892,18 @@ BEGIN
     ON CONFLICT (origem, chave) DO UPDATE SET
       pessoa = EXCLUDED.pessoa, pessoa_doc = EXCLUDED.pessoa_doc, pessoa_norm = EXCLUDED.pessoa_norm, pessoa_id = EXCLUDED.pessoa_id,
       descricao = EXCLUDED.descricao, categoria = EXCLUDED.categoria, unidade = EXCLUDED.unidade, conta_nome = EXCLUDED.conta_nome,
-      classificacao_id = EXCLUDED.classificacao_id, unidade_id = EXCLUDED.unidade_id, conta_id = EXCLUDED.conta_id,
+      classificacao_id = coalesce(EXCLUDED.classificacao_id, fin_lancamentos.classificacao_id),
+      unidade_id = coalesce(EXCLUDED.unidade_id, fin_lancamentos.unidade_id), conta_id = coalesce(EXCLUDED.conta_id, fin_lancamentos.conta_id),
       valor = EXCLUDED.valor, vencimento = EXCLUDED.vencimento, competencia = EXCLUDED.competencia, data_pagamento = EXCLUDED.data_pagamento,
       situacao = EXCLUDED.situacao, status = EXCLUDED.status, cancelado_por = EXCLUDED.cancelado_por, cancelado_em = EXCLUDED.cancelado_em,
       motivo_cancelamento = EXCLUDED.motivo_cancelamento, importacao_id = EXCLUDED.importacao_id, raw = EXCLUDED.raw
     WHERE (fin_lancamentos.valor, fin_lancamentos.vencimento, fin_lancamentos.data_pagamento, fin_lancamentos.situacao, fin_lancamentos.pessoa, fin_lancamentos.categoria)
-          IS DISTINCT FROM (EXCLUDED.valor, EXCLUDED.vencimento, EXCLUDED.data_pagamento, EXCLUDED.situacao, EXCLUDED.pessoa, EXCLUDED.categoria);
+          IS DISTINCT FROM (EXCLUDED.valor, EXCLUDED.vencimento, EXCLUDED.data_pagamento, EXCLUDED.situacao, EXCLUDED.pessoa, EXCLUDED.categoria)
+      -- NUNCA sobrescreve o que já foi tratado aqui dentro: baixa ativa, conciliação ativa, edição manual ou cancelamento feito no sistema
+      AND NOT EXISTS (SELECT 1 FROM fin_baixas b WHERE b.lancamento_id = fin_lancamentos.id AND NOT b.estornada)
+      AND NOT EXISTS (SELECT 1 FROM fin_conciliacoes c WHERE c.lancamento_id = fin_lancamentos.id AND c.ativo)
+      AND fin_lancamentos.atualizado_por IS NULL
+      AND (fin_lancamentos.status <> 'cancelado' OR fin_lancamentos.cancelado_por = 'kamino');
   END LOOP;
 
   RETURN jsonb_build_object('ok', true, 'importacao_id', v_imp, 'linhas', v_total, 'novas', v_novas, 'pessoas_novas', v_pessoas_novas,
