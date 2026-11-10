@@ -59,6 +59,36 @@ function getCidadeSufixo(cidade){
     .replace(/\u00e7/g,'c').replace(/\s+/g,'_').replace(/-/g,'_').toUpperCase();
 }
 
+// 🔒 SESSÃO OBRIGATÓRIA (10/11/2026): antes qualquer um na internet (sem login, sem origem)
+// baixava condutores, corridas e empresas de todas as cidades por aqui. Agora só com a sessão
+// do dashboard (X-Gami-User + X-Gami-Token), validada no banco igual ao supabase-write.js.
+var SUPA_URL_AUTH = 'https://tdbyzsouhrhmhpctttps.supabase.co';
+function _tokenAtivo(u, token){
+  var agora = new Date();
+  if(u.token_atual && u.token_atual === token && (!u.token_expira_em || new Date(u.token_expira_em) >= agora)) return true;
+  if(Array.isArray(u.sessoes_ativas)){
+    for(var i = 0; i < u.sessoes_ativas.length; i++){ var s = u.sessoes_ativas[i]; if(s && s.t === token && (!s.e || new Date(s.e) >= agora)) return true; }
+  }
+  return false;
+}
+var _sessoesOk = {};   // cache curto por instância (evita 1 consulta ao banco a cada página de corridas)
+async function sessaoValida(userId, token){
+  var chave = SUPA_SERVICE_KEY_AUTH();
+  if(!chave || !userId || !token || !/^[A-Za-z0-9_\-]{2,80}$/.test(userId)) return false;
+  var ck = userId + ':' + token;
+  if(_sessoesOk[ck] && Date.now() - _sessoesOk[ck] < 60000) return true;
+  try {
+    var r = await fetch(SUPA_URL_AUTH + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(userId) + '&select=*&limit=1',
+      { headers: { apikey: chave, Authorization: 'Bearer ' + chave } });
+    if(!r.ok) return false;
+    var arr = await r.json(); var u = Array.isArray(arr) && arr[0];
+    if(!u || u.ativo === false || !_tokenAtivo(u, token)) return false;
+    _sessoesOk[ck] = Date.now();
+    return true;
+  } catch(e){ return false; }
+}
+function SUPA_SERVICE_KEY_AUTH(){ return process.env.SUPA_SERVICE_KEY || ''; }
+
 exports.handler = async function(event){
   var origem = event.headers.origin || event.headers.Origin || '';
   var origemPermitida = corsPermitido(origem);
@@ -75,9 +105,16 @@ exports.handler = async function(event){
   var cors = {
     'Access-Control-Allow-Origin': origemPermitida || ORIGENS_PERMITIDAS[0],
     'Access-Control-Allow-Methods':'GET, OPTIONS',
+    'Access-Control-Allow-Headers':'Content-Type, X-Gami-User, X-Gami-Token',
+    'Cache-Control':'no-store',
     'Content-Type':'application/json'
   };
   if(event.httpMethod === 'OPTIONS') return { statusCode:200, headers:cors, body:'' };
+
+  var hdr = event.headers || {};
+  if(!(await sessaoValida(hdr['x-gami-user'] || hdr['X-Gami-User'], hdr['x-gami-token'] || hdr['X-Gami-Token']))){
+    return { statusCode:401, headers:cors, body: JSON.stringify({ success:false, error:'Sessão inválida ou expirada. Faça login de novo.' }) };
+  }
   
   // Rate limit por IP (60 chamadas/minuto)
   var ip = event.headers['x-forwarded-for'] || event.headers['x-nf-client-connection-ip'] || 'desconhecido';

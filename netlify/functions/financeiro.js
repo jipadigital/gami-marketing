@@ -464,12 +464,15 @@ async function autenticar(event){
   const token = event.headers['x-gami-token'] || event.headers['X-Gami-Token'] || '';
   if(!pessoaId || !token) throw new ErroUsuario('Sessão não informada', 401);
   if(!/^[A-Za-z0-9_\-]{2,80}$/.test(pessoaId)) throw new ErroUsuario('Sessão inválida', 401);
-  const arr = (await restMain('usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=pessoa_id,email,token_atual,token_expira_em,ativo&limit=1')).data;
+  const arr = (await restMain('usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=*&limit=1')).data;
   if(!Array.isArray(arr) || !arr.length) throw new ErroUsuario('Sessão não encontrada', 401);
   const u = arr[0];
   if(u.ativo === false) throw new ErroUsuario('Usuário desativado', 403);
-  if(!u.token_atual || u.token_atual !== token) throw new ErroUsuario('Token inválido (faça login de novo)', 401);
-  if(u.token_expira_em && new Date(u.token_expira_em) < new Date()) throw new ErroUsuario('Sessão expirada', 401);
+  // mesma regra do supabase-write.js: token principal OU qualquer sessão ativa não expirada (notebook + celular)
+  const agora = new Date();
+  const ok = (u.token_atual && u.token_atual === token && (!u.token_expira_em || new Date(u.token_expira_em) >= agora)) ||
+    (Array.isArray(u.sessoes_ativas) && u.sessoes_ativas.some(s => s && s.t === token && (!s.e || new Date(s.e) >= agora)));
+  if(!ok) throw new ErroUsuario('Sessão inválida ou expirada (faça login de novo)', 401);
   let papel = null;
   if(String(u.email || '').toLowerCase() === SUPER_ADMIN_EMAIL && u.pessoa_id === SUPER_ADMIN_PESSOA) papel = 'super';
   else {
