@@ -28,13 +28,17 @@ var CAT = { saque: '💸 Saque', recarga: '💰 Recarga', boleto: '🧾 Boleto',
 var AVISO = '<div class="fin-sub" style="margin:4px 0 10px">🔒 Dado restrito. Toda consulta fica registrada (quem, quando, qual período).</div>';
 
 function filtroPeriodo(f, idp){
-  return '<div class="fin-filtros"><span class="fin-sub">Período</span><input type="date" id="' + idp + '-ini" value="' + f.ini + '"><input type="date" id="' + idp + '-fim" value="' + f.fim + '">' +
+  var dia = function(d){ var x = addDias(hoje(), -d); return f.ini === x && f.fim === x; };
+  return '<div class="fin-filtros"><button class="fin-bt' + (dia(0) ? ' pri' : '') + '" data-dia="0">Hoje</button><button class="fin-bt' + (dia(1) ? ' pri' : '') + '" data-dia="1">Ontem</button>' +
+    '<span class="fin-sub">Período</span><input type="date" id="' + idp + '-ini" value="' + f.ini + '"><input type="date" id="' + idp + '-fim" value="' + f.fim + '">' +
     '<button class="fin-bt" data-r="7">7 dias</button><button class="fin-bt" data-r="30">30 dias</button><button class="fin-bt" data-r="90">90 dias</button>' +
     '<button class="fin-bt pri" id="' + idp + '-ok">Aplicar</button></div>';
 }
 function ligarPeriodo(el, f, idp, recarregar){
   $(idp + '-ok').onclick = function(){ f.ini = $(idp + '-ini').value; f.fim = $(idp + '-fim').value; recarregar(); };
   el.querySelectorAll('[data-r]').forEach(function(b){ b.onclick = function(){ f.fim = hoje(); f.ini = addDias(f.fim, -(Number(b.getAttribute('data-r')) - 1)); recarregar(); }; });
+  // Hoje / Ontem: um dia só
+  el.querySelectorAll('[data-dia]').forEach(function(b){ b.onclick = function(){ f.ini = f.fim = addDias(hoje(), -Number(b.getAttribute('data-dia'))); recarregar(); }; });
 }
 
 /* ================= RESUMO POR DIA ================= */
