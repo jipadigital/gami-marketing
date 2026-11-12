@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Disparo Machine , Gâmi</title>
+<style>
+  :root { --navy:#0B2542; --green:#16A34A; --amber:#F59E0B; --red:#DC2626; --bg:#F1F5F9; --card:#fff; --b:#E2E8F0; --t:#1E293B; --t2:#64748B; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--t); }
+  header { background:var(--navy); color:#fff; padding:16px 20px; }
+  header h1 { margin:0; font-size:17px; }
+  header p { margin:4px 0 0; font-size:12px; color:#93A4BD; }
+  .tabs { max-width:760px; margin:0 auto; padding:12px 16px 0; display:flex; gap:8px; }
+  .tabs button { border:0; background:#E2E8F0; color:var(--t2); padding:9px 16px; border-radius:10px 10px 0 0; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .tabs button.on { background:#fff; color:var(--navy); }
+  main { max-width:760px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--b); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .lbl { font-size:11px; font-weight:700; color:var(--t2); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; display:block; }
+  input[type=text], textarea { width:100%; padding:10px 12px; border:1px solid var(--b); border-radius:10px; font-size:14px; font-family:inherit; outline:none; }
+  input[type=text]:focus, textarea:focus { border-color:var(--green); }
+  textarea { resize:vertical; min-height:88px; }
+  .seg { display:inline-flex; gap:4px; background:#F1F5F9; padding:4px; border-radius:10px; }
+  .seg button { border:0; background:transparent; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:700; color:var(--t2); cursor:pointer; font-family:inherit; }
+  .seg button.on { background:#fff; color:var(--navy); box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border:1px solid var(--b); border-radius:999px; font-size:13px; cursor:pointer; user-select:none; background:#fff; }
+  .chip.on { background:#DCFCE7; border-color:var(--green); color:#166534; font-weight:700; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .btn { border:0; border-radius:10px; padding:12px 18px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn-green { background:var(--green); color:#fff; }
+  .btn-ghost { background:#fff; border:1px solid var(--b); color:var(--t2); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .muted { font-size:12px; color:var(--t2); }
+  .res { border:1px solid var(--b); border-radius:10px; padding:10px 12px; margin-top:8px; font-size:13px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  .ok { color:var(--green); font-weight:700; }
+  .err { color:var(--red); font-weight:700; }
+  .counter { font-size:11px; color:var(--t2); text-align:right; margin-top:4px; }
+  .gate { text-align:center; padding:60px 20px; color:var(--red); font-weight:700; }
+  .kpis { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
+  .kpi { background:#fff; border:1px solid var(--b); border-radius:12px; padding:12px; }
+  .kpi .n { font-size:22px; font-weight:800; }
+  .kpi .c { font-size:11px; color:var(--t2); }
+  .hitem { background:#fff; border:1px solid var(--b); border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+  .hmsg { font-size:13px; color:var(--t); margin:4px 0 6px; }
+  .pill { font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .pill.m { background:#DBEAFE; color:#1E40AF; }
+  .pill.e { background:#FEF3C7; color:#92400E; }
+  .hmeta { font-size:11px; color:var(--t2); display:flex; gap:10px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📢 Disparo de notificação , Machine</h1>
+  <p>Mensagem push pro app, pra todas as cidades de uma vez. Só super admin.</p>
+</header>
+<div class="tabs" id="tabs" style="display:none">
+  <button data-a="novo" class="on">Novo disparo</button>
+  <button data-a="hist">Histórico</button>
+</div>
+<main id="app"><div class="muted" style="padding:20px">Carregando…</div></main>
+
+<script>
+(function(){
+  var FN = '/.netlify/functions/machine-notificacao';
+  var app = document.getElementById('app');
+  var tabsEl = document.getElementById('tabs');
+  var u = null, token = '';
+  try { u = JSON.parse(localStorage.getItem('gami_usuario_logado') || 'null'); } catch(e){}
+  try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
+
+  function ehSuper(){ return u && u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com'; }
+  function H(){ return { 'Content-Type':'application/json', 'X-Gami-User':(u&&u.id)||'', 'X-Gami-Token':token }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function nomeCidade(slug){ return (slug||'').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); }
+  function dataBr(iso){ try { return new Date(iso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); } catch(e){ return iso||''; } }
+
+  if(!ehSuper()){
+    app.innerHTML = '<div class="gate">🔒 Acesso restrito.<br><span class="muted" style="font-weight:400">Entre no dashboard como super admin e abra esta página de novo.</span></div>';
+    return;
+  }
+
+  var state = { aba:'novo', publico:'motoboys', cidades:[], sel:{}, enviando:false };
+
+  tabsEl.style.display = 'flex';
+  tabsEl.onclick = function(e){ var b=e.target.closest('button'); if(!b) return; state.aba=b.getAttribute('data-a');
+    [].forEach.call(tabsEl.children,function(x){ x.className = x.getAttribute('data-a')===state.aba?'on':''; });
+    if(state.aba==='novo') render(); else carregarHistorico();
+  };
+
+  async function carregarCidades(){
+    try {
+      var r = await fetch(FN, { method:'POST', headers:H(), body: JSON.stringify({ acao:'cidades' }) });
+      var j = await r.json();
+      if(!r.ok || !j.success){ app.innerHTML = '<div class="gate">'+esc((j&&j.error)||'Não consegui carregar as cidades.')+'</div>'; return; }
+      state.cidades = j.cidades || [];
+      state.cidades.forEach(function(c){ state.sel[c] = true; });
+      render();
+    } catch(e){ app.innerHTML = '<div class="gate">Erro de conexão.</div>'; }
+  }
+
+  function selecionadas(){ return state.cidades.filter(function(c){ return state.sel[c]; }); }
+
+  function render(){
+    var chips = state.cidades.map(function(c){
+      return '<span class="chip '+(state.sel[c]?'on':'')+'" data-c="'+esc(c)+'">'+(state.sel[c]?'✓ ':'')+esc(nomeCidade(c))+'</span>';
+    }).join('');
+    app.innerHTML =
+      '<div class="card">'
+      + '<span class="lbl">Público</span>'
+      + '<div class="seg" id="seg">'
+      +   '<button data-p="motoboys" class="'+(state.publico==='motoboys'?'on':'')+'">🏍️ Motoboys</button>'
+      +   '<button data-p="empresas" class="'+(state.publico==='empresas'?'on':'')+'">🏢 Empresas</button>'
+      + '</div>'
+      + '<div class="muted" style="margin-top:6px">'+(state.publico==='motoboys'?'Vai pros entregadores (condutores).':'Vai pras empresas/clientes do app.')+'</div>'
+      + '</div>'
+
+      + '<div class="card">'
+      + '<div class="row" style="justify-content:space-between">'
+      +   '<span class="lbl" style="margin:0">Cidades ('+selecionadas().length+' de '+state.cidades.length+')</span>'
+      +   '<div><a href="#" id="todas" class="muted">todas</a> · <a href="#" id="nenhuma" class="muted">nenhuma</a></div>'
+      + '</div>'
+      + '<div class="chips" id="chips" style="margin-top:8px">'+(chips||'<span class="muted">Nenhuma cidade com credenciais configuradas.</span>')+'</div>'
+      + '</div>'
+
+      + '<div class="card">'
+      + '<span class="lbl">Título (opcional)</span>'
+      + '<input type="text" id="titulo" maxlength="40" placeholder="Ex: Gâmi Delivery" />'
+      + '<div class="counter"><span id="ct">0</span>/40</div>'
+      + '<span class="lbl" style="margin-top:8px">Mensagem</span>'
+      + '<textarea id="msg" maxlength="255" placeholder="Ex: Bom dia! Tem entregas na tela, liguem o app e bora faturar. E confiram o saque disponível!"></textarea>'
+      + '<div class="counter"><span id="cm">0</span>/255</div>'
+      + '</div>'
+
+      + '<div class="card">'
+      + '<div class="row">'
+      +   '<button class="btn btn-ghost" id="btnTeste">Enviar teste (1 motoboy)</button>'
+      +   '<button class="btn btn-green" id="btnEnviar">Disparar pra selecionadas</button>'
+      + '</div>'
+      + '<div class="muted" style="margin-top:8px">O teste manda pro 1º condutor da 1ª cidade marcada, pra você conferir antes. O disparo vai pra TODOS do público nas cidades marcadas.</div>'
+      + '<div id="saida"></div>'
+      + '</div>';
+
+    document.getElementById('seg').onclick = function(e){ var b=e.target.closest('button'); if(!b) return; state.publico=b.getAttribute('data-p'); render(); };
+    document.getElementById('chips').onclick = function(e){ var c=e.target.closest('.chip'); if(!c) return; var k=c.getAttribute('data-c'); state.sel[k]=!state.sel[k]; render(); };
+    var ta=document.getElementById('todas'), ne=document.getElementById('nenhuma');
+    if(ta) ta.onclick=function(e){ e.preventDefault(); state.cidades.forEach(function(c){state.sel[c]=true;}); render(); };
+    if(ne) ne.onclick=function(e){ e.preventDefault(); state.cidades.forEach(function(c){state.sel[c]=false;}); render(); };
+    var ti=document.getElementById('titulo'), ms=document.getElementById('msg');
+    ti.oninput=function(){ document.getElementById('ct').textContent=ti.value.length; };
+    ms.oninput=function(){ document.getElementById('cm').textContent=ms.value.length; };
+    document.getElementById('btnTeste').onclick = function(){ disparar(true); };
+    document.getElementById('btnEnviar').onclick = function(){ disparar(false); };
+  }
+
+  async function disparar(teste){
+    if(state.enviando) return;
+    var titulo = (document.getElementById('titulo').value||'').trim();
+    var mensagem = (document.getElementById('msg').value||'').trim();
+    var cids = selecionadas();
+    var saida = document.getElementById('saida');
+    if(!mensagem){ saida.innerHTML = '<div class="res"><span class="err">Escreva a mensagem primeiro.</span></div>'; return; }
+    if(!cids.length){ saida.innerHTML = '<div class="res"><span class="err">Marque ao menos uma cidade.</span></div>'; return; }
+
+    if(teste){ cids = [cids[0]]; }
+    else {
+      var pub = state.publico==='motoboys' ? 'MOTOBOYS' : 'EMPRESAS';
+      if(!confirm('Disparar pra TODOS os '+pub+' de '+cids.length+' cidade(s)?\n\n"'+mensagem+'"\n\nIsso envia de verdade. Confirmar?')) return;
+    }
+
+    var lote = Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    var autorNome = (u && (u.nome || u.email)) || '';
+    state.enviando = true;
+    document.getElementById('btnTeste').disabled = true;
+    document.getElementById('btnEnviar').disabled = true;
+    saida.innerHTML = '';
+
+    var totalEnv = 0, totalFalha = 0;
+    for(var i=0;i<cids.length;i++){
+      var c = cids[i];
+      var linha = document.createElement('div');
+      linha.className = 'res';
+      linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="muted">enviando…</span>';
+      saida.appendChild(linha);
+      try {
+        var body = { cidade:c, publico:state.publico, titulo:titulo, mensagem:mensagem, lote:lote, autor_nome:autorNome };
+        if(teste) body.teste_auto = true;
+        var r = await fetch(FN, { method:'POST', headers:H(), body: JSON.stringify(body) });
+        var j = await r.json();
+        if(!r.ok || !j.success){
+          linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="err">'+esc((j&&(j.error||j.aviso))||('HTTP '+r.status))+'</span>';
+        } else {
+          totalEnv += (j.enviados||0); totalFalha += (j.falhas||0);
+          var extra = j.teste ? ' (teste, condutor '+esc(j.alvo_teste||'?')+')' : (j.lista_completa===false ? ' , parcial (muitos, rode de novo)' : '');
+          linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="ok">'+(j.enviados||0)+' enviados'+(j.falhas?(' · '+j.falhas+' falhas'):'')+esc(extra)+'</span>';
+        }
+      } catch(e){
+        linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="err">erro de conexão</span>';
+      }
+    }
+    if(cids.length>1){
+      var tot = document.createElement('div');
+      tot.className='res'; tot.style.background='#F8FAFC';
+      tot.innerHTML = '<span style="font-weight:700">Total</span><span class="ok">'+totalEnv+' enviados'+(totalFalha?(' · '+totalFalha+' falhas'):'')+'</span>';
+      saida.appendChild(tot);
+    }
+    state.enviando = false;
+    document.getElementById('btnTeste').disabled = false;
+    document.getElementById('btnEnviar').disabled = false;
+  }
+
+  async function carregarHistorico(){
+    app.innerHTML = '<div class="muted" style="padding:20px">Carregando histórico…</div>';
+    var rows = [];
+    try {
+      var r = await fetch(FN, { method:'POST', headers:H(), body: JSON.stringify({ acao:'historico' }) });
+      var j = await r.json();
+      rows = (j && j.disparos) || [];
+    } catch(e){ app.innerHTML='<div class="gate">Erro ao carregar.</div>'; return; }
+
+    if(!rows.length){
+      app.innerHTML = '<div class="card"><div class="muted">Nenhum disparo registrado ainda.<br>Se você já disparou e não aparece, falta criar a tabela <b>disparos_log</b> no banco (te passo o SQL).</div></div>';
+      return;
+    }
+
+    // KPIs gerais
+    var totEnv=0, totFal=0; rows.forEach(function(x){ totEnv+=(x.enviados||0); totFal+=(x.falhas||0); });
+    // agrupa por lote (um "disparo" = mesma mensagem em várias cidades)
+    var grupos = {}, ordem = [];
+    rows.forEach(function(x){
+      var k = x.lote || ('x'+x.id);
+      if(!grupos[k]){ grupos[k] = { msg:x.mensagem, titulo:x.titulo, publico:x.publico, quando:x.criado_em, autor:x.autor_nome, cidades:[], env:0, fal:0 }; ordem.push(k); }
+      var g = grupos[k];
+      g.cidades.push({ cidade:x.cidade, env:x.enviados||0, fal:x.falhas||0 });
+      g.env += (x.enviados||0); g.fal += (x.falhas||0);
+      if(x.criado_em > g.quando) g.quando = x.criado_em;
+    });
+
+    var html = '<div class="kpis">'
+      + '<div class="kpi"><div class="n">'+ordem.length+'</div><div class="c">disparos</div></div>'
+      + '<div class="kpi"><div class="n" style="color:var(--green)">'+totEnv+'</div><div class="c">recebidos</div></div>'
+      + '<div class="kpi"><div class="n" style="color:var(--amber)">'+totFal+'</div><div class="c">falhas</div></div>'
+      + '</div>'
+      + '<div class="muted" style="margin:0 2px 10px">Obs: a Machine informa quantos <b>receberam</b> (enviados) e falhas. <b>Aberturas</b> não são expostas pela API da Machine.</div>';
+
+    html += ordem.map(function(k){
+      var g = grupos[k];
+      var cidTxt = g.cidades.map(function(c){ return esc(nomeCidade(c.cidade))+' ('+c.env+(c.fal?('/'+c.fal+'✗'):'')+')'; }).join(' · ');
+      return '<div class="hitem">'
+        + '<div class="row" style="justify-content:space-between">'
+        +   '<span class="pill '+(g.publico==='empresas'?'e':'m')+'">'+(g.publico==='empresas'?'🏢 Empresas':'🏍️ Motoboys')+'</span>'
+        +   '<span class="muted">'+esc(dataBr(g.quando))+'</span>'
+        + '</div>'
+        + (g.titulo?('<div style="font-weight:700;margin-top:6px">'+esc(g.titulo)+'</div>'):'')
+        + '<div class="hmsg">'+esc(g.msg)+'</div>'
+        + '<div class="hmeta"><span class="ok">'+g.env+' recebidos</span>'+(g.fal?('<span class="err">'+g.fal+' falhas</span>'):'')+(g.autor?('<span>por '+esc(g.autor)+'</span>'):'')+'</div>'
+        + '<div class="hmeta" style="margin-top:6px">'+cidTxt+'</div>'
+        + '</div>';
+    }).join('');
+
+    app.innerHTML = html;
+  }
+
+  carregarCidades();
+})();
+</script>
+</body>
+</html>

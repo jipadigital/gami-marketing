@@ -130,6 +130,32 @@ exports.handler = async function (event) {
 
   let b = {};
   try { b = event.body ? JSON.parse(event.body) : {}; } catch (e) { b = {}; }
+
+  // Modo 'historico': lê os disparos já feitos (pro painel). Service key (ignora RLS).
+  if (b.acao === 'historico') {
+    const chave = process.env.SUPA_SERVICE_KEY || '';
+    try {
+      const r = await fetch(SUPA_URL + '/rest/v1/disparos_log?select=*&order=criado_em.desc&limit=400', {
+        headers: { apikey: chave, Authorization: 'Bearer ' + chave },
+      });
+      const rows = r.ok ? await r.json() : [];
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true, disparos: Array.isArray(rows) ? rows : [] }) };
+    } catch (e) {
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true, disparos: [], aviso: 'Crie a tabela disparos_log pra guardar o histórico.' }) };
+    }
+  }
+
+  // Modo 'cidades': devolve as cidades que têm credenciais Machine no env (pra UI montar a lista).
+  if (b.acao === 'cidades') {
+    const cids = Object.keys(process.env)
+      .filter((k) => /^MACHINE_API_KEY_[A-Z0-9_]+$/.test(k))
+      .map((k) => k.replace('MACHINE_API_KEY_', '').toLowerCase().replace(/_/g, '-'))
+      .filter((slug) => !!credenciais(slug)) // precisa de apiKey + user + pass
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort();
+    return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true, cidades: cids }) };
+  }
+
   const cidade = String(b.cidade || '').toLowerCase().trim();
   const publico = b.publico === 'empresas' ? 'empresas' : 'motoboys';
   const titulo = String(b.titulo || '').slice(0, 40);
@@ -173,6 +199,29 @@ exports.handler = async function (event) {
       falhas += res.falhas;
       if (res.erro) ultimoErro = res.erro;
       if (res.status === 429) await new Promise((r) => setTimeout(r, 1500)); // respeita Retry-After de forma simples
+    }
+
+    // Histórico: guarda o disparo real (não o teste) pro painel. Nunca trava o retorno.
+    if (!ehTeste) {
+      try {
+        const chave = process.env.SUPA_SERVICE_KEY || '';
+        await fetch(SUPA_URL + '/rest/v1/disparos_log', {
+          method: 'POST',
+          headers: { apikey: chave, Authorization: 'Bearer ' + chave, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify([{
+            lote: String(b.lote || '').slice(0, 60) || null,
+            autor_id: caller.pessoa_id,
+            autor_nome: String(b.autor_nome || '').slice(0, 120) || null,
+            publico,
+            cidade,
+            titulo: titulo || null,
+            mensagem,
+            total: alvos.length,
+            enviados,
+            falhas,
+          }]),
+        });
+      } catch (e) { /* histórico não pode travar o disparo */ }
     }
 
     return {
