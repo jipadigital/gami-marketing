@@ -71,9 +71,14 @@ async function nivelDaPessoa(pessoaId) {
     return (Array.isArray(arr) && arr[0]) || null;
   } catch (e) { return null; }
 }
-function autorizadoDisparo(pessoa, emailLogin) {
+const DISPARO_BLOQUEADOS_EMAIL = ['matheus@mfedrizziconsultoria.com'];
+const DISPARO_BLOQUEADOS_ID = ['pecarlosvinicius', 'pematheusfedrizzi'];
+function autorizadoDisparo(pessoa, emailLogin, pessoaId) {
   const email = String((pessoa && pessoa.email) || emailLogin || '').toLowerCase();
   if (email === SUPER_ADMIN_EMAIL) return true;
+  // Exclusões explícitas (pedido do dono 12/11): Carlos e Matheus NÃO, mesmo sendo diretoria/gerência.
+  if (DISPARO_BLOQUEADOS_EMAIL.indexOf(email) >= 0) return false;
+  if (DISPARO_BLOQUEADOS_ID.indexOf(String(pessoaId || '')) >= 0) return false;
   const np = String((pessoa && pessoa.nivel_permissao) || '').toLowerCase().trim();
   if (np === 'super_admin' || np === 'diretoria' || np === 'gerencia') return true;
   if (np) return false; // nível canônico definido e não é diretoria/gerência → nega
@@ -151,7 +156,7 @@ exports.handler = async function (event) {
   const caller = await validarCaller(hdr['x-gami-user'] || hdr['X-Gami-User'], hdr['x-gami-token'] || hdr['X-Gami-Token']);
   if (!caller) return { statusCode: 401, headers: cors, body: JSON.stringify({ success: false, error: 'Sessão inválida ou expirada. Faça login de novo.' }) };
   const _pessoaCaller = await nivelDaPessoa(caller.pessoa_id);
-  if (!autorizadoDisparo(_pessoaCaller, caller.email)) {
+  if (!autorizadoDisparo(_pessoaCaller, caller.email, caller.pessoa_id)) {
     return { statusCode: 403, headers: cors, body: JSON.stringify({ success: false, error: 'Sem permissão (só super admin, diretoria e gerência).' }) };
   }
 
