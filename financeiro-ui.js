@@ -170,8 +170,8 @@ function menu(){
   var t = function(id){ return T[id] || TELAS_V1[id]; };
   var M = [
     { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel'], ['geral', 'Conferência do mês']] },
-    { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['entradas', 'Caixa de entrada']] },
-    { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças']] },
+    { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['pagar_recorrencias', '🔁 Recorrências'], ['entradas', 'Caixa de entrada']] },
+    { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças'], ['receber_recorrencias', '🔁 Recorrências']] },
     { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
     { id: 'controles', t: '📋 Controles', p: 'leitor', subs: [['ctl_empresas', 'Empresas (semanal)'], ['ctl_creditos', 'Créditos'], ['pl_motoboy_semanal', 'Motoboys (semanal)'], ['pl_moto_novo', 'Motoboys novos'], ['pl_bag', 'Bags'], ['pl_camiseta', 'Camisetas'], ['pl_descontos', 'Descontos'], ['ctl_importar', 'Importar planilhas', 'conferente']] },

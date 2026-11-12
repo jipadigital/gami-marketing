@@ -18,8 +18,23 @@ module.exports = function(h){
     lanc_criar: 'conferente', lanc_editar: 'conferente', lanc_split: 'conferente', lanc_baixar: 'conferente',
     lancar_da_linha: 'conferente', transf_criar: 'conferente', conciliar_transf: 'conferente', pessoa_salvar: 'conferente',
     entrada_salvar: 'conferente', anexo_enviar: 'conferente', conciliar_auto: 'conferente',
-    lanc_estornar: 'gestor', lanc_cancelar: 'gestor', transf_cancelar: 'gestor', cadastro_salvar: 'gestor'
+    lanc_estornar: 'gestor', lanc_cancelar: 'gestor', transf_cancelar: 'gestor', cadastro_salvar: 'gestor',
+    // recorrências: criar é do dia a dia; mudar valor/pausar/encerrar é do gestor (mexe em todas as contas futuras)
+    rec_listar: 'leitor', rec_ver: 'leitor', rec_criar: 'conferente', rec_de_lanc: 'conferente', rec_confirmar_valor: 'conferente',
+    rec_salvar: 'gestor', rec_status: 'gestor'
   };
+  const FREQS = ['semanal', 'quinzenal', 'mensal', 'bimestral', 'trimestral', 'semestral', 'anual'];
+  const FREQ_PASSO = { semanal: [0, 7], quinzenal: [0, 14], mensal: [1, 0], bimestral: [2, 0], trimestral: [3, 0], semestral: [6, 0], anual: [12, 0] };
+  function proxFreq(iso, freq){ const [m, d] = FREQ_PASSO[freq]; if(m) return addMes(iso, m); const t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); }
+  // o lançamento vira o modelo da recorrência (sem vencimento, valor e acréscimos do mês)
+  function modeloDe(it){ const m = Object.assign({}, it); ['tipo', 'valor', 'vencimento', 'competencia', 'juros', 'multa', 'desconto'].forEach(k => delete m[k]); return m; }
+  function recOpcoes(r){
+    r = r || {};
+    const frequencia = FREQS.indexOf(r.frequencia) >= 0 ? r.frequencia : null;
+    if(!frequencia) throw new ErroUsuario('Escolha a frequência da recorrência');
+    const fim = r.fim ? dataOk(r.fim) : null; if(r.fim && !fim) throw new ErroUsuario('Data final inválida');
+    return { frequencia, fim, variavel: r.variavel === true };
+  }
 
   const num = (v, nome) => { if(v === '' || v == null) return 0; const n = typeof v === 'number' ? v : P.parseValor(String(v)); if(n == null || !isFinite(n) || n < 0 || n > 1e9) throw new ErroUsuario((nome || 'Valor') + ' inválido'); return Math.round(n * 100) / 100; };
   const idOuNull = v => (v === '' || v == null) ? null : (intOk(v) || (() => { throw new ErroUsuario('Cadastro inválido'); })());
@@ -131,6 +146,15 @@ module.exports = function(h){
       const base = limparItem(b, tipo);
       let itens = [base];
       const modo = b.parcelamento && b.parcelamento.modo;
+      if(modo === 'recorrente'){
+        // vira um modelo: o banco gera este vencimento e os próximos sozinho, todo período
+        const o = recOpcoes(b.parcelamento);
+        const r = await rpc('fin_rec_criar', { p_ator: ctx.pessoaId, p_tipo: tipo, p_modelo: modeloDe(base), p_valor: base.valor, p_variavel: o.variavel,
+          p_freq: o.frequencia, p_inicio: base.vencimento, p_comp: base.competencia, p_fim: o.fim });
+        const ids = Array.isArray(r.ids) ? r.ids : [];
+        if(b.entrada_id && intOk(b.entrada_id) && ids[0]) await rpc('fin_salvar_entrada', { p_ator: ctx.pessoaId, p_id: intOk(b.entrada_id), d: { status: 'lancado', lancamento_id: ids[0] } });
+        return { ok: true, ids, recorrencia_id: r.id };
+      }
       if(modo === 'compra' || modo === 'mensal'){
         const n = Math.round(Number(b.parcelamento.parcelas));
         if(!(n >= 2 && n <= 120)) throw new ErroUsuario('Parcelas: de 2 a 120');
@@ -163,7 +187,70 @@ module.exports = function(h){
       const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
       const [l] = (await rest('fin_lancamentos?id=eq.' + id + '&select=tipo')).data || [];
       if(!l) throw new ErroUsuario('Lançamento não encontrado', 404);
-      return rpc('fin_editar_lancamento', { p_ator: ctx.pessoaId, p_id: id, i: limparItem(b, l.tipo) });
+      const it = limparItem(b, l.tipo);
+      const r = await rpc('fin_editar_lancamento', { p_ator: ctx.pessoaId, p_id: id, i: it });
+      // conta recorrente de valor variável: salvar a edição = "o valor deste mês confere"
+      if(b.confirmar_valor === true) await rpc('fin_rec_confirmar_valor', { p_ator: ctx.pessoaId, p_id: id, p_valor: it.valor });
+      return r;
+    },
+
+    // ---------- RECORRÊNCIAS ----------
+    async rec_listar(b){
+      const f = [];
+      if(b.tipo === 'pagar' || b.tipo === 'receber') f.push('tipo=eq.' + b.tipo);
+      if(['ativa', 'pausada', 'encerrada'].indexOf(b.status) >= 0) f.push('status=eq.' + b.status);
+      const q = textoBusca(b.q); if(q) f.push('or=(pessoa_nome.ilike.*' + q + '*,descricao.ilike.*' + q + '*,classificacao_nome.ilike.*' + q + '*)');
+      const itens = await lerTodos('fin_v_recorrencias?select=*' + (f.length ? '&' + f.join('&') : '') + '&order=status.asc,id.desc', 5000);
+      return { itens };
+    },
+    async rec_ver(b){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
+      const [r] = (await rest('fin_v_recorrencias?id=eq.' + id + '&select=*')).data || [];
+      if(!r) throw new ErroUsuario('Recorrência não encontrada', 404);
+      const [lancs, historico] = await Promise.all([
+        lerTodos('fin_v_lanc?recorrencia_id=eq.' + id + '&select=id,vencimento,valor_final,situacao_calc,status,valor_a_confirmar,data_pagamento,motivo_cancelamento&order=recorrencia_seq.desc', 500),
+        lerTodos('fin_auditoria?select=seq,ts,ator,acao,antes,depois&tabela=eq.fin_recorrencias&registro_id=eq.' + id + '&order=seq.asc', 300)
+      ]);
+      return { rec: r, lancs, historico };
+    },
+    async rec_criar(b, ctx){
+      const tipo = b.tipo === 'receber' ? 'receber' : 'pagar';
+      const base = limparItem(b, tipo), o = recOpcoes(b);
+      return rpc('fin_rec_criar', { p_ator: ctx.pessoaId, p_tipo: tipo, p_modelo: modeloDe(base), p_valor: base.valor, p_variavel: o.variavel,
+        p_freq: o.frequencia, p_inicio: base.vencimento, p_comp: base.competencia, p_fim: o.fim });
+    },
+    // "Tornar recorrente": usa um lançamento que já existe como modelo; a próxima conta nasce no período seguinte
+    async rec_de_lanc(b, ctx){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
+      const [l] = (await rest('fin_v_lanc?id=eq.' + id + '&select=*')).data || [];
+      if(!l) throw new ErroUsuario('Lançamento não encontrado', 404);
+      if(l.recorrencia_id) throw new ErroUsuario('Esse lançamento já faz parte da recorrência #' + l.recorrencia_id);
+      if(l.status === 'cancelado') throw new ErroUsuario('Lançamento cancelado não vira recorrência');
+      const o = recOpcoes(b);
+      const base = limparItem(Object.assign({}, l, { juros: 0, multa: 0, desconto: 0 }), l.tipo);
+      const inicio = proxFreq(base.vencimento, o.frequencia), comp = base.competencia ? proxFreq(base.competencia, o.frequencia) : null;
+      return rpc('fin_rec_criar', { p_ator: ctx.pessoaId, p_tipo: l.tipo, p_modelo: modeloDe(base), p_valor: base.valor, p_variavel: o.variavel,
+        p_freq: o.frequencia, p_inicio: inicio, p_comp: comp, p_fim: o.fim });
+    },
+    async rec_salvar(b, ctx){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
+      const [r] = (await rest('fin_recorrencias?id=eq.' + id + '&select=tipo,inicio')).data || [];
+      if(!r) throw new ErroUsuario('Recorrência não encontrada', 404);
+      const base = limparItem(Object.assign({}, b, { vencimento: r.inicio }), r.tipo);
+      const fim = b.fim ? dataOk(b.fim) : null; if(b.fim && !fim) throw new ErroUsuario('Data final inválida');
+      return rpc('fin_rec_salvar', { p_ator: ctx.pessoaId, p_id: id, p_modelo: modeloDe(base), p_valor: base.valor, p_variavel: b.variavel === true,
+        p_fim: fim, p_aplicar: b.aplicar === true });
+    },
+    async rec_status(b, ctx){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
+      // "operacao" (não "acao": esse campo é o nome da ação na API)
+      if(['pausar', 'retomar', 'encerrar'].indexOf(b.operacao) < 0) throw new ErroUsuario('Ação inválida');
+      const motivo = txt(b.motivo, 500); if(motivo.length < 10) throw new ErroUsuario('Diga o motivo (mínimo 10 letras)');
+      return rpc('fin_rec_status', { p_ator: ctx.pessoaId, p_id: id, p_acao: b.operacao, p_motivo: motivo, p_cancelar_futuros: b.cancelar_futuros === true });
+    },
+    async rec_confirmar_valor(b, ctx){
+      const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
+      return rpc('fin_rec_confirmar_valor', { p_ator: ctx.pessoaId, p_id: id, p_valor: num(b.valor, 'Valor') });
     },
     async lanc_cancelar(b, ctx){
       const id = intOk(b.id), motivo = txt(b.motivo, 500);
@@ -204,7 +291,7 @@ module.exports = function(h){
       if(b.situacao === 'pendentes') f.push('status=eq.pendente');
       if(b.situacao === 'pagos') f.push('status=eq.pago');
       const q = textoBusca(b.q); if(q) f.push('or=(pessoa_nome.ilike.*' + q + '*,descricao.ilike.*' + q + '*)');
-      const itens = await lerTodos('fin_v_lanc?select=id,tipo,pessoa_nome,descricao,classificacao_nome,valor,valor_final,juros,multa,desconto,vencimento,status,situacao_calc,conta_id,conta_nome,forma,extrato_id&' + f.join('&') + '&order=vencimento.asc,id.asc', 20000);
+      const itens = await lerTodos('fin_v_lanc?select=id,tipo,pessoa_nome,descricao,classificacao_nome,valor,valor_final,juros,multa,desconto,vencimento,status,situacao_calc,conta_id,conta_nome,forma,extrato_id,recorrencia_id,valor_a_confirmar&' + f.join('&') + '&order=vencimento.asc,id.asc', 20000);
       const dias = {};
       itens.forEach(l => {
         const d = dias[l.vencimento] = dias[l.vencimento] || { dia: l.vencimento, total: 0, qtd: 0, pagos: 0, pendentes: 0, atrasados: 0, por_class: {}, itens: [] };

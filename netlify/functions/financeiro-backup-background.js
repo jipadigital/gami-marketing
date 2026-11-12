@@ -31,7 +31,9 @@ const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'f
                  // v5 (as outras planilhas)
                  'fin_ctl_registros', 'fin_ctl_reg_pag',
                  // v6 (Motoboys pela Machine)
-                 'fin_ctl_machine_dias', 'fin_ctl_machine_corridas'];
+                 'fin_ctl_machine_dias', 'fin_ctl_machine_corridas',
+                 // v7 (contas recorrentes)
+                 'fin_recorrencias'];
 // dado da FLYP NUNCA sai do banco exclusivo: a 2ª cópia (no banco do dashboard) vai sem essas tabelas
 const SO_NO_EXCLUSIVO = /^fin_flyp_/;
 const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em',

@@ -53,6 +53,8 @@ function css2(){
     '.fin-sec>h4{margin:0 0 8px;font-size:13px}',
     '.fin-forma{display:flex;gap:6px;flex-wrap:wrap}.fin-forma button{min-width:72px}',
     '.fin-pills{display:flex;gap:6px;flex-wrap:wrap}',
+    '.fin-rec-tog{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:9px 11px;border:1px dashed var(--border);border-radius:9px;font-size:13px;cursor:pointer}',
+    '.fin-aviso-rec{margin-top:8px;padding:8px 11px;border-radius:9px;background:rgba(214,137,16,.12);color:#B7791F;font-size:12px;font-weight:600}',
     '.fin-ac{position:relative}.fin-ac-lista{position:absolute;z-index:5;left:0;right:0;top:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;max-height:240px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.15)}',
     '.fin-ac-lista div{padding:7px 10px;font-size:12px;cursor:pointer}.fin-ac-lista div:hover{background:var(--surface2)}',
     '.fin-num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}',
@@ -161,14 +163,34 @@ async function abrirAnexo(id){
   catch(e){ if(w) w.close(); toast(e.message, 'erro'); }
 }
 
+/* ================= RECORRÊNCIA: campos comuns ================= */
+var FREQ = { semanal: 'Toda semana', quinzenal: 'A cada 15 dias', mensal: 'Todo mês', bimestral: 'A cada 2 meses', trimestral: 'A cada 3 meses', semestral: 'A cada 6 meses', anual: 'Todo ano' };
+function camposRec(r){
+  r = r || {};
+  return '<div class="fin-g3" style="margin-top:8px"><div><div class="fin-lbl">Repete</div>' +
+    (r.id ? '<input class="fin-in" value="' + esc(FREQ[r.frequencia] || r.frequencia) + '" disabled>'
+          : '<select class="fin-in" id="lf-rec-freq">' + Object.keys(FREQ).map(function(k){ return '<option value="' + k + '"' + (k === 'mensal' ? ' selected' : '') + '>' + FREQ[k] + '</option>'; }).join('') + '</select>') + '</div>' +
+    '<div><div class="fin-lbl">Termina em (vazio = sem fim)</div><input type="date" class="fin-in" id="lf-rec-fim" value="' + esc(r.fim || '') + '"></div>' +
+    '<div style="display:flex;align-items:flex-end"><label class="fin-row" style="font-size:12px"><input type="checkbox" id="lf-rec-var"' + (r.valor_variavel ? ' checked' : '') + '> Valor muda todo mês (luz, água, comissão)</label></div></div>' +
+    '<div class="fin-sub" style="margin-top:6px">O sistema já coloca no calendário este vencimento e os próximos até o fim do mês que vem; os seguintes aparecem sozinhos, todo dia de manhã. ' +
+    'Com "valor muda", cada conta nasce com o valor previsto e um aviso <b>confirmar valor</b> até alguém conferir.</div>';
+}
+function chipRec(l){
+  return (l.recorrencia_id ? ' <span class="fin-chip" style="background:rgba(91,43,224,.12);color:#5b2be0" title="Conta recorrente #' + l.recorrencia_id + '">🔁</span>' : '') +
+    (l.valor_a_confirmar && l.status === 'pendente' ? ' <span class="fin-chip" style="background:rgba(214,137,16,.18);color:#B7791F" title="Valor previsto: confirme o valor deste mês">confirmar valor</span>' : '');
+}
+
 /* ================= FORMULÁRIO DE LANÇAMENTO (Novo pagamento / Novo recebimento) ================= */
 async function formLanc(tipo, lanc, opcoes){
   opcoes = opcoes || {};
   await base();
+  var REC = opcoes.rec || null;                    // editando o MODELO de uma recorrência (gestor)
   var ed = !!(lanc && lanc.id && !opcoes.duplicar);
+  var simples = ed || !!REC;                         // sem anexo, parcelamento e "Salvar + Novo"
   var L = lanc || {};
+  if(REC) L = Object.assign({}, REC.modelo || {}, { valor: REC.valor, vencimento: REC.inicio, pessoa_nome: REC.pessoa_nome });
   var forma = L.forma || (tipo === 'pagar' ? 'pix' : 'pix_conta');
-  var titulo = ed ? ('Editar ' + (tipo === 'pagar' ? 'pagamento' : 'recebimento') + ' #' + L.id) : (tipo === 'pagar' ? 'Novo pagamento' : 'Novo recebimento');
+  var titulo = REC ? ('Editar recorrência #' + REC.id) : ed ? ('Editar ' + (tipo === 'pagar' ? 'pagamento' : 'recebimento') + ' #' + L.id) : (tipo === 'pagar' ? 'Novo pagamento' : 'Novo recebimento');
   var m = modal('<div class="fin-row" style="justify-content:space-between"><div style="font-weight:800;font-size:16px">' + titulo + '</div><button class="fin-bt" id="lf-x">✕</button></div>' +
     (tipo === 'pagar' ? '<div class="fin-row" style="margin-top:12px;justify-content:space-between;align-items:flex-start"><div class="fin-forma">' + ['boleto', 'ted', 'pix', 'outros'].map(function(f){ return '<button type="button" class="fin-bt" data-forma="' + f + '">' + FORMA[f] + '</button>'; }).join('') + '</div>' +
       '<div style="min-width:220px"><div class="fin-lbl">Conta de pagamento preferencial</div><select class="fin-in" id="lf-conta">' + optsContas(L.conta_id, 'Selecione...') + '</select></div></div>' +
@@ -179,15 +201,19 @@ async function formLanc(tipo, lanc, opcoes){
       '<div class="fin-grid2"><div><div class="fin-lbl">' + (tipo === 'pagar' ? 'Valor bruto' : 'Valor total') + ' *</div><input class="fin-in fin-num" id="lf-valor" inputmode="decimal" placeholder="0,00" value="' + fmtIn(L.valor) + '"></div>' +
       '<div><div class="fin-lbl">Valor final</div><div id="lf-final" style="font-weight:800;font-size:16px;padding-top:6px">-</div></div></div></div>' +
     '<div class="fin-g3" style="margin-top:8px"><div style="grid-column:span 1"><div class="fin-lbl">Descrição</div><input class="fin-in" id="lf-desc" maxlength="300" value="' + esc(L.descricao || '') + '"></div>' +
-      '<div><div class="fin-lbl">Vencimento *</div><input type="date" class="fin-in" id="lf-venc" value="' + esc(L.vencimento || '') + '"></div>' +
-      '<div><div class="fin-lbl">Competência</div><input type="date" class="fin-in" id="lf-comp" value="' + esc(L.competencia || '') + '"></div></div>' +
+      '<div><div class="fin-lbl">' + (REC ? '1º vencimento' : 'Vencimento *') + '</div><input type="date" class="fin-in" id="lf-venc" value="' + esc(L.vencimento || '') + '"' + (REC ? ' disabled' : '') + '></div>' +
+      '<div><div class="fin-lbl">Competência</div><input type="date" class="fin-in" id="lf-comp" value="' + esc(L.competencia || '') + '"' + (REC ? ' disabled' : '') + '></div></div>' +
+    (ed && L.valor_a_confirmar ? '<div class="fin-aviso-rec">🔁 Conta recorrente de valor variável: confira o valor deste mês. Ao salvar, o valor fica confirmado.</div>' : '') +
+    (!simples ? '<label class="fin-rec-tog"><input type="checkbox" id="lf-rec"> <b>🔁 Conta recorrente</b> <span class="fin-sub">repete sozinha todo período (aluguel, internet, salário, mensalidade de cliente)</span></label><div id="lf-rec-box" style="display:none">' + camposRec(null) + '</div>' : '') +
+    (REC ? '<div class="fin-sec"><h4>🔁 Recorrência (' + esc(FREQ[REC.frequencia] || REC.frequencia) + ')</h4>' + camposRec(REC) +
+      '<label class="fin-row" style="font-size:12px;margin-top:8px"><input type="checkbox" id="lf-rec-aplicar" checked> Aplicar também nas contas já geradas que ainda estão pendentes (de hoje em diante)</label></div>' : '') +
     '<div class="fin-g3" style="margin-top:8px"><div><div class="fin-lbl">Classificação</div><select class="fin-in" id="lf-class">' + optsClass(L.classificacao_id, tipo) + '</select></div>' +
       '<div><div class="fin-lbl">Centro de custo</div><select class="fin-in" id="lf-cc">' + optsLista(F.base.centros.filter(function(c){ return c.ativo; }), L.centro_custo_id || (F.base.centros[0] && F.base.centros[0].id)) + '</select></div>' +
       '<div><div class="fin-lbl">Unidade de negócio</div><select class="fin-in" id="lf-un">' + optsLista(F.base.unidades.filter(function(u){ return u.ativo || u.id === L.unidade_id; }), L.unidade_id) + '</select></div></div>' +
     '<div style="margin-top:8px"><div class="fin-lbl">Observação</div><textarea class="fin-in" id="lf-obs" rows="2" maxlength="1000">' + esc(L.observacao || '') + '</textarea></div>' +
-    (!ed ? '<div style="margin-top:8px"><div class="fin-lbl">Anexos (boleto, NF, comprovante: PDF ou imagem até 4 MB)</div><input type="file" class="fin-in" id="lf-anexo" multiple accept="application/pdf,image/png,image/jpeg,image/webp"></div>' : '') +
-    '<div class="fin-pills" style="margin-top:14px">' + (!ed ? '<button type="button" class="fin-bt" data-sec="parc">Parcelamento</button>' : '') + '<button type="button" class="fin-bt" data-sec="fiscal">Fiscal e impostos</button><button type="button" class="fin-bt" data-sec="rateio">Rateio</button><button type="button" class="fin-bt" data-sec="comp">Composição de valores</button></div>' +
-    (!ed ? '<div class="fin-sec" id="lf-sec-parc" style="display:none"><h4>Parcelamento</h4>' +
+    (!simples ? '<div style="margin-top:8px"><div class="fin-lbl">Anexos (boleto, NF, comprovante: PDF ou imagem até 4 MB)</div><input type="file" class="fin-in" id="lf-anexo" multiple accept="application/pdf,image/png,image/jpeg,image/webp"></div>' : '') +
+    '<div class="fin-pills" style="margin-top:14px">' + (!simples ? '<button type="button" class="fin-bt" id="lf-pill-parc" data-sec="parc">Parcelamento</button>' : '') + '<button type="button" class="fin-bt" data-sec="fiscal">Fiscal e impostos</button><button type="button" class="fin-bt" data-sec="rateio">Rateio</button><button type="button" class="fin-bt" data-sec="comp">Composição de valores</button></div>' +
+    (!simples ? '<div class="fin-sec" id="lf-sec-parc" style="display:none"><h4>Parcelamento</h4>' +
       '<label class="fin-row" style="font-size:12px"><input type="radio" name="lf-pm" value="" checked> Sem parcelamento</label>' +
       '<label class="fin-row" style="font-size:12px"><input type="radio" name="lf-pm" value="compra"> <b>Parcelamento de uma compra</b> <span class="fin-sub">o valor é dividido; competência fixa; "1/N" na descrição</span></label>' +
       '<label class="fin-row" style="font-size:12px"><input type="radio" name="lf-pm" value="mensal"> <b>Conta mensal</b> <span class="fin-sub">repete o mesmo valor todo mês (aluguel, IPTU); competência varia</span></label>' +
@@ -201,7 +227,7 @@ async function formLanc(tipo, lanc, opcoes){
     '<div class="fin-sec" id="lf-sec-comp" style="display:none"><h4>Composição de valores</h4><div class="fin-g3"><div><div class="fin-lbl">Juros (+)</div><input class="fin-in fin-num" id="lf-juros" value="' + fmtIn(L.juros || '') + '"></div>' +
       '<div><div class="fin-lbl">Multa (+)</div><input class="fin-in fin-num" id="lf-multa" value="' + fmtIn(L.multa || '') + '"></div><div><div class="fin-lbl">Desconto (−)</div><input class="fin-in fin-num" id="lf-desconto" value="' + fmtIn(L.desconto || '') + '"></div></div></div>' +
     '<div id="lf-msg"></div><div class="fin-row" style="justify-content:flex-end;margin-top:14px"><button class="fin-bt" id="lf-cancel">Cancelar</button>' +
-      (!ed ? '<button class="fin-bt ok" id="lf-salvar-novo">Salvar + Novo</button>' : '') + '<button class="fin-bt pri" id="lf-salvar">Salvar</button></div>');
+      (!simples ? '<button class="fin-bt ok" id="lf-salvar-novo">Salvar + Novo</button>' : '') + '<button class="fin-bt pri" id="lf-salvar">Salvar</button></div>');
   m.el.style.maxWidth = '900px';
 
   var rat = ligarRateio('lf-rat', L.rateio, function(){ return parseBR($('lf-valor').value) || 0; });
@@ -246,6 +272,13 @@ async function formLanc(tipo, lanc, opcoes){
     $('lf-av-add').onclick = function(){ var u = avancado[avancado.length - 1]; avancado.push({ valor: u ? u.valor : 0, vencimento: u ? addMesUI(u.vencimento, 1) : hoje() }); desenharAvancado(); };
   }
   atualizar();
+  if($('lf-rec') && opcoes.recorrente){ $('lf-rec').checked = true; $('lf-rec-box').style.display = ''; $('lf-pill-parc').style.display = 'none'; }
+  if($('lf-rec')) $('lf-rec').onchange = function(){
+    var on = this.checked; $('lf-rec-box').style.display = on ? '' : 'none';
+    // recorrente e parcelado não combinam: esconde o parcelamento
+    $('lf-pill-parc').style.display = on ? 'none' : '';
+    if(on){ $('lf-sec-parc').style.display = 'none'; var s0 = m.el.querySelector('[name=lf-pm][value=""]'); if(s0) s0.checked = true; atualizar(); }
+  };
   var fechar = function(){ m.fechar(); };
   $('lf-x').onclick = fechar; $('lf-cancel').onclick = fechar;
 
@@ -269,27 +302,148 @@ async function formLanc(tipo, lanc, opcoes){
     if(!d.pessoa_id && $('lf-pessoa-txt').value.trim()) probs.push('pessoa (escolha da lista ou cadastre)');
     if(probs.length){ msg.innerHTML = '<div class="fin-erro">Preencha: ' + probs.join(', ') + '.</div>'; return; }
     if(d.rateio.length){ var s = d.rateio.reduce(function(a, r){ return a + r.pct; }, 0); if(Math.abs(s - 100) > 0.01){ msg.innerHTML = '<div class="fin-erro">O rateio precisa somar 100%.</div>'; return; } }
-    if(!ed){
+    if(REC){
+      var o = lerRec(); if(o.erro){ msg.innerHTML = '<div class="fin-erro">' + esc(o.erro) + '</div>'; return; }
+      d = Object.assign(d, { id: REC.id, fim: o.fim, variavel: o.variavel, aplicar: $('lf-rec-aplicar').checked });
+    } else if(!ed){
       var modo = (m.el.querySelector('[name=lf-pm]:checked') || {}).value;
-      if(modo === 'avancado') d.parcelamento = { modo: modo, lista: avancado };
+      if($('lf-rec') && $('lf-rec').checked){
+        var o2 = lerRec(); if(o2.erro){ msg.innerHTML = '<div class="fin-erro">' + esc(o2.erro) + '</div>'; return; }
+        d.parcelamento = { modo: 'recorrente', frequencia: o2.frequencia, fim: o2.fim, variavel: o2.variavel };
+      }
+      else if(modo === 'avancado') d.parcelamento = { modo: modo, lista: avancado };
       else if(modo) d.parcelamento = { modo: modo, parcelas: Math.round(n($('lf-parcelas').value)) };
       if(opcoes.entrada_id) d.entrada_id = opcoes.entrada_id;
-    } else d.id = L.id;
+    } else { d.id = L.id; if(L.valor_a_confirmar) d.confirmar_valor = true; }
     var bts = m.el.querySelectorAll('#lf-salvar,#lf-salvar-novo'); bts.forEach(function(b){ b.disabled = true; });
     try {
-      var r = await api(ed ? 'lanc_editar' : 'lanc_criar', d);
+      var r = await api(REC ? 'rec_salvar' : ed ? 'lanc_editar' : 'lanc_criar', d);
       var files = $('lf-anexo') ? $('lf-anexo').files : [];
-      if(!ed && files.length && r.ids && r.ids[0]) await enviarAnexos(files, { lancamento_id: r.ids[0] });
-      toast(ed ? 'Alterações salvas' : ((r.ids && r.ids.length > 1) ? r.ids.length + ' lançamentos criados' : 'Lançamento #' + (r.ids && r.ids[0]) + ' criado'));
+      if(!simples && files.length && r.ids && r.ids[0]) await enviarAnexos(files, { lancamento_id: r.ids[0] });
+      toast(REC ? ('Recorrência salva' + (r.atualizados ? ': ' + r.atualizados + ' conta(s) pendente(s) atualizada(s)' : '') + (r.cancelados ? ', ' + r.cancelados + ' cancelada(s) pela nova data final' : ''))
+        : ed ? 'Alterações salvas'
+        : r.recorrencia_id ? ('🔁 Recorrência #' + r.recorrencia_id + ' criada: ' + (r.ids || []).length + ' conta(s) já no calendário; as próximas aparecem sozinhas')
+        : ((r.ids && r.ids.length > 1) ? r.ids.length + ' lançamentos criados' : 'Lançamento #' + (r.ids && r.ids[0]) + ' criado'));
       m.fechar();
       if(opcoes.aoSalvar) opcoes.aoSalvar(r);
       if(novo) formLanc(tipo, { conta_id: d.conta_id, centro_custo_id: d.centro_custo_id, unidade_id: d.unidade_id, forma: d.forma }, opcoes);
     } catch(e){ msg.innerHTML = '<div class="fin-erro">' + esc(e.message) + '<br>Nada foi gravado pela metade. Corrija e salve de novo.</div>'; bts.forEach(function(b){ b.disabled = false; }); }
   }
+  function lerRec(){
+    var fq = $('lf-rec-freq') ? $('lf-rec-freq').value : (REC && REC.frequencia), fim = $('lf-rec-fim').value || null, venc = $('lf-venc').value;
+    if(!fq) return { erro: 'Escolha a frequência da recorrência.' };
+    if(fim && venc && fim < venc) return { erro: 'A data final não pode ser antes do 1º vencimento.' };
+    return { frequencia: fq, fim: fim, variavel: $('lf-rec-var').checked };
+  }
   $('lf-salvar').onclick = function(){ salvar(false); };
   if($('lf-salvar-novo')) $('lf-salvar-novo').onclick = function(){ salvar(true); };
 }
 function addMesUI(iso, k){ var p = iso.split('-').map(Number); var dt = new Date(Date.UTC(p[0], p[1] - 1 + k, 1)); var ult = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate(); return dt.getUTCFullYear() + '-' + String(dt.getUTCMonth() + 1).padStart(2, '0') + '-' + String(Math.min(p[2], ult)).padStart(2, '0'); }
+
+/* ================= RECORRÊNCIAS ================= */
+var REC_ST = { ativa: { t: 'Ativa', c: '#1D9E75', bg: 'rgba(29,158,117,.15)' }, pausada: { t: 'Pausada', c: '#B7791F', bg: 'rgba(214,137,16,.15)' }, encerrada: { t: 'Encerrada', c: '#7F8C8D', bg: 'rgba(127,140,141,.15)' } };
+function chipRecSt(s){ var x = REC_ST[s] || REC_ST.ativa; return '<span class="fin-chip" style="color:' + x.c + ';background:' + x.bg + '">' + x.t + '</span>'; }
+
+function tornarRecorrente(l, depois){
+  var m = modal('<div style="font-weight:800;font-size:16px">🔁 Tornar recorrente</div><div class="fin-sub" style="margin:4px 0 8px">Esta conta (' + esc(l.pessoa_nome || l.descricao || '#' + l.id) + ', ' + moeda(l.valor) + ') vira o modelo. Ela continua como está; a próxima nasce sozinha no período seguinte.</div>' +
+    camposRec(null) + '<div id="tr-msg"></div><div class="fin-row" style="justify-content:flex-end;margin-top:12px"><button class="fin-bt" id="tr-x">Cancelar</button><button class="fin-bt pri" id="tr-ok">Criar recorrência</button></div>');
+  $('tr-x').onclick = m.fechar;
+  $('tr-ok').onclick = async function(){
+    var b = this; b.disabled = true;
+    try {
+      var r = await api('rec_de_lanc', { id: l.id, frequencia: $('lf-rec-freq').value, fim: $('lf-rec-fim').value || null, variavel: $('lf-rec-var').checked });
+      toast('🔁 Recorrência #' + r.id + ' criada: ' + (r.gerados || 0) + ' próxima(s) conta(s) já no calendário'); m.fechar(); if(depois) depois();
+    } catch(e){ $('tr-msg').innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; b.disabled = false; }
+  };
+}
+
+async function verRec(id, aoMudar){
+  await base();
+  var m = modal('<div class="fin-vazio">Carregando...</div>'); m.el.style.maxWidth = '820px';
+  var d;
+  try { d = await api('rec_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" id="rv-x">Fechar</button>'; $('rv-x').onclick = m.fechar; return; }
+  var r = d.rec, tipo = r.tipo, md = r.modelo || {};
+  var recarregar = function(){ m.fechar(); verRec(id, aoMudar); if(aoMudar) aoMudar(); };
+  var h = '<div class="fin-row" style="justify-content:space-between;align-items:flex-start"><div><div class="fin-sub">🔁 Recorrência #' + r.id + ' · ' + (tipo === 'pagar' ? 'a pagar' : 'a receber') + '</div>' +
+    '<div style="font-size:18px;font-weight:800">' + esc(r.pessoa_nome || r.descricao || r.classificacao_nome || '-') + '</div><div class="fin-sub">' + esc(r.descricao || '') + '</div></div>' +
+    '<div style="text-align:right"><div style="font-size:20px;font-weight:800" class="' + (tipo === 'pagar' ? 'fin-sai' : 'fin-ent') + '">' + moeda(r.valor) + '</div>' + chipRecSt(r.status) + (r.valor_variavel ? ' <span class="fin-chip" style="background:rgba(214,137,16,.18);color:#B7791F">valor variável</span>' : '') + '</div></div>';
+  h += '<div class="fin-row" style="margin:12px 0;gap:6px">';
+  if(pode('gestor') && r.status !== 'encerrada') h += '<button class="fin-bt" id="rv-editar">Editar (valor, dados, data final)</button>';
+  if(pode('gestor') && r.status === 'ativa') h += '<button class="fin-bt" id="rv-pausar">⏸ Pausar</button>';
+  if(pode('gestor') && r.status === 'pausada') h += '<button class="fin-bt ok" id="rv-retomar">▶ Retomar</button>';
+  if(pode('gestor') && r.status !== 'encerrada') h += '<button class="fin-bt sus" id="rv-encerrar">Encerrar</button>';
+  if(!pode('gestor')) h += '<span class="fin-sub">Mudar valor, pausar ou encerrar: peça a um gestor.</span>';
+  h += '</div>';
+  h += '<div class="fin-grid2"><div class="fin-card" style="font-size:12px;line-height:1.9"><b>Modelo</b><br>Classificação: ' + esc(r.classificacao_nome || '-') + '<br>Unidade: ' + esc(r.unidade_nome || '-') +
+    '<br>Forma: ' + esc(FORMA[md.forma] || md.forma || '-') + (md.observacao ? '<br>Obs: ' + esc(md.observacao) : '') + (md.rateio && md.rateio.length ? '<br>Rateado entre ' + md.rateio.length + ' unidades' : '') + '</div>' +
+    '<div class="fin-card" style="font-size:12px;line-height:1.9"><b>Repetição</b><br>' + esc(FREQ[r.frequencia] || r.frequencia) + ' · desde ' + dataBR(r.inicio) + '<br>Termina: <b>' + (r.fim ? dataBR(r.fim) : 'sem fim') + '</b>' +
+    (r.proximo_venc ? '<br>Próxima a entrar no calendário: ' + dataBR(r.proximo_venc) : '') + '<br>Criada por ' + esc(nome(r.criado_por)) + ' em ' + dataBR(r.criado_em) +
+    (r.motivo ? '<br>' + (r.status === 'encerrada' ? 'Encerrada' : 'Último motivo') + ': ' + esc(r.motivo) : '') + '</div></div>';
+  h += '<div class="fin-card" style="margin-top:10px;padding:0;overflow-x:auto"><table class="fin-tbl"><thead><tr><th>#</th><th>Vencimento</th><th class="fin-num">Valor</th><th>' + (tipo === 'pagar' ? 'Pago em' : 'Recebido em') + '</th><th>Situação</th></tr></thead><tbody>' +
+    (d.lancs.length ? d.lancs.map(function(l){ return '<tr class="clic" data-id="' + l.id + '"><td class="fin-sub">' + l.id + '</td><td>' + dataBR(l.vencimento) + '</td><td class="fin-num">' + moeda(l.valor_final) + (l.valor_a_confirmar && l.status === 'pendente' ? ' <span class="fin-chip" style="background:rgba(214,137,16,.18);color:#B7791F">confirmar</span>' : '') + '</td><td>' + dataBR(l.data_pagamento) + '</td><td>' + chipSit(l.situacao_calc, tipo) + '</td></tr>'; }).join('')
+      : '<tr><td colspan="5" class="fin-sub">Nenhuma conta gerada ainda.</td></tr>') + '</tbody></table></div>';
+  h += '<div class="fin-card" style="margin-top:10px"><b style="font-size:12px">📜 Histórico (permanente)</b>' + (d.historico.length ? d.historico.slice().reverse().map(function(x){ return '<div style="font-size:12px;margin-top:4px">' + dataHoraBR(x.ts) + ' · <b>' + esc(nome(x.ator)) + '</b> · ' + esc(descHistRec(x)) + '</div>'; }).join('') : '<div class="fin-sub">Sem histórico.</div>') + '</div>';
+  h += '<div class="fin-row" style="justify-content:flex-end;margin-top:12px"><button class="fin-bt" id="rv-x">Fechar</button></div>';
+  m.el.innerHTML = h;
+  $('rv-x').onclick = m.fechar;
+  m.el.querySelectorAll('tr[data-id]').forEach(function(tr){ tr.onclick = function(){ m.fechar(); verLanc(Number(tr.getAttribute('data-id')), aoMudar); }; });
+  if($('rv-editar')) $('rv-editar').onclick = function(){ m.fechar(); formLanc(tipo, null, { rec: r, aoSalvar: function(){ verRec(id, aoMudar); if(aoMudar) aoMudar(); } }); };
+  var mudar = async function(acao, titulo, ajuda){
+    var mo = await U.pedirTexto({ titulo: titulo, ajuda: ajuda, min: 10 }); if(!mo) return;
+    var canc = false;
+    if(acao === 'encerrar') canc = confirm('Cancelar também as contas desta recorrência que ainda estão pendentes, de hoje em diante?\n\nOK = cancelar as futuras · Cancelar = deixar as que já estão no calendário');
+    try { var x = await api('rec_status', { id: id, operacao: acao, motivo: mo, cancelar_futuros: canc }); toast(acao === 'encerrar' ? 'Recorrência encerrada' + (x.cancelados ? ': ' + x.cancelados + ' conta(s) futura(s) cancelada(s)' : '') : acao === 'pausar' ? 'Pausada: não gera mais contas até retomar' : 'Retomada'); recarregar(); }
+    catch(e){ toast(e.message, 'erro'); }
+  };
+  if($('rv-pausar')) $('rv-pausar').onclick = function(){ mudar('pausar', 'Pausar a recorrência', 'Para de gerar contas novas. As que já estão no calendário continuam.'); };
+  if($('rv-retomar')) $('rv-retomar').onclick = function(){ mudar('retomar', 'Retomar a recorrência', 'Volta a gerar a partir de hoje (os períodos da pausa não são criados).'); };
+  if($('rv-encerrar')) $('rv-encerrar').onclick = function(){ mudar('encerrar', 'Encerrar a recorrência', 'Não gera mais contas e não pode ser reaberta (fica no histórico).'); };
+}
+function descHistRec(x){
+  var d = x.depois || {}, a = x.antes || {};
+  if(x.acao === 'INSERT') return 'criou a recorrência (' + (FREQ[d.frequencia] || d.frequencia) + ', ' + moeda(d.valor) + ')';
+  var mud = [];
+  if(a.status !== d.status) mud.push('situação: ' + (a.status || '-') + ' → ' + d.status + (d.motivo ? ' (' + d.motivo + ')' : ''));
+  if(String(a.valor) !== String(d.valor)) mud.push('valor: ' + moeda(a.valor) + ' → ' + moeda(d.valor));
+  if(a.fim !== d.fim) mud.push('data final: ' + (a.fim ? dataBR(a.fim) : 'sem fim') + ' → ' + (d.fim ? dataBR(d.fim) : 'sem fim'));
+  if(a.valor_variavel !== d.valor_variavel) mud.push(d.valor_variavel ? 'passou a ter valor variável' : 'passou a ter valor fixo');
+  if(JSON.stringify(a.modelo) !== JSON.stringify(d.modelo)) mud.push('mudou os dados da conta');
+  if(a.gerados !== d.gerados && !mud.length) return 'colocou ' + (n(d.gerados) - n(a.gerados)) + ' conta(s) no calendário';
+  return mud.length ? mud.join(' · ') : 'atualizou';
+}
+
+function recorrencias(tipo){
+  return async function(el){
+    css2(); carregando(el);
+    try { await base(); } catch(e){ return erroEm(el, e); }
+    var f = F['rec_' + tipo] = F['rec_' + tipo] || { status: 'ativa', q: '' };
+    var aba = function(v, t){ return '<button class="fin-bt' + (f.status === v ? ' pri' : '') + '" data-rst="' + v + '">' + t + '</button>'; };
+    el.innerHTML = '<div class="fin-card" style="margin-bottom:10px;font-size:12px">🔁 <b>Contas recorrentes</b>: ' + (tipo === 'pagar' ? 'aluguel, internet, salários, sistemas' : 'mensalidades e contratos de clientes') +
+      '. Cada uma entra sozinha no calendário (até o fim do mês que vem), pra dar baixa normalmente na Central e na Lista. Pra criar, marque <b>🔁 Conta recorrente</b> no novo ' + (tipo === 'pagar' ? 'pagamento' : 'recebimento') + '.</div>' +
+      '<div class="fin-row" style="margin-bottom:8px">' + aba('ativa', 'Ativas') + aba('pausada', 'Pausadas') + aba('encerrada', 'Encerradas') + aba('', 'Todas') +
+      '<input class="fin-in" id="rc-q" placeholder="Buscar pessoa, descrição, classificação" value="' + esc(f.q || '') + '" style="flex:1;min-width:180px"><button class="fin-bt pri" id="rc-qok">Buscar</button>' +
+      (pode('conferente') ? '<button class="fin-bt pri" id="rc-novo">+ Nova recorrente</button>' : '') + '</div><div id="rc-out"></div>';
+    el.querySelectorAll('[data-rst]').forEach(function(b){ b.onclick = function(){ f.status = b.getAttribute('data-rst'); recorrencias(tipo)(el); }; });
+    var busca = function(){ f.q = $('rc-q').value.trim(); recorrencias(tipo)(el); };
+    $('rc-qok').onclick = busca; $('rc-q').onkeydown = function(e){ if(e.key === 'Enter') busca(); };
+    if($('rc-novo')) $('rc-novo').onclick = function(){ formLanc(tipo, null, { recorrente: true, aoSalvar: function(){ recorrencias(tipo)(el); } }); };
+    var out = $('rc-out'); carregando(out);
+    try {
+      var j = await api('rec_listar', { tipo: tipo, status: f.status, q: f.q });
+      if(!j.itens.length){ out.innerHTML = '<div class="fin-vazio">Nenhuma recorrência ' + (f.status ? (REC_ST[f.status] || {}).t.toLowerCase() : '') + '.</div>'; return; }
+      var mensal = j.itens.filter(function(r){ return r.status === 'ativa'; }).reduce(function(a, r){ var fat = { semanal: 52 / 12, quinzenal: 26 / 12, mensal: 1, bimestral: 1 / 2, trimestral: 1 / 3, semestral: 1 / 6, anual: 1 / 12 }[r.frequencia] || 1; return a + n(r.valor) * fat; }, 0);
+      out.innerHTML = '<div class="fin-sub" style="margin-bottom:6px">' + j.itens.length + ' recorrência(s)' + (mensal ? ' · ativas somam cerca de <b>' + moeda(mensal) + ' por mês</b>' : '') + '</div>' +
+        '<div class="fin-card" style="padding:0;overflow-x:auto"><table class="fin-tbl"><thead><tr><th>#</th><th>' + (tipo === 'pagar' ? 'Fornecedor' : 'Cliente') + '</th><th>Detalhe</th><th>Repete</th><th class="fin-num">Valor</th><th>Próximo vencimento</th><th>Termina</th><th>Situação</th></tr></thead><tbody>' +
+        j.itens.map(function(r){ return '<tr class="clic" data-rec="' + r.id + '"><td class="fin-sub">' + r.id + '</td><td><b>' + esc(r.pessoa_nome || '-') + '</b></td><td>' + esc(r.classificacao_nome || '') + ' <span class="fin-sub">' + esc(r.descricao || '') + '</span></td>' +
+          '<td>' + esc(FREQ[r.frequencia] || r.frequencia) + '</td><td class="fin-num"><b>' + moeda(r.valor).replace('R$ ', '') + '</b>' + (r.valor_variavel ? ' <span class="fin-sub" title="valor variável">~</span>' : '') + '</td>' +
+          '<td>' + ((r.proximo_pendente || r.proximo_venc) ? dataBR(r.proximo_pendente || r.proximo_venc) : '-') + '</td><td>' + (r.fim ? dataBR(r.fim) : '<span class="fin-sub">sem fim</span>') + '</td>' +
+          '<td>' + chipRecSt(r.status) + (n(r.atrasados) ? ' <span class="fin-chip" style="color:#fff;background:#C0392B">' + r.atrasados + ' atrasada(s)</span>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      out.querySelectorAll('tr[data-rec]').forEach(function(tr){ tr.onclick = function(){ verRec(Number(tr.getAttribute('data-rec')), function(){ recorrencias(tipo)(el); }); }; });
+    } catch(e){ erroEm(out, e); }
+  };
+}
+T.pagar_recorrencias = recorrencias('pagar');
+T.receber_recorrencias = recorrencias('receber');
 
 /* ================= DETALHE DO LANÇAMENTO ================= */
 async function verLanc(id, aoMudar){
@@ -304,7 +458,9 @@ async function verLanc(id, aoMudar){
   h += '<div class="fin-row" style="margin:12px 0;gap:6px">';
   if(pend && pode('conferente')) h += '<button class="fin-bt ok" id="lv-baixa">' + (tipo === 'pagar' ? '✓ Baixa manual (paguei)' : '✓ Baixa manual (recebi)') + '</button>';
   if(pend && pode('conferente')) h += '<button class="fin-bt" id="lv-editar">Editar</button><button class="fin-bt" id="lv-split" title="Separa este lançamento em dois (ex.: pagou só uma parte)">Dividir em dois</button>';
+  if(pend && l.valor_a_confirmar && pode('conferente')) h += '<button class="fin-bt ok" id="lv-confval">✓ Confirmar valor do mês</button>';
   if(pode('conferente')) h += '<button class="fin-bt" id="lv-dup">Duplicar</button>';
+  if(!l.recorrencia_id && l.status !== 'cancelado' && l.origem === 'manual' && pode('conferente')) h += '<button class="fin-bt" id="lv-tornarrec" title="Usa esta conta como modelo: a próxima nasce sozinha no período seguinte">🔁 Tornar recorrente</button>';
   h += '<button class="fin-bt" id="lv-print">Imprimir rateio</button>';
   if(pend && pode('conferente')) h += '<button class="fin-bt sus" id="lv-cancelar">Cancelar lançamento</button>';
   if(l.status === 'pago' && l.baixa_id && pode('gestor')) h += '<button class="fin-bt div" id="lv-estornar">Estornar baixa</button>';
@@ -322,6 +478,8 @@ async function verLanc(id, aoMudar){
     (l.data_pagamento ? '<br>' + (tipo === 'pagar' ? 'Pago' : 'Recebido') + ' em <b>' + dataBR(l.data_pagamento) + '</b>' : '') +
     (d.extrato ? '<br>🔗 Conciliado com o extrato: ' + dataBR(d.extrato.data) + ' ' + esc(d.extrato.conta_nome) + ' ' + moeda(d.extrato.valor) : (l.status === 'pago' ? '<br><span style="color:#B7791F">⚠️ Ainda sem conciliação com o extrato</span>' : '')) +
     (l.cancelado_por ? '<br>Cancelado por ' + esc(nome(l.cancelado_por)) + ': ' + esc(l.motivo_cancelamento || '') : '') + '</div></div>';
+  if(l.recorrencia_id) h += '<div class="fin-card" style="margin-top:10px;font-size:12px"><div class="fin-row" style="justify-content:space-between"><span>🔁 <b>Conta recorrente #' + l.recorrencia_id + '</b> · ocorrência nº ' + (n(l.recorrencia_seq) + 1) +
+    (l.valor_a_confirmar && pend ? ' · <span style="color:#B7791F;font-weight:700">valor previsto, confirme o valor deste mês</span>' : '') + '</span><button class="fin-bt" id="lv-verrec">Ver a recorrência</button></div></div>';
   if(l.rateio && l.rateio.length) h += '<div class="fin-card" style="margin-top:10px"><b style="font-size:12px">Rateio por unidade</b><div style="margin-top:6px">' + barraRateio(l.rateio) + '</div></div>';
   if(d.parcelas.length > 1) h += '<div class="fin-card" style="margin-top:10px"><b style="font-size:12px">Parcelas</b><table class="fin-tbl" style="margin-top:4px"><tbody>' + d.parcelas.map(function(p){ return '<tr' + (p.id === l.id ? ' style="font-weight:800"' : '') + '><td>' + p.parcela_num + '/' + p.parcela_total + '</td><td>' + dataBR(p.vencimento) + '</td><td class="fin-num">' + moeda(p.valor_final) + '</td><td>' + chipSit(p.situacao_calc, tipo) + '</td></tr>'; }).join('') + '</tbody></table></div>';
   if(d.alertas.length) h += '<div class="fin-card" style="margin-top:10px"><b style="font-size:12px">🚨 Alertas</b>' + d.alertas.map(function(a){ return '<div style="font-size:12px;margin-top:4px">' + U.chipSev(a.severidade) + ' ' + esc(a.titulo) + ' <span class="fin-sub">' + esc(a.status) + '</span></div>'; }).join('') + '</div>';
@@ -338,6 +496,13 @@ async function verLanc(id, aoMudar){
   if($('lv-editar')) $('lv-editar').onclick = function(){ m.fechar(); formLanc(tipo, l, { aoSalvar: function(){ verLanc(id, aoMudar); if(aoMudar) aoMudar(); } }); };
   if($('lv-dup')) $('lv-dup').onclick = function(){ m.fechar(); var c = Object.assign({}, l); delete c.id; c.vencimento = ''; c.competencia = ''; formLanc(tipo, c, { duplicar: true, aoSalvar: aoMudar }); };
   if($('lv-print')) $('lv-print').onclick = function(){ imprimirRateio(l); };
+  if($('lv-verrec')) $('lv-verrec').onclick = function(){ m.fechar(); verRec(l.recorrencia_id, aoMudar); };
+  if($('lv-confval')) $('lv-confval').onclick = async function(){
+    var v = await U.pedirTexto({ titulo: 'Valor deste mês', ajuda: 'Valor previsto: ' + moeda(l.valor) + '. Digite o valor da conta deste mês (o mesmo, se não mudou).', tipo: 'valor', obrigatorio: true, valor: fmtIn(l.valor) }); if(!v) return;
+    if(!(parseBR(v) > 0)) return toast('Valor inválido', 'erro');
+    try { await api('rec_confirmar_valor', { id: id, valor: parseBR(v) }); toast('Valor confirmado'); recarregar(); } catch(e){ toast(e.message, 'erro'); }
+  };
+  if($('lv-tornarrec')) $('lv-tornarrec').onclick = function(){ tornarRecorrente(l, function(){ m.fechar(); if(aoMudar) aoMudar(); }); };
   if($('lv-split')) $('lv-split').onclick = async function(){
     var v = await U.pedirTexto({ titulo: 'Dividir em dois: valor da 2ª parte', ajuda: 'O resto fica neste lançamento.', tipo: 'valor', obrigatorio: true }); if(!v) return;
     if(!(parseBR(v) > 0)) return toast('Valor inválido', 'erro');
@@ -477,7 +642,7 @@ function central(tipo){
 function listaDia(d, tipo, aoMudar){
   var m = modal('<div class="fin-row" style="justify-content:space-between"><b style="font-size:15px">' + dataBR(d.dia) + ' · ' + moeda(d.total) + '</b><button class="fin-bt" id="ld-x">✕</button></div>' +
     '<table class="fin-tbl" style="margin-top:8px"><thead><tr><th>' + (pode('conferente') ? '<input type="checkbox" id="ld-all">' : '') + '</th><th>Pessoa</th><th>Classificação</th><th class="fin-num">Valor</th><th>Situação</th></tr></thead><tbody>' +
-    d.itens.map(function(l){ return '<tr class="clic" data-id="' + l.id + '"><td>' + (l.status === 'pendente' && pode('conferente') ? '<input type="checkbox" data-sel="' + l.id + '">' : '') + '</td><td><b>' + esc(l.pessoa_nome || '-') + '</b><div class="fin-sub">' + esc(l.descricao || '') + '</div></td><td class="fin-sub">' + esc(l.classificacao_nome || '') + '</td><td class="fin-num">' + moeda(l.valor_final) + '</td><td>' + chipSit(l.situacao_calc, tipo) + (l.extrato_id ? ' 🔗' : '') + '</td></tr>'; }).join('') +
+    d.itens.map(function(l){ return '<tr class="clic" data-id="' + l.id + '"><td>' + (l.status === 'pendente' && pode('conferente') ? '<input type="checkbox" data-sel="' + l.id + '">' : '') + '</td><td><b>' + esc(l.pessoa_nome || '-') + '</b>' + chipRec(l) + '<div class="fin-sub">' + esc(l.descricao || '') + '</div></td><td class="fin-sub">' + esc(l.classificacao_nome || '') + '</td><td class="fin-num">' + moeda(l.valor_final) + '</td><td>' + chipSit(l.situacao_calc, tipo) + (l.extrato_id ? ' 🔗' : '') + '</td></tr>'; }).join('') +
     '</tbody></table>' + (pode('conferente') ? '<div class="fin-row" style="justify-content:flex-end;margin-top:10px"><button class="fin-bt ok" id="ld-baixa">Baixa dos selecionados</button></div>' : ''));
   $('ld-x').onclick = m.fechar;
   m.el.querySelectorAll('tr[data-id]').forEach(function(tr){ tr.onclick = function(e){ if(e.target.type === 'checkbox') return; m.fechar(); verLanc(Number(tr.getAttribute('data-id')), aoMudar); }; });
@@ -541,7 +706,7 @@ function lista(tipo){
         (pags > 1 ? '<span class="fin-row"><button class="fin-bt" id="li-ant"' + (F['pag_' + tipo] <= 0 ? ' disabled' : '') + '>‹</button><span class="fin-sub">Página ' + (F['pag_' + tipo] + 1) + ' de ' + pags + '</span><button class="fin-bt" id="li-prox"' + (F['pag_' + tipo] + 1 >= pags ? ' disabled' : '') + '>›</button></span>' : '') + '</div>' +
         '<div class="fin-card" style="padding:0;overflow-x:auto"><table class="fin-tbl"><thead><tr><th>' + (pode('conferente') ? '<input type="checkbox" id="li-all">' : '') + '</th><th>#</th><th>Pessoa</th><th>Detalhe</th><th>Unidade</th><th class="fin-num">Valor (R$)</th><th>Vencimento</th><th>' + (tipo === 'pagar' ? 'Pago' : 'Recebido') + '</th><th>Situação</th></tr></thead><tbody>' +
         j.itens.map(function(l){ return '<tr class="clic" data-id="' + l.id + '"><td>' + (l.status === 'pendente' && pode('conferente') ? '<input type="checkbox" data-sel="' + l.id + '">' : '') + '</td><td class="fin-sub">' + l.id + '</td><td><b>' + esc(l.pessoa_nome || '-') + '</b></td>' +
-          '<td>' + esc(l.classificacao_nome || '') + ' <span class="fin-sub">' + esc(l.descricao || '') + '</span>' + (l.parcela_num ? ' <span class="fin-chip" style="background:var(--border)">' + l.parcela_num + '/' + l.parcela_total + '</span>' : '') + (n(l.anexos) ? ' 📎' : '') + '</td>' +
+          '<td>' + esc(l.classificacao_nome || '') + ' <span class="fin-sub">' + esc(l.descricao || '') + '</span>' + (l.parcela_num ? ' <span class="fin-chip" style="background:var(--border)">' + l.parcela_num + '/' + l.parcela_total + '</span>' : '') + chipRec(l) + (n(l.anexos) ? ' 📎' : '') + '</td>' +
           '<td class="fin-sub">' + esc(l.unidade_nome || '') + (l.rateio && l.rateio.length ? ' (rateado)' : '') + '</td><td class="fin-num"><b>' + moeda(l.valor_final).replace('R$ ', '') + '</b></td><td>' + dataBR(l.vencimento) + '</td><td>' + dataBR(l.data_pagamento) + '</td>' +
           '<td>' + chipSit(l.situacao_calc, tipo) + (l.extrato_id ? ' <span title="Conciliado com o extrato">🔗</span>' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>';
       out.querySelectorAll('tr[data-id]').forEach(function(tr){ tr.onclick = function(e){ if(e.target.type === 'checkbox') return; verLanc(Number(tr.getAttribute('data-id')), function(){ lista(tipo)(el); }); }; });
