@@ -147,13 +147,16 @@ exports.handler = async function (event) {
   try {
     let alvos;
     let listaCompleta = true;
+    const testeAuto = b.teste_auto === true; // lista e manda só pro PRIMEIRO (teste sem precisar de ID)
     if (testeIds && testeIds.length) {
       alvos = testeIds;
     } else {
       const lista = await listarIds(publico, cred, 7500);
       alvos = lista.ids;
       listaCompleta = lista.completo;
+      if (testeAuto) alvos = alvos.slice(0, 1); // teste: só o primeiro da lista
     }
+    const ehTeste = !!((testeIds && testeIds.length) || testeAuto);
     if (!alvos.length) {
       return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true, cidade, publico, total: 0, enviados: 0, falhas: 0, aviso: 'Nenhum destinatário encontrado.' }) };
     }
@@ -179,12 +182,13 @@ exports.handler = async function (event) {
         success: true,
         cidade,
         publico,
-        teste: !!(testeIds && testeIds.length),
+        teste: ehTeste,
         total: alvos.length,
         enviados,
         falhas,
         lotes,
-        lista_completa: testeIds ? true : listaCompleta,
+        lista_completa: ehTeste ? true : listaCompleta,
+        ...(testeAuto ? { alvo_teste: alvos[0] } : {}),
         ...(ultimoErro ? { aviso: 'Alguns lotes falharam: ' + ultimoErro } : {}),
       }),
     };
