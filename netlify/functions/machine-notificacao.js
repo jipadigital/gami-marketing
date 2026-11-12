@@ -177,6 +177,24 @@ exports.handler = async function (event) {
     }
   }
 
+  // Modo 'excluir': apaga um disparo do histórico (por lote, ou por id). Service key.
+  if (b.acao === 'excluir') {
+    const chave = process.env.SUPA_SERVICE_KEY || '';
+    const lote = String(b.lote || '').trim();
+    const id = b.id != null ? String(b.id).trim() : '';
+    if (!lote && !id) return { statusCode: 400, headers: cors, body: JSON.stringify({ success: false, error: 'Informe lote ou id.' }) };
+    try {
+      const q = lote ? ('lote=eq.' + encodeURIComponent(lote)) : ('id=eq.' + encodeURIComponent(id));
+      const r = await fetch(SUPA_URL + '/rest/v1/disparos_log?' + q, {
+        method: 'DELETE',
+        headers: { apikey: chave, Authorization: 'Bearer ' + chave, Prefer: 'return=minimal' },
+      });
+      return { statusCode: r.ok ? 200 : 500, headers: cors, body: JSON.stringify({ success: r.ok }) };
+    } catch (e) {
+      return { statusCode: 500, headers: cors, body: JSON.stringify({ success: false, error: e.message }) };
+    }
+  }
+
   // Modo 'cidades': devolve as cidades que têm credenciais Machine no env (pra UI montar a lista).
   if (b.acao === 'cidades') {
     const cids = Object.keys(process.env)

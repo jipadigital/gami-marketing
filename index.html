@@ -6533,7 +6533,7 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
     if(!rows.length){ r.innerHTML=tabsHtml()+'<div class="dcard"><div class="dmuted">Nenhum disparo registrado ainda.<br>Se já disparou e não aparece, falta criar a tabela <b>disparos_log</b> no banco.</div></div>'; wireTabs(); return; }
     var totEnv=0, totFal=0; rows.forEach(function(x){ totEnv+=(x.enviados||0); totFal+=(x.falhas||0); });
     var grupos={}, ordem=[];
-    rows.forEach(function(x){ var k=x.lote||('x'+x.id); if(!grupos[k]){ grupos[k]={msg:x.mensagem,titulo:x.titulo,publico:x.publico,quando:x.criado_em,autor:x.autor_nome,cidades:[],env:0,fal:0}; ordem.push(k); } var g=grupos[k]; g.cidades.push({cidade:x.cidade,env:x.enviados||0,fal:x.falhas||0}); g.env+=(x.enviados||0); g.fal+=(x.falhas||0); if(x.criado_em>g.quando) g.quando=x.criado_em; });
+    rows.forEach(function(x){ var k=x.lote||('x'+x.id); if(!grupos[k]){ grupos[k]={msg:x.mensagem,titulo:x.titulo,publico:x.publico,quando:x.criado_em,autor:x.autor_nome,cidades:[],env:0,fal:0,lote:x.lote||'',id:x.id}; ordem.push(k); } var g=grupos[k]; g.cidades.push({cidade:x.cidade,env:x.enviados||0,fal:x.falhas||0}); g.env+=(x.enviados||0); g.fal+=(x.falhas||0); if(x.criado_em>g.quando) g.quando=x.criado_em; });
     var html = tabsHtml()
       + '<div class="dkpis"><div class="dkpi"><div class="n">'+ordem.length+'</div><div class="c">disparos</div></div>'
       + '<div class="dkpi"><div class="n" style="color:#16A34A">'+totEnv+'</div><div class="c">recebidos</div></div>'
@@ -6543,13 +6543,21 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       var cidTxt=g.cidades.map(function(c){ return esc(nomeCid(c.cidade))+' ('+c.env+(c.fal?('/'+c.fal+'✗'):'')+')'; }).join(' · ');
       return '<div class="dhitem"><div style="display:flex;justify-content:space-between;align-items:center">'
         + '<span class="dpill" style="background:'+(g.publico==='empresas'?'#FEF3C7':'#DBEAFE')+';color:'+(g.publico==='empresas'?'#92400E':'#1E40AF')+'">'+(g.publico==='empresas'?'🏢 Empresas':'🏍️ Motoboys')+'</span>'
-        + '<span class="dmuted">'+esc(dataBr(g.quando))+'</span></div>'
+        + '<span style="display:flex;align-items:center;gap:10px"><span class="dmuted">'+esc(dataBr(g.quando))+'</span>'
+        + '<button class="dDel" data-lote="'+esc(g.lote)+'" data-id="'+esc(g.id)+'" title="Excluir do histórico" style="border:0;background:transparent;cursor:pointer;color:#DC2626;font-size:14px">🗑</button></span></div>'
         + (g.titulo?('<div style="font-weight:700;margin-top:6px">'+esc(g.titulo)+'</div>'):'')
         + '<div style="font-size:13px;margin:4px 0 6px">'+esc(g.msg)+'</div>'
         + '<div class="dmeta"><span class="dok">'+g.env+' recebidos</span>'+(g.fal?('<span class="derr">'+g.fal+' falhas</span>'):'')+(g.autor?('<span>por '+esc(g.autor)+'</span>'):'')+'</div>'
         + '<div class="dmeta" style="margin-top:6px">'+cidTxt+'</div></div>';
     }).join('');
     r.innerHTML = html; wireTabs();
+    [].forEach.call(r.querySelectorAll('.dDel'), function(b){ b.onclick=async function(){
+      if(!confirm('Excluir esse disparo do histórico?')) return;
+      var lote=b.getAttribute('data-lote')||'', id=b.getAttribute('data-id')||'';
+      b.disabled=true; b.textContent='…';
+      try { await fetch(FN,{ method:'POST', headers:H(), body:JSON.stringify(lote?{acao:'excluir',lote:lote}:{acao:'excluir',id:id}) }); } catch(e){}
+      renderHist();
+    }; });
   }
 })();
 </script>
