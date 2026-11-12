@@ -14,6 +14,9 @@ const { credenciais } = require('../lib/machine-api.js');
 const BASE = 'https://api.taximachine.com.br/api/v2/integracao';
 const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 const SUPER_ADMIN_EMAIL = 'jipadigital@gmail.com';
+// Cidades ENCERRADAS: somem da lista e não podem receber disparo, mesmo que a chave
+// ainda exista no env. (Cuiabá e Vitória encerradas.) Adicione aqui se encerrar outra.
+const CIDADES_EXCLUIDAS = ['cuiaba', 'vitoria'];
 const ORIGENS = ['https://gami-marketing.netlify.app', 'http://localhost:8888', 'http://localhost:3000'];
 
 function corsHeaders(origin) {
@@ -201,6 +204,7 @@ exports.handler = async function (event) {
       .filter((k) => /^MACHINE_API_KEY_[A-Z0-9_]+$/.test(k))
       .map((k) => k.replace('MACHINE_API_KEY_', '').toLowerCase().replace(/_/g, '-'))
       .filter((slug) => !!credenciais(slug)) // precisa de apiKey + user + pass
+      .filter((slug) => CIDADES_EXCLUIDAS.indexOf(slug) < 0) // tira as encerradas
       .filter((v, i, a) => a.indexOf(v) === i)
       .sort();
     return { statusCode: 200, headers: cors, body: JSON.stringify({ success: true, cidades: cids }) };
@@ -215,6 +219,7 @@ exports.handler = async function (event) {
     : null;
 
   if (!cidade) return { statusCode: 400, headers: cors, body: JSON.stringify({ success: false, error: 'Informe a cidade.' }) };
+  if (CIDADES_EXCLUIDAS.indexOf(cidade) >= 0) return { statusCode: 400, headers: cors, body: JSON.stringify({ success: false, error: 'Cidade encerrada, disparo bloqueado: ' + cidade }) };
   if (!mensagem) return { statusCode: 400, headers: cors, body: JSON.stringify({ success: false, error: 'A mensagem é obrigatória (até 255 caracteres).' }) };
 
   const cred = credenciais(cidade);
