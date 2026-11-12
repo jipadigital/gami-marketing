@@ -2290,6 +2290,12 @@ function _podeVerLtv(){
   return LTV_IDS.indexOf(u.id) >= 0;
 }
 
+// 📢 DISPARO de notificação pros motoboys/empresas (aba interna): SÓ super_admin.
+function _podeVerDisparo(){
+  var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
+  return !!(u && u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com');
+}
+
 /* 📍 PROSPECÇÃO EM CAMPO — quem vê a aba:
    - gestor/vendedor: pela MATRIZ (campo na aba) + restrito à CIDADE dele (cidadesQueUsuarioAtende)
    - diretoria/gerência/super: MATRIZ, mapa GERAL
@@ -2753,6 +2759,7 @@ function aplicarPermissoesVisuais(){
     if(aba === 'faturamento') return; // gate próprio (data-perm-faturamento), não pela MATRIZ de cargos
     if(aba === 'financeiro') return; // gate próprio (servidor decide; _finChecarMenu mostra o menu)
     if(aba === 'ltv') return; // gate próprio (data-perm-ltv)
+    if(aba === 'disparo') return; // gate próprio (data-perm-disparo, só super_admin)
     if(aba === 'campo'){ item.style.display = (typeof _podeVerCampo==='function' && _podeVerCampo()) ? '' : 'none'; return; } // gate próprio (gestor/vendedor/diretoria/gerência + BDRs)
     if(aba === 'crm'){ item.style.display = 'none'; return; } // CRM antigo SUBSTITUIDO pelo CRM Pro (03/11/2026) - esconde o menu; funcoes seguem no codigo pra "Puxar pro meu CRM" (grava em crm_leads, aparece no Pro)
     if(perms.abas.indexOf(aba) === -1){
@@ -2842,6 +2849,7 @@ function bloquearAcessoAba(aba){
   if(aba === 'faturamento'){ return _podeVerFaturamento() ? false : _blocoRestrito(); }
   if(aba === 'financeiro') return false; // 🛡️ gate 100% no servidor (financeiro.js valida sessão + papel); sem papel a página mostra "acesso restrito"
   if(aba === 'ltv'){ return _podeVerLtv() ? false : _blocoRestrito(); }
+  if(aba === 'disparo'){ return (typeof _podeVerDisparo==='function' && _podeVerDisparo()) ? false : _blocoRestrito(); }
   if(aba === 'campo'){ return _podeVerCampo() ? false : _blocoRestrito(); }
   if(aba === 'crm'){ return (typeof _podeVerCRM==='function' && _podeVerCRM()) ? false : _blocoRestrito(); }
   if(!temPermissao('aba:' + aba)){
@@ -3031,6 +3039,7 @@ window.nav = function(el, page){
         'faturamento':     function(){ if(typeof initFaturamento==='function') initFaturamento(); },
         'financeiro':      function(){ if(typeof initFinanceiro==='function') initFinanceiro(); },
         'ltv':             function(){ if(typeof initLtv==='function') initLtv(); },
+        'disparo':         function(){ if(typeof initDisparo==='function') initDisparo(); },
         'campo':           function(){ if(typeof initCampo==='function') initCampo(); },
         'crm':             function(){ if(typeof initCRM==='function') initCRM(); },
         'saude':           function(){ if(typeof renderSaudeSistema==='function') renderSaudeSistema(); }
@@ -3108,7 +3117,7 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
     <div class="nav-item" id="nav-faturamento" data-perm-faturamento="true" style="display:none" onclick="nav(this,'faturamento')">💰 Faturamento</div>
     <div class="nav-item" id="nav-financeiro" style="display:none" onclick="nav(this,'financeiro')" title="Conferência de extrato e antifraude (restrito)">🛡️ Financeiro</div>
     <div class="nav-item" id="nav-ltv" data-perm-ltv="true" style="display:none" onclick="nav(this,'ltv')" title="Estudo LTV por cidade (restrito)">📈 LTV</div>
-    <div class="nav-item" id="nav-disparo" data-perm-disparo="true" style="display:none" onclick="window.open('/disparo.html','_blank')" title="Disparo de notificação pros motoboys/empresas (restrito)">📢 Disparo</div>
+    <div class="nav-item" id="nav-disparo" data-perm-disparo="true" style="display:none" onclick="nav(this,'disparo')" title="Disparo de notificação pros motoboys/empresas (restrito)">📢 Disparo</div>
     <div class="nav-item" data-permissao="saude" onclick="nav(this,'saude')">🩺 Saúde</div>
     <div class="nav-item" onclick="mntReportarAbrir()" title="Reportar bug, sugestão ou dúvida">💬 Reportar</div>
     <div class="nav-item" data-permissao="clima" id="nav-clima" onclick="nav(this,'clima'); setTimeout(function(){ if(typeof renderClimaTime==='function') renderClimaTime(window._climaPeriodoAtual || 'hoje', true); }, 200);">💙 Clima do time</div>
@@ -6369,6 +6378,174 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
   </div>
   <div id="ltv-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
 </div>
+
+<!-- ==================== DISPARO (restrito , super_admin) ==================== -->
+<div class="page" id="pg-disparo">
+  <div class="page-header">
+    <div><div class="page-title">📢 Disparo de notificação</div><div class="page-sub">Push pro app dos motoboys/empresas, todas as cidades de uma vez (Machine)</div></div>
+  </div>
+  <style>
+    #disparo-root .dcard { background:#fff; border:1px solid #E2E8F0; border-radius:14px; padding:16px; margin-bottom:14px; }
+    #disparo-root .dlbl { font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; display:block; }
+    #disparo-root .dseg { display:inline-flex; gap:4px; background:#F1F5F9; padding:4px; border-radius:10px; }
+    #disparo-root .dseg button { border:0; background:transparent; padding:8px 14px; border-radius:8px; font-size:13px; font-weight:700; color:#64748B; cursor:pointer; font-family:inherit; }
+    #disparo-root .dseg button.on { background:#fff; color:#0B2542; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+    #disparo-root .dchip { display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border:1px solid #E2E8F0; border-radius:999px; font-size:13px; cursor:pointer; user-select:none; background:#fff; }
+    #disparo-root .dchip.on { background:#DCFCE7; border-color:#16A34A; color:#166534; font-weight:700; }
+    #disparo-root .dinput, #disparo-root .dtext { width:100%; padding:10px 12px; border:1px solid #E2E8F0; border-radius:10px; font-size:14px; font-family:inherit; outline:none; }
+    #disparo-root .dtext { resize:vertical; min-height:88px; }
+    #disparo-root .dinput:focus, #disparo-root .dtext:focus { border-color:#16A34A; }
+    #disparo-root .dbtn { border:0; border-radius:10px; padding:12px 18px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+    #disparo-root .dbtn-green { background:#16A34A; color:#fff; } #disparo-root .dbtn-ghost { background:#fff; border:1px solid #E2E8F0; color:#64748B; }
+    #disparo-root .dbtn:disabled { opacity:.5; cursor:not-allowed; }
+    #disparo-root .dmuted { font-size:12px; color:#64748B; } #disparo-root .dcount { font-size:11px; color:#64748B; text-align:right; margin-top:4px; }
+    #disparo-root .dres { border:1px solid #E2E8F0; border-radius:10px; padding:10px 12px; margin-top:8px; font-size:13px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+    #disparo-root .dok { color:#16A34A; font-weight:700; } #disparo-root .derr { color:#DC2626; font-weight:700; }
+    #disparo-root .dtab { border:0; padding:9px 16px; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; }
+    #disparo-root .dkpis { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
+    #disparo-root .dkpi { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:12px; }
+    #disparo-root .dkpi .n { font-size:22px; font-weight:800; } #disparo-root .dkpi .c { font-size:11px; color:#64748B; }
+    #disparo-root .dhitem { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:12px 14px; margin-bottom:10px; }
+    #disparo-root .dmeta { font-size:11px; color:#64748B; display:flex; gap:10px; flex-wrap:wrap; }
+    #disparo-root .dpill { font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  </style>
+  <div id="disparo-root" style="padding:0 2px"><div style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Carregando...</div></div>
+</div>
+
+<script>
+/* 📢 DISPARO , aba interna do dashboard (super_admin). Mesma lógica da página standalone,
+   escopada aqui. Usa a função machine-notificacao com a sessão do dashboard. */
+(function(){
+  var FN = '/.netlify/functions/machine-notificacao';
+  var MARCA_CIDADE = { 'campo-grande':'Juma' };
+  var st = { aba:'novo', publico:'motoboys', cidades:[], sel:{}, enviando:false, marca:'Gâmi' };
+  function root(){ return document.getElementById('disparo-root'); }
+  function TK(){ try{ return localStorage.getItem('gami_sessao_token')||''; }catch(e){ return ''; } }
+  function H(){ var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; return { 'Content-Type':'application/json','X-Gami-User':(u&&u.id)||'','X-Gami-Token':TK() }; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function nomeCid(slug){ return (slug||'').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); }
+  function dataBr(iso){ try{ return new Date(iso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); }catch(e){ return iso||''; } }
+  function marcaDe(slug){ return MARCA_CIDADE[slug] || 'Gâmi'; }
+  function marcasPresentes(){ var s={}; st.cidades.forEach(function(c){ s[marcaDe(c)]=1; }); return Object.keys(s).sort(); }
+  function cidadesDaMarca(){ return st.cidades.filter(function(c){ return marcaDe(c)===st.marca; }); }
+  function selecionadas(){ return cidadesDaMarca().filter(function(c){ return st.sel[c]; }); }
+
+  window.initDisparo = async function(){
+    var r = root(); if(!r) return;
+    if(typeof _podeVerDisparo==='function' && !_podeVerDisparo()){ r.innerHTML = '<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">🔒 Acesso restrito.</div>'; return; }
+    r.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">Carregando cidades…</div>';
+    try {
+      var res = await fetch(FN, { method:'POST', headers:H(), body: JSON.stringify({ acao:'cidades' }) });
+      var j = await res.json();
+      if(!res.ok || !j.success){ r.innerHTML = '<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">'+esc((j&&j.error)||'Não consegui carregar as cidades.')+'</div>'; return; }
+      st.cidades = j.cidades || []; st.sel = {}; st.cidades.forEach(function(c){ st.sel[c]=true; });
+      var mp = marcasPresentes(); st.marca = mp.indexOf('Gâmi')>=0 ? 'Gâmi' : (mp[0]||'Gâmi'); st.aba='novo';
+      render();
+    } catch(e){ r.innerHTML = '<div style="padding:40px;text-align:center;color:#E24B4A;font-size:13px">Erro de conexão.</div>'; }
+  };
+
+  function tabsHtml(){
+    function b(x,t){ var on=st.aba===x; return '<button type="button" class="dtab" data-x="'+x+'" style="background:'+(on?'#0B2542':'#E2E8F0')+';color:'+(on?'#fff':'#64748B')+'">'+t+'</button>'; }
+    return '<div style="display:flex;gap:8px;margin-bottom:14px">'+b('novo','Novo disparo')+b('hist','Histórico')+'</div>';
+  }
+  function wireTabs(){ var r=root(); [].forEach.call(r.querySelectorAll('.dtab'), function(bt){ bt.onclick=function(){ st.aba=bt.getAttribute('data-x'); if(st.aba==='novo') render(); else renderHist(); }; }); }
+
+  function render(){
+    var r = root(); if(!r) return;
+    var marcas = marcasPresentes();
+    var segMarca = marcas.length>1 ? ('<div class="dcard"><span class="dlbl">Marca</span><div class="dseg" id="dMarca">'
+      + marcas.map(function(m){ return '<button data-m="'+esc(m)+'" class="'+(st.marca===m?'on':'')+'">'+esc(m)+'</button>'; }).join('')
+      + '</div><div class="dmuted" style="margin-top:6px">Campo Grande é <b>Juma</b> (operação separada). Escolha a marca e escreva a mensagem com o nome dela.</div></div>') : '';
+    var cm = cidadesDaMarca();
+    var chips = cm.map(function(c){ return '<span class="dchip '+(st.sel[c]?'on':'')+'" data-c="'+esc(c)+'">'+(st.sel[c]?'✓ ':'')+esc(nomeCid(c))+'</span>'; }).join('');
+    r.innerHTML = tabsHtml() + segMarca
+      + '<div class="dcard"><span class="dlbl">Público</span><div class="dseg" id="dPub">'
+      +   '<button data-p="motoboys" class="'+(st.publico==='motoboys'?'on':'')+'">🏍️ Motoboys</button>'
+      +   '<button data-p="empresas" class="'+(st.publico==='empresas'?'on':'')+'">🏢 Empresas</button>'
+      + '</div><div class="dmuted" style="margin-top:6px">'+(st.publico==='motoboys'?'Vai pros entregadores (condutores).':'Vai pras empresas/clientes do app.')+'</div></div>'
+      + '<div class="dcard"><div style="display:flex;justify-content:space-between;align-items:center"><span class="dlbl" style="margin:0">Cidades , '+esc(st.marca)+' ('+selecionadas().length+' de '+cm.length+')</span>'
+      +   '<div><a href="#" id="dTodas" class="dmuted">todas</a> · <a href="#" id="dNenhuma" class="dmuted">nenhuma</a></div></div>'
+      + '<div id="dChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">'+(chips||'<span class="dmuted">Nenhuma cidade dessa marca com credenciais.</span>')+'</div></div>'
+      + '<div class="dcard"><span class="dlbl">Título (opcional)</span><input type="text" id="dTit" maxlength="40" class="dinput" placeholder="Ex: '+esc(st.marca)+' Delivery" />'
+      + '<div class="dcount"><span id="dCt">0</span>/40</div>'
+      + '<span class="dlbl" style="margin-top:8px">Mensagem</span><textarea id="dMsg" maxlength="255" class="dtext" placeholder="Ex: Bom dia! Tem entregas na tela, liguem o app e bora faturar. E confiram o saque disponível!"></textarea>'
+      + '<div class="dcount"><span id="dCm">0</span>/255</div></div>'
+      + '<div class="dcard"><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="dbtn dbtn-ghost" id="dTeste">Enviar teste (1 motoboy)</button>'
+      +   '<button class="dbtn dbtn-green" id="dEnviar">Disparar pra selecionadas</button></div>'
+      + '<div class="dmuted" style="margin-top:8px">O teste manda pro 1º condutor da 1ª cidade marcada. O disparo vai pra TODOS do público nas cidades marcadas.</div>'
+      + '<div id="dSaida"></div></div>';
+    wireTabs();
+    var dm=r.querySelector('#dMarca'); if(dm) dm.onclick=function(e){ var b=e.target.closest('button'); if(!b) return; st.marca=b.getAttribute('data-m'); render(); };
+    r.querySelector('#dPub').onclick=function(e){ var b=e.target.closest('button'); if(!b) return; st.publico=b.getAttribute('data-p'); render(); };
+    r.querySelector('#dChips').onclick=function(e){ var c=e.target.closest('.dchip'); if(!c) return; var k=c.getAttribute('data-c'); st.sel[k]=!st.sel[k]; render(); };
+    r.querySelector('#dTodas').onclick=function(e){ e.preventDefault(); cidadesDaMarca().forEach(function(c){st.sel[c]=true;}); render(); };
+    r.querySelector('#dNenhuma').onclick=function(e){ e.preventDefault(); cidadesDaMarca().forEach(function(c){st.sel[c]=false;}); render(); };
+    var ti=r.querySelector('#dTit'), ms=r.querySelector('#dMsg');
+    ti.oninput=function(){ r.querySelector('#dCt').textContent=ti.value.length; };
+    ms.oninput=function(){ r.querySelector('#dCm').textContent=ms.value.length; };
+    r.querySelector('#dTeste').onclick=function(){ disparar(true); };
+    r.querySelector('#dEnviar').onclick=function(){ disparar(false); };
+  }
+
+  async function disparar(teste){
+    if(st.enviando) return;
+    var r=root();
+    var titulo=(r.querySelector('#dTit').value||'').trim();
+    var mensagem=(r.querySelector('#dMsg').value||'').trim();
+    var cids=selecionadas();
+    var saida=r.querySelector('#dSaida');
+    if(!mensagem){ saida.innerHTML='<div class="dres"><span class="derr">Escreva a mensagem primeiro.</span></div>'; return; }
+    if(!cids.length){ saida.innerHTML='<div class="dres"><span class="derr">Marque ao menos uma cidade.</span></div>'; return; }
+    if(teste){ cids=[cids[0]]; }
+    else { var pub=st.publico==='motoboys'?'MOTOBOYS':'EMPRESAS'; if(!confirm('Disparar pra TODOS os '+pub+' ('+st.marca+') de '+cids.length+' cidade(s)?\n\n"'+mensagem+'"\n\nIsso envia de verdade. Confirmar?')) return; }
+    var lote=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    var u=(typeof getUsuarioLogado==='function')?getUsuarioLogado():null; var autorNome=(u&&(u.nome||u.email))||'';
+    st.enviando=true; r.querySelector('#dTeste').disabled=true; r.querySelector('#dEnviar').disabled=true; saida.innerHTML='';
+    var totEnv=0, totFal=0;
+    for(var i=0;i<cids.length;i++){
+      var c=cids[i]; var linha=document.createElement('div'); linha.className='dres';
+      linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="dmuted">enviando…</span>'; saida.appendChild(linha);
+      try {
+        var body={ cidade:c, publico:st.publico, titulo:titulo, mensagem:mensagem, lote:lote, autor_nome:autorNome };
+        if(teste) body.teste_auto=true;
+        var res=await fetch(FN,{ method:'POST', headers:H(), body:JSON.stringify(body) }); var j=await res.json();
+        if(!res.ok || !j.success){ linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="derr">'+esc((j&&(j.error||j.aviso))||('HTTP '+res.status))+'</span>'; }
+        else { totEnv+=(j.enviados||0); totFal+=(j.falhas||0); var ex=j.teste?(' (teste, condutor '+esc(j.alvo_teste||'?')+')'):(j.lista_completa===false?' , parcial (rode de novo)':''); linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="dok">'+(j.enviados||0)+' enviados'+(j.falhas?(' · '+j.falhas+' falhas'):'')+esc(ex)+'</span>'; }
+      } catch(e){ linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="derr">erro de conexão</span>'; }
+    }
+    if(cids.length>1){ var tot=document.createElement('div'); tot.className='dres'; tot.style.background='#F8FAFC'; tot.innerHTML='<span style="font-weight:700">Total</span><span class="dok">'+totEnv+' enviados'+(totFal?(' · '+totFal+' falhas'):'')+'</span>'; saida.appendChild(tot); }
+    st.enviando=false; r.querySelector('#dTeste').disabled=false; r.querySelector('#dEnviar').disabled=false;
+  }
+
+  async function renderHist(){
+    var r=root(); if(!r) return;
+    r.innerHTML = tabsHtml() + '<div class="dmuted" style="padding:20px">Carregando histórico…</div>'; wireTabs();
+    var rows=[];
+    try { var res=await fetch(FN,{ method:'POST', headers:H(), body:JSON.stringify({ acao:'historico' }) }); var j=await res.json(); rows=(j&&j.disparos)||[]; }
+    catch(e){ r.innerHTML=tabsHtml()+'<div class="dcard derr">Erro ao carregar.</div>'; wireTabs(); return; }
+    if(!rows.length){ r.innerHTML=tabsHtml()+'<div class="dcard"><div class="dmuted">Nenhum disparo registrado ainda.<br>Se já disparou e não aparece, falta criar a tabela <b>disparos_log</b> no banco.</div></div>'; wireTabs(); return; }
+    var totEnv=0, totFal=0; rows.forEach(function(x){ totEnv+=(x.enviados||0); totFal+=(x.falhas||0); });
+    var grupos={}, ordem=[];
+    rows.forEach(function(x){ var k=x.lote||('x'+x.id); if(!grupos[k]){ grupos[k]={msg:x.mensagem,titulo:x.titulo,publico:x.publico,quando:x.criado_em,autor:x.autor_nome,cidades:[],env:0,fal:0}; ordem.push(k); } var g=grupos[k]; g.cidades.push({cidade:x.cidade,env:x.enviados||0,fal:x.falhas||0}); g.env+=(x.enviados||0); g.fal+=(x.falhas||0); if(x.criado_em>g.quando) g.quando=x.criado_em; });
+    var html = tabsHtml()
+      + '<div class="dkpis"><div class="dkpi"><div class="n">'+ordem.length+'</div><div class="c">disparos</div></div>'
+      + '<div class="dkpi"><div class="n" style="color:#16A34A">'+totEnv+'</div><div class="c">recebidos</div></div>'
+      + '<div class="dkpi"><div class="n" style="color:#F59E0B">'+totFal+'</div><div class="c">falhas</div></div></div>'
+      + '<div class="dmuted" style="margin:0 2px 10px">A Machine informa <b>recebidos</b> (enviados) e falhas. <b>Aberturas</b> não são expostas pela API.</div>';
+    html += ordem.map(function(k){ var g=grupos[k];
+      var cidTxt=g.cidades.map(function(c){ return esc(nomeCid(c.cidade))+' ('+c.env+(c.fal?('/'+c.fal+'✗'):'')+')'; }).join(' · ');
+      return '<div class="dhitem"><div style="display:flex;justify-content:space-between;align-items:center">'
+        + '<span class="dpill" style="background:'+(g.publico==='empresas'?'#FEF3C7':'#DBEAFE')+';color:'+(g.publico==='empresas'?'#92400E':'#1E40AF')+'">'+(g.publico==='empresas'?'🏢 Empresas':'🏍️ Motoboys')+'</span>'
+        + '<span class="dmuted">'+esc(dataBr(g.quando))+'</span></div>'
+        + (g.titulo?('<div style="font-weight:700;margin-top:6px">'+esc(g.titulo)+'</div>'):'')
+        + '<div style="font-size:13px;margin:4px 0 6px">'+esc(g.msg)+'</div>'
+        + '<div class="dmeta"><span class="dok">'+g.env+' recebidos</span>'+(g.fal?('<span class="derr">'+g.fal+' falhas</span>'):'')+(g.autor?('<span>por '+esc(g.autor)+'</span>'):'')+'</div>'
+        + '<div class="dmeta" style="margin-top:6px">'+cidTxt+'</div></div>';
+    }).join('');
+    r.innerHTML = html; wireTabs();
+  }
+})();
+</script>
 <script>
 /* LTV (restrito). Segurança real no servidor (ltv.js valida a allowlist); aqui só
    montamos o painel com o que o servidor autorizar. Base = valor_corrida finalizado,
