@@ -74,13 +74,18 @@
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   function nomeCidade(slug){ return (slug||'').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); }
   function dataBr(iso){ try { return new Date(iso).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}); } catch(e){ return iso||''; } }
+  // Marcas por cidade: Campo Grande é JUMA (outra operação), o resto é GÂMI. Evita mandar
+  // mensagem com o nome errado pra cidade errada. (Adicione aqui se surgir outra cidade Juma.)
+  var MARCA_CIDADE = { 'campo-grande': 'Juma' };
+  function marcaDe(slug){ return MARCA_CIDADE[slug] || 'Gâmi'; }
+  function marcasPresentes(){ var s={}; state.cidades.forEach(function(c){ s[marcaDe(c)]=1; }); return Object.keys(s).sort(); }
 
   if(!ehSuper()){
     app.innerHTML = '<div class="gate">🔒 Acesso restrito.<br><span class="muted" style="font-weight:400">Entre no dashboard como super admin e abra esta página de novo.</span></div>';
     return;
   }
 
-  var state = { aba:'novo', publico:'motoboys', cidades:[], sel:{}, enviando:false };
+  var state = { aba:'novo', publico:'motoboys', cidades:[], sel:{}, enviando:false, marca:'Gâmi' };
 
   tabsEl.style.display = 'flex';
   tabsEl.onclick = function(e){ var b=e.target.closest('button'); if(!b) return; state.aba=b.getAttribute('data-a');
@@ -95,18 +100,33 @@
       if(!r.ok || !j.success){ app.innerHTML = '<div class="gate">'+esc((j&&j.error)||'Não consegui carregar as cidades.')+'</div>'; return; }
       state.cidades = j.cidades || [];
       state.cidades.forEach(function(c){ state.sel[c] = true; });
+      var mp = marcasPresentes(); state.marca = mp.indexOf('Gâmi')>=0 ? 'Gâmi' : (mp[0]||'Gâmi');
       render();
     } catch(e){ app.innerHTML = '<div class="gate">Erro de conexão.</div>'; }
   }
 
-  function selecionadas(){ return state.cidades.filter(function(c){ return state.sel[c]; }); }
+  // só conta/retorna cidades da MARCA atual (nunca mistura Gâmi com Juma)
+  function cidadesDaMarca(){ return state.cidades.filter(function(c){ return marcaDe(c)===state.marca; }); }
+  function selecionadas(){ return cidadesDaMarca().filter(function(c){ return state.sel[c]; }); }
 
   function render(){
-    var chips = state.cidades.map(function(c){
+    var marcas = marcasPresentes();
+    var segMarca = marcas.length > 1
+      ? ('<div class="card">'
+         + '<span class="lbl">Marca</span>'
+         + '<div class="seg" id="segMarca">'
+         + marcas.map(function(m){ return '<button data-m="'+esc(m)+'" class="'+(state.marca===m?'on':'')+'">'+esc(m)+'</button>'; }).join('')
+         + '</div>'
+         + '<div class="muted" style="margin-top:6px">Campo Grande é <b>Juma</b> (operação separada). Escolha a marca certa e escreva a mensagem com o nome dela, pra não sair Gâmi pra Juma.</div>'
+         + '</div>')
+      : '';
+    var cm = cidadesDaMarca();
+    var chips = cm.map(function(c){
       return '<span class="chip '+(state.sel[c]?'on':'')+'" data-c="'+esc(c)+'">'+(state.sel[c]?'✓ ':'')+esc(nomeCidade(c))+'</span>';
     }).join('');
     app.innerHTML =
-      '<div class="card">'
+      segMarca
+      + '<div class="card">'
       + '<span class="lbl">Público</span>'
       + '<div class="seg" id="seg">'
       +   '<button data-p="motoboys" class="'+(state.publico==='motoboys'?'on':'')+'">🏍️ Motoboys</button>'
@@ -117,10 +137,10 @@
 
       + '<div class="card">'
       + '<div class="row" style="justify-content:space-between">'
-      +   '<span class="lbl" style="margin:0">Cidades ('+selecionadas().length+' de '+state.cidades.length+')</span>'
+      +   '<span class="lbl" style="margin:0">Cidades , '+esc(state.marca)+' ('+selecionadas().length+' de '+cm.length+')</span>'
       +   '<div><a href="#" id="todas" class="muted">todas</a> · <a href="#" id="nenhuma" class="muted">nenhuma</a></div>'
       + '</div>'
-      + '<div class="chips" id="chips" style="margin-top:8px">'+(chips||'<span class="muted">Nenhuma cidade com credenciais configuradas.</span>')+'</div>'
+      + '<div class="chips" id="chips" style="margin-top:8px">'+(chips||'<span class="muted">Nenhuma cidade dessa marca com credenciais.</span>')+'</div>'
       + '</div>'
 
       + '<div class="card">'
@@ -141,11 +161,13 @@
       + '<div id="saida"></div>'
       + '</div>';
 
+    var sm = document.getElementById('segMarca');
+    if(sm) sm.onclick = function(e){ var b=e.target.closest('button'); if(!b) return; state.marca=b.getAttribute('data-m'); render(); };
     document.getElementById('seg').onclick = function(e){ var b=e.target.closest('button'); if(!b) return; state.publico=b.getAttribute('data-p'); render(); };
     document.getElementById('chips').onclick = function(e){ var c=e.target.closest('.chip'); if(!c) return; var k=c.getAttribute('data-c'); state.sel[k]=!state.sel[k]; render(); };
     var ta=document.getElementById('todas'), ne=document.getElementById('nenhuma');
-    if(ta) ta.onclick=function(e){ e.preventDefault(); state.cidades.forEach(function(c){state.sel[c]=true;}); render(); };
-    if(ne) ne.onclick=function(e){ e.preventDefault(); state.cidades.forEach(function(c){state.sel[c]=false;}); render(); };
+    if(ta) ta.onclick=function(e){ e.preventDefault(); cidadesDaMarca().forEach(function(c){state.sel[c]=true;}); render(); };
+    if(ne) ne.onclick=function(e){ e.preventDefault(); cidadesDaMarca().forEach(function(c){state.sel[c]=false;}); render(); };
     var ti=document.getElementById('titulo'), ms=document.getElementById('msg');
     ti.oninput=function(){ document.getElementById('ct').textContent=ti.value.length; };
     ms.oninput=function(){ document.getElementById('cm').textContent=ms.value.length; };
