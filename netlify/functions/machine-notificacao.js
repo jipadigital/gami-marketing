@@ -57,6 +57,32 @@ async function validarCaller(userId, token) {
   }
 }
 
+// Nível/cargo da pessoa (fonte canônica: pessoas.nivel_permissao). Pra liberar o disparo
+// pra super_admin + diretoria + gerência, validado no SERVIDOR (não confia no cliente).
+async function nivelDaPessoa(pessoaId) {
+  const chave = process.env.SUPA_SERVICE_KEY || '';
+  if (!chave || !pessoaId) return null;
+  try {
+    const r = await fetch(SUPA_URL + '/rest/v1/pessoas?id=eq.' + encodeURIComponent(pessoaId) + '&select=nivel_permissao,cargo,email&limit=1', {
+      headers: { apikey: chave, Authorization: 'Bearer ' + chave },
+    });
+    if (!r.ok) return null;
+    const arr = await r.json();
+    return (Array.isArray(arr) && arr[0]) || null;
+  } catch (e) { return null; }
+}
+function autorizadoDisparo(pessoa, emailLogin) {
+  const email = String((pessoa && pessoa.email) || emailLogin || '').toLowerCase();
+  if (email === SUPER_ADMIN_EMAIL) return true;
+  const np = String((pessoa && pessoa.nivel_permissao) || '').toLowerCase().trim();
+  if (np === 'super_admin' || np === 'diretoria' || np === 'gerencia') return true;
+  if (np) return false; // nível canônico definido e não é diretoria/gerência → nega
+  const cargo = String((pessoa && pessoa.cargo) || '').toLowerCase();
+  if (cargo.indexOf('diretor') >= 0) return true; // diretor / diretoria
+  if (cargo.indexOf('gerente') >= 0) return true; // gerência (ex: Thiago, Leo)
+  return false;
+}
+
 function headersMachine(cred) {
   return {
     'Content-Type': 'application/json',
@@ -124,8 +150,9 @@ exports.handler = async function (event) {
   const hdr = event.headers || {};
   const caller = await validarCaller(hdr['x-gami-user'] || hdr['X-Gami-User'], hdr['x-gami-token'] || hdr['X-Gami-Token']);
   if (!caller) return { statusCode: 401, headers: cors, body: JSON.stringify({ success: false, error: 'Sessão inválida ou expirada. Faça login de novo.' }) };
-  if (String(caller.email || '').toLowerCase() !== SUPER_ADMIN_EMAIL) {
-    return { statusCode: 403, headers: cors, body: JSON.stringify({ success: false, error: 'Sem permissão (só super admin pode disparar).' }) };
+  const _pessoaCaller = await nivelDaPessoa(caller.pessoa_id);
+  if (!autorizadoDisparo(_pessoaCaller, caller.email)) {
+    return { statusCode: 403, headers: cors, body: JSON.stringify({ success: false, error: 'Sem permissão (só super admin, diretoria e gerência).' }) };
   }
 
   let b = {};

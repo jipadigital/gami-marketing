@@ -2290,10 +2290,14 @@ function _podeVerLtv(){
   return LTV_IDS.indexOf(u.id) >= 0;
 }
 
-// 📢 DISPARO de notificação pros motoboys/empresas (aba interna): SÓ super_admin.
+// 📢 DISPARO de notificação pros motoboys/empresas (aba interna): super_admin + diretoria + gerência.
+// (Servidor em machine-notificacao.js valida o mesmo pela pessoas.nivel_permissao.)
 function _podeVerDisparo(){
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
-  return !!(u && u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com');
+  if(!u) return false;
+  if(u.email && String(u.email).toLowerCase() === 'jipadigital@gmail.com') return true;
+  var n = (typeof detectarNivelPermissao==='function') ? detectarNivelPermissao(u) : '';
+  return n === 'super_admin' || n === 'diretoria' || n === 'gerencia';
 }
 
 /* 📍 PROSPECÇÃO EM CAMPO — quem vê a aba:
@@ -2724,9 +2728,8 @@ function aplicarPermissoesVisuais(){
   document.querySelectorAll('[data-perm-ltv="true"]').forEach(function(el){
     el.style.display = podeLtv ? '' : 'none';
   });
-  // 📢 Disparo (notificação pros motoboys/empresas): abre /disparo.html, só super_admin.
-  var _uDisp = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
-  var podeDisparo = !!(_uDisp && _uDisp.email && String(_uDisp.email).toLowerCase() === 'jipadigital@gmail.com');
+  // 📢 Disparo (notificação pros motoboys/empresas): super_admin + diretoria + gerência.
+  var podeDisparo = (typeof _podeVerDisparo==='function') && _podeVerDisparo();
   document.querySelectorAll('[data-perm-disparo="true"]').forEach(function(el){
     el.style.display = podeDisparo ? '' : 'none';
   });
