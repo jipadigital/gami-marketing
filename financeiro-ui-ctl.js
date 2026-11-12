@@ -168,7 +168,7 @@ function formCobranca(c, aoSalvar){
     var bt = this;
     travado(bt, async function(){
       var d = { id: novo ? null : c.id, desconto: $('fc-desc').value, desconto_motivo: $('fc-dmot').value, vencimento: $('fc-venc').value || null,
-        nome_no_banco: $('fc-banco').value, observacao: $('fc-obs').value, multa_pct: Number(String($('fc-mpct').value).replace(',', '.')),
+        nome_no_banco: $('fc-banco').value, observacao: $('fc-obs').value, multa_pct: String($('fc-mpct').value).trim() === '' ? '' : Number(String($('fc-mpct').value).replace(',', '.')),
         isento_multa: $('fc-isento').checked, isencao_motivo: $('fc-imot').value, empresa_doc: $('fc-doc') ? $('fc-doc').value : '' };
       if(novo){ d.unidade_id = $('fc-un').value; d.semana_ini = $('fc-sem').value; d.empresa = $('fc-emp').value; d.valor = $('fc-val').value; }
       try { await api('ctl_cob_salvar', d); toast('Cobrança salva'); m.fechar(); aoSalvar && aoSalvar(); }
@@ -185,7 +185,7 @@ function formCobranca(c, aoSalvar){
 async function verCobranca(id, aoMudar){
   var m = modal('<div class="fin-vazio">Carregando...</div>');
   var d;
-  try { d = await api('ctl_cob_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; return; }
+  try { d = await api('ctl_cob_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" style="margin-top:8px">Fechar</button>'; m.el.querySelector('button').onclick = m.fechar; return; }
   var c = d.cobranca, g = pode('gestor'), conf = pode('conferente'), ativa = c.status === 'ativa';
   var h = '<div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><div><div style="font-weight:700;font-size:16px">' + esc(c.empresa) + '</div>' +
     '<div class="fin-sub">' + esc(c.unidade_nome) + ' · semana ' + dataBR(c.semana_ini) + ' a ' + dataBR(c.semana_fim) + (c.empresa_doc ? ' · doc ' + esc(c.empresa_doc) : '') + ' · origem: ' + esc(c.origem) + '</div></div>' +
@@ -309,7 +309,7 @@ function formCredito(c, aoSalvar){
 async function verCredito(id, aoMudar){
   var m = modal('<div class="fin-vazio">Carregando...</div>');
   var d;
-  try { d = await api('ctl_cred_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; return; }
+  try { d = await api('ctl_cred_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" style="margin-top:8px">Fechar</button>'; m.el.querySelector('button').onclick = m.fechar; return; }
   var c = d.credito, ativo = c.status === 'ativo';
   m.el.innerHTML = '<div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-weight:700;font-size:16px">' + esc(c.beneficiario) + (c.entregador_id ? ' <span class="fin-sub">#' + esc(c.entregador_id) + '</span>' : '') + '</div>' +
     '<div class="fin-sub">' + esc(c.unidade_nome) + ' · ' + dataBR(c.data) + (c.hora ? ' ' + esc(String(c.hora).slice(0, 5)) : '') + ' · ' + esc(MOTIVO[c.motivo] || c.motivo) + ' · origem: ' + esc(c.origem) + '</div></div>' +

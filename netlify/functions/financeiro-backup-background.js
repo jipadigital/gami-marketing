@@ -37,7 +37,7 @@ const TABELAS = ['fin_config', 'fin_acesso', 'fin_contas', 'fin_importacoes', 'f
 // dado da FLYP NUNCA sai do banco exclusivo: a 2ª cópia (no banco do dashboard) vai sem essas tabelas
 const SO_NO_EXCLUSIVO = /^fin_flyp_/;
 const ORDEM = { fin_config: 'chave', fin_acesso: 'pessoa_id', fin_flyp_acesso: 'pessoa_id', fin_flyp_importacoes: 'importado_em',
-                fin_ctl_importacoes: 'importado_em', fin_equipe: 'pessoa_id', fin_ctl_machine_dias: 'dia', fin_ctl_machine_corridas: 'corrida_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
+                fin_ctl_importacoes: 'importado_em', fin_equipe: 'pessoa_id', fin_ctl_machine_dias: 'unidade_id,dia', fin_ctl_machine_corridas: 'unidade_id,corrida_id', fin_contas: 'id', fin_importacoes: 'importado_em', fin_auditoria: 'seq' };
 const h = extra => Object.assign({ apikey: KEY, Authorization: 'Bearer ' + KEY }, extra || {});
 
 async function lerTabela(t){
@@ -79,6 +79,7 @@ const handler = async function(){
     if(EXCLUSIVO && MAIN_KEY){
       const copia = Object.assign({}, dump, { tabelas: {}, contagens: {}, sem_flyp: true });
       Object.keys(dump.tabelas).forEach(t => { if(!SO_NO_EXCLUSIVO.test(t)){ copia.tabelas[t] = dump.tabelas[t]; copia.contagens[t] = dump.contagens[t]; } });
+      if(copia.tabelas.fin_auditoria){ copia.tabelas.fin_auditoria = copia.tabelas.fin_auditoria.filter(a => !SO_NO_EXCLUSIVO.test(String(a.tabela || ''))); copia.contagens.fin_auditoria = copia.tabelas.fin_auditoria.length; }
       const gz2 = zlib.gzipSync(Buffer.from(JSON.stringify(copia)));
       const up2 = await fetch(MAIN_URL + '/storage/v1/object/fin-backups/' + caminho, { method: 'POST', headers: hMain({ 'Content-Type': 'application/gzip', 'x-upsert': 'false' }), body: gz2 });
       if(!up2.ok) await alertar('Backup do financeiro: 2ª cópia (banco do dashboard) falhou', { status: up2.status });

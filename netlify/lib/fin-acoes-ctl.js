@@ -31,8 +31,17 @@ module.exports = function(h){
   const TIPOS_LINHA = ['bag', 'camiseta', 'moto_novo', 'motoboy_semanal', 'desconto_banco', 'desconto_fora'];
   const FORMAS = ['pix', 'dinheiro', 'cartao', 'boleto', 'cortesia', 'desconto_semanal', 'outro'];
 
+  // valor DIGITADO por gente do Brasil: "1.500" = mil e quinhentos, "1,5" / "1,500" = um e meio
+  // (o parseValor do extrato recusa esses casos porque arquivo de banco pode vir no formato americano)
+  const valorBR = s => {
+    let t = String(s == null ? '' : s).trim().replace(/\s|R\$/gi, '');
+    if(/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    else if(/^\d+,\d+$/.test(t)) t = t.replace(',', '.');
+    else return h.P.parseValor(t);
+    const x = Number(t); return isFinite(x) ? x : null;
+  };
   const valor = (v, nome, zeroOk) => {
-    const n = typeof v === 'number' ? v : h.P.parseValor(String(v == null ? '' : v));
+    const n = typeof v === 'number' ? v : valorBR(v);
     if(n == null || !isFinite(n) || n < 0 || (!zeroOk && n === 0) || n > 10000000) throw new ErroUsuario((nome || 'Valor') + ' inválido');
     return Math.round(n * 100) / 100;
   };

@@ -27,7 +27,16 @@ module.exports = function(h){
   const FREQ_PASSO = { semanal: [0, 7], quinzenal: [0, 14], mensal: [1, 0], bimestral: [2, 0], trimestral: [3, 0], semestral: [6, 0], anual: [12, 0] };
   function proxFreq(iso, freq){ const [m, d] = FREQ_PASSO[freq]; if(m) return addMes(iso, m); const t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); }
   // o lançamento vira o modelo da recorrência (sem vencimento, valor e acréscimos do mês)
-  function modeloDe(it){ const m = Object.assign({}, it); ['tipo', 'valor', 'vencimento', 'competencia', 'juros', 'multa', 'desconto'].forEach(k => delete m[k]); return m; }
+  function modeloDe(it){ const m = Object.assign({}, it); ['tipo', 'valor', 'vencimento', 'competencia', 'juros', 'multa', 'desconto', 'codigo_barras', 'pix_copia_cola', 'nf_numero'].forEach(k => delete m[k]); return m; }
+  // leitor não precisa de CPF/CNPJ, Pix e dados bancários (exportar já é só do gestor)
+  const SENSIVEIS = ['pessoa_doc', 'documento', 'pix_copia_cola', 'codigo_barras', 'pix_chave', 'pix_tipo', 'banco', 'agencia', 'conta'];
+  function mascarar(ctx, o){ if(!o || !ctx || ctx.papel !== 'leitor') return o; SENSIVEIS.forEach(k => { if(o[k] != null && o[k] !== '') o[k] = '•••'; }); return o; }
+  // ligar o documento da Caixa de entrada ao lançamento: se falhar, o lançamento JÁ existe (não pode pedir pra salvar de novo)
+  async function ligarEntrada(b, ctx, idLanc){
+    if(!(b.entrada_id && intOk(b.entrada_id) && idLanc)) return null;
+    try { await rpc('fin_salvar_entrada', { p_ator: ctx.pessoaId, p_id: intOk(b.entrada_id), d: { status: 'lancado', lancamento_id: idLanc } }); return null; }
+    catch(e){ return 'O lançamento #' + idLanc + ' foi criado, mas não consegui marcar o documento da Caixa de entrada como lançado. NÃO lance de novo: marque o documento à mão.'; }
+  }
   function recOpcoes(r){
     r = r || {};
     const frequencia = FREQS.indexOf(r.frequencia) >= 0 ? r.frequencia : null;
@@ -103,14 +112,14 @@ module.exports = function(h){
 
     async painel(){ return { painel: await rpc('fin_painel', {}) }; },
 
-    async lanc_listar(b){
+    async lanc_listar(b, ctx){
       const pagina = Math.max(0, Math.min(2000, Number(b.pagina) || 0)), tam = Math.min(200, Number(b.tam) || 100);
       const ord = b.ordem === 'pagamento' ? 'data_pagamento.desc.nullslast,id.desc' : (b.ordem === 'recente' ? 'id.desc' : 'vencimento.asc,id.asc');
       const { data, headers } = await rest('fin_v_lanc?select=*&' + filtroLanc(b) + '&order=' + ord, {
         headers: svc({ 'Range-Unit': 'items', 'Range': (pagina * tam) + '-' + (pagina * tam + tam - 1), 'Prefer': 'count=exact' })
       });
       const total = Number(String(headers.get('content-range') || '').split('/')[1]) || 0;
-      return { itens: data || [], total, pagina, tam };
+      return { itens: (data || []).map(o => mascarar(ctx, o)), total, pagina, tam };
     },
 
     async lanc_exportar(b){
@@ -124,7 +133,7 @@ module.exports = function(h){
       return { csv: '﻿' + out.join('\r\n'), qtd: itens.length };
     },
 
-    async lanc_ver(b){
+    async lanc_ver(b, ctx){
       const id = intOk(b.id); if(!id) throw new ErroUsuario('Código inválido');
       const [l] = (await rest('fin_v_lanc?id=eq.' + id + '&select=*')).data || [];
       if(!l) throw new ErroUsuario('Lançamento não encontrado', 404);
@@ -137,6 +146,7 @@ module.exports = function(h){
       ]);
       let extrato = null;
       if(l.extrato_id) extrato = ((await rest('fin_v_extrato?id=eq.' + l.extrato_id + '&select=id,data,valor,descricao,conta_nome,status')).data || [])[0] || null;
+      mascarar(ctx, l);
       return { lanc: l, baixas, anexos, historico: historico.map(x => ({ seq: x.seq, ts: x.ts, ator: x.ator, acao: x.acao, tabela: x.tabela, antes: x.antes, depois: x.depois })), parcelas, alertas, extrato };
     },
 
@@ -152,17 +162,24 @@ module.exports = function(h){
         const r = await rpc('fin_rec_criar', { p_ator: ctx.pessoaId, p_tipo: tipo, p_modelo: modeloDe(base), p_valor: base.valor, p_variavel: o.variavel,
           p_freq: o.frequencia, p_inicio: base.vencimento, p_comp: base.competencia, p_fim: o.fim });
         const ids = Array.isArray(r.ids) ? r.ids : [];
-        if(b.entrada_id && intOk(b.entrada_id) && ids[0]) await rpc('fin_salvar_entrada', { p_ator: ctx.pessoaId, p_id: intOk(b.entrada_id), d: { status: 'lancado', lancamento_id: ids[0] } });
-        return { ok: true, ids, recorrencia_id: r.id };
+        let aviso = null;
+        if(ids[0] && (base.codigo_barras || base.pix_copia_cola || base.nf_numero || base.juros || base.multa || base.desconto)){
+          try { await rpc('fin_editar_lancamento', { p_ator: ctx.pessoaId, p_id: ids[0], i: base }); }
+          catch(e){ aviso = 'A recorrência foi criada, mas o boleto/Pix/NF ou juros e desconto do 1º mês não entraram: abra a conta #' + ids[0] + ' e complete.'; }
+        }
+        aviso = (await ligarEntrada(b, ctx, ids[0])) || aviso;
+        return { ok: true, ids, recorrencia_id: r.id, aviso };
       }
       if(modo === 'compra' || modo === 'mensal'){
         const n = Math.round(Number(b.parcelamento.parcelas));
         if(!(n >= 2 && n <= 120)) throw new ErroUsuario('Parcelas: de 2 a 120');
         const cents = Math.round(base.valor * 100), parte = Math.floor(cents / n), resto = cents - parte * n;
+        const rc = Math.round(base.retencao * 100), rparte = Math.floor(rc / n), rresto = rc - rparte * n;
         itens = [];
         for(let k = 0; k < n; k++){
           const it = Object.assign({}, base);
           it.valor = modo === 'compra' ? (parte + (k === n - 1 ? resto : 0)) / 100 : base.valor;   // compra: divide o total; mensal: repete o valor
+          if(modo === 'compra') it.retencao = (rparte + (k === n - 1 ? rresto : 0)) / 100;          // a retenção da NF também é dividida
           it.vencimento = addMes(base.vencimento, k);
           it.competencia = modo === 'compra' ? (base.competencia || base.vencimento) : addMes(base.competencia || base.vencimento, k);
           it.descricao = (base.descricao || '') + ' ' + (k + 1) + '/' + n;
@@ -173,14 +190,14 @@ module.exports = function(h){
         const lista = Array.isArray(b.parcelamento.lista) ? b.parcelamento.lista : [];
         if(lista.length < 2 || lista.length > 120) throw new ErroUsuario('Parcelamento avançado: de 2 a 120 parcelas');
         itens = lista.map((p, k) => Object.assign({}, base, { valor: num(p.valor, 'Valor da parcela ' + (k + 1)), vencimento: dataOk(p.vencimento),
-          competencia: dataOk(p.competencia) || base.competencia, descricao: (base.descricao || '') + ' ' + (k + 1) + '/' + lista.length, juros: 0, multa: 0, desconto: 0 }));
+          competencia: dataOk(p.competencia) || base.competencia, descricao: (base.descricao || '') + ' ' + (k + 1) + '/' + lista.length,
+          juros: k === 0 ? base.juros : 0, multa: k === 0 ? base.multa : 0, desconto: k === 0 ? base.desconto : 0 }));
         if(itens.some(i => !i.vencimento || !(i.valor > 0))) throw new ErroUsuario('Toda parcela precisa de valor e vencimento');
       }
+      itens.forEach((i, k) => { if(i.desconto + i.retencao >= i.valor + i.juros + i.multa) throw new ErroUsuario('Na parcela ' + (k + 1) + ' o desconto/retenção fica maior que o valor. Diminua o desconto ou lance sem parcelar.'); });
       const r = await rpc('fin_criar_lancamentos', { p_ator: ctx.pessoaId, p_itens: itens });
-      if(b.entrada_id && intOk(b.entrada_id) && r.ids && r.ids[0]){
-        await rpc('fin_salvar_entrada', { p_ator: ctx.pessoaId, p_id: intOk(b.entrada_id), d: { status: 'lancado', lancamento_id: r.ids[0] } });
-      }
-      return r;
+      const aviso = await ligarEntrada(b, ctx, r.ids && r.ids[0]);
+      return Object.assign({}, r, { aviso });
     },
 
     async lanc_editar(b, ctx){
@@ -329,7 +346,7 @@ module.exports = function(h){
     },
 
     // ---------- Pessoas
-    async pessoas_listar(b){
+    async pessoas_listar(b, ctx){
       const f = [];
       const q = textoBusca(b.q);
       if(q){ const dig = q.replace(/\D/g, ''); f.push('or=(nome.ilike.*' + q + '*,razao_social.ilike.*' + q + '*' + (dig.length >= 3 ? ',documento.like.*' + dig + '*' : '') + ')'); }
@@ -340,14 +357,14 @@ module.exports = function(h){
       const { data, headers } = await rest('fin_pessoas?select=id,nome,documento,razao_social,cliente,fornecedor,email,telefone,cidade,uf,ativo,pix_chave' + (f.length ? '&' + f.join('&') : '') + '&order=nome.asc', {
         headers: svc({ 'Range-Unit': 'items', 'Range': (pagina * lim) + '-' + (pagina * lim + lim - 1), 'Prefer': 'count=exact' })
       });
-      return { pessoas: data || [], total: Number(String(headers.get('content-range') || '').split('/')[1]) || 0 };
+      return { pessoas: (data || []).map(o => mascarar(ctx, o)), total: Number(String(headers.get('content-range') || '').split('/')[1]) || 0 };
     },
-    async pessoa_ver(b){
+    async pessoa_ver(b, ctx){
       const id = intOk(b.id); if(!id) throw new ErroUsuario('Pessoa inválida');
       const [p] = (await rest('fin_pessoas?id=eq.' + id + '&select=*')).data || [];
       if(!p) throw new ErroUsuario('Pessoa não encontrada', 404);
       const lanc = await lerTodos('fin_v_lanc?pessoa_id=eq.' + id + '&select=id,tipo,descricao,valor_final,vencimento,data_pagamento,situacao_calc&order=vencimento.desc', 300);
-      return { pessoa: p, lancamentos: lanc };
+      return { pessoa: mascarar(ctx, p), lancamentos: lanc };
     },
     async pessoa_salvar(b, ctx){
       const id = b.id ? intOk(b.id) : null; if(b.id && !id) throw new ErroUsuario('Pessoa inválida');
@@ -367,6 +384,7 @@ module.exports = function(h){
       const d = Object.assign({}, b.dados || {});
       Object.keys(d).forEach(k => { if(typeof d[k] === 'string') d[k] = txt(d[k], 200); });
       if(tabela !== 'regra' && (!d.nome || d.nome.length < 2)) throw new ErroUsuario('Nome obrigatório');
+      if(tabela === 'regra'){ if(!d.texto_busca || String(d.texto_busca).trim().length < 2) throw new ErroUsuario('Diga o texto a procurar no extrato'); if(!d.descricao) d.descricao = d.texto_busca; }
       if(tabela === 'classificacao'){
         if(['receita', 'despesa', 'aporte', 'retirada', 'transferencia'].indexOf(d.grupo) < 0 && !b.id) throw new ErroUsuario('Grupo inválido');
         if(['receita_bruta', 'retencoes', 'impostos_venda', 'descontos', 'outras_receitas', 'despesas_comerciais', 'despesas_operacionais', 'impostos_renda', 'aportes', 'retiradas', 'fora_dre'].indexOf(d.dre_linha) < 0) throw new ErroUsuario('Linha do DRE inválida');

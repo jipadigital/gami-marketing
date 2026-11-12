@@ -183,7 +183,7 @@ function chipRec(l){
 /* ================= FORMULÁRIO DE LANÇAMENTO (Novo pagamento / Novo recebimento) ================= */
 async function formLanc(tipo, lanc, opcoes){
   opcoes = opcoes || {};
-  await base();
+  try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
   var REC = opcoes.rec || null;                    // editando o MODELO de uma recorrência (gestor)
   var ed = !!(lanc && lanc.id && !opcoes.duplicar);
   var simples = ed || !!REC;                         // sem anexo, parcelamento e "Salvar + Novo"
@@ -208,11 +208,11 @@ async function formLanc(tipo, lanc, opcoes){
     (REC ? '<div class="fin-sec"><h4>🔁 Recorrência (' + esc(FREQ[REC.frequencia] || REC.frequencia) + ')</h4>' + camposRec(REC) +
       '<label class="fin-row" style="font-size:12px;margin-top:8px"><input type="checkbox" id="lf-rec-aplicar" checked> Aplicar também nas contas já geradas que ainda estão pendentes (de hoje em diante)</label></div>' : '') +
     '<div class="fin-g3" style="margin-top:8px"><div><div class="fin-lbl">Classificação</div><select class="fin-in" id="lf-class">' + optsClass(L.classificacao_id, tipo) + '</select></div>' +
-      '<div><div class="fin-lbl">Centro de custo</div><select class="fin-in" id="lf-cc">' + optsLista(F.base.centros.filter(function(c){ return c.ativo; }), L.centro_custo_id || (F.base.centros[0] && F.base.centros[0].id)) + '</select></div>' +
+      '<div><div class="fin-lbl">Centro de custo</div><select class="fin-in" id="lf-cc">' + optsLista(F.base.centros.filter(function(c){ return c.ativo || String(c.id) === String(L.centro_custo_id); }), L.centro_custo_id || (F.base.centros[0] && F.base.centros[0].id)) + '</select></div>' +
       '<div><div class="fin-lbl">Unidade de negócio</div><select class="fin-in" id="lf-un">' + optsLista(F.base.unidades.filter(function(u){ return u.ativo || u.id === L.unidade_id; }), L.unidade_id) + '</select></div></div>' +
     '<div style="margin-top:8px"><div class="fin-lbl">Observação</div><textarea class="fin-in" id="lf-obs" rows="2" maxlength="1000">' + esc(L.observacao || '') + '</textarea></div>' +
     (!simples ? '<div style="margin-top:8px"><div class="fin-lbl">Anexos (boleto, NF, comprovante: PDF ou imagem até 4 MB)</div><input type="file" class="fin-in" id="lf-anexo" multiple accept="application/pdf,image/png,image/jpeg,image/webp"></div>' : '') +
-    '<div class="fin-pills" style="margin-top:14px">' + (!simples ? '<button type="button" class="fin-bt" id="lf-pill-parc" data-sec="parc">Parcelamento</button>' : '') + '<button type="button" class="fin-bt" data-sec="fiscal">Fiscal e impostos</button><button type="button" class="fin-bt" data-sec="rateio">Rateio</button><button type="button" class="fin-bt" data-sec="comp">Composição de valores</button></div>' +
+    '<div class="fin-pills" style="margin-top:14px">' + (!simples ? '<button type="button" class="fin-bt" id="lf-pill-parc" data-sec="parc">Parcelamento</button>' : '') + '<button type="button" class="fin-bt" data-sec="fiscal">Fiscal e impostos</button><button type="button" class="fin-bt" data-sec="rateio">Rateio</button>' + (REC ? '' : '<button type="button" class="fin-bt" data-sec="comp">Composição de valores</button>') + '</div>' +
     (!simples ? '<div class="fin-sec" id="lf-sec-parc" style="display:none"><h4>Parcelamento</h4>' +
       '<label class="fin-row" style="font-size:12px"><input type="radio" name="lf-pm" value="" checked> Sem parcelamento</label>' +
       '<label class="fin-row" style="font-size:12px"><input type="radio" name="lf-pm" value="compra"> <b>Parcelamento de uma compra</b> <span class="fin-sub">o valor é dividido; competência fixa; "1/N" na descrição</span></label>' +
@@ -244,7 +244,8 @@ async function formLanc(tipo, lanc, opcoes){
   }
   m.el.querySelectorAll('[data-forma]').forEach(function(b){ b.onclick = function(){ var cb = $('lf-cb'), px = $('lf-pix'); if(cb) L.codigo_barras = cb.value; if(px) L.pix_copia_cola = px.value; formaAtual = b.getAttribute('data-forma'); desenharForma(); }; });
   desenharForma();
-  m.el.querySelectorAll('[data-sec]').forEach(function(b){ b.onclick = function(){ var s = $('lf-sec-' + b.getAttribute('data-sec')); s.style.display = s.style.display === 'none' ? '' : 'none'; b.classList.toggle('sel', s.style.display !== 'none'); }; });
+  m.el.querySelectorAll('[data-sec]').forEach(function(b){ b.onclick = function(){ var s = $('lf-sec-' + b.getAttribute('data-sec')); s.style.display = s.style.display === 'none' ? '' : 'none'; b.classList.toggle('sel', s.style.display !== 'none');
+    if(b.getAttribute('data-sec') === 'parc' && s.style.display === 'none'){ var s0 = m.el.querySelector('[name=lf-pm][value=""]'); if(s0){ s0.checked = true; atualizar(); } } }; });
   ['rateio', 'comp', 'fiscal'].forEach(function(s){ if((s === 'rateio' && L.rateio && L.rateio.length) || (s === 'comp' && (n(L.juros) || n(L.multa) || n(L.desconto))) || (s === 'fiscal' && (L.nf_numero || n(L.retencao)))){ $('lf-sec-' + s).style.display = ''; } });
 
   function valorFinal(){ return (parseBR($('lf-valor').value) || 0) + (parseBR($('lf-juros').value) || 0) + (parseBR($('lf-multa').value) || 0) - (parseBR($('lf-desconto').value) || 0) - (parseBR($('lf-ret').value) || 0); }
@@ -320,13 +321,14 @@ async function formLanc(tipo, lanc, opcoes){
       var r = await api(REC ? 'rec_salvar' : ed ? 'lanc_editar' : 'lanc_criar', d);
       var files = $('lf-anexo') ? $('lf-anexo').files : [];
       if(!simples && files.length && r.ids && r.ids[0]) await enviarAnexos(files, { lancamento_id: r.ids[0] });
-      toast(REC ? ('Recorrência salva' + (r.atualizados ? ': ' + r.atualizados + ' conta(s) pendente(s) atualizada(s)' : '') + (r.cancelados ? ', ' + r.cancelados + ' cancelada(s) pela nova data final' : ''))
+      if(r.aviso) toast(r.aviso, 'erro');
+      else toast(REC ? ('Recorrência salva' + (r.atualizados ? ': ' + r.atualizados + ' conta(s) pendente(s) atualizada(s)' : '') + (r.mexidos_a_mao ? '; ' + r.mexidos_a_mao + ' editada(s) à mão ficaram como estavam' : '') + (r.cancelados ? ', ' + r.cancelados + ' cancelada(s) pela nova data final' : ''))
         : ed ? 'Alterações salvas'
         : r.recorrencia_id ? ('🔁 Recorrência #' + r.recorrencia_id + ' criada: ' + (r.ids || []).length + ' conta(s) já no calendário; as próximas aparecem sozinhas')
         : ((r.ids && r.ids.length > 1) ? r.ids.length + ' lançamentos criados' : 'Lançamento #' + (r.ids && r.ids[0]) + ' criado'));
       m.fechar();
       if(opcoes.aoSalvar) opcoes.aoSalvar(r);
-      if(novo) formLanc(tipo, { conta_id: d.conta_id, centro_custo_id: d.centro_custo_id, unidade_id: d.unidade_id, forma: d.forma }, opcoes);
+      if(novo) formLanc(tipo, { conta_id: d.conta_id, centro_custo_id: d.centro_custo_id, unidade_id: d.unidade_id, forma: d.forma }, Object.assign({}, opcoes, { entrada_id: null, recorrente: false }));
     } catch(e){ msg.innerHTML = '<div class="fin-erro">' + esc(e.message) + '<br>Nada foi gravado pela metade. Corrija e salve de novo.</div>'; bts.forEach(function(b){ b.disabled = false; }); }
   }
   function lerRec(){
@@ -358,7 +360,7 @@ function tornarRecorrente(l, depois){
 }
 
 async function verRec(id, aoMudar){
-  await base();
+  try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
   var m = modal('<div class="fin-vazio">Carregando...</div>'); m.el.style.maxWidth = '820px';
   var d;
   try { d = await api('rec_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" id="rv-x">Fechar</button>'; $('rv-x').onclick = m.fechar; return; }
@@ -447,7 +449,7 @@ T.receber_recorrencias = recorrencias('receber');
 
 /* ================= DETALHE DO LANÇAMENTO ================= */
 async function verLanc(id, aoMudar){
-  await base();
+  try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
   var m = modal('<div class="fin-vazio">Carregando...</div>'); m.el.style.maxWidth = '860px';
   var d;
   try { d = await api('lanc_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" id="lv-x">Fechar</button>'; $('lv-x').onclick = m.fechar; return; }
@@ -462,7 +464,7 @@ async function verLanc(id, aoMudar){
   if(pode('conferente')) h += '<button class="fin-bt" id="lv-dup">Duplicar</button>';
   if(!l.recorrencia_id && l.status !== 'cancelado' && l.origem === 'manual' && pode('conferente')) h += '<button class="fin-bt" id="lv-tornarrec" title="Usa esta conta como modelo: a próxima nasce sozinha no período seguinte">🔁 Tornar recorrente</button>';
   h += '<button class="fin-bt" id="lv-print">Imprimir rateio</button>';
-  if(pend && pode('conferente')) h += '<button class="fin-bt sus" id="lv-cancelar">Cancelar lançamento</button>';
+  if(pend && pode('gestor')) h += '<button class="fin-bt sus" id="lv-cancelar">Cancelar lançamento</button>';
   if(l.status === 'pago' && l.baixa_id && pode('gestor')) h += '<button class="fin-bt div" id="lv-estornar">Estornar baixa</button>';
   h += '</div>';
   h += '<div class="fin-grid2"><div class="fin-card" style="font-size:12px;line-height:1.9"><b>Dados</b><br>Pessoa: <b>' + esc(l.pessoa_nome || '-') + '</b> ' + esc(l.pessoa_doc || '') +
@@ -559,7 +561,7 @@ function baixaModal(lancs, aoMudar){
     if(um){ d.juros = parseBR($('bx-j').value) || 0; d.multa = parseBR($('bx-m').value) || 0; d.desconto = parseBR($('bx-d').value) || 0; }
     try {
       var r = await api('lanc_baixar', d);
-      if(r.erros && r.erros.length) $('bx-msg').innerHTML = '<div class="fin-aviso">' + r.baixados + ' baixado(s). Com problema: ' + esc(r.erros.join(' | ')) + '</div>';
+      if(r.erros && r.erros.length){ $('bx-msg').innerHTML = '<div class="fin-aviso">' + r.baixados + ' baixado(s). Com problema: ' + esc(r.erros.join(' | ')) + '<br>Os que deram certo já estão baixados; feche e tente de novo só os que ficaram pendentes.</div>'; b.textContent = 'Fechar'; b.disabled = false; b.onclick = function(){ m.fechar(); }; }
       else { toast(r.baixados + ' baixa(s) registrada(s)'); m.fechar(); }
       if(aoMudar) aoMudar();
     } catch(e){ $('bx-msg').innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; b.disabled = false; }
@@ -570,7 +572,7 @@ function baixaModal(lancs, aoMudar){
 T.painel = async function(el){
   css2(); carregando(el);
   try {
-    await base();
+    try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
     var p = (await api('painel')).painel;
     var saldo = p.saldos.reduce(function(a, s){ return a + n(s.saldo); }, 0);
     var h = '<div class="fin-row" style="justify-content:flex-end;margin-bottom:10px">' + (pode('conferente') ? '<button class="fin-bt pri" id="pn-np">+ Novo pagamento</button><button class="fin-bt ok" id="pn-nr">+ Novo recebimento</button>' : '') + '</div>';
@@ -620,7 +622,7 @@ function central(tipo){
     if($('ce-novo')) $('ce-novo').onclick = function(){ formLanc(tipo, null, { aoSalvar: function(){ central(tipo)(el); } }); };
     var out = $('ce-out'); carregando(out);
     try {
-      await base();
+      try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
       var j = await api('central', f);
       var h = '';
       if(j.atrasados_antes.qtd) h += '<div class="fin-erro" style="cursor:pointer" id="ce-atr">⏰ ' + j.atrasados_antes.qtd + ' lançamento(s) atrasado(s) antes deste período, total ' + moeda(j.atrasados_antes.total) + '. Clique para ver.</div>';
@@ -735,7 +737,7 @@ T.entradas = async function(el){
   if($('en-novo')) $('en-novo').onclick = function(){ editarEntrada(null, function(){ T.entradas(el); }); };
   var out = $('en-out'); carregando(out);
   try {
-    await base();
+    try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
     var j = await api('entradas_listar', { status: st });
     if(!j.entradas.length){ out.innerHTML = '<div class="fin-vazio">Nada aqui.</div>'; return; }
     out.innerHTML = '<div class="fin-card" style="padding:0;overflow-x:auto"><table class="fin-tbl"><thead><tr><th>Beneficiário</th><th>Vencimento</th><th class="fin-num">Valor a pagar</th><th>Documento</th><th>Recebido</th><th></th></tr></thead><tbody>' +
@@ -780,7 +782,7 @@ function editarEntrada(e, aoSalvar){
 T.receber_dash = async function(el){
   css2(); carregando(el);
   try {
-    await base();
+    try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
     var un = F.receber_un || '';
     var d = (await api('receber_dash', { unidade_id: un })).dash;
     var varMes = n(d.venc_mes_ant) ? Math.round((n(d.venc_mes) / n(d.venc_mes_ant) - 1) * 100) : null;
@@ -1074,6 +1076,7 @@ T.pessoas = async function(el){
     var j = await api('pessoas_listar', { q: f.q, papel: f.papel, limite: 50, pagina: f.pagina });
     var pags = Math.ceil(j.total / 50);
     out.innerHTML = '<div class="fin-sub" style="margin-bottom:6px">' + j.total + ' pessoa(s)</div><div class="fin-card" style="padding:0;overflow-x:auto"><table class="fin-tbl"><thead><tr><th>Código</th><th>Nome / CPF-CNPJ</th><th>Contato</th><th>Cidade</th><th>Tipo</th><th>Pix</th></tr></thead><tbody>' +
+      (j.pessoas.length ? '' : '<tr><td colspan="6" class="fin-sub" style="text-align:center;padding:14px">Ninguém encontrado. Confira a busca ou use "+ Nova pessoa".</td></tr>') +
       j.pessoas.map(function(p){ return '<tr class="clic" data-id="' + p.id + '"><td class="fin-sub">' + p.id + '</td><td><b>' + esc(p.nome) + '</b><div class="fin-sub">' + esc(p.documento || '') + '</div></td><td class="fin-sub">' + esc(p.email || '') + '<br>' + esc(p.telefone || '') + '</td><td class="fin-sub">' + esc([p.cidade, p.uf].filter(Boolean).join(' - ')) + '</td><td class="fin-sub">' + [p.cliente ? 'cliente' : '', p.fornecedor ? 'fornecedor' : ''].filter(Boolean).join(', ') + '</td><td class="fin-sub">' + (p.pix_chave ? '✓' : '') + '</td></tr>'; }).join('') + '</tbody></table></div>' +
       (pags > 1 ? '<div class="fin-row" style="justify-content:center;margin-top:8px"><button class="fin-bt" id="pe-ant"' + (f.pagina <= 0 ? ' disabled' : '') + '>‹</button><span class="fin-sub">Página ' + (f.pagina + 1) + ' de ' + pags + '</span><button class="fin-bt" id="pe-prox"' + (f.pagina + 1 >= pags ? ' disabled' : '') + '>›</button></div>' : '');
     out.querySelectorAll('tr[data-id]').forEach(function(tr){ tr.onclick = async function(){ try { var d = await api('pessoa_ver', { id: Number(tr.getAttribute('data-id')) }); editarPessoa(d.pessoa, function(){ T.pessoas(el); }, null, null, d.lancamentos); } catch(e){ toast(e.message, 'erro'); } }; });

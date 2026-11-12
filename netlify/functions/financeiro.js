@@ -294,7 +294,11 @@ const ACOES = {
     const chave = txt(b.chave, 60);
     let valor = b.valor;
     if(chave === 'exigir_lastro') valor = valor === true || valor === 'true';
-    else { valor = Number(valor); if(!isFinite(valor) || valor < 0 || valor > 1e7) throw new ErroUsuario('Valor inválido'); }
+    else {
+      if(valor === '' || valor == null) throw new ErroUsuario('Preencha o valor');
+      valor = typeof valor === 'number' ? valor : Number(String(valor).trim().replace(/\./g, '').replace(',', '.'));
+      if(!isFinite(valor) || valor < 0 || valor > 1e7) throw new ErroUsuario('Valor inválido');
+    }
     return rpc('fin_salvar_config', { p_ator: ctx.pessoaId, p_chave: chave, p_valor: valor });
   },
 

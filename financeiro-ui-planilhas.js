@@ -110,6 +110,8 @@ function tela(chaveP){
     var def = PL[chaveP];
     var st = F['pl_' + chaveP] = F['pl_' + chaveP] || { unidade_id: (F.ctlBase.unidades.filter(function(u){ return u.cidade_slug === 'joao-pessoa'; })[0] || F.ctlBase.unidades[0] || {}).id, ini: null, fim: null, sub: 'desconto_banco', busca: '', conf: '' };
     var rec = function(){ T['pl_' + chaveP](el); };
+    var digitando = function(){ var nv = el.querySelector('.pl-nova'); if(!nv) return false; return [].some.call(nv.querySelectorAll('[data-k]'), function(i){ return i.type !== 'date' && i.getAttribute('data-k') !== 'percentual' && i.getAttribute('data-k') !== 'forma' && i.getAttribute('data-k') !== 'tamanho' && i.getAttribute('data-k') !== 'quantidade' && String(i.value || '').trim() !== '' && i.value !== i.defaultValue; }); };
+    var podeSair = function(){ return !digitando() || confirm('Você está digitando uma linha que ainda não foi salva. Descartar?'); };
     var podeLancar = pode('conferente');
     el.innerHTML = '<div class="fin-filtros"><b style="font-size:15px">' + def.titulo + '</b><select id="pl-un">' + optsCidade(st.unidade_id) + '</select>' +
       '<input id="pl-busca" placeholder="Buscar nome" maxlength="60" value="' + esc(st.busca) + '" style="width:150px">' +
@@ -117,10 +119,10 @@ function tela(chaveP){
       '<button class="fin-bt pri" id="pl-ok">Filtrar</button>' + (chaveP === 'motoboy_semanal' && podeLancar ? '<button class="fin-bt ok" id="pl-maq" title="Soma as corridas finalizadas de cada motoboy na semana desta aba">⚡ Calcular da Machine</button>' : '') + '</div>' +
       (chaveP === 'descontos' ? '<div class="pl-sub"><button class="fin-bt' + (st.sub === 'desconto_banco' ? ' pri' : '') + '" data-sub="desconto_banco">🏦 Dentro do banco</button><button class="fin-bt' + (st.sub === 'desconto_fora' ? ' pri' : '') + '" data-sub="desconto_fora">📒 Fora do banco</button></div>' : '') +
       '<div class="pl-abas" id="pl-abas"></div><div id="pl-out"><div class="fin-vazio">Carregando...</div></div>';
-    $('pl-ok').onclick = function(){ st.unidade_id = $('pl-un').value; st.busca = $('pl-busca').value.trim(); st.conf = $('pl-conf').value; rec(); };
-    $('pl-un').onchange = function(){ st.unidade_id = this.value; st.ini = null; rec(); };
+    $('pl-ok').onclick = function(){ if(!podeSair()) return; st.unidade_id = $('pl-un').value; st.busca = $('pl-busca').value.trim(); st.conf = $('pl-conf').value; rec(); };
+    $('pl-un').onchange = function(){ if(!podeSair()){ this.value = st.unidade_id; return; } st.unidade_id = this.value; st.ini = null; rec(); };
     $('pl-busca').onkeydown = function(ev){ if(ev.key === 'Enter') $('pl-ok').click(); };
-    el.querySelectorAll('[data-sub]').forEach(function(b){ b.onclick = function(){ st.sub = b.getAttribute('data-sub'); rec(); }; });
+    el.querySelectorAll('[data-sub]').forEach(function(b){ b.onclick = function(){ if(!podeSair()) return; st.sub = b.getAttribute('data-sub'); rec(); }; });
     try {
       // abas (meses/semanas que têm dados + a atual)
       var abas = (await api('ctl_reg_abas', { planilha: chaveP, unidade_id: st.unidade_id })).abas || [];
@@ -131,7 +133,7 @@ function tela(chaveP){
       var aba = abas.filter(function(a){ return a.ini === st.ini; })[0];
       st.fim = def.semanal ? aba.ini : aba.fim;
       $('pl-abas').innerHTML = abas.map(function(a){ return '<div class="pl-aba' + (a.ini === st.ini ? ' on' : '') + '" data-ini="' + a.ini + '">' + esc(nomeAba(a.ini, a.fim, def.semanal)) + '<span class="q">' + (n(a.qtd) || '') + '</span>' + (n(a.sem_conferencia) ? ' <span title="falta conferir">•</span>' : '') + '</div>'; }).join('');
-      $('pl-abas').querySelectorAll('.pl-aba').forEach(function(t){ t.onclick = function(){ st.ini = t.getAttribute('data-ini'); rec(); }; });
+      $('pl-abas').querySelectorAll('.pl-aba').forEach(function(t){ t.onclick = function(){ if(!podeSair()) return; st.ini = t.getAttribute('data-ini'); rec(); }; });
       var ativa = $('pl-abas').querySelector('.pl-aba.on'); if(ativa) ativa.scrollIntoView({ block: 'nearest', inline: 'end' });
       if($('pl-maq')) $('pl-maq').onclick = function(){ calcularMachine(st, rec); };
       var arg = { planilha: chaveP, unidade_id: st.unidade_id, ini: st.ini, fim: st.fim, busca: st.busca || null, conf: st.conf || null };
@@ -170,10 +172,16 @@ function tela(chaveP){
             }
             try { await api('ctl_reg_salvar', d); }
             catch(e){
-              if(/igual/.test(e.message) && confirm(e.message + '\n\nÉ outro lançamento de verdade? Salvar mesmo assim?')){ d.permitir_repetido = true; await api('ctl_reg_salvar', d); }
+              if(/igual/.test(e.message) && confirm(e.message + '\n\nÉ outro lançamento de verdade? Salvar mesmo assim?')){
+                d.permitir_repetido = true;
+                try { await api('ctl_reg_salvar', d); } catch(e2){ toast(e2.message, 'erro'); return; }
+              }
               else { toast(e.message, 'erro'); return; }
             }
-            toast('Linha salva'); rec();
+            var fimAba = def.semanal ? addDias(st.ini, 6) : st.fim;
+            if(!def.semanal && d.data && (d.data < st.ini || d.data > fimAba)){ toast('Linha salva na aba de ' + nomeAba(d.data.slice(0, 8) + '01', fimMes(d.data), false) + ' (pela data que você colocou)', 'aviso'); }
+            else toast('Linha salva');
+            rec();
           });
         };
         $('pl-salvar').onclick = salvar;
@@ -250,10 +258,10 @@ function calcularMachine(st, aoMudar){
 
 async function verRegistro(id, def, aoMudar){
   var m = modal('<div class="fin-vazio">Carregando...</div>');
-  var d; try { d = await api('ctl_reg_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; return; }
+  var d; try { d = await api('ctl_reg_ver', { id: id }); } catch(e){ m.el.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div><button class="fin-bt" style="margin-top:8px">Fechar</button>'; m.el.querySelector('button').onclick = m.fechar; return; }
   var r = d.registro, ativo = r.status === 'ativo', g = pode('gestor'), cf = pode('conferente');
   var pagavel = r.tipo === 'bag' || r.tipo === 'camiseta' || r.tipo === 'moto_novo';
-  var h = '<div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-weight:800;font-size:16px">' + esc(r.nome) + '</div><div class="fin-sub">' + esc(r.unidade_nome) + ' · ' + (r.tipo === 'motoboy_semanal' ? 'semana ' + dataBR(r.semana_ini) + ' a ' + dataBR(r.semana_fim) : dataBR(r.data)) + ' · origem: ' + esc(r.origem) + '</div></div>' +
+  var h = '<div style="display:flex;justify-content:space-between;gap:8px"><div><div style="font-weight:800;font-size:16px">' + esc(r.nome) + '</div><div class="fin-sub">' + esc(r.unidade_nome) + ' · ' + (r.tipo === 'motoboy_semanal' ? 'semana ' + dataBR(r.semana_ini) + ' a ' + dataBR(r.semana_fim) : dataBR(r.data)) + ' · ' + esc({ manual: 'digitado', planilha: 'veio da planilha antiga', machine: 'calculado da Machine' }[r.origem] || r.origem) + '</div></div>' +
     '<div style="text-align:right;font-size:20px;font-weight:800">' + moeda(r.valor) + '</div></div>' +
     '<div class="fin-sub" style="margin-top:6px">' + [r.quantidade ? 'Quant.: ' + r.quantidade : '', r.tamanho ? 'Tam.: ' + esc(r.tamanho) : '', r.forma ? 'Forma: ' + esc(FORMAS[r.forma] || r.forma) : '', r.motivo ? 'Motivo: ' + esc(r.motivo) : '', r.responsavel ? 'Responsável: ' + esc(r.responsavel) : '', r.pago_por ? 'Em nome de: ' + esc(r.pago_por) : '', r.tipo === 'motoboy_semanal' ? 'Gâmi ' + moeda(r.valor_gami) + ' (' + n(r.percentual) + '%) · entregador ' + moeda(r.valor_entregador) : ''].filter(Boolean).join(' · ') +
     '<br>Lançado por ' + esc(nome(r.criado_por)) + ' em ' + dataHoraBR(r.criado_em) + (r.observacao ? '<br>Obs.: ' + esc(r.observacao) : '') + '</div>' +

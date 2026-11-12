@@ -24,7 +24,7 @@ function $(id){ return document.getElementById(id); }
 async function api(acao, dados){
   var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null;
   var token = ''; try { token = localStorage.getItem('gami_sessao_token') || ''; } catch(e){}
-  var corpo = Object.assign({ acao: acao }, dados || {});
+  var corpo = Object.assign({}, dados || {}, { acao: acao });
   var r, j;
   try {
     r = await fetch('/.netlify/functions/financeiro', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Gami-User': (u && u.id) || '', 'X-Gami-Token': token }, body: JSON.stringify(corpo) });
@@ -54,10 +54,10 @@ window._finChecarMenu = async function(){
     var j = await api('me');
     F.papel = j.papel; F.nomes = j.nomes || {}; F.categorias = j.categorias || [];
     el.style.display = '';
-    try { sessionStorage.setItem(chave, JSON.stringify({ p: j.papel || '', t: Date.now() })); } catch(e){}
+    if(j.papel){ try { sessionStorage.setItem(chave, JSON.stringify({ p: j.papel, t: Date.now() })); } catch(e){} }
   } catch(e){
     el.style.display = 'none';
-    if(e.semAcesso || e.status === 403){ try { sessionStorage.setItem(chave, JSON.stringify({ p: '', t: Date.now() })); } catch(x){} }
+    try { sessionStorage.removeItem(chave); } catch(x){}
   } finally { _checando = false; }
 };
 document.addEventListener('DOMContentLoaded', function(){ setTimeout(window._finChecarMenu, 1500); });
@@ -321,6 +321,14 @@ function modal(html){
   var sujo = false;   // alguém digitou? então fechar sem querer pede confirmação
   bg.addEventListener('input', function(){ sujo = true; });
   bg.addEventListener('click', function(e){ if(e.target === bg) tentarFechar(); });
+  bg.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('button'); if(!b || !sujo) return;
+    var t = (b.textContent || '').trim();
+    if(/-(x|cancel|cancelar|fechar)$/.test(b.id || '') || t === '✕' || t === 'Cancelar' || t === 'Fechar'){
+      if(!confirm('Fechar sem salvar? O que você digitou será perdido.')){ e.preventDefault(); e.stopImmediatePropagation(); }
+      else sujo = false;
+    }
+  }, true);
   function tecla(e){ if(e.key === 'Escape' && document.body.lastElementChild === bg) tentarFechar(); }
   document.addEventListener('keydown', tecla);
   function tentarFechar(){ if(!sujo || confirm('Fechar sem salvar? O que você digitou será perdido.')) fechar(); }
@@ -547,7 +555,11 @@ function telaImportar(el){
           var tot = 0; Object.keys(k.alertas_novos || {}).forEach(function(x){ tot += k.alertas_novos[x]; });
           out.innerHTML = '<div class="fin-card" style="margin-top:10px;border-color:#1D9E75">✅ <b>' + k.novas + '</b> linha(s) importada(s), ' + k.duplicadas + ' ignorada(s) por já existirem.' + (tot ? '<br>🚨 <b>' + tot + '</b> alerta(s) novo(s) gerado(s). Veja em Alertas.' : '') + '</div>';
           $('fi-arq').value = ''; historico();
-        } catch(e){ out.insertAdjacentHTML('beforeend', '<div class="fin-erro">' + esc(e.message) + '</div>'); b2.disabled = false; b2.textContent = 'Tentar de novo'; }
+        } catch(e){
+          var fmt = /formato|OFX|CSV/i.test(e.message);
+          out.insertAdjacentHTML('beforeend', '<div class="fin-erro">' + esc(e.message) + (fmt ? '<br>Baixe o extrato no MESMO formato das importações anteriores desta conta (de preferência OFX) e tente de novo.' : '') + '</div>');
+          if(fmt) b2.remove(); else { b2.disabled = false; b2.textContent = 'Tentar de novo'; }
+        }
       };
     } catch(e){ out.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }
     finally { b.disabled = false; }
