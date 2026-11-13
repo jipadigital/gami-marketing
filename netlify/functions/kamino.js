@@ -76,6 +76,27 @@ function mensagemErro(cred, corpo, trecho) {
   return m.slice(0, 240);
 }
 
+// Formato de cada campo, SEM o valor: ajuda a achar campo trocado (ex.: IDUsr deve ser número).
+function formatoCampos() {
+  let j = {};
+  try { j = JSON.parse(process.env.KAMINO_API_JSON || '{}'); } catch (e) { return { erro: 'JSON inválido' }; }
+  const desc = (v) => {
+    const t = String(v == null ? '' : v);
+    const tr = t.trim();
+    return {
+      tamanho: tr.length,
+      tipo: /^\d+$/.test(tr) ? 'número' : /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tr) ? 'código (GUID)' : /^https?:\/\//i.test(tr) ? 'endereço' : 'texto',
+      espacos_sobrando: t !== tr,
+      aspas_dentro: /["']/.test(tr),
+    };
+  };
+  const out = {};
+  for (const k of ['url', 'app', 'cn', 'idusr', 'usr', 'hash']) out[k] = desc(j[k]);
+  try { const u = new URL(String(j.url || '').trim()); out.url.host = u.host; out.url.caminho = u.pathname; } catch (e) { /* já marcado */ }
+  out.chaves_extras = Object.keys(j).filter((k) => ['url', 'app', 'cn', 'idusr', 'usr', 'hash'].indexOf(k) < 0);
+  return out;
+}
+
 async function kaminoGet(cred, caminho) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 9000);
@@ -121,7 +142,7 @@ exports.handler = async function (event) {
         // Diagnóstico: tenta um segundo endereço simples pra separar "chave errada" de "esse endereço deu erro".
         let outro = null;
         try { const r2 = await kaminoGet(c.cred, '/api/financeiro/planoconta/lista'); outro = { endereco: 'planoconta/lista', status: r2.status, mensagem: (r2.status >= 200 && r2.status < 300) ? 'ok' : mensagemErro(c.cred, r2.corpo, r2.trecho) }; } catch (e) { outro = { endereco: 'planoconta/lista', erro: 'sem resposta' }; }
-        return { statusCode: 200, headers: H, body: JSON.stringify({ ok: false, etapa: 'resposta', status: r.status, erro: 'Resposta inesperada do Kamino.', mensagem_kamino: mensagemErro(c.cred, r.corpo, r.trecho), segundo_teste: outro }) };
+        return { statusCode: 200, headers: H, body: JSON.stringify({ ok: false, etapa: 'resposta', status: r.status, erro: 'Resposta inesperada do Kamino.', mensagem_kamino: mensagemErro(c.cred, r.corpo, r.trecho), segundo_teste: outro, formato: formatoCampos() }) };
       }
       // A lista pode vir direto ou dentro de um campo; pegamos só nome/banco (sem saldo nem número da conta).
       const lista = Array.isArray(r.corpo) ? r.corpo : (Array.isArray(r.corpo.Dados) ? r.corpo.Dados : Array.isArray(r.corpo.dados) ? r.corpo.dados : Array.isArray(r.corpo.Lista) ? r.corpo.Lista : []);
