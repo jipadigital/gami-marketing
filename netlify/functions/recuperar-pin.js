@@ -27,8 +27,11 @@ function corsHeaders(origin){
 function gerarToken(){
   // 32 caracteres aleatórios
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  // 13/11/2026: Math.random não é seguro pra token de recuperação (previsível). Usa o
+  // gerador criptográfico do Node. Mesmo formato de antes (32 letras/dígitos).
+  const crypto = require('crypto');
   let token = '';
-  for(let i=0; i<32; i++) token += chars[Math.floor(Math.random() * chars.length)];
+  for(let i=0; i<32; i++) token += chars[crypto.randomInt(chars.length)];
   return token;
 }
 
