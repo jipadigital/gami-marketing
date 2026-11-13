@@ -15,6 +15,7 @@ const SUPA_URL = 'https://tdbyzsouhrhmhpctttps.supabase.co';
 const SUPA_SERVICE_KEY = process.env.SUPA_SERVICE_KEY;
 const BASE_URL = 'https://api.taximachine.com.br/api/integracao';
 
+// 13/11/2026: Cuiabá e Vitória (cidades encerradas) saíram desta lista a pedido do dono.
 const CIDADES = [
   { slug: 'maceio',       nome: 'Maceió/AL',         envSufixo: 'MACEIO' },
   { slug: 'fortaleza',    nome: 'Fortaleza/CE',      envSufixo: 'FORTALEZA' },
@@ -23,9 +24,7 @@ const CIDADES = [
   { slug: 'natal',        nome: 'Natal/RN',          envSufixo: 'NATAL' },
   { slug: 'aracaju',      nome: 'Aracaju/SE',        envSufixo: 'ARACAJU' },
   { slug: 'sao-luis',     nome: 'São Luís/MA',       envSufixo: 'SAO_LUIS' },
-  { slug: 'cuiaba',       nome: 'Cuiabá/MT',         envSufixo: 'CUIABA' },
   { slug: 'teresina',     nome: 'Teresina/PI',       envSufixo: 'TERESINA' },
-  { slug: 'vitoria',      nome: 'Vitória/ES',        envSufixo: 'VITORIA' },
   { slug: 'campo-grande', nome: 'Campo Grande/MS',   envSufixo: 'CAMPO_GRANDE' }
 ];
 

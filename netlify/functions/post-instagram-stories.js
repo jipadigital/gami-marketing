@@ -2,6 +2,7 @@
 // Posta Stories no Instagram automaticamente nas 9 cidades Gâmi
 // Usa Meta Graph API + IA Claude pra escolher imagem ideal
 
+// 13/11/2026: Cuiabá e Vitória (cidades encerradas) saíram desta lista a pedido do dono.
 const CIDADES_INSTAGRAM = {
   fortaleza: { ig_id: '17841472211942074', username: 'gamideliveryfortaleza' },
   recife: { ig_id: '17841472330286485', username: 'gamideliveryrecifeejaboatao' },
@@ -9,9 +10,7 @@ const CIDADES_INSTAGRAM = {
   joao_pessoa: { ig_id: '17841472785074771', username: 'gamideliveryjoaopessoa' },
   aracaju: { ig_id: '17841472144504267', username: 'gamideliveryaracaju' },
   sao_luis: { ig_id: '17841472518866073', username: 'gamideliverysaoluis' },
-  cuiaba: { ig_id: '17841477661312288', username: 'gamideliverycuiaba' },
   teresina: { ig_id: '17841477421114530', username: 'gamideliveryteresina' },
-  vitoria: { ig_id: '17841480175012502', username: 'gamideliveryvitoria' }
 };
 
 // Mapeia horário → categoria padrão (lógica nova v2 - 14/05/2026)
@@ -53,7 +52,11 @@ exports.handler = async function(event, context) {
   if (!_acesso.ok) return _acesso.resposta(headers);
 
   const TOKEN = process.env.META_SYSTEM_USER_TOKEN || process.env.META_USER_TOKEN;
-  const SUPA_KEY = process.env.SUPABASE_KEY || 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
+  // 13/11/2026: a tabela stories_log foi fechada pra chave pública em 27/10 e, desde então,
+  // esta função não conseguia mais gravar nem ler o histórico (último registro: 27/10). Sem
+  // histórico, a rotação de imagens e a trava anti-duplicata pararam de funcionar. A chave de
+  // serviço (a mesma das outras functions) volta a ler e gravar.
+  const SUPA_KEY = process.env.SUPA_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || 'sb_publishable_0y-oz0aght1rNQNQrsh2tA_EfHajL61';
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
   
   if (!TOKEN) {
@@ -268,7 +271,37 @@ exports.handler = async function(event, context) {
 // =====================================
 
 // Lista imagens disponíveis numa pasta /stories/CATEGORIA/ do GitHub
+
+// 13/11/2026: lista as imagens pelo MANIFESTO gerado no build (stories/manifest.json) e usa a
+// imagem servida pelo PRÓPRIO SITE. Antes dependia da API pública do GitHub e do
+// raw.githubusercontent, o que obrigava o repositório a ser público. Devolve null quando o
+// manifesto não está disponível (aí quem chama cai na reserva antiga, via GitHub).
+const SITE_STORIES = (process.env.URL || 'https://gami-marketing.netlify.app').replace(/\/$/, '');
+async function listarPeloManifesto(categoria) {
+  try {
+    const r = await fetch(SITE_STORIES + '/stories/manifest.json', { headers: { 'Cache-Control': 'no-cache' } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const itens = j && j.categorias && j.categorias[categoria];
+    if (!Array.isArray(itens)) return null;
+    return itens
+      .filter((it) => it && it.nome)
+      .map((it) => ({
+        nome: it.nome,
+        // nome de arquivo tem espaço e parênteses: vai codificado na URL
+        url: SITE_STORIES + '/stories/' + encodeURIComponent(categoria) + '/' + encodeURIComponent(it.nome),
+        sha: null,
+        size: it.size || 0,
+      }));
+  } catch (e) {
+    console.warn('[stories] manifesto indisponível, usando a reserva:', e.message);
+    return null;
+  }
+}
+
 async function listarImagensCategoria(categoria) {
+  const doManifesto = await listarPeloManifesto(categoria);
+  if (doManifesto) return doManifesto;
   try {
     const r = await fetch(`${GITHUB_API_BASE}/${categoria}`);
     if (!r.ok) return [];

@@ -25,9 +25,7 @@ const CIDADES_INSTAGRAM = [
   { key: 'joao_pessoa', ig_id: '17841472785074771', username: 'gamideliveryjoaopessoa',        nome: 'João Pessoa' },
   { key: 'aracaju',     ig_id: '17841472144504267', username: 'gamideliveryaracaju',           nome: 'Aracaju' },
   { key: 'sao_luis',    ig_id: '17841472518866073', username: 'gamideliverysaoluis',           nome: 'São Luís' },
-  { key: 'cuiaba',      ig_id: '17841477661312288', username: 'gamideliverycuiaba',            nome: 'Cuiabá' },
   { key: 'teresina',    ig_id: '17841477421114530', username: 'gamideliveryteresina',          nome: 'Teresina' },
-  { key: 'vitoria',     ig_id: '17841480175012502', username: 'gamideliveryvitoria',           nome: 'Vitória' }
 ];
 
 // Horário (BRT) → função que retorna categoria conforme dia da semana
@@ -232,7 +230,37 @@ exports.handler = async function(event, context) {
 // ====================================================
 
 // Lista imagens disponíveis na pasta /stories/CATEGORIA/ do GitHub
+
+// 13/11/2026: lista as imagens pelo MANIFESTO gerado no build (stories/manifest.json) e usa a
+// imagem servida pelo PRÓPRIO SITE. Antes dependia da API pública do GitHub e do
+// raw.githubusercontent, o que obrigava o repositório a ser público. Devolve null quando o
+// manifesto não está disponível (aí quem chama cai na reserva antiga, via GitHub).
+const SITE_STORIES = (process.env.URL || 'https://gami-marketing.netlify.app').replace(/\/$/, '');
+async function listarPeloManifesto(categoria) {
+  try {
+    const r = await fetch(SITE_STORIES + '/stories/manifest.json', { headers: { 'Cache-Control': 'no-cache' } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const itens = j && j.categorias && j.categorias[categoria];
+    if (!Array.isArray(itens)) return null;
+    return itens
+      .filter((it) => it && it.nome)
+      .map((it) => ({
+        nome: it.nome,
+        // nome de arquivo tem espaço e parênteses: vai codificado na URL
+        url: SITE_STORIES + '/stories/' + encodeURIComponent(categoria) + '/' + encodeURIComponent(it.nome),
+        sha: null,
+        size: it.size || 0,
+      }));
+  } catch (e) {
+    console.warn('[stories] manifesto indisponível, usando a reserva:', e.message);
+    return null;
+  }
+}
+
 async function listarImagens(categoria) {
+  const doManifesto = await listarPeloManifesto(categoria);
+  if (doManifesto) return doManifesto;
   const url = `${GITHUB_API_BASE}/${categoria}`;
   const r = await fetch(url);
   if (!r.ok) {

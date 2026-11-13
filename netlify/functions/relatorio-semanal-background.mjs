@@ -21,11 +21,16 @@ import sessao from '../lib/sessao.js';
 // =============================================================================
 
 const SUPA_URL      = process.env.SUPABASE_URL || 'https://tdbyzsouhrhmhpctttps.supabase.co';
-const SUPA_KEY      = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
+// 13/11/2026: o nome da variável no Netlify é SUPA_SERVICE_KEY (o resto do sistema usa esse).
+// Aqui só se procurava SUPABASE_SERVICE_KEY e, na falta, caía na chave PÚBLICA, com a qual a
+// consulta volta vazia: por isso o relatório nunca foi gerado. Sem chave de serviço, não roda.
+const SUPA_KEY      = process.env.SUPA_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY || '';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const MODEL         = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const SITE          = process.env.URL || process.env.DEPLOY_PRIME_URL || '';
-const MIN_CIDADES   = parseInt(process.env.RELATORIO_MIN_CIDADES || '11', 10);
+// A rede tem 9 cidades ativas (Cuiabá e Vitória encerraram). O padrão antigo exigia 11, o que
+// abortava sempre. Agora exige 8 (tolera 1 cidade sem dado na semana).
+const MIN_CIDADES   = parseInt(process.env.RELATORIO_MIN_CIDADES || '8', 10);
 
 const H = { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY, 'Content-Type': 'application/json' };
 
@@ -152,7 +157,7 @@ export default async (req) => {
 
   // 3) RELATÓRIO GERAL (diretoria — plano ESTRATÉGICO de rede)
   try {
-    const sys = 'Você é analista de operações da Gâmi Delivery (logística de entregas em 11 cidades). Escreva em português do Brasil, objetivo e executivo. Responda SOMENTE com um JSON válido, sem markdown, no formato: {"resumo": "1-2 frases", "relatorio_html": "<h3>...</h3><p>...</p>", "plano_html": "<ul><li>...</li></ul>"}. Use HTML simples (h3, p, ul, li, strong). Sem inventar números além dos fornecidos.';
+    const sys = 'Você é analista de operações da Gâmi Delivery (logística de entregas em ' + rede.length + ' cidades). Escreva em português do Brasil, objetivo e executivo. Responda SOMENTE com um JSON válido, sem markdown, no formato: {"resumo": "1-2 frases", "relatorio_html": "<h3>...</h3><p>...</p>", "plano_html": "<ul><li>...</li></ul>"}. Use HTML simples (h3, p, ul, li, strong). Sem inventar números além dos fornecidos.';
     const usr = `Relatório SEMANAL da REDE (semana ${ref}). Dados das cidades (últimos 7 dias):\n${linhasRede}\n\nTotal de corridas na rede: ${totalCorridas}.\n\nProduza: (1) relatorio_html = panorama executivo da rede (destaques, cidades que puxam pra cima/baixo, tendência); (2) plano_html = plano de ação ESTRATÉGICO para a DIRETORIA (decisões de rede, prioridades entre cidades, riscos, oportunidades — NÃO tarefas operacionais).`;
     const out = await anthropic(sys, usr);
     await supaUpsert('relatorios_rede', [{
@@ -163,7 +168,7 @@ export default async (req) => {
       metricas: { total_corridas: totalCorridas, cidades: rede.length }
     }]);
     geradosRede = 1;
-    for (const d of diretores) await notificar(d.id, '📄 Relatório semanal da rede pronto', 'O panorama das 11 cidades e o plano de ação da semana já estão em Relatórios da Rede.');
+    for (const d of diretores) await notificar(d.id, '📄 Relatório semanal da rede pronto', 'O panorama das cidades e o plano de ação da semana já estão em Relatórios da Rede.');
   } catch (e) { console.error('[relatorio] rede falhou:', e.message); }
 
   // 4) RELATÓRIO POR CIDADE (gestor — plano OPERACIONAL)
