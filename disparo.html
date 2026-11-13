@@ -209,14 +209,32 @@
       try {
         var body = { cidade:c, publico:state.publico, titulo:titulo, mensagem:mensagem, lote:lote, autor_nome:autorNome };
         if(teste) body.teste_auto = true;
-        var r = await fetch(FN, { method:'POST', headers:H(), body: JSON.stringify(body) });
-        var j = await r.json();
-        if(!r.ok || !j.success){
-          linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="err">'+esc((j&&(j.error||j.aviso))||('HTTP '+r.status))+'</span>';
+        // 13/11/2026: cidade grande não cabe numa chamada só. Antes aparecia "parcial, rode de
+        // novo" e rodar de novo repetia para os mesmos. Agora o servidor devolve a página onde
+        // parou e aqui continuamos dela, sem repetir ninguém.
+        var envC = 0, falC = 0, erroTxt = '', r = null, j = null, voltas = 0, incompleta = false;
+        while(true){
+          r = await fetch(FN, { method:'POST', headers:H(), body: JSON.stringify(body) });
+          j = await r.json();
+          if(!r.ok || !j.success){ erroTxt = (j&&(j.error||j.aviso))||('HTTP '+r.status); break; }
+          envC += (j.enviados||0); falC += (j.falhas||0);
+          if(j.lista_completa === false && j.proxima_pagina && voltas < 40){
+            voltas++;
+            body.pagina_inicial = j.proxima_pagina;
+            linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="muted">'+envC+' enviados, continuando…</span>';
+            continue;
+          }
+          incompleta = (j.lista_completa === false);
+          break;
+        }
+        totalEnv += envC; totalFalha += falC;
+        if(erroTxt && !envC){
+          linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="err">'+esc(erroTxt)+'</span>';
         } else {
-          totalEnv += (j.enviados||0); totalFalha += (j.falhas||0);
-          var extra = j.teste ? ' (teste, condutor '+esc(j.alvo_teste||'?')+')' : (j.lista_completa===false ? ' , parcial (muitos, rode de novo)' : '');
-          linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="ok">'+(j.enviados||0)+' enviados'+(j.falhas?(' · '+j.falhas+' falhas'):'')+esc(extra)+'</span>';
+          var extra = (j && j.teste) ? ' (teste, condutor '+esc(j.alvo_teste||'?')+')' : '';
+          if(erroTxt) extra += ' , parou antes do fim: '+erroTxt;
+          else if(incompleta) extra += ' , lista incompleta (avise o suporte, não rode de novo)';
+          linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="ok">'+envC+' enviados'+(falC?(' · '+falC+' falhas'):'')+esc(extra)+'</span>';
         }
       } catch(e){
         linha.innerHTML = '<span>'+esc(nomeCidade(c))+'</span><span class="err">erro de conexão</span>';

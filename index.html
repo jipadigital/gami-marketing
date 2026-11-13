@@ -1,6 +1,6 @@
 <!-- v33.60 - "Testar conexao" dava FALSO ALARME: batia em usuarios_login com a chave publica, que agora esta FECHADA pela blindagem, tomava 401 e rotulava "servidor sobrecarregado / Backend com problema" mesmo com tudo funcionando (caso Gustavo Lopes, assustou e nao logou). Agora 401/403 = "protegido (backend no ar)"; so 5xx/timeout conta como problema. O login em si sempre foi pelo servidor (login.js), nao afetado. SW v23-344. - 09/11/2026 -->
 <!-- v33.59 - PII fora da fonte (e-mails de gate viram HASH): os e-mails de allowlist que ficavam em texto no index (convidados Dealwise + prospeccao Cristina/Micaelle/Vanessa) sairam do codigo. Agora o gate casa por sha256 do e-mail (funcao _sha256Hex sincrona + _emailHash cacheado), mesma pessoa = mesmo hash = mesmo acesso, sem gap (vale ja pras sessoes em cache). Persona de teste e placeholders tambem genericizados. Resta so o e-mail do DONO (jipadigital), que e a trava de super_admin (nao da pra remover sem risco de lockout; e o proprio e-mail da conta). Conta de auditoria somente-leitura reforcada no supabase-write. SW v23-343. - 09/11/2026 -->
-<!-- v33.58 - LOGIN DE AUDITORIA (convidado OCULTO p/ pentest): novo nivel 'auditor' que ve TODAS as abas pra testar o painel, mas e READ-ONLY e NAO ve valores em R$ (abas de dinheiro nem entram + gate proprio por pessoa_id no servidor). NAO entra em `pessoas`, entao nao aparece em canto nenhum (Pessoas/ranking/ponto); nome/e-mail neutros (sem nome real). O login.js PROVISIONA sozinho no 1o acesso (CONVIDADOS), sem SQL: usuario 'auditor', PIN inicial gami2026 (troca no 1o login). Gate por e-mail sentinela auditor@seg.gami, prioridade maxima. SW v23-342. - 09/11/2026 -->
+<!-- v33.58 - Novo nivel de acesso SOMENTE-LEITURA para revisao de seguranca: ve as abas pra testar o painel, mas NAO edita e NAO ve valores em R$ (abas de dinheiro nem entram + gate proprio por pessoa_id no servidor). NAO entra em `pessoas`. Provisionado pelo login.js no 1o acesso, sem SQL. SW v23-342. - 09/11/2026 -->
 <!-- v33.57 - SUPORTE ve RELATORIOS: cargo "Suporte Home"/"Suporte Operacional" (e atendimento/sucesso) agora resolve pro novo nivel 'suporte' = o que o colaborador ja via + a aba Relatorios, SEM valores em R$. A regra roda ANTES do nivel_permissao canonico e so promove quem esta em branco ou 'colaborador' (quem foi posto em nivel maior mantem). Antes os "Suporte Operacional" caiam em colaborador e ficavam sem Relatorios. Casa por CARGO, sem e-mail no codigo. SW v23-341. - 09/11/2026 -->
 <!-- v33.56b - SEGURANCA (PII fora da fonte): removidos do index.html os 3 e-mails pessoais da lista de ponto home office (jheny/jessica/andreia) - o match agora e so por NOME (padrao que Bruna/Estefania ja usavam); e esvaziado o INBOX_DEMO do Instagram (conversas fake @motoboy_al etc. que o Lucas conseguia ler na fonte). Inbox comeca vazio ate conectar o IG real. - 09/11/2026 -->
 <!-- v33.52 - FIX login iPhone (keychain travava a digitacao): o campo PIN era type=password -> o iOS ignora autocomplete=off e forca "Preencher Senha" (keychain do netlify.app), preenchia o PIN com lixo e NAO deixava digitar (caso Jheniffer, visto no video). Conserto: PIN vira type=text com mascara CSS (-webkit-text-security:disc), que o iOS NAO trata como senha; email autocomplete=username->off; form autocomplete=off; _alternarMostrarPin alterna a mascara em vez do type. - 28/10/2026 -->
@@ -102,7 +102,7 @@
 <!-- v32.66 - (1) CIDADES/empresas: "Exportar CSV" virou "Exportar Excel" (.xls tabela HTML, abre direto no Excel com colunas/acentos certos, CNPJ e telefone como texto). (2) PROSPECCAO EM CAMPO: quem atende SO 1 cidade (gestor/vendedor) agora abre o mapa DIRETO na cidade dele (antes ficava no Brasil e nada abria). (3) fix de acento: comparacao de cidade por SLUG (maceio casa com Maceio), que travava os perfis de teste e qualquer cidade sem acento. - 21/10/2026 -->
 <!-- v32.65 - MODO TESTE (super_admin): adicionados os perfis novos pra ver o dashboard como cada um: "🛒 Vendedor - Maceió" (campo so da cidade dele, sem R$) e "📍 BDR - mapa geral" (campo de todas as cidades, via id de teste na allowlist CAMPO_BDR_IDS). Corrigido o perfil "Prospecção" (dizia "so Maceió" mas ve todas, e sem a allowlist nao ve o mapa de Campo). - 21/10/2026 -->
 <!-- v32.64 - PESSOAS: separadas as categorias dos colaboradores. Antes todos (Prospeccao, Sucesso do Cliente, Marketing, Suporte Home) caiam em COLABORADOR por causa do campo categoria fixado. Agora CARGO_CATS tem categorias proprias: Prospeccao (BDRs), Sucesso do Cliente; Colaborador fica so Marketing/Administrativo; Suporte Home volta pra Suporte. Precisa rodar o SQL que limpa o categoria fixo (passa a derivar do cargo). - 21/10/2026 -->
-<!-- v32.63 - PESSOAS: nova categoria VENDEDORES (CARGO_CATS + cor do chip Vendedor). Paola Elias Correa de Moraes adicionada na allowlist CAMPO_BDR_IDS (mapa geral). Cadastro das pessoas novas (Paola BDR + Arthur/Carla vendedores) via SQL, login auto-provisiona no 1o acesso (email + gami2026). - 21/10/2026 -->
+<!-- v32.63 - PESSOAS: nova categoria VENDEDORES (CARGO_CATS + cor do chip Vendedor). Paola Elias Correa de Moraes adicionada na allowlist CAMPO_BDR_IDS (mapa geral). Cadastro das pessoas novas (Paola BDR + Arthur/Carla vendedores) via SQL, login auto-provisiona no 1o acesso (email + PIN inicial). - 21/10/2026 -->
 <!-- v32.62 - PROSPECCAO EM CAMPO, acesso por papel: (1) GESTORES ja viam so a cidade deles (mantido). (2) Novo nivel VENDEDOR: ve o campo so da cidade dele (cargo "Vendedor"/"Vendas" ou nivel_permissao=vendedor + campo cidade). (3) BDRs (Vanessa, Anna Julia, Micaelle, Suzislaine) veem o MAPA GERAL via allowlist CAMPO_BDR_IDS + gate _podeVerCampo (igual padrao do faturamento), sem dar acesso pros outros de prospeccao/suporte. Paola Elias: cadastrar e adicionar o id. - 21/10/2026 -->
 <!-- v32.61 - CIDADES: São Luís trocou o gestor do card de Cláudio Martins para Bruno Pinto Cutrim (+ WhatsApp pro tel do Bruno 98981955252). Atualizado no array CIDADES_DATA_DEFAULT (o getCidadesData ja forca o gestor do default, entao vale pra todos sem limpar cache), na lista de gestores reais e no manual. Claudio ja tinha saido de pessoas/login/pontos (v32.41). - 21/10/2026 -->
 <!-- v32.60 - MURAL: as bolinhas de quem reagiu foram pra logo DEPOIS do emoji (antes do botao 🙂+), nao mais no fim da linha. - 21/10/2026 -->
@@ -119,7 +119,7 @@
 <!-- v32.49 - PROSPECCAO EM CAMPO / ROTA: (1) MULTIPLAS ROTAS por gestor - seletor pra trocar entre rotas + botao "Nova rota" (nomeia) + renomear + apagar. (2) Clicar na empresa "Rota" adiciona na rota ATIVA (cria uma na hora se nao tiver). (3) OBSERVACAO por parada: o gestor anota como foi / o que fazer (loja fechada, falar com fulano, retornar terca...) no botao 📝, e ao marcar "visitei" pergunta se quer anotar. Tudo salvo no banco (prospeccao_rotas). - 19/10/2026 -->
 <!-- v32.48 - PROSPECCAO EM CAMPO: ROTA DE VISITAS. Cada gestor monta a lista de empresas que vai visitar (botao "Rota" no mapa/popup/lista e na ficha "Acompanhar"), o sistema otimiza a ordem (vizinho mais proximo a partir do GPS, ajustavel com setas) e abre a rota toda no Google Maps ou navega pra proxima parada no Waze, marcando "visitei" em cada uma. A rota pertence ao GESTOR (quem visita) e fica salva no banco por gestor (tabela prospeccao_rotas, escrita pela rota segura). O Carlos/diretoria/gerencia escolhem o gestor no seletor "Montar rota do gestor" e montam/editam a rota dele; o gestor abre e edita a sua. RODAR docs/prospeccao-rotas.sql. - 19/10/2026 -->
 <!-- v32.47 - PROSPECCAO EM CAMPO (fix definitivo da navegacao de cidade): a camera agora e controlada SO pela navegacao (clicar cidade/estado/Brasil). _campoIrParaCidade move o mapa POR ULTIMO (setView no centroide fixo, zoom 12, com invalidateSize) depois de desenhar os pontos, igual _campoMapaBrasil faz. _campoDrawPontos NAO reenquadra mais em repaint: antes, cada repaint (Machine chegando async, filtro, redraw de 160ms) disputava a camera e as vezes puxava de volta pro Brasil. Agora clicar qualquer cidade abre NA cidade sempre. - 19/10/2026 -->
-<!-- v32.46 - PROSPECCAO EM CAMPO (fix de verdade do "volta pro mapa inteiro"): no nivel CIDADE, quando a cidade ficava sem pontos geocodificados no momento do enquadramento (dados ainda nao prontos/vazios), o codigo dava fitBounds(_CAMPO_BR_BOUNDS) = zoom out pro Brasil inteiro, parecendo que nao abriu a cidade. Agora, sem pontos, FICA na cidade (setView no centroide, zoom 12), nunca volta pro Brasil. Aracaju/CG/Maceio/Recife - 19/10/2026 --><!-- v32.45 - Faturamento MUITO mais interativo: (1) COMPARACAO DO MES ATE AGORA no topo (ex: 1 a 19 de set x 1 a 19 de out, mesmo numero de dias, pra ser justo com o mes incompleto) por cidade + total, com Diferenca e Variacao. (2) Cards de KPI (mes ate agora, mesmo periodo mes passado, mes fechado anterior, acumulado). (3) Grafico de barras da evolucao mensal. (4) Tabela dos 5 meses com mini-tendencia (sparkline). Pra isso a MV virou DIARIA (mv_faturamento_diario) e o front deriva tudo. Rodar docs/faturamento-mv.sql (recria como diaria) - 19/10/2026 --><!-- v32.44 - Faturamento: (1) mostra os ULTIMOS 5 MESES por cidade (colunas), nao so 2; marca o mes atual como "em andamento" (incompleto) com asterisco, explicando por que ele aparece menor. (2) EXCLUI cidades encerradas (Vitoria/Cuiaba + qualquer uma fora do cadastro ativo via getCidadesData) - 19/10/2026 --><!-- v32.43 - Faturamento: o menu NAO aparecia nem pros autorizados. Causa: o laco de aplicarPermissoesVisuais que esconde itens fora da MATRIZ de cargos tambem escondia o faturamento (que usa gate proprio, fora da MATRIZ). Agora o laco PULA a aba faturamento; a visibilidade fica so no gate data-perm-faturamento/_podeVerFaturamento - 19/10/2026 --><!-- v32.42 - FATURAMENTO (aba nova 💰, RESTRITA): comparativo mensal de faturamento por cidade (como no print), vindo DIRETO da Machine (soma de valor_corrida das corridas finalizadas em machine_corridas, por cidade/mês; validado: Outubro bateu na vírgula com o print). SEGURANÇA SERVER-SIDE: só Rafhael(pe001), Tainara Nóbrega(pe002), João Duarte(pe003), Carlos(pecarlosvinicius), Matheus(pematheusfedrizzi) e super_admin veem. A função Netlify faturamento.js valida a sessão + allowlist e só então entrega; a MV mv_faturamento_mensal é REVOGADA pro anon (nem a chave pública lê). Menu escondido (data-perm-faturamento) + bloquearAcessoAba gate próprio. Rodar docs/faturamento-mv.sql - 19/10/2026 --><!-- v32.41 - Desligamento: Cláudio Martins (pe010), ex-gestor de São Luís, no PESSOAS_DESLIGADAS (some de Pessoas + syncPessoas apaga do servidor). São Luís continua ativa, só troca o gestor. Login/dados via docs/remover-claudio-saoluis.sql - 19/10/2026 --><!-- v32.40 - PROSPECÇÃO EM CAMPO: (1) o mapa não pinta mais o estado por QUALQUER ponto (empresa de Campo Grande com coord torta/GPS errado caía em MT/GO e pintava errado); agora pinta só pelas CIDADES que operamos (centroides) + lojas de prospecção. (2) a lista "Por cidade" com as empresas da Machine NÃO aparece mais no nível Brasil, só ao ABRIR a cidade; no nível Brasil mostra um aviso "clique numa cidade" + as lojas de prospecção (se houver) - 19/10/2026 --><!-- v32.39 - Mural: limite do recado subiu de 140 pra 500 caracteres (textarea maxlength, contador, truncamento no emoji/save). Pedido da Suzi pra mandar recados maiores - 19/10/2026 --><!-- v32.38 - PROSPECÇÃO EM CAMPO (fix definitivo: clicar na cidade não abria, ia pro Brasil): o dropdown de cidade às vezes não "pegava" o sel.value (montado antes da lista carregar / repintado), então o filtro voltava vazio e caía pro Brasil. Agora a cidade selecionada é uma VARIÁVEL DE ESTADO (_CAMPO.cidadeSel), fonte da verdade, e todas as leituras de nível/filtro usam _campoCidadeSel() em vez do valor do dropdown (que segue sincronizado só pra UI). _campoIrParaCidade/_campoSetCidade/_campoMapaBrasil setam o estado; onchange do select usa _campoSetCidade - 19/10/2026 --><!-- v32.37 - PROSPECÇÃO EM CAMPO: Campo Grande agora entra no nível Brasil também (chip com número, pin com número e os totais de baixo incluindo CG). Antes ficava de fora do carregamento Brasil por causa do timeout da RPC; a MV resolveu, então removi a exclusão. O enquadramento no nível Brasil deixou de esperar o carregamento (os centroides das cidades são fixos), então o mapa já se posiciona e os números do CG preenchem em seguida - 19/10/2026 --><!-- v32.36 - PROSPECÇÃO EM CAMPO (mostra TODAS as empresas): (1) o Supabase corta em 1000/req e o CG tem ~2600 empresas, então só aparecia mil. Agora a leitura da MV pagina (_campoFetchTodos) e traz TODAS. (2) mapa passou a renderizar em CANVAS (preferCanvas) e os limites de pontos subiram (600→5000 pedindo, 800→3000 fantasma), então os 2600+ de Campo Grande aparecem lisos (testado: 2609 pts em 1.3s) - 19/10/2026 --><!-- v32.35 - PROSPECÇÃO EM CAMPO (fix Campo Grande + navegação): (1) Campo Grande aparecia VAZIO porque a RPC mapa_empresas_cidade dá timeout nas 590k corridas. Agora as empresas+coord vêm de uma MV pré-agregada mv_prospeccao_mapa (leitura instantânea, cobre CG), com fallback na RPC ao vivo pro resto. Rodar docs/prospeccao-mapa-mv.sql (cria vazia + pg_cron popula). (2) Aracaju/Recife/Maceió ao clicar abriam o BRASIL: o dropdown de cidade era montado antes da lista carregar, então sel.value não pegava e caía pro filtro vazio. _campoIrParaCidade agora garante a opção antes de selecionar - 19/10/2026 --><!-- v32.34 - PROSPECÇÃO EM CAMPO (fantasmas + ficha completa): (1) o mapa/lista agora mostram em CINZA (👻) as empresas que CADASTRARAM na Machine e NUNCA pediram (RPC clientes_onboarding sem limite de data + coordenada do cadastro machine_empresas.raw lat/lng). Novo status fantasma no filtro e KPI "Nunca pediram"; ficam por baixo dos pontos de quem pede; não entram na saúde (verde/vermelho) da cidade. (2) clicar na empresa (ponto do mapa OU linha da lista) abre a FICHA COMPLETA: endereço, bairro, CEP, telefone+WhatsApp, e-mail, responsável, CNPJ/CPF, contrato, data de cadastro, situação, pedidos 120d, finalizados/cancelados %, faturamento e ticket (só p/ quem vê valores), último pedido. Cadastro casado por nome (lower/trim). "+ Acompanhar" já pré-preenche endereço/telefone/CNPJ. _campoFichaEmpresa/_campoFetchTodos/_campoToggleEmp. Testado no navegador (Aracaju 183 fantasmas, CG 968) - 19/10/2026 --><!-- v32.33 - PROSPECÇÃO EM CAMPO (cidade = mapa de ruas + atalhos): (1) ABRIR A CIDADE agora troca o fundo pra MAPA DE RUAS (OSM, _campoSetTiles) mostrando os BAIRROS, com as lojas/empresas em cima (verde=ativa/pedindo, vermelho=parou, tamanho=volume); volta pro vetorial no nível Brasil. maxZoom do mapa subiu 12→18 pra ver rua. (2) BARRA DE ATALHOS de cidade (#campo-chips, _campoRenderChips) acima do mapa: clica no nome e abre direto (resolve os pins empilhados do NE, bem mais prático). (3) ao abrir, já centraliza (flyTo) na cidade antes de carregar. Testado no navegador (Fortaleza com ruas+60 pontos) - 19/10/2026 --><!-- v32.32 - PROSPECÇÃO EM CAMPO (mapa mais interativo): (1) ESTADOS reagem ao mouse (destacam + borda, tooltip mostra nº de cidades/empresas nossas via _campoUFStats); (2) TRILHA de navegação "Brasil › Estado › Cidade" (_campoAtualizarBreadcrumb) clicável pra voltar; (3) zoom SUAVE (flyToBounds) ao clicar estado/cidade; (4) marcadores de cidade crescem no hover (scale) e sobem (riseOnHover); (5) no nível cidade os pontos das empresas têm TAMANHO proporcional ao volume de pedidos e destacam no hover. Testado no navegador: clicar no estado separa os pills empilhados do NE - 19/10/2026 --><!-- v32.31 - PROSPECÇÃO EM CAMPO (drill-down no mapa): nível BRASIL mostra um marcador por CIDADE (nome + total, cor pela saúde) em vez de milhares de pontos; CLICAR no ESTADO dá zoom nele (layer.getBounds), CLICAR na CIDADE abre a cidade (seleciona no filtro) com os pontos individuais e a lista agrupada POR BAIRRO. Botão Brasil volta ao nível país. Performance: no nível Brasil carrega só o NE (rápido); Campo Grande (590k, ~11s) só quando você abre ela. _campoDrawCidades/_campoDrawPontos/_campoIrParaCidade/_CAMPO_CIDADE_COORD - 16/10/2026 --><!-- v32.30 - PROSPECÇÃO EM CAMPO: o mapa agora JÁ MOSTRA a base da Machine (empresas que pedem) com STATUS por recência: 🟢 pedindo (últ. pedido <=21d) / 🔴 parou (>21d). Puxa mapa_empresas_cidade por cidade (cache por sessão, carga em paralelo e PROGRESSIVA — NE aparece em ~2s, Campo Grande ~11s por ter 590k). Pontos pequenos = base Machine, grandes = lojas de prospecção. Lista agora AGRUPADA POR CIDADE (lojas de prospecção + empresas da Machine, botão "+" pra acompanhar). KPIs somam Machine+prospecção. Cap 600 pts no mapa / 80 por cidade na lista. _campoCarregarMachine/_campoMachineFiltrada/_campoRepintar/_campoProspectarEmpresa - 16/10/2026 --><!-- v32.29 - PROSPECÇÃO EM CAMPO: (1) NÚMEROS (botão 📊): funil de conversão prospect/ativada/ativa/perdida com %, taxa de ativação, viraram pedido, tempo médio até o 1º pedido (primeiro_pedido_em - ativada_em), visitas no período, e RANKING por prospector (visitas/ativações/lojas). Botão "⬇️ Exportar CSV" (lojas filtradas, BOM pra Excel). Segue os filtros. (2) LEMBRETE DE RETORNO: campo de data na visita cria uma tarefa (tfSupaSalvar) pra quem visitou, aparece no calendário/tarefas na data. Sem SQL novo - 16/10/2026 --><!-- v32.28 - PROSPECÇÃO EM CAMPO: localização sem estar na loja (o Carlos trabalha de outro lugar e só passa a coordenada aos gestores). No cadastro da loja agora tem campos Lat/Lng (colar coordenada pronta) + "🗺️ Marcar no mapa" (abre um mapa de RUAS/OSM, busca o endereço e clica onde fica a loja → preenche lat/lng) + "📍 GPS" secundário (pra gestor que esteja em campo). Save lê lat/lng dos campos (prioridade sobre geocodificação). _campoAbrirPicker/_campoPickSet/_campoPickerBuscar/_campoPickerConfirmar - 16/10/2026 --><!-- v32.27 - PROSPECÇÃO EM CAMPO (campo/celular): (1) botão "📍 Usar minha localização" no cadastro da loja usa o GPS do aparelho (navigator.geolocation) pra marcar o ponto no mapa SEM digitar endereço (ideal pro Carlos estando na porta da loja); GPS tem prioridade sobre geocodificação. (2) "📷 Foto da fachada" na visita (reusa o compressor do mural _muralComprimirImagem, ~900px), guarda na visita e mostra no histórico (clica abre). Rodar docs/prospeccao-foto.sql (ADD COLUMN foto) - 16/10/2026 --><!-- v32.26 - PROSPECÇÃO EM CAMPO: o mapa agora ABRE JÁ ao entrar na aba (sem precisar clicar no botão Mapa) e fica LOGO ABAIXO dos filtros (em cima da lista). _campoMapaWrapHTML extraído; montarShell renderiza o wrap visível e reseta a instância do Leaflet (o innerHTML recria o #campo-mapa, senão ficava órfão e não desenhava); initCampo chama _campoRenderMapa. Botão 🗺️ Mapa vira só mostrar/esconder. (Se ainda aparecer mapa de RUAS/OSM, é cache: Ctrl+Shift+R; a v32.25 já trocou pro vetorial do Brasil.) - 16/10/2026 --><!-- v32.25 - PROSPECÇÃO EM CAMPO (mapa SÓ DO BRASIL, estilo vetorial): trocados os tiles de rua (OSM) por um contorno vetorial do Brasil com os 27 estados (GeoJSON simplificado em /data/br-estados.geojson, ~290KB/69KB gzip, carrega 1x). Fundo claro tipo mapa do Brasil, sem mundo/oceano. Estados COM loja ficam azul-marinho escuro (point-in-polygon decide), resto azul claro, igual a referência que o usuário mandou. Nome do estado no hover. Pontos das lojas (status) por cima. Mantém trava no BR, 🇧🇷 reset, popup com Abrir loja/+Visita. Testado no navegador (render ok) - 16/10/2026 --><!-- v32.24 - PROSPECÇÃO EM CAMPO (mapa mais focado e interativo): mapa trava no Brasil (maxBounds + minZoom 4 + maxBoundsViscosity, abre em fitBounds do BR, nunca mais sai pro mundo/oceano). Pontos maiores com borda branca, NOME no hover (tooltip) e destaque ao passar o mouse; popup com botões "Abrir loja" (_campoAbrirDoMapa: expande e rola até o card, com highlight) e "+ Visita". Botão "🇧🇷 Brasil" reseta o enquadramento; sem pontos mostra o Brasil inteiro; fitBounds com maxZoom 15 pra 1 ponto não colar demais - 16/10/2026 --><!-- v32.23 - PROSPECÇÃO EM CAMPO (Parte 2b, CRUZAMENTO MACHINE): botão "🔄 Status pela Machine" lê a RPC prospeccao_sinal_machine (sobre a MV mv_empresas_raiox, sem reprocessar as 590k corridas) e casa a loja pelo NOME na mesma cidade. amarelo/prospect→verde quando a Machine confirma pedido (grava primeiro_pedido_em); verde→vermelho só se parou há +21 dias (CAMPO_CHURN_DIAS, conservador contra falso churn); vermelho→verde se voltou. Só mexe em quem BATEU com a Machine (CG tem o espelho; nome precisa igual). Rodar docs/prospeccao-sinal-machine.sql - 16/10/2026 --><!-- v32.22 - PROSPECÇÃO EM CAMPO (Parte 2a, MAPA): botão 🗺️ Mapa na aba Prospecção mostra as lojas em pontos coloridos por status (cinza/amarelo/verde/vermelho), Leaflet + OSM (reusa _carregarLeaflet). "📍 Geocodificar faltantes" converte endereço→lat/lng via nova função Netlify geocode.js (Nominatim server-side, User-Agent próprio, 1 req/s), guarda lat/lng na loja (não re-geocodifica). Mapa segue os filtros (cidade/status/busca), popup com nome/bairro/status/última visita, fitBounds. Próximo: 2b cruzamento auto com a Machine (amarelo→verde→vermelho via mv_empresas_raiox) - 16/10/2026 --><!-- v32.21 - PROSPECÇÃO EM CAMPO (nova aba 📍, Gestão): CRM de campo do Carlos + gestores. Cadastra lojas visitadas/ativadas, registra visita com relato ("como foi"), status em 4 cores: cinza=prospect, AMARELO=ativada sem 1º pedido, verde=ativa(pedindo), vermelho=perdida. Marcar "ativei" pinta de amarelo na hora. Filtros por cidade/status/período/busca, KPIs, e "Buscar empresas novas (Machine)" via RPC clientes_onboarding. Gestor vê só as cidades dele; Carlos/diretoria veem tudo. Escrita pela rota segura (supabase-write, add prospeccao_lojas/visitas na allowlist). Rodar docs/prospeccao-campo.sql. PARTE 1 (CRM); mapa geocodificado + auto verde/vermelho pela Machine vêm na Parte 2 - 16/10/2026 --><!-- v32.19 - Mural: RESPOSTAS e REAÇÕES não ficavam salvas. Causa: tabela recados sem policy de UPDATE pro anon, o PATCH voltava 204 sem gravar e sumia no próximo load. Agora usam RPCs atômicas SECURITY DEFINER (recado_responder / recado_reagir), que também evitam uma pessoa apagar a resposta da outra; erro de gravação mostra toast. Rodar docs/mural-respostas-rpc.sql - 01/10/2026 --><!-- v32.20 - Mural: GIF nas RESPOSTAS (botao GIF na caixa de resposta, reusa o seletor do Giphy via _muralGifCtx; guarda a url no campo gif). RPC recado_responder aceita resposta so com GIF (texto OU gif). Render mostra o gif. Rodar de novo docs/mural-respostas-rpc.sql pra liberar resposta so-gif - 02/10/2026 --><!-- v32.19 - Aba Projetos (Tarefas): barra de BUSCA (por nome/descricao, sem acento) + filtro de STATUS. tfRenderProjetos filtra a lista; input fora do grid (nao perde foco). Mensagem "nenhum encontrado" quando filtra - 01/10/2026 --><!-- v32.18 - Mural: recados estavam SUMINDO porque o cache local era cortado em 12 (apagava os antigos da tela mesmo estando no servidor por 2 dias). Subido pra 80, load de 30->100, e a caixa do mural de 320->560px de altura (mostra mais, rola o resto). Retenção de 2 dias mantida - 01/10/2026 --><!-- v32.17 - Mural: RESPOSTAS no recado (tipo comentario). Cada recado tem "💬 Responder"; a resposta fica embaixo, com avatar/nome/hora, sincronizada (recados.respostas jsonb, PATCH) e notifica o autor do recado. Rodar ALTER TABLE recados ADD COLUMN respostas jsonb (docs/mural-interativo.sql) - 01/10/2026 --><!-- v32.16 - Mural reações: removidos os emojis novos demais (🫶🥹🫡🥱🤍, de 2021/2022) que viravam quadradinho em aparelho/Windows antigo; lista agora so com emojis universais (ate 2018). Adicionados seguros no lugar (🥺😘😜🙄😬🤓😈👻💀🎈🎁) - 01/10/2026 --><!-- v32.15 - Mural reações: catalogo expandido pra 60+ emojis (os principais do WhatsApp) e o seletor virou um quadradinho rolavel (max-height+scroll); as pills aceitam QUALQUER emoji reagido (le as chaves de reacoes, nao so a lista fixa) - 01/10/2026 --><!-- v32.14 - Mural reações estilo Instagram: em vez dos 7 emojis grandes sempre, mostra so as reações que JA TEM (emoji + contagem, compacto) + um botao 🙂+ que abre o seletor com os 7. _muralTogglePicker. - 01/10/2026 --><!-- v32.13 - MURAL interativo: (1) REAÇÕES COMPARTILHADAS (antes so no aparelho de quem reagia) guardadas em recados.reacoes e sincronizadas via PATCH, com mais opcoes (👍❤️🙏🔥🎉👏😂). (2) FOTO no recado (upload comprimido no cliente, data URL, coluna imagem). (3) GIF via Giphy (coluna gif guarda a URL; precisa de chave gratis em _GIPHY_KEY). _recadosSalvarSupa resiliente (posta sem os campos novos se as colunas ainda nao existirem). Rodar docs/mural-interativo.sql - 01/10/2026 --><!-- v32.12 - Login: AUTO-PROVISIONA o acesso no 1o login. Cadastrar pessoa com email NAO criava usuarios_login, entao dava "Email ou username nao encontrado" (caso Ane). Agora login.js, quando nao acha o login e o identificador e um email de alguem em pessoas, cria o usuarios_login com pin gami2026_init e segue. Onboarding sem SQL - 29/09/2026 --><!-- v32.11 - Encerramento Cuiabá + desligamentos: Kelvin Felipe (pe011, gestor de Cuiabá) e Isli Stephanie (pe028, ja saiu) no PESSOAS_DESLIGADAS. Migracao de cidades encerradas agora tambem tira c10/Vitória do cache. "Cuiabá" e "Vitória" removidos dos badges (array cidade) de 9 pessoas via app. Texto do reset sem "Jean". Dados no banco via docs/remover-cuiaba-kelvin-isli.sql - 28/09/2026 --><!-- v32.10 - (1) Direcao Gami: recado antigo que nao saia mesmo com servidor vazio. loadDirecaoFromSupa agora APAGA o cache local (gami_direcao) quando o servidor esta limpo ({}) e re-renderiza, entao a mensagem teimosa some. (2) parse do valor string. - 28/09/2026 --><!-- v32.09 - FIX final do "Não consegui salvar (tarefas)" (Jheniffer): zerados TODOS os POST-upsert em tarefas. Editar tarefa passou a usar PATCH direto (_tfPatchTarefa, anon UPDATE=204) em vez de supaUpsert; a migração legada v13 usa tfSupaSalvar (rota com sessão, silenciosa). Antes o edit falhava+alarmava pro anon e a migração podia spammar toast. Nao existe mais supaUpsert('tarefas') no codigo - 28/09/2026 --><!-- v32.08 - Empresas (raio-X): tabela ENXUTA (6 meses viram 1 coluna compacta "6,8k / 8,1k...", saiu Média/mês, cabeçalhos curtos, bairros de entrega sem numeros na tabela) + novo bloco "Resumo geral" ABAIXO da tabela com os numeros da cidade toda: total, faturamento, distribuicao por segmento, top bairros de entrega e pico geral (hook r.rodape no _rlRenderResultado) - 28/09/2026 --><!-- v32.07 - Empresas (raio-X): novas colunas "Pico" (hora + dia da semana de maior movimento) e "Bairros entrega" (top 3 bairros pra onde a empresa mais entrega), e o Bairro agora vem preenchido (bairro operacional da coleta). Tudo calculado na MV mv_empresas_raiox v6 (pico via mode() de hora/dow em America/Campo_Grande, bairros de entrega via unnest das paradas) que roda em background pelo pg_cron. Fallback ao vivo tambem calcula pico/bairros. Rodar docs/rpc_empresas_raiox_cidade.sql (v6) - 28/09/2026 --><!-- v32.06 - Empresas (raio-X completo): (1) nova coluna "Segmento" deduzida do NOME da empresa (_raioxSegmento: Pizzaria, Hambúrguer, Açaí, Loja de roupa, Farmácia, etc.) — a Machine não guarda o ramo, só tipo de serviço de motoboy, então é estimativa por palavra-chave (~40% classificado, resto "Outro"). (2) A RPC empresas_raiox_cidade passou a ler de MATERIALIZED VIEW pré-calculada (mv_empresas_raiox) pra não estourar timeout (592k corridas CG davam HTTP 500 quando o cache esfriava). Rodar docs/rpc_empresas_raiox_cidade.sql (recria a MV + refresh_raiox) - 28/09/2026 --><!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
+<!-- v32.46 - PROSPECCAO EM CAMPO (fix de verdade do "volta pro mapa inteiro"): no nivel CIDADE, quando a cidade ficava sem pontos geocodificados no momento do enquadramento (dados ainda nao prontos/vazios), o codigo dava fitBounds(_CAMPO_BR_BOUNDS) = zoom out pro Brasil inteiro, parecendo que nao abriu a cidade. Agora, sem pontos, FICA na cidade (setView no centroide, zoom 12), nunca volta pro Brasil. Aracaju/CG/Maceio/Recife - 19/10/2026 --><!-- v32.45 - Faturamento MUITO mais interativo: (1) COMPARACAO DO MES ATE AGORA no topo (ex: 1 a 19 de set x 1 a 19 de out, mesmo numero de dias, pra ser justo com o mes incompleto) por cidade + total, com Diferenca e Variacao. (2) Cards de KPI (mes ate agora, mesmo periodo mes passado, mes fechado anterior, acumulado). (3) Grafico de barras da evolucao mensal. (4) Tabela dos 5 meses com mini-tendencia (sparkline). Pra isso a MV virou DIARIA (mv_faturamento_diario) e o front deriva tudo. Rodar docs/faturamento-mv.sql (recria como diaria) - 19/10/2026 --><!-- v32.44 - Faturamento: (1) mostra os ULTIMOS 5 MESES por cidade (colunas), nao so 2; marca o mes atual como "em andamento" (incompleto) com asterisco, explicando por que ele aparece menor. (2) EXCLUI cidades encerradas (Vitoria/Cuiaba + qualquer uma fora do cadastro ativo via getCidadesData) - 19/10/2026 --><!-- v32.43 - Faturamento: o menu NAO aparecia nem pros autorizados. Causa: o laco de aplicarPermissoesVisuais que esconde itens fora da MATRIZ de cargos tambem escondia o faturamento (que usa gate proprio, fora da MATRIZ). Agora o laco PULA a aba faturamento; a visibilidade fica so no gate data-perm-faturamento/_podeVerFaturamento - 19/10/2026 --><!-- v32.42 - FATURAMENTO (aba nova 💰, RESTRITA): comparativo mensal de faturamento por cidade (como no print), vindo DIRETO da Machine (soma de valor_corrida das corridas finalizadas em machine_corridas, por cidade/mês; validado: Outubro bateu na vírgula com o print). SEGURANÇA SERVER-SIDE: só Rafhael(pe001), Tainara Nóbrega(pe002), João Duarte(pe003), Carlos(pecarlosvinicius), Matheus(pematheusfedrizzi) e super_admin veem. A função Netlify faturamento.js valida a sessão + allowlist e só então entrega; a MV mv_faturamento_mensal é REVOGADA pro anon (nem a chave pública lê). Menu escondido (data-perm-faturamento) + bloquearAcessoAba gate próprio. Rodar docs/faturamento-mv.sql - 19/10/2026 --><!-- v32.41 - Desligamento: Cláudio Martins (pe010), ex-gestor de São Luís, no PESSOAS_DESLIGADAS (some de Pessoas + syncPessoas apaga do servidor). São Luís continua ativa, só troca o gestor. Login/dados via docs/remover-claudio-saoluis.sql - 19/10/2026 --><!-- v32.40 - PROSPECÇÃO EM CAMPO: (1) o mapa não pinta mais o estado por QUALQUER ponto (empresa de Campo Grande com coord torta/GPS errado caía em MT/GO e pintava errado); agora pinta só pelas CIDADES que operamos (centroides) + lojas de prospecção. (2) a lista "Por cidade" com as empresas da Machine NÃO aparece mais no nível Brasil, só ao ABRIR a cidade; no nível Brasil mostra um aviso "clique numa cidade" + as lojas de prospecção (se houver) - 19/10/2026 --><!-- v32.39 - Mural: limite do recado subiu de 140 pra 500 caracteres (textarea maxlength, contador, truncamento no emoji/save). Pedido da Suzi pra mandar recados maiores - 19/10/2026 --><!-- v32.38 - PROSPECÇÃO EM CAMPO (fix definitivo: clicar na cidade não abria, ia pro Brasil): o dropdown de cidade às vezes não "pegava" o sel.value (montado antes da lista carregar / repintado), então o filtro voltava vazio e caía pro Brasil. Agora a cidade selecionada é uma VARIÁVEL DE ESTADO (_CAMPO.cidadeSel), fonte da verdade, e todas as leituras de nível/filtro usam _campoCidadeSel() em vez do valor do dropdown (que segue sincronizado só pra UI). _campoIrParaCidade/_campoSetCidade/_campoMapaBrasil setam o estado; onchange do select usa _campoSetCidade - 19/10/2026 --><!-- v32.37 - PROSPECÇÃO EM CAMPO: Campo Grande agora entra no nível Brasil também (chip com número, pin com número e os totais de baixo incluindo CG). Antes ficava de fora do carregamento Brasil por causa do timeout da RPC; a MV resolveu, então removi a exclusão. O enquadramento no nível Brasil deixou de esperar o carregamento (os centroides das cidades são fixos), então o mapa já se posiciona e os números do CG preenchem em seguida - 19/10/2026 --><!-- v32.36 - PROSPECÇÃO EM CAMPO (mostra TODAS as empresas): (1) o Supabase corta em 1000/req e o CG tem ~2600 empresas, então só aparecia mil. Agora a leitura da MV pagina (_campoFetchTodos) e traz TODAS. (2) mapa passou a renderizar em CANVAS (preferCanvas) e os limites de pontos subiram (600→5000 pedindo, 800→3000 fantasma), então os 2600+ de Campo Grande aparecem lisos (testado: 2609 pts em 1.3s) - 19/10/2026 --><!-- v32.35 - PROSPECÇÃO EM CAMPO (fix Campo Grande + navegação): (1) Campo Grande aparecia VAZIO porque a RPC mapa_empresas_cidade dá timeout nas 590k corridas. Agora as empresas+coord vêm de uma MV pré-agregada mv_prospeccao_mapa (leitura instantânea, cobre CG), com fallback na RPC ao vivo pro resto. Rodar docs/prospeccao-mapa-mv.sql (cria vazia + pg_cron popula). (2) Aracaju/Recife/Maceió ao clicar abriam o BRASIL: o dropdown de cidade era montado antes da lista carregar, então sel.value não pegava e caía pro filtro vazio. _campoIrParaCidade agora garante a opção antes de selecionar - 19/10/2026 --><!-- v32.34 - PROSPECÇÃO EM CAMPO (fantasmas + ficha completa): (1) o mapa/lista agora mostram em CINZA (👻) as empresas que CADASTRARAM na Machine e NUNCA pediram (RPC clientes_onboarding sem limite de data + coordenada do cadastro machine_empresas.raw lat/lng). Novo status fantasma no filtro e KPI "Nunca pediram"; ficam por baixo dos pontos de quem pede; não entram na saúde (verde/vermelho) da cidade. (2) clicar na empresa (ponto do mapa OU linha da lista) abre a FICHA COMPLETA: endereço, bairro, CEP, telefone+WhatsApp, e-mail, responsável, CNPJ/CPF, contrato, data de cadastro, situação, pedidos 120d, finalizados/cancelados %, faturamento e ticket (só p/ quem vê valores), último pedido. Cadastro casado por nome (lower/trim). "+ Acompanhar" já pré-preenche endereço/telefone/CNPJ. _campoFichaEmpresa/_campoFetchTodos/_campoToggleEmp. Testado no navegador (Aracaju 183 fantasmas, CG 968) - 19/10/2026 --><!-- v32.33 - PROSPECÇÃO EM CAMPO (cidade = mapa de ruas + atalhos): (1) ABRIR A CIDADE agora troca o fundo pra MAPA DE RUAS (OSM, _campoSetTiles) mostrando os BAIRROS, com as lojas/empresas em cima (verde=ativa/pedindo, vermelho=parou, tamanho=volume); volta pro vetorial no nível Brasil. maxZoom do mapa subiu 12→18 pra ver rua. (2) BARRA DE ATALHOS de cidade (#campo-chips, _campoRenderChips) acima do mapa: clica no nome e abre direto (resolve os pins empilhados do NE, bem mais prático). (3) ao abrir, já centraliza (flyTo) na cidade antes de carregar. Testado no navegador (Fortaleza com ruas+60 pontos) - 19/10/2026 --><!-- v32.32 - PROSPECÇÃO EM CAMPO (mapa mais interativo): (1) ESTADOS reagem ao mouse (destacam + borda, tooltip mostra nº de cidades/empresas nossas via _campoUFStats); (2) TRILHA de navegação "Brasil › Estado › Cidade" (_campoAtualizarBreadcrumb) clicável pra voltar; (3) zoom SUAVE (flyToBounds) ao clicar estado/cidade; (4) marcadores de cidade crescem no hover (scale) e sobem (riseOnHover); (5) no nível cidade os pontos das empresas têm TAMANHO proporcional ao volume de pedidos e destacam no hover. Testado no navegador: clicar no estado separa os pills empilhados do NE - 19/10/2026 --><!-- v32.31 - PROSPECÇÃO EM CAMPO (drill-down no mapa): nível BRASIL mostra um marcador por CIDADE (nome + total, cor pela saúde) em vez de milhares de pontos; CLICAR no ESTADO dá zoom nele (layer.getBounds), CLICAR na CIDADE abre a cidade (seleciona no filtro) com os pontos individuais e a lista agrupada POR BAIRRO. Botão Brasil volta ao nível país. Performance: no nível Brasil carrega só o NE (rápido); Campo Grande (590k, ~11s) só quando você abre ela. _campoDrawCidades/_campoDrawPontos/_campoIrParaCidade/_CAMPO_CIDADE_COORD - 16/10/2026 --><!-- v32.30 - PROSPECÇÃO EM CAMPO: o mapa agora JÁ MOSTRA a base da Machine (empresas que pedem) com STATUS por recência: 🟢 pedindo (últ. pedido <=21d) / 🔴 parou (>21d). Puxa mapa_empresas_cidade por cidade (cache por sessão, carga em paralelo e PROGRESSIVA — NE aparece em ~2s, Campo Grande ~11s por ter 590k). Pontos pequenos = base Machine, grandes = lojas de prospecção. Lista agora AGRUPADA POR CIDADE (lojas de prospecção + empresas da Machine, botão "+" pra acompanhar). KPIs somam Machine+prospecção. Cap 600 pts no mapa / 80 por cidade na lista. _campoCarregarMachine/_campoMachineFiltrada/_campoRepintar/_campoProspectarEmpresa - 16/10/2026 --><!-- v32.29 - PROSPECÇÃO EM CAMPO: (1) NÚMEROS (botão 📊): funil de conversão prospect/ativada/ativa/perdida com %, taxa de ativação, viraram pedido, tempo médio até o 1º pedido (primeiro_pedido_em - ativada_em), visitas no período, e RANKING por prospector (visitas/ativações/lojas). Botão "⬇️ Exportar CSV" (lojas filtradas, BOM pra Excel). Segue os filtros. (2) LEMBRETE DE RETORNO: campo de data na visita cria uma tarefa (tfSupaSalvar) pra quem visitou, aparece no calendário/tarefas na data. Sem SQL novo - 16/10/2026 --><!-- v32.28 - PROSPECÇÃO EM CAMPO: localização sem estar na loja (o Carlos trabalha de outro lugar e só passa a coordenada aos gestores). No cadastro da loja agora tem campos Lat/Lng (colar coordenada pronta) + "🗺️ Marcar no mapa" (abre um mapa de RUAS/OSM, busca o endereço e clica onde fica a loja → preenche lat/lng) + "📍 GPS" secundário (pra gestor que esteja em campo). Save lê lat/lng dos campos (prioridade sobre geocodificação). _campoAbrirPicker/_campoPickSet/_campoPickerBuscar/_campoPickerConfirmar - 16/10/2026 --><!-- v32.27 - PROSPECÇÃO EM CAMPO (campo/celular): (1) botão "📍 Usar minha localização" no cadastro da loja usa o GPS do aparelho (navigator.geolocation) pra marcar o ponto no mapa SEM digitar endereço (ideal pro Carlos estando na porta da loja); GPS tem prioridade sobre geocodificação. (2) "📷 Foto da fachada" na visita (reusa o compressor do mural _muralComprimirImagem, ~900px), guarda na visita e mostra no histórico (clica abre). Rodar docs/prospeccao-foto.sql (ADD COLUMN foto) - 16/10/2026 --><!-- v32.26 - PROSPECÇÃO EM CAMPO: o mapa agora ABRE JÁ ao entrar na aba (sem precisar clicar no botão Mapa) e fica LOGO ABAIXO dos filtros (em cima da lista). _campoMapaWrapHTML extraído; montarShell renderiza o wrap visível e reseta a instância do Leaflet (o innerHTML recria o #campo-mapa, senão ficava órfão e não desenhava); initCampo chama _campoRenderMapa. Botão 🗺️ Mapa vira só mostrar/esconder. (Se ainda aparecer mapa de RUAS/OSM, é cache: Ctrl+Shift+R; a v32.25 já trocou pro vetorial do Brasil.) - 16/10/2026 --><!-- v32.25 - PROSPECÇÃO EM CAMPO (mapa SÓ DO BRASIL, estilo vetorial): trocados os tiles de rua (OSM) por um contorno vetorial do Brasil com os 27 estados (GeoJSON simplificado em /data/br-estados.geojson, ~290KB/69KB gzip, carrega 1x). Fundo claro tipo mapa do Brasil, sem mundo/oceano. Estados COM loja ficam azul-marinho escuro (point-in-polygon decide), resto azul claro, igual a referência que o usuário mandou. Nome do estado no hover. Pontos das lojas (status) por cima. Mantém trava no BR, 🇧🇷 reset, popup com Abrir loja/+Visita. Testado no navegador (render ok) - 16/10/2026 --><!-- v32.24 - PROSPECÇÃO EM CAMPO (mapa mais focado e interativo): mapa trava no Brasil (maxBounds + minZoom 4 + maxBoundsViscosity, abre em fitBounds do BR, nunca mais sai pro mundo/oceano). Pontos maiores com borda branca, NOME no hover (tooltip) e destaque ao passar o mouse; popup com botões "Abrir loja" (_campoAbrirDoMapa: expande e rola até o card, com highlight) e "+ Visita". Botão "🇧🇷 Brasil" reseta o enquadramento; sem pontos mostra o Brasil inteiro; fitBounds com maxZoom 15 pra 1 ponto não colar demais - 16/10/2026 --><!-- v32.23 - PROSPECÇÃO EM CAMPO (Parte 2b, CRUZAMENTO MACHINE): botão "🔄 Status pela Machine" lê a RPC prospeccao_sinal_machine (sobre a MV mv_empresas_raiox, sem reprocessar as 590k corridas) e casa a loja pelo NOME na mesma cidade. amarelo/prospect→verde quando a Machine confirma pedido (grava primeiro_pedido_em); verde→vermelho só se parou há +21 dias (CAMPO_CHURN_DIAS, conservador contra falso churn); vermelho→verde se voltou. Só mexe em quem BATEU com a Machine (CG tem o espelho; nome precisa igual). Rodar docs/prospeccao-sinal-machine.sql - 16/10/2026 --><!-- v32.22 - PROSPECÇÃO EM CAMPO (Parte 2a, MAPA): botão 🗺️ Mapa na aba Prospecção mostra as lojas em pontos coloridos por status (cinza/amarelo/verde/vermelho), Leaflet + OSM (reusa _carregarLeaflet). "📍 Geocodificar faltantes" converte endereço→lat/lng via nova função Netlify geocode.js (Nominatim server-side, User-Agent próprio, 1 req/s), guarda lat/lng na loja (não re-geocodifica). Mapa segue os filtros (cidade/status/busca), popup com nome/bairro/status/última visita, fitBounds. Próximo: 2b cruzamento auto com a Machine (amarelo→verde→vermelho via mv_empresas_raiox) - 16/10/2026 --><!-- v32.21 - PROSPECÇÃO EM CAMPO (nova aba 📍, Gestão): CRM de campo do Carlos + gestores. Cadastra lojas visitadas/ativadas, registra visita com relato ("como foi"), status em 4 cores: cinza=prospect, AMARELO=ativada sem 1º pedido, verde=ativa(pedindo), vermelho=perdida. Marcar "ativei" pinta de amarelo na hora. Filtros por cidade/status/período/busca, KPIs, e "Buscar empresas novas (Machine)" via RPC clientes_onboarding. Gestor vê só as cidades dele; Carlos/diretoria veem tudo. Escrita pela rota segura (supabase-write, add prospeccao_lojas/visitas na allowlist). Rodar docs/prospeccao-campo.sql. PARTE 1 (CRM); mapa geocodificado + auto verde/vermelho pela Machine vêm na Parte 2 - 16/10/2026 --><!-- v32.19 - Mural: RESPOSTAS e REAÇÕES não ficavam salvas. Causa: tabela recados sem policy de UPDATE pro anon, o PATCH voltava 204 sem gravar e sumia no próximo load. Agora usam RPCs atômicas SECURITY DEFINER (recado_responder / recado_reagir), que também evitam uma pessoa apagar a resposta da outra; erro de gravação mostra toast. Rodar docs/mural-respostas-rpc.sql - 01/10/2026 --><!-- v32.20 - Mural: GIF nas RESPOSTAS (botao GIF na caixa de resposta, reusa o seletor do Giphy via _muralGifCtx; guarda a url no campo gif). RPC recado_responder aceita resposta so com GIF (texto OU gif). Render mostra o gif. Rodar de novo docs/mural-respostas-rpc.sql pra liberar resposta so-gif - 02/10/2026 --><!-- v32.19 - Aba Projetos (Tarefas): barra de BUSCA (por nome/descricao, sem acento) + filtro de STATUS. tfRenderProjetos filtra a lista; input fora do grid (nao perde foco). Mensagem "nenhum encontrado" quando filtra - 01/10/2026 --><!-- v32.18 - Mural: recados estavam SUMINDO porque o cache local era cortado em 12 (apagava os antigos da tela mesmo estando no servidor por 2 dias). Subido pra 80, load de 30->100, e a caixa do mural de 320->560px de altura (mostra mais, rola o resto). Retenção de 2 dias mantida - 01/10/2026 --><!-- v32.17 - Mural: RESPOSTAS no recado (tipo comentario). Cada recado tem "💬 Responder"; a resposta fica embaixo, com avatar/nome/hora, sincronizada (recados.respostas jsonb, PATCH) e notifica o autor do recado. Rodar ALTER TABLE recados ADD COLUMN respostas jsonb (docs/mural-interativo.sql) - 01/10/2026 --><!-- v32.16 - Mural reações: removidos os emojis novos demais (🫶🥹🫡🥱🤍, de 2021/2022) que viravam quadradinho em aparelho/Windows antigo; lista agora so com emojis universais (ate 2018). Adicionados seguros no lugar (🥺😘😜🙄😬🤓😈👻💀🎈🎁) - 01/10/2026 --><!-- v32.15 - Mural reações: catalogo expandido pra 60+ emojis (os principais do WhatsApp) e o seletor virou um quadradinho rolavel (max-height+scroll); as pills aceitam QUALQUER emoji reagido (le as chaves de reacoes, nao so a lista fixa) - 01/10/2026 --><!-- v32.14 - Mural reações estilo Instagram: em vez dos 7 emojis grandes sempre, mostra so as reações que JA TEM (emoji + contagem, compacto) + um botao 🙂+ que abre o seletor com os 7. _muralTogglePicker. - 01/10/2026 --><!-- v32.13 - MURAL interativo: (1) REAÇÕES COMPARTILHADAS (antes so no aparelho de quem reagia) guardadas em recados.reacoes e sincronizadas via PATCH, com mais opcoes (👍❤️🙏🔥🎉👏😂). (2) FOTO no recado (upload comprimido no cliente, data URL, coluna imagem). (3) GIF via Giphy (coluna gif guarda a URL; precisa de chave gratis em _GIPHY_KEY). _recadosSalvarSupa resiliente (posta sem os campos novos se as colunas ainda nao existirem). Rodar docs/mural-interativo.sql - 01/10/2026 --><!-- v32.12 - Login: AUTO-PROVISIONA o acesso no 1o login. Cadastrar pessoa com email NAO criava usuarios_login, entao dava "Email ou username nao encontrado" (caso Ane). Agora login.js, quando nao acha o login e o identificador e um email de alguem em pessoas, cria o usuarios_login com o PIN inicial e segue. Onboarding sem SQL - 29/09/2026 --><!-- v32.11 - Encerramento Cuiabá + desligamentos: Kelvin Felipe (pe011, gestor de Cuiabá) e Isli Stephanie (pe028, ja saiu) no PESSOAS_DESLIGADAS. Migracao de cidades encerradas agora tambem tira c10/Vitória do cache. "Cuiabá" e "Vitória" removidos dos badges (array cidade) de 9 pessoas via app. Texto do reset sem "Jean". Dados no banco via docs/remover-cuiaba-kelvin-isli.sql - 28/09/2026 --><!-- v32.10 - (1) Direcao Gami: recado antigo que nao saia mesmo com servidor vazio. loadDirecaoFromSupa agora APAGA o cache local (gami_direcao) quando o servidor esta limpo ({}) e re-renderiza, entao a mensagem teimosa some. (2) parse do valor string. - 28/09/2026 --><!-- v32.09 - FIX final do "Não consegui salvar (tarefas)" (Jheniffer): zerados TODOS os POST-upsert em tarefas. Editar tarefa passou a usar PATCH direto (_tfPatchTarefa, anon UPDATE=204) em vez de supaUpsert; a migração legada v13 usa tfSupaSalvar (rota com sessão, silenciosa). Antes o edit falhava+alarmava pro anon e a migração podia spammar toast. Nao existe mais supaUpsert('tarefas') no codigo - 28/09/2026 --><!-- v32.08 - Empresas (raio-X): tabela ENXUTA (6 meses viram 1 coluna compacta "6,8k / 8,1k...", saiu Média/mês, cabeçalhos curtos, bairros de entrega sem numeros na tabela) + novo bloco "Resumo geral" ABAIXO da tabela com os numeros da cidade toda: total, faturamento, distribuicao por segmento, top bairros de entrega e pico geral (hook r.rodape no _rlRenderResultado) - 28/09/2026 --><!-- v32.07 - Empresas (raio-X): novas colunas "Pico" (hora + dia da semana de maior movimento) e "Bairros entrega" (top 3 bairros pra onde a empresa mais entrega), e o Bairro agora vem preenchido (bairro operacional da coleta). Tudo calculado na MV mv_empresas_raiox v6 (pico via mode() de hora/dow em America/Campo_Grande, bairros de entrega via unnest das paradas) que roda em background pelo pg_cron. Fallback ao vivo tambem calcula pico/bairros. Rodar docs/rpc_empresas_raiox_cidade.sql (v6) - 28/09/2026 --><!-- v32.06 - Empresas (raio-X completo): (1) nova coluna "Segmento" deduzida do NOME da empresa (_raioxSegmento: Pizzaria, Hambúrguer, Açaí, Loja de roupa, Farmácia, etc.) — a Machine não guarda o ramo, só tipo de serviço de motoboy, então é estimativa por palavra-chave (~40% classificado, resto "Outro"). (2) A RPC empresas_raiox_cidade passou a ler de MATERIALIZED VIEW pré-calculada (mv_empresas_raiox) pra não estourar timeout (592k corridas CG davam HTTP 500 quando o cache esfriava). Rodar docs/rpc_empresas_raiox_cidade.sql (recria a MV + refresh_raiox) - 28/09/2026 --><!-- v32.05 - Vitória/ES ENCERRADA: operação retirada do sistema. Cidade c10 removida do CIDADES_DATA_DEFAULT + adicionada ao CIDADES_REMOVIDAS (limpa cache). Gestor Jean Alves Guerra (pejeanguerra) no PESSOAS_DESLIGADAS (some de tudo + syncPessoas apaga do servidor). Vitória tirada de: dropdowns, CIDADE_OPTS, listas de ordem, feriados/aniversário/curiosidades/coords, mapa de analista/instagram, estoque (EST_LOCALIZACOES + permissao luiza), manual e prompts. Dados do banco (135 empresas + 3278 corridas Machine, pontos/ranking/badges/tarefas/login do Jean) apagados via SQL docs/remover-vitoria.sql. Backup salvo antes - 28/09/2026 --><!-- v32.04 - FIX "Não consegui salvar (tarefas)" que aparecia a CADA load pra quem RECEBE tarefa delegada (Jheniffer). Causa: a marcacao "delegada vista" (vista_em) usava supaUpsert (POST-upsert), que o anon nao consegue em 'tarefas'; falhava, o vista_em nunca salvava e repetia todo load. Agora usa PATCH direto (_tfPatchTarefa, anon UPDATE = 204), silencioso. Mesmo fix em _tfSyncConcluidaSemPonto (conclusao sem ponto) - 28/09/2026 --><!-- v32.03 - Novo relatorio "Empresas (raio-X completo)" em Relatorios > Empresas: 1 linha por empresa com telefone, pedidos, mes a mes (6 meses), media/mes, tendencia (subindo/estavel/caindo), faturamento e ticket (financeiro), ultima vez. Feito pra imprimir/exportar (PDF/Excel/CSV), sem depender de clicar. RPC empresas_raiox_cidade (CG) + fallback ao vivo (outras cidades, 45d). Precisa rodar docs/rpc_empresas_raiox_cidade.sql - 25/09/2026 --><!-- v32.02 - Mapa de calor agora vale pra TODAS as cidades: so campo-grande esta no espelho machine_corridas (RPC), entao as outras caem num fallback que agrega o cache Machine ao vivo (corridas45d, que ja tem coleta.lat/lng). _mapaAgregarLocal produz o mesmo formato da RPC. Marca "(dados ao vivo)" na descricao quando usa o fallback - 25/09/2026 --><!-- v32.01 - Novo relatorio "Mapa de calor (zona quente)" em Relatorios > Operacional: mapa Leaflet com heatmap das empresas que pedem (peso = volume de pedidos no periodo), marcadores das top 50 (clica e ve nome/bairro/pedidos) + ranking por bairro + tabela top 60 exportavel. Fonte: RPC mapa_empresas_cidade (coord de COLETA das corridas, raw->coleta). Tiles OpenStreetMap (CARTO agora exige API key). Precisa rodar docs/rpc_mapa_empresas_cidade.sql no Supabase - 25/09/2026 --><!-- v32.00 - Lista completa de empresas: busca agora aceita CNPJ ou CPF (alem do nome). Se o termo for numerico (3+ digitos), casa contra o campo documento ignorando a mascara (pontos, barra, traco); senao busca por nome como antes. Placeholder atualizado - 25/09/2026 --><!-- v31.97 - Secao Atrasadas: mostra so as RECENTES (ultimos 7 dias, ATRASADAS_JANELA_DIAS), nao o backlog antigo de meses. Corte por prazo tanto na agenda quanto nas tarefas - 22/09/2026 --><!-- v31.96b: FIX conclusao de atrasada que voltava: tarefa em balde de dia passado (ex bucket 2026_09_09 sem prefixo) nao concluia com tfToggle('diario',id). Nova _tfConcluirAtrasada marca feito no SERVIDOR (fonte da verdade) + cache + baldes locais, entao nao volta no reload. Agenda marca feito no localStorage. Checkbox e 'Concluir todas' usam a nova funcao - 22/09/2026 --><!-- v31.95b: botao "Concluir todas" no topo (conclui agenda+tarefas de uma vez, com confirmacao). _tfLimparAtrasadas - 22/09/2026 --><!-- v31.94b (aba Hoje): agora tem botao × pra EXCLUIR o item (alem de concluir). Agenda -> removerItemAgendaAtrasado; tarefa -> tfExcluir. Tarefas normais ja tinham o × na lista - 22/09/2026 --><!-- v31.93b: o '+ Adicionar' dos Compromissos agora cria SEMPRE uma TAREFA (removido o tipo 'compromisso' separado, que so ficava no aparelho e sumia da pagina Tarefas). A tarefa sincroniza (tfSupaSalvar), aparece em Tarefas + Compromissos de hoje + Calendario, da pra concluir num lugar so e conta ponto. Compromissos antigos seguem visiveis na secao Atrasadas (v31.92) - 22/09/2026 --><!-- v31.92b: nova secao "⏰ Atrasadas" no topo, juntando COMPROMISSOS da agenda de dias passados + TAREFAS com prazo vencido (que so apareciam no dashboard/Compromissos de hoje, nao na pagina Tarefas). Com checkbox pra concluir (agendaToggleAtrasado p/ agenda, tfToggle p/ tarefa). Resolve 'nunca vejo minhas atrasadas na aba Tarefas' - 22/09/2026 --><!-- v31.91b: listas 'Pararam de pedir' de VOLTA no menu, com dias certos: padrao do intervalo agora 15 dias (era 5, que pegava cliente no intervalo normal), opcoes 10/15/20/30/45, min 3 pedidos. Restaurados tambem 30d/60d/90d. Churn inteligente continua. Testado: com 15d a BELAITECH (parou 5d) sai da lista - 22/09/2026 --><!-- v31.90b os relatorios de churn de janela fixa que davam falso positivo (Pararam 5-90d, 30d, 60d, 90d). Fica so o "Churn inteligente" (compara com o ritmo do proprio cliente) + Empresas ativas. Geradores/dispatch continuam no codigo (so nao aparecem no menu). Meninas usam esses numeros p/ recuperacao, entao nao pode ter falso - 22/09/2026 --><!-- v31.89b (empresas_churn_inteligente). Em vez de corte fixo de dias (que enche de falso positivo com cliente que pede irregular), compara o tempo parado com o RITMO de cada cliente (percentil 80 dos intervalos entre pedidos). So alerta quem parou > fator x o proprio padrao. Requer RPC docs/rpc_empresas_churn_inteligente.sql. Filtros: sensibilidade (fator) + historico min - 22/09/2026 -->
 <!-- v31.88 - Aba "Delegadas por mim": aparecia VAZIA (0) mesmo com tarefas delegadas (que apareciam so no calendario). Causa: renderDelegadasPorMim lia _tfSupaCache, que so tem tarefas onde EU sou dono (pessoa_id=eu); a delegada tem pessoa_id=destino. Fix: aba passa a buscar DIRETO no servidor (delegada_por=eq.eu), mesma fonte do calendario (v31.74). Async - 22/09/2026 -->
 <!-- v31.87 - Compromissos de hoje: checkbox de item ATRASADO (dia passado) nao finalizava. Causa: atrasado virava tipo manual SEM manualIdx entao agendaToggleManual(undefined) era no-op (e o item nem estava na lista de hoje). Fix: chave estavel _atraKey (dia|hora|titulo) + agendaToggleAtrasado/removerItemAgendaAtrasado que acham o item na data original e marcam feito/removem - 21/09/2026 -->
 <!-- v31.86 - Ponto: REMOVIDA a justificativa obrigatoria por bater fora do horario (atraso). Decisao do dono. exigeJustificativa passou a ser sempre false na origem (_calcularProximaBatidaEAtraso) -> desliga nos 2 fluxos (Meu Ponto + dashboard). O atraso ainda e calculado e o registro real segue no banco pra gestao; so nao trava mais o colaborador. Fora do raio (localizacao) NAO muda - 21/09/2026 -->
@@ -182,7 +182,7 @@
 <!-- v31.28 - Cadastro: nova CATEGORIA "Suporte" no seletor de cargo (funcoes: Suporte Home, Suporte Operacional, Suporte Escritorio) + cor propria p/ Suporte Operacional. Suporte Home saiu de Colaborador e foi p/ Suporte. Banco: todos os "Suporte Home" migrados p/ categoria=Suporte (antes ficavam em Colaborador). Karen e Whiny: bate_ponto=false (home office, nao batem mais ponto) - 09/07/2026 -->
 <!-- v31.27 - Mural: @mencao com acento quebrava o nome ("@Claudio" com acento virava "@Cl" + "audio") porque a regex /@(\w+)/ parava no acento. Trocado p/ /@([\wÀ-ÿ]+)/ (mencao e autocomplete). Bonus: texto do recado agora passa por tfEsc antes do highlight (fecha XSS via innerHTML) - 09/07/2026 -->
 <!-- v31.26 - Senha/PIN: limite de caracteres liberado de 8 para 32 em TODOS os fluxos (login, primeiro acesso pa-pin, trocar PIN nas config tp-novo, e "Esqueci meu PIN" reset-pin) + validacoes cliente e servidor (trocar-pin.js, resetar-pin.js) agora 4-32. Reset por email deixou de exigir 4-6 digitos numericos (aceita alfanumerico). Vanessa nao conseguia criar senha maior que 8 - 09/07/2026 -->
-<!-- v31.25 - Reset de PIN pelo painel: botao "Resetar PIN desta pessoa" no modal de Pessoas (so super_admin, so na edicao) chama nova funcao Netlify admin-reset-pin (service key, valida sessao + confirma que quem chama e o super_admin) e volta a pessoa pro gami2026 destravada. Fim do SQL manual pra resetar PIN - 09/07/2026 -->
+<!-- v31.25 - Reset de PIN pelo painel: botao "Resetar PIN desta pessoa" no modal de Pessoas (so super_admin, so na edicao) chama nova funcao Netlify admin-reset-pin (service key, valida sessao + confirma que quem chama e o super_admin) e volta a pessoa pro PIN inicial, destravada. Fim do SQL manual pra resetar PIN - 09/07/2026 -->
 <!-- v31.24 - Extrato de pontos: cada colaborador ve o SEU extrato (Meu Extrato de Pontos) na aba Ranking; pontos de todo mundo (ranking geral, top 10, por cargo, podio, historico) ficam so p/ super_admin, diretoria e gerencia via data-perm-ranking-geral. Nova renderMeuExtrato() + gate em aplicarPermissoesVisuais - 09/07/2026 -->
 <!-- v31.23 - Login iPhone: campo PIN tinha autocomplete="current-password" e o Safari despejava uma senha salva do Keychain por cima do PIN (ex: "032904Jj.") = 401 sempre. Trocado para autocomplete="off" + data-lpignore/1p-ignore pra impedir autofill de gerenciadores de senha - 08/07/2026 -->
 <!-- v31.22 - Busca das listas completas (empresas e motoboys): campo perdia o foco a cada tecla (no celular fechava o teclado = "saia da tela"; no PC tinha que clicar de novo). Novo _renderPreservandoBusca preserva foco+cursor no re-render - 08/07/2026 -->
@@ -219,7 +219,7 @@
 <!-- 🔔 Push Notification VAPID public key -->
 <script>window.GAMI_VAPID_PUBLIC_KEY = 'BIfoGIcpBnsbeLHds-gtSttTql0DVnc4_PJzpc3hkeTk-544faCo35k-wnJMjww0jfNy_Xk2Kp4LO2yZ-lg1sYw';</script>
 <!-- 🔒 manda a sessão do dashboard nas chamadas à função da Machine (que agora exige login) -->
-<script src="/gami-auth-fetch.js?v=1"></script>
+<script src="/gami-auth-fetch.js?v=2"></script>
 
 <!-- 📱 PWA -->
 <link rel="manifest" href="/manifest.json">
@@ -1791,6 +1791,9 @@ async function renderNotificacoes(){
     return;
   }
 
+  // Anti-XSS: título e texto da notificação vêm do banco/mural (texto digitado por
+  // usuário), então entram escapados no HTML. Fallback local caso tfEsc ainda não exista.
+  var _nEsc = (typeof tfEsc === 'function') ? tfEsc : function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   list.innerHTML = notifs.map(function(n){
     var unread = !ehLida(n);
     // Formata tempo relativo (ex: "Há 5 min")
@@ -1810,10 +1813,10 @@ async function renderNotificacoes(){
       + '<div class="gami-notif-icon" style="font-size:20px;flex-shrink:0">'+(n.icon||'🔔')+'</div>'
       + '<div class="gami-notif-body" style="flex:1;min-width:0">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px">'
-          + '<div class="gami-notif-title" style="font-size:13px;font-weight:600;color:var(--text);line-height:1.3;flex:1;min-width:0;overflow-wrap:break-word">'+n.titulo+'</div>'
+          + '<div class="gami-notif-title" style="font-size:13px;font-weight:600;color:var(--text);line-height:1.3;flex:1;min-width:0;overflow-wrap:break-word">'+_nEsc(n.titulo)+'</div>'
           + (tempo ? '<div style="font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0">'+tempo+'</div>' : '')
         + '</div>'
-        + (n.sub ? '<div class="gami-notif-sub" style="font-size:11.5px;color:var(--text2);line-height:1.4;overflow-wrap:break-word;white-space:pre-line">'+n.sub+'</div>' : '')
+        + (n.sub ? '<div class="gami-notif-sub" style="font-size:11.5px;color:var(--text2);line-height:1.4;overflow-wrap:break-word;white-space:pre-line">'+_nEsc(n.sub)+'</div>' : '')
       + '</div>'
       + (unread?'<span style="width:8px;height:8px;border-radius:50%;background:var(--gami-blue);flex-shrink:0;margin-top:6px"></span>':'')
     + '</div>';
@@ -2019,11 +2022,8 @@ function detectarNivelPermissao(usuario){
   // tranca fora, mesmo se o dado estiver errado.
   if(usuario.email && usuario.email.toLowerCase() === 'jipadigital@gmail.com') return 'super_admin';
 
-  // 🕵️ AUDITORIA DE SEGURANÇA (convidado OCULTO). Vê TODAS as abas pra testar o
-  // painel, mas é READ-ONLY, NÃO vê valores em R$, e NÃO está em `pessoas` — por
-  // isso não aparece em canto nenhum (Pessoas, ranking, ponto). Identificado por
-  // e-mail sentinela interno (sem nome real). Provisionado via CONVIDADOS no
-  // login.js. Trava de prioridade máxima (logo após o super_admin).
+  // Nível somente-leitura para revisão de segurança (sem editar, sem valores em R$).
+  // Trava de prioridade máxima (logo após o super_admin).
   var _AUDITORES = ['auditor@seg.gami'];
   if(usuario.email && _AUDITORES.indexOf(usuario.email.toLowerCase()) !== -1) return 'auditor';
 
@@ -2190,10 +2190,9 @@ var MATRIZ_PERMISSOES = {
     pode_ver_financeiro: false,
     ocultar_valores: true
   },
-  // 🕵️ Auditor de segurança (convidado oculto): vê TODAS as abas pra testar o
-  // painel, mas é READ-ONLY (nada de editar/deletar/postar) e SEM valores em R$.
-  // As abas de dinheiro (faturamento/ltv) nem entram aqui e têm gate próprio por
-  // pessoa_id no servidor, então ele não as vê. v33.58 - 09/11/2026
+  // Nível somente-leitura para revisão de segurança: nada de editar/deletar/postar e
+  // SEM valores em R$. As abas de dinheiro (faturamento/ltv) nem entram aqui e têm
+  // gate próprio por pessoa_id no servidor. v33.58 - 09/11/2026
   auditor: {
     abas: ['dashboard','calendario','tarefas','marketing','cidades','campo','pessoas','ranking','culture','carreira','portal','blog','campanhas','conteudo','ideias','scripts','relatorio-diario','relatorios','saude','clima','manual'],
     pode_editar_pessoas: false,
@@ -2581,8 +2580,9 @@ function abrirModalTarefaEquipe(){
   var existente = document.getElementById('modal-tarefa-equipe');
   if(existente) existente.remove();
   
-  var hoje = new Date().toISOString().slice(0,10);
-  var amanha = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+  // Datas em fuso LOCAL (toISOString é UTC: depois das 21h "hoje" já virava amanhã)
+  var hoje = (typeof _dataLocalStr === 'function') ? _dataLocalStr(new Date()) : new Date().toISOString().slice(0,10);
+  var amanha = (typeof _dataLocalStr === 'function') ? _dataLocalStr(new Date(Date.now() + 86400000)) : new Date(Date.now() + 86400000).toISOString().slice(0,10);
   
   var modal = document.createElement('div');
   modal.id = 'modal-tarefa-equipe';
@@ -6134,14 +6134,17 @@ Object.defineProperty(window, 'nav', { value: window.nav, writable: false, confi
       <!-- Gráfico hora × cobertura -->
       <div id="mb-grafico-box" style="margin-bottom:14px"></div>
 
-      <!-- Comunicação rápida (mantido) -->
-      <div class="card" style="background:linear-gradient(135deg,#E6F6FE,#EAF3DE);border-color:#1AB8F033">
+      <!-- Comunicação rápida: ESCONDIDA (auditoria). O botão "Enviar WhatsApp em massa" usava
+           motoboys fictícios (gerarMotoboysMock) e abria o WhatsApp de um número inventado.
+           Card e botão ficam com display:none até existir envio real; a função
+           cidEnviarMsgMotoboys() continua no código, só não aparece na tela. -->
+      <div class="card" style="display:none;background:linear-gradient(135deg,#E6F6FE,#EAF3DE);border-color:#1AB8F033">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div style="flex:1">
             <div style="font-size:13px;font-weight:700;color:#0E7AB8">📢 Comunicação rápida</div>
             <div style="font-size:11px;color:var(--text2);margin-top:2px">Envie aviso pra todos os motoboys ativos via WhatsApp</div>
           </div>
-          <button onclick="cidEnviarMsgMotoboys()" style="padding:8px 14px;border:none;border-radius:8px;background:#25D366;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:6px">
+          <button onclick="cidEnviarMsgMotoboys()" style="padding:8px 14px;border:none;border-radius:8px;background:#25D366;color:white;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:none;align-items:center;gap:6px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/></svg>
             Enviar WhatsApp em massa
           </button>
@@ -6524,9 +6527,30 @@ Tudo o que escrever aqui fica salvo automaticamente." oninput="cidAnotacoesDirty
       try {
         var body={ cidade:c, publico:st.publico, titulo:titulo, mensagem:mensagem, lote:lote, autor_nome:autorNome };
         if(teste) body.teste_auto=true;
-        var res=await fetch(FN,{ method:'POST', headers:H(), body:JSON.stringify(body) }); var j=await res.json();
-        if(!res.ok || !j.success){ linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="derr">'+esc((j&&(j.error||j.aviso))||('HTTP '+res.status))+'</span>'; }
-        else { totEnv+=(j.enviados||0); totFal+=(j.falhas||0); var ex=j.teste?(' (teste, condutor '+esc(j.alvo_teste||'?')+')'):(j.lista_completa===false?' , parcial (rode de novo)':''); linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="dok">'+(j.enviados||0)+' enviados'+(j.falhas?(' · '+j.falhas+' falhas'):'')+esc(ex)+'</span>'; }
+        // 13/11/2026: cidade grande não cabe numa chamada só. Antes aparecia "parcial (rode de
+        // novo)" e rodar de novo repetia para os mesmos. Agora o servidor devolve a página
+        // onde parou e aqui continuamos dela, sem repetir ninguém.
+        var envC=0, falC=0, erroTxt='', res=null, j=null, voltas=0, incompleta=false;
+        while(true){
+          res=await fetch(FN,{ method:'POST', headers:H(), body:JSON.stringify(body) }); j=await res.json();
+          if(!res.ok || !j.success){ erroTxt=(j&&(j.error||j.aviso))||('HTTP '+res.status); break; }
+          envC+=(j.enviados||0); falC+=(j.falhas||0);
+          if(j.lista_completa===false && j.proxima_pagina && voltas<40){
+            voltas++; body.pagina_inicial=j.proxima_pagina;
+            linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="dmuted">'+envC+' enviados, continuando…</span>';
+            continue;
+          }
+          incompleta=(j.lista_completa===false);
+          break;
+        }
+        totEnv+=envC; totFal+=falC;
+        if(erroTxt && !envC){ linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="derr">'+esc(erroTxt)+'</span>'; }
+        else {
+          var ex=(j&&j.teste)?(' (teste, condutor '+esc(j.alvo_teste||'?')+')'):'';
+          if(erroTxt) ex+=' , parou antes do fim: '+erroTxt;
+          else if(incompleta) ex+=' , lista incompleta (avise o suporte, não rode de novo)';
+          linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="dok">'+envC+' enviados'+(falC?(' · '+falC+' falhas'):'')+esc(ex)+'</span>';
+        }
       } catch(e){ linha.innerHTML='<span>'+esc(nomeCid(c))+'</span><span class="derr">erro de conexão</span>'; }
     }
     if(cids.length>1){ var tot=document.createElement('div'); tot.className='dres'; tot.style.background='#F8FAFC'; tot.innerHTML='<span style="font-weight:700">Total</span><span class="dok">'+totEnv+' enviados'+(totFal?(' · '+totFal+' falhas'):'')+'</span>'; saida.appendChild(tot); }
@@ -7660,7 +7684,8 @@ async function _crmAtualizarLead(id, patch){ var l=_CRM.leads.find(function(x){r
 function _crmRetornar(id){
   var d=prompt('Agendar retorno em quantos dias? (ex: 30)'); if(d==null) return; var dias=parseInt(d); if(isNaN(dias)||dias<1){ if(typeof toast==='function') toast('Número de dias inválido.'); return; }
   var dt=new Date(); dt.setDate(dt.getDate()+dias);
-  _crmAtualizarLead(id,{ status:'retornar', retornar_em:dt.toISOString().slice(0,10) });
+  // data LOCAL do retorno (UTC adiantava 1 dia quando agendado depois das 21h)
+  _crmAtualizarLead(id,{ status:'retornar', retornar_em:((typeof _dataLocalStr === 'function') ? _dataLocalStr(dt) : dt.toISOString().slice(0,10)) });
   _crmLog(id,'nota','Retorno agendado p/ '+dt.toLocaleDateString('pt-BR')+' ('+dias+'d)',true);
   var m=document.getElementById('crm-modal'); if(m) m.remove(); _crmRenderTab();
   if(typeof toast==='function') toast('Retorno agendado. Volta pra fila na data.');
@@ -7887,7 +7912,7 @@ async function _crmDevolverInativos(){
   if(dev.length) _crmRenderTab();
 }
 async function _crmReativarRetornos(){
-  var hoje=new Date().toISOString().slice(0,10);
+  var hoje=(typeof _dataLocalStr === 'function') ? _dataLocalStr(new Date()) : new Date().toISOString().slice(0,10); // data LOCAL
   var volta=_CRM.leads.filter(function(l){ return l.status==='retornar' && l.retornar_em && l.retornar_em<=hoje && l.dono_id; });
   for(var i=0;i<volta.length;i++){ var l=volta[i]; l.status='ativo';
     try{ await _crmEscrever('crm_leads','patch',{ filtro:'id=eq.'+encodeURIComponent(l.id), patch:{ status:'ativo', atualizado_em:new Date().toISOString() } });
@@ -9333,7 +9358,14 @@ function _campoRotaApagar(){
   try{ if(typeof _crmRotaSaiu==='function') _paradas.forEach(function(p){ _crmRotaSaiu(p); }); }catch(e){}
   var id=_CAMPO.rota.id;
   if(_campoRotaSaveQ) delete _campoRotaSaveQ[id]; // cancela save pendente (senão ressuscitava a rota com ativa:true)
-  try { _syncEscrever({ tabela:'prospeccao_rotas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:{ ativa:false, updated_at:new Date().toISOString() } }); } catch(e){}
+  // _syncEscrever é assíncrono: o try/catch sozinho nunca pegava a falha. Agora tem .catch e avisa.
+  try {
+    _syncEscrever({ tabela:'prospeccao_rotas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(id), patch:{ ativa:false, updated_at:new Date().toISOString() } })
+      .catch(function(e){
+        console.warn('[Rota] falha ao apagar no servidor:', e && e.message);
+        if(typeof toast==='function') toast('Não consegui apagar a rota no servidor. Ela pode voltar a aparecer, tenta de novo.','error');
+      });
+  } catch(e){}
   _CAMPO.rotasList=(_CAMPO.rotasList||[]).filter(function(x){ return x.id!==id; });
   _CAMPO.rota=_CAMPO.rotasList[0]||null;
   _campoRepintar(); _campoRenderRota();
@@ -9374,7 +9406,14 @@ function _campoRotaSalvar(){
   _campoRotaSaveT = setTimeout(function(){
     var q=_campoRotaSaveQ; _campoRotaSaveQ={};
     Object.keys(q).forEach(function(id){
-      try { _syncEscrever({ tabela:'prospeccao_rotas', operacao:'upsert', dados:[q[id]] }); }
+      // _syncEscrever é assíncrono: sem .catch a falha passava batida e o toast de erro nunca aparecia.
+      try {
+        _syncEscrever({ tabela:'prospeccao_rotas', operacao:'upsert', dados:[q[id]] })
+          .catch(function(e){
+            console.warn('[Rota] falha ao salvar:', e && e.message);
+            if(typeof toast==='function') toast('Não consegui salvar a rota. Tenta de novo.','error');
+          });
+      }
       catch(e){ if(typeof toast==='function') toast('Não consegui salvar a rota. Tenta de novo.','error'); }
     });
   }, 500);
@@ -10699,11 +10738,16 @@ async function _campoCruzarMachine(){
     }
   });
   _campoAplicar();
+  // Conta o que realmente gravou: antes o erro era engolido e o toast dizia sucesso
+  // mesmo quando nada tinha sido salvo no banco.
+  var _okGrav=0, _falhaGrav=0;
   for(var i=0;i<patches.length;i++){
-    try { await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(patches[i].id), patch:patches[i].patch }); } catch(e){}
+    try { await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(patches[i].id), patch:patches[i].patch }); _okGrav++; }
+    catch(e){ _falhaGrav++; console.warn('[Cruzar Machine] falha ao salvar loja', patches[i].id, e && e.message); }
   }
   if(typeof toast==='function'){
     if(!patches.length) toast('Cruzei com a Machine: nada mudou (status já batem).','success');
+    else if(_falhaGrav) toast('Machine: '+_okGrav+' salvas, '+_falhaGrav+' falharam. Clique de novo pra tentar as que faltaram.','error');
     else toast('Machine: '+verde+' viraram 🟢'+(vermelho?(', '+vermelho+' viraram 🔴'):'')+(voltou?(', '+voltou+' voltaram'):'')+'.','success');
   }
 }
@@ -12053,13 +12097,18 @@ async function _campoCruzarMachine(){
   <div class="page-header">
     <div><div class="page-title">Banco de Ideias</div><div class="page-sub">Salve, organize e desenvolva</div></div>
   </div>
-  <div class="metrics">
-    <div class="metric"><div class="metric-label">Total</div><div class="metric-val">8</div></div>
-    <div class="metric"><div class="metric-label">Novas</div><div class="metric-val" style="color:var(--blue)">4</div></div>
-    <div class="metric"><div class="metric-label">Aprovadas</div><div class="metric-val" style="color:var(--green)">2</div></div>
-    <div class="metric"><div class="metric-label">Favoritas</div><div class="metric-val" style="color:var(--orange)">3</div></div>
+  <!-- Auditoria: os cartões abaixo tinham números FIXOS no HTML (Total 8, Novas 4, Aprovadas 2,
+       Favoritas 3) que nunca refletiram dado real, e a fileira de botões logo depois não tem
+       onclick (não faz nada). Ficam escondidos (display:none) e zerados até serem ligados de
+       verdade. A lista de ideias (#ideias-list) e a barra de IA continuam funcionando. -->
+  <div style="font-size:11px;color:var(--text3);background:var(--surface2);border:1px dashed var(--border);border-radius:8px;padding:8px 12px;margin-bottom:12px">🚧 Em construção: contadores e filtros desta página ainda não estão ligados.</div>
+  <div class="metrics" style="display:none">
+    <div class="metric"><div class="metric-label">Total</div><div class="metric-val">0</div></div>
+    <div class="metric"><div class="metric-label">Novas</div><div class="metric-val" style="color:var(--blue)">0</div></div>
+    <div class="metric"><div class="metric-label">Aprovadas</div><div class="metric-val" style="color:var(--green)">0</div></div>
+    <div class="metric"><div class="metric-label">Favoritas</div><div class="metric-val" style="color:var(--orange)">0</div></div>
   </div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+  <div style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     <button class="btn btn-sm btn-ia">Gerar ideias com IA</button>
     <button class="btn btn-sm btn-ghost">Todos</button>
     <button class="btn btn-sm btn-ghost">Reels</button>
@@ -13491,8 +13540,11 @@ function _calSupaPush(){
       updated_at: new Date().toISOString()
     };
     try {
-      if(typeof _syncEscrever === 'function'){ _syncEscrever({ tabela:'calendario_pessoal', operacao:'upsert', dados:[linha] }); }
-      else if(typeof supaUpsert === 'function'){ supaUpsert('calendario_pessoal', linha); }
+      // As duas chamadas são assíncronas: sem .catch a falha virava "unhandled rejection" e o warn nunca saía.
+      var _prCal = null;
+      if(typeof _syncEscrever === 'function'){ _prCal = _syncEscrever({ tabela:'calendario_pessoal', operacao:'upsert', dados:[linha] }); }
+      else if(typeof supaUpsert === 'function'){ _prCal = supaUpsert('calendario_pessoal', linha); }
+      if(_prCal && typeof _prCal.catch === 'function') _prCal.catch(function(e){ console.warn('[Calendário] push falhou:', e && e.message); });
     } catch(e){ console.warn('[Calendário] push falhou:', e && e.message); }
   }, 800);
 }
@@ -16543,9 +16595,24 @@ async function atribuirPontos(pessoaId, tipoAcao, opcoes){
   // Salva no Supabase (P0.1: era gated por `supaInsert` — função que NUNCA
   // existiu — então o insert nunca rodava. Agora via supaWrite, com falha visível.)
   if(typeof supaWrite === 'function' && typeof SUPA_URL !== 'undefined'){
-    await supaWrite('pontos_log', registro, { operacao: 'insert', contexto: 'pontos', silencioso: true });
+    // supaWrite devolve true (gravou) ou false (falhou). Antes o retorno era ignorado:
+    // quando a escrita falhava, o ponto ia só pro cache local, o sistema marcava
+    // "já fez hoje" e o ponto sumia pra sempre (nunca chegava no banco).
+    var _gravouPontos = false;
+    try { _gravouPontos = await supaWrite('pontos_log', registro, { operacao: 'insert', contexto: 'pontos', silencioso: true }); }
+    catch(e){ _gravouPontos = false; }
+    if(_gravouPontos !== true){
+      // Falhou: NÃO grava no cache (senão pontosFezHoje acha que já fez) e solta a
+      // trava em memória, pra próxima tentativa do dia refazer.
+      try { if(typeof _k !== 'undefined' && window._pontosEmVoo) delete window._pontosEmVoo[_k]; } catch(e){}
+      // O hookLoginDiario marca a trava do dia ANTES de pontuar; se a gravação falhou, solta
+      // essa trava também, senão o ponto do login só seria tentado de novo amanhã.
+      try { if(tipoAcao === 'login_diario') localStorage.removeItem('gami_login_pts_dia_' + pessoaId); } catch(e){}
+      console.warn('[pontos] Falha ao gravar ' + tipoAcao + ' de ' + pessoa.nome + ' (+' + pontos + '). Não marcado como feito; tenta de novo na próxima ação.');
+      return false;
+    }
   }
-  
+
   // Também salva no localStorage como cache
   try {
     var cache = JSON.parse(localStorage.getItem('gami_pontos_cache') || '[]');
@@ -16609,9 +16676,10 @@ async function pontosFezSemana(pessoaId, tipoAcao){
 /* Soma pontos do mês atual de uma pessoa */
 async function obterPontosMesPessoa(pessoaId){
   try {
+    // 1º dia do mês em data LOCAL ('AAAA-MM-01'). Antes usava toISOString (UTC): no dia 1º
+    // de manhã cedo / último dia à noite o mês virava errado. data_acao é gravada em data local.
     var inicio = new Date();
-    inicio.setDate(1);
-    var inicioStr = inicio.toISOString().split('T')[0];
+    var inicioStr = inicio.getFullYear() + '-' + String(inicio.getMonth()+1).padStart(2,'0') + '-01';
     var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + pessoaId 
       + '&data_acao=gte.' + inicioStr
       + '&select=pontos';
@@ -20372,8 +20440,8 @@ function openPessoaModal(id){
   // compute avatar color safely here (not inside template literal)
   const ac = avColor(d.nome || 'A');
   const previewHTML = d.foto
-    ? `<img src="${d.foto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`
-    : `<span>${initials(d.nome || '?')}</span>`;
+    ? `<img src="${tfEsc(d.foto)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>`
+    : `<span>${tfEsc(initials(d.nome || '?'))}</span>`; // anti-XSS: foto/nome vêm do banco
   const removeBtn = d.foto
     ? `<button onclick="limparFoto()" style="font-size:10px;padding:3px 8px;border:1px solid #f5b5b5;border-radius:5px;background:#FCEBEB;color:#A32D2D;cursor:pointer;margin-top:4px;font-family:inherit">Remover foto</button>`
     : '';
@@ -20411,7 +20479,7 @@ function openPessoaModal(id){
               Escolher foto
             </label>
             <input id="pf-foto-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none" onchange="previewFoto(this)"/>
-            <input id="pf-foto-data" type="hidden" value="${d.foto || ''}"/>
+            <input id="pf-foto-data" type="hidden" value="${tfEsc(d.foto || '')}"/>
             <div style="font-size:10px;color:var(--text3)">JPG, PNG, GIF ou WebP · Foto quadrada recomendada</div>
             ${removeBtn}
           </div>
@@ -20420,24 +20488,24 @@ function openPessoaModal(id){
 
       <div class="field span2">
         <div class="field-label">Nome completo</div>
-        <input id="pf-nome" class="inp" value="${d.nome}" placeholder="Ex: João Silva" oninput="updateFotoPreview()"/>
+        <input id="pf-nome" class="inp" value="${tfEsc(d.nome)}" placeholder="Ex: João Silva" oninput="updateFotoPreview()"/>
       </div>
       <div class="field span2">
         <div class="field-label">📧 Email (usado pra login)</div>
-        <input id="pf-email" class="inp" type="email" value="${d.email || ''}" placeholder="Ex: nome@gamidelivery.com.br"/>
+        <input id="pf-email" class="inp" type="email" value="${tfEsc(d.email || '')}" placeholder="Ex: nome@gamidelivery.com.br"/>
         <div style="font-size:10px;color:var(--text3);margin-top:4px;font-style:italic">É o email que a pessoa vai usar pra fazer login no dashboard</div>
       </div>
       <div class="field span2">
         <div class="field-label">📱 Telefone / WhatsApp</div>
-        <input id="pf-telefone" class="inp" value="${d.telefone || ''}" placeholder="Ex: (69) 99999-9999"/>
+        <input id="pf-telefone" class="inp" value="${tfEsc(d.telefone || '')}" placeholder="Ex: (69) 99999-9999"/>
       </div>
       <div class="field span2">
         <div class="field-label" style="margin-bottom:8px">Cargo</div>
 
         <!-- Step 1: Categoria -->
         <div style="font-size:9px;font-weight:700;letter-spacing:.7px;color:var(--text3);text-transform:uppercase;margin-bottom:6px">1. Categoria</div>
-        <input type="hidden" id="pf-cargo" value="${d.cargo}"/>
-        <input type="hidden" id="pf-categoria" value="${d.categoria || CARGO_CATS.find(cat=>cat.funcoes.includes(d.cargo))?.nome || ''}"/>
+        <input type="hidden" id="pf-cargo" value="${tfEsc(d.cargo)}"/>
+        <input type="hidden" id="pf-categoria" value="${tfEsc(d.categoria || CARGO_CATS.find(cat=>cat.funcoes.includes(d.cargo))?.nome || '')}"/>
         <div id="step-categorias" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
           ${CARGO_CATS.map(cat => {
             const sel = (d.categoria || CARGO_CATS.find(c=>c.funcoes.includes(d.cargo))?.nome) === cat.nome;
@@ -20594,19 +20662,19 @@ function openPessoaModal(id){
       </div>
       <div class="field">
         <div class="field-label">Telefone / WhatsApp</div>
-        <input id="pf-tel" class="inp" value="${d.tel}" placeholder="85999990001"/>
+        <input id="pf-tel" class="inp" value="${tfEsc(d.tel)}" placeholder="85999990001"/>
       </div>
       <div class="field">
         <div class="field-label">Data de nascimento</div>
-        <input id="pf-nasc" class="inp" type="date" value="${d.nascimento}"/>
+        <input id="pf-nasc" class="inp" type="date" value="${tfEsc(d.nascimento)}"/>
       </div>
       <div class="field">
         <div class="field-label">Data de entrada</div>
-        <input id="pf-entrada" class="inp" type="date" value="${d.entrada}"/>
+        <input id="pf-entrada" class="inp" type="date" value="${tfEsc(d.entrada)}"/>
       </div>
       <div class="field span2">
         <div class="field-label">Observações</div>
-        <textarea id="pf-obs" class="inp" style="min-height:60px;resize:vertical" placeholder="Ex: Destaque do mês, em treinamento...">${d.obs}</textarea>
+        <textarea id="pf-obs" class="inp" style="min-height:60px;resize:vertical" placeholder="Ex: Destaque do mês, em treinamento...">${tfEsc(d.obs)}</textarea>
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
@@ -20753,6 +20821,18 @@ function deletePessoa(id){
   if(!confirm('Excluir '+((_alvo&&_alvo.nome)||'esta pessoa')+'?\n\nAtenção: o login dela (e vínculos) NÃO é removido automaticamente — peça pro Cleyton limpar no Supabase se precisar.')) return;
   const pessoas = getPessoas().filter(p=>p.id!==id);
   savePessoas(pessoas);
+  // Exclusão EXPLÍCITA no servidor: apaga só este id (antes dependia do DELETE por
+  // diferença do syncPessoas, que foi removido). Se falhar, avisa: a pessoa voltaria
+  // a aparecer na próxima carga.
+  try {
+    if(id && typeof supaDelete === 'function'){
+      supaDelete('pessoas', id).then(function(ok){
+        if(ok) return;
+        console.warn('[deletePessoa] não consegui apagar no servidor:', id);
+        if(typeof toast === 'function') toast('Não consegui excluir no servidor. A pessoa pode voltar a aparecer, tente de novo.', 'error');
+      }).catch(function(e){ console.warn('[deletePessoa] erro ao apagar no servidor:', e && e.message); });
+    }
+  } catch(e){}
   renderPessoas();
 }
 
@@ -32871,7 +32951,7 @@ async function cidIaAtualizar(forcar){
   var meta = document.getElementById('cid-ia-meta');
   if(!conteudo) return;
 
-  var hojeStr = new Date().toISOString().slice(0,10);   // YYYY-MM-DD
+  var hojeStr = tfHojeLocal();   // YYYY-MM-DD em data LOCAL
   var CFG_KEY = 'ia_rede_analise_diaria';                // tabela configuracoes (compartilhado)
   var LS_MIRROR = 'gami_cid_ia_rede_diaria';             // espelho local do dia
 
@@ -38961,19 +39041,25 @@ async function _atualizarUltimaSync(){
 
 // 🆕 Força sync manual (só admin/diretoria)
 function forcarSyncAgora(){
-  if(!confirm('🔄 Sincronizar todas as 10 cidades agora?\n\nO processo roda em segundo plano e leva 5-15 min.\nVocê pode continuar usando o app normalmente.')) return;
+  if(!confirm('🔄 Sincronizar todas as cidades agora?\n\nO processo roda em segundo plano e leva alguns minutos.\nVocê pode continuar usando o app normalmente.')) return;
   
-  // Dispara em background
-  fetch('/.netlify/functions/sync-diario-background', { method: 'GET' })
-    .then(function(){ console.log('[sync] disparado'); })
-    .catch(function(e){ console.warn('[sync] erro:', e); });
-  
-  // Feedback imediato
-  if(typeof toast === 'function'){
-    toast('✅ Sincronização iniciada! Os dados serão atualizados em 5-15 minutos.', 'success', 6000);
-  } else {
-    alert('✅ Sincronização iniciada!\n\nOs dados serão atualizados em 5-15 minutos.\nVocê pode continuar usando o app normalmente.');
-  }
+  // 13/11/2026: antes chamava sync-diario-background, que é função AGENDADA; o Netlify não
+  // deixa chamar função agendada por URL, então este botão nunca sincronizou de verdade.
+  // Agora chama a versão sob demanda (exige sessão) e CONFERE a resposta antes de avisar.
+  fetch('/.netlify/functions/sync-agora-background', { method: 'GET' })
+    .then(function(r){
+      if(r && (r.ok || r.status === 202)){
+        console.log('[sync] disparado');
+        if(typeof toast === 'function') toast('✅ Sincronização iniciada! Os dados atualizam em alguns minutos.', 'success', 6000);
+      } else {
+        console.warn('[sync] recusado, HTTP', r && r.status);
+        if(typeof toast === 'function') toast('Não consegui iniciar a sincronização (HTTP ' + (r ? r.status : '?') + '). Recarregue a página e tente de novo.', 'error', 7000);
+      }
+    })
+    .catch(function(e){
+      console.warn('[sync] erro:', e);
+      if(typeof toast === 'function') toast('Sem conexão pra iniciar a sincronização. Tente de novo.', 'error', 6000);
+    });
   
   // Atualiza o status visual a cada 30s pelos próximos 15 min
   var tentativas = 0;
@@ -40702,7 +40788,7 @@ window.agendaToggleEvento = async function(chave){
 function adicionarItemAgenda(){
   var existing = document.getElementById('modal-quicktask');
   if(existing) existing.remove();
-  var hojeStr = new Date().toISOString().split('T')[0];
+  var hojeStr = tfHojeLocal(); // data LOCAL como padrão do campo (UTC virava amanhã depois das 21h)
   var modal = document.createElement('div');
   modal.id = 'modal-quicktask';
   modal.className = 'modal-overlay open';
@@ -40950,8 +41036,8 @@ function renderReconhecimento(){
   
   // Card preenchido
   var fotoHTML = rec.foto 
-    ? '<img src="'+rec.foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' 
-    : '<span style="font-size:22px;font-weight:700">'+(rec.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase())+'</span>';
+    ? '<img src="'+tfEsc(rec.foto)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' 
+    : '<span style="font-size:22px;font-weight:700">'+tfEsc(rec.nome.split(' ').slice(0,2).map(function(w){return w[0]||'';}).join('').toUpperCase())+'</span>'; // anti-XSS
   
   var podeEditar = _podeGerenciarReconhecimento();
   var botaoEditar = podeEditar 
@@ -40963,8 +41049,8 @@ function renderReconhecimento(){
     + '<div style="width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.3);border:3px solid white;display:flex;align-items:center;justify-content:center;color:#854F0B;flex-shrink:0;overflow:hidden">'+fotoHTML+'</div>'
     + '<div style="flex:1;min-width:0">'
     + '<div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:rgba(133,79,11,.8);text-transform:uppercase;margin-bottom:2px">🏆 Reconhecimento da semana</div>'
-    + '<div style="font-size:17px;font-weight:700;color:#854F0B;margin-bottom:3px">'+rec.nome+'</div>'
-    + '<div style="font-size:12px;color:#854F0B;line-height:1.4;opacity:.9">'+rec.texto+'</div>'
+    + '<div style="font-size:17px;font-weight:700;color:#854F0B;margin-bottom:3px">'+tfEsc(rec.nome)+'</div>' /* anti-XSS: nome e texto são digitados por usuário */
+    + '<div style="font-size:12px;color:#854F0B;line-height:1.4;opacity:.9">'+tfEsc(rec.texto)+'</div>'
     + '</div>'
     + botaoEditar
     + '</div></div>';
@@ -40999,7 +41085,7 @@ function abrirModalReconhecimento(){
   var inner = modal.querySelector('.modal');
   var pessoasOpts = pessoas.map(function(p){
     var sel = (p.nome === rec.nome) ? ' selected' : '';
-    return '<option value="'+p.id+'"'+sel+'>'+p.nome+'</option>';
+    return '<option value="'+tfEsc(p.id)+'"'+sel+'>'+tfEsc(p.nome)+'</option>'; // anti-XSS
   }).join('');
   
   inner.innerHTML = '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
@@ -41009,7 +41095,7 @@ function abrirModalReconhecimento(){
     + '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">Quem se destacou?</div>'
     + '<select id="rec-pessoa" class="sel" style="width:100%;margin-bottom:12px;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542"><option value="">— Selecione —</option>'+pessoasOpts+'</select>'
     + '<div class="field-label" style="font-size:11px;font-weight:600;color:#56627a;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">O que ela/ele fez? (texto curto)</div>'
-    + '<textarea id="rec-texto" class="inp" style="width:100%;min-height:80px;resize:vertical;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542" placeholder="Ex: Bateu meta da cidade duas semanas seguidas e ainda treinou 2 colegas. Liderança que inspira!">'+(rec.texto||'')+'</textarea>'
+    + '<textarea id="rec-texto" class="inp" style="width:100%;min-height:80px;resize:vertical;padding:9px 11px;border:1.5px solid #DDE3EB;border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#0B2542" placeholder="Ex: Bateu meta da cidade duas semanas seguidas e ainda treinou 2 colegas. Liderança que inspira!">'+tfEsc(rec.texto||'')+'</textarea>'
     + '<div style="font-size:10px;color:#56627a;margin-top:4px;font-style:italic">A foto da pessoa será puxada automaticamente do cadastro</div>'
     + '<div style="display:flex;gap:8px;margin-top:14px">'
     + '<button class="btn btn-ghost" style="flex:1;padding:9px 14px;border:1px solid #DDE3EB;background:transparent;color:#0B2542;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" onclick="fecharModalReconhecimento()">Cancelar</button>'
@@ -42384,7 +42470,7 @@ function _mfPid(){
   var u = (typeof getUsuarioLogado==='function') ? getUsuarioLogado() : null;
   return (u && u.id) ? u.id : (window.location.hostname||'gami');
 }
-function _mfHojeStr(){ return new Date().toISOString().split('T')[0]; }
+function _mfHojeStr(){ return tfHojeLocal(); } // data LOCAL (UTC zerava as prioridades do dia às 21h)
 
 /* --- Relógio + data --- */
 function mfRenderRelogio(){
@@ -42514,7 +42600,7 @@ function mfFocoWidgets(ativo){
 /* Pendência mora aqui (fora do Foco). Concluir = limpa, sem pontos */
 /* ============================================================== */
 function _tfAtrasadasMinhas(){
-  var hojeStr = new Date().toISOString().slice(0,10);
+  var hojeStr = tfHojeLocal(); // data LOCAL (UTC virava "amanhã" depois das 21h e marcava tarefa de hoje como atrasada)
   var todas = (typeof _tfLerTodasMinhasTarefas === 'function') ? _tfLerTodasMinhasTarefas() : [];
   var vistos = {};
   return todas.filter(function(t){
@@ -42565,7 +42651,7 @@ function renderAtrasadas(){
   if(!atrasadas.length){ if(card) card.style.display='none'; host.innerHTML=''; return; }
   if(card) card.style.display='';
   atrasadas.sort(function(a,b){ return a.prazo < b.prazo ? -1 : 1; }); // mais antiga primeiro
-  var hoje0 = new Date(new Date().toISOString().slice(0,10)+'T00:00:00').getTime();
+  var hoje0 = new Date(tfHojeLocal()+'T00:00:00').getTime(); // meia-noite LOCAL de hoje (antes vinha do dia UTC)
   host.innerHTML = atrasadas.map(function(t){
     var dias = 0; try { dias = Math.floor((hoje0 - new Date(t.prazo+'T00:00:00').getTime())/86400000); } catch(e){}
     var txt = (t.texto || t.titulo || '(sem título)').replace(/</g,'&lt;');
@@ -43940,33 +44026,13 @@ async function syncPessoas(){
     return novo;
   });
   
-  // Garante que o Supabase fica IDÊNTICO ao localStorage (substitui tudo, não só adiciona)
-  // Passo 1: pega IDs atuais no Supabase
-  try {
-    var existentes = await supaSelect('pessoas','select=id');
-    var idsLocais = new Set(pessoasNormalizadas.map(function(x){ return x.id; }));
-    var idsParaApagar = (existentes||[]).filter(function(x){ return !idsLocais.has(x.id); }).map(function(x){ return x.id; });
+  // 🛡️ Auditoria: REMOVIDO o DELETE "por diferença" que existia aqui. Ele apagava do banco
+  // todo id que não estivesse no localStorage DESTE aparelho; um cache velho/incompleto
+  // (ou alguém cadastrado em outro aparelho) fazia sumir pessoa de verdade. Agora o sync
+  // só faz upsert. Excluir pessoa é explícito e apaga só aquele id (ver deletePessoa).
+  // Para limpar em lote continua existindo o botão "Forçar sincronização" (com confirmação).
 
-    // 🛡️ GUARD anti-perda-de-dados: nunca apaga o servidor a partir de um localStorage
-    // vazio ou suspeitosamente reduzido (ex.: cache não carregou, navegador limpo).
-    var totalServidor = (existentes||[]).length;
-    var bloquearLimpeza =
-      pessoasNormalizadas.length === 0 ||                              // local vazio
-      (totalServidor > 0 && idsParaApagar.length > totalServidor*0.5 && idsParaApagar.length >= 3); // apagaria >50%
-    if(bloquearLimpeza){
-      console.warn('[syncPessoas] Limpeza ABORTADA (guard): apagaria '+idsParaApagar.length+'/'+totalServidor+
-        ' pessoas a partir de '+pessoasNormalizadas.length+' locais. Sincronização parcial (apenas upsert).');
-      idsParaApagar = [];
-    }
-
-    // Passo 2: apaga do servidor os que não estão no localStorage (service key, ignora RLS)
-    if(idsParaApagar.length){
-      try { await _syncEscrever({ tabela:'pessoas', operacao:'delete', filtro:'id=in.('+idsParaApagar.map(encodeURIComponent).join(',')+')' }); }
-      catch(e){ console.warn('[syncPessoas] delete', e&&e.message); }
-    }
-  } catch(e){ /* segue mesmo se a limpeza falhar */ }
-  
-  // Passo 3: upsert dos atuais pelo servidor (service key, ignora RLS). A coluna `niveis` já existe.
+  // Upsert dos atuais pelo servidor (service key, ignora RLS). A coluna `niveis` já existe.
   if(pessoasNormalizadas.length){
     await _syncEscrever({ tabela:'pessoas', operacao:'upsert', dados:pessoasNormalizadas, on_conflict:'id' });
     return true;
@@ -44254,7 +44320,9 @@ async function syncTudo(mostrarFeedback){
   try{
     await Promise.all([syncPessoas(),syncBlogPosts()]);
     var wpCfg=typeof getBlogWP==='function'?getBlogWP():null;
-    if(wpCfg&&wpCfg.url)await syncConfig('wp_config',wpCfg);
+    // 🔒 Auditoria: NÃO sobe mais usuário nem senha do WordPress pra tabela compartilhada
+    // `configuracoes`. Vai só o que não é sensível; user/pass ficam só neste aparelho.
+    if(wpCfg&&wpCfg.url)await syncConfig('wp_config',{ url:wpCfg.url, tags:wpCfg.tags||'', status:wpCfg.status||'draft' });
     if(mostrarFeedback&&btn){btn.textContent='✅ Salvo!';setTimeout(function(){btn.textContent='☁️ Salvar tudo';btn.disabled=false;},2000);}
   }catch(e){
     if(mostrarFeedback&&btn){btn.textContent='❌ Erro';btn.disabled=false;}
@@ -44274,7 +44342,20 @@ async function initSupabase(){
     // Carrega do Supabase como FONTE DA VERDADE
     await Promise.all([loadPessoasFromSupa(), loadBlogFromSupa()]);
     var wpCfg = await loadConfigFromSupa('wp_config');
-    if(wpCfg && typeof saveBlogWP === 'function') saveBlogWP(wpCfg);
+    // 🔒 Auditoria: antes todo login baixava o wp_config inteiro (com senha) e sobrescrevia o
+    // local. Agora faz MERGE: do servidor só entram url/tags/status; usuário e senha são
+    // sempre os que já estão neste aparelho (nunca os do banco).
+    if(wpCfg && typeof saveBlogWP === 'function'){
+      var _wpRemoto = wpCfg;
+      if(typeof _wpRemoto === 'string'){ try { _wpRemoto = JSON.parse(_wpRemoto); } catch(e){ _wpRemoto = null; } }
+      if(_wpRemoto && typeof _wpRemoto === 'object'){
+        var _wpLocal = (typeof getBlogWP === 'function') ? (getBlogWP() || {}) : {};
+        if(!_wpLocal || typeof _wpLocal !== 'object') _wpLocal = {};
+        var _wpNovo = Object.assign({}, _wpLocal);
+        ['url','tags','status'].forEach(function(k){ if(_wpRemoto[k]) _wpNovo[k] = _wpRemoto[k]; });
+        saveBlogWP(_wpNovo);
+      }
+    }
     
     // Carrega Reconhecimento da Semana do servidor (sincroniza entre dispositivos)
     if(typeof loadReconhecimentoFromSupa === 'function'){
@@ -44715,6 +44796,12 @@ function _dataLocalStr(d){
 function tfHojeLocal(){ return _dataLocalStr(new Date()); }
 // Escape de HTML pra interpolar texto de tarefa/projeto/delegação em innerHTML (anti-XSS armazenado)
 function tfEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+// URL segura pra atributo src (GIF do mural etc.): só aceita http/https e já devolve
+// escapada pra atributo. Qualquer outra coisa (javascript:, data:, lixo) devolve ''.
+function tfUrlHttp(u){
+  u = String(u==null?'':u).trim();
+  return /^https?:\/\//i.test(u) ? tfEsc(u) : '';
+}
 
 function tfKey(tipo, sufixo){
   // 🆕 v26.94: TODA chave agora começa com pessoa_id — isola completamente entre usuários
@@ -45852,7 +45939,7 @@ function tfRenderBannerAtrasadas(){
   var banner = document.getElementById('tf-banner-atrasadas');
   var countEl = document.getElementById('tf-banner-atrasadas-count');
   if(!banner) return;
-  var hojeStr = new Date().toISOString().split('T')[0];
+  var hojeStr = tfHojeLocal(); // data LOCAL (UTC virava "amanhã" depois das 21h)
   var lista = (typeof getTarefas === 'function') ? getTarefas('diario') : [];
   var atrasadas = lista.filter(function(t){
     return !t.feito && t.prazo && t.prazo < hojeStr && !t.fixa;
@@ -48394,7 +48481,7 @@ function abrirModalNovaTarefa(contexto){
     ov = novo;
   }
   ov.classList.add('open');
-  var hoje=new Date().toISOString().split('T')[0];
+  var hoje=tfHojeLocal(); // data LOCAL como prazo padrão (UTC virava amanhã depois das 21h)
   ov.innerHTML='<div class="modal-box" style="max-width:440px">'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
       +'<div style="font-size:15px;font-weight:700">Nova tarefa</div>'
@@ -49341,15 +49428,16 @@ async function verAuditTab(qual){
   if(qual==='acessos'){
     cont.innerHTML = dados.map(function(r){
       return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:10px">'
-        + '<div><b>'+(r.pessoa_nome||r.pessoa_id)+'</b> <span style="color:'+(r.sucesso?'#1D9E75':'#E24B4A')+'">'+(r.sucesso?'entrou':'falhou')+'</span></div>'
+        + '<div><b>'+tfEsc(r.pessoa_nome||r.pessoa_id)+'</b> <span style="color:'+(r.sucesso?'#1D9E75':'#E24B4A')+'">'+(r.sucesso?'entrou':'falhou')+'</span></div>'
         + '<div style="color:var(--text3);white-space:nowrap">'+new Date(r.criado_em).toLocaleString('pt-BR')+'</div>'
         + '</div>';
     }).join('');
   } else {
     cont.innerHTML = dados.map(function(r){
       return '<div style="padding:8px 10px;border-bottom:1px solid var(--border)">'
-        + '<div style="display:flex;justify-content:space-between;gap:10px"><b>'+(r.pessoa_nome||r.pessoa_id)+'</b><span style="color:var(--text3);white-space:nowrap">'+new Date(r.criado_em).toLocaleString('pt-BR')+'</span></div>'
-        + '<div style="color:var(--text2);margin-top:2px"><span style="font-size:10px;padding:1px 6px;border-radius:5px;background:#E6F6FE;color:#0E7AB8">'+r.acao+'</span> '+(r.detalhe||'')+'</div>'
+        + '<div style="display:flex;justify-content:space-between;gap:10px"><b>'+tfEsc(r.pessoa_nome||r.pessoa_id)+'</b><span style="color:var(--text3);white-space:nowrap">'+new Date(r.criado_em).toLocaleString('pt-BR')+'</span></div>'
+        /* anti-XSS: ação e detalhe do log carregam texto digitado (título de tarefa etc.) */
+        + '<div style="color:var(--text2);margin-top:2px"><span style="font-size:10px;padding:1px 6px;border-radius:5px;background:#E6F6FE;color:#0E7AB8">'+tfEsc(r.acao)+'</span> '+tfEsc(r.detalhe||'')+'</div>'
         + '</div>';
     }).join('');
   }
@@ -49732,7 +49820,7 @@ function setRankTab(tab){
       }
       var _nivelC = (typeof detectarNivelPermissao === 'function') ? detectarNivelPermissao(_uC) : '';
       if((_nivelC === 'super_admin' || _nivelC === 'diretoria') && typeof motorBadgesTodos === 'function'){
-        var _hojeB = new Date().toISOString().slice(0,10);
+        var _hojeB = tfHojeLocal(); // data LOCAL (trava de 1x por dia)
         if(localStorage.getItem('gami_badges_backfill_dia') !== _hojeB){
           localStorage.setItem('gami_badges_backfill_dia', _hojeB);
           motorBadgesTodos().then(function(){ if(typeof renderGaleriaBadges==='function') renderGaleriaBadges(); });
@@ -50002,8 +50090,9 @@ async function renderMeuExtrato(){
           var sinal = pts<0 ? '' : '+';
           return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:11px">'
             + '<div style="width:52px;color:var(--text3);font-size:10px">'+String(p.data_acao||'').slice(5)+'</div>'
-            + '<div style="flex:1"><div style="font-weight:600">'+(p.descricao||p.tipo_acao||'—')+'</div>'
-              + '<div style="color:var(--text3);font-size:9px">'+(p.categoria||p.tipo_acao||'')+(p.origem==='manual'?' · manual':'')+'</div></div>'
+            /* anti-XSS: descrição/tipo/categoria vêm do banco (texto livre do motivo) */
+            + '<div style="flex:1"><div style="font-weight:600">'+tfEsc(p.descricao||p.tipo_acao||'—')+'</div>'
+              + '<div style="color:var(--text3);font-size:9px">'+tfEsc(p.categoria||p.tipo_acao||'')+(p.origem==='manual'?' · manual':'')+'</div></div>'
             + '<div style="font-weight:800;color:'+cor+'">'+sinal+pts+'</div>'
             + '</div>';
         }).join('')
@@ -51266,7 +51355,7 @@ function renderAdminExtratoSelector(){
   pessoas = pessoas.slice().sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||''); });
   return '<label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px;font-weight:600">Pessoa:</label>'
     + '<select class="sel" style="width:100%;margin-bottom:10px" onchange="admCarregarExtrato(this.value)"><option value="">— Selecione —</option>'
-    + pessoas.map(function(p){ return '<option value="'+p.id+'">'+p.nome+'</option>'; }).join('')
+    + pessoas.map(function(p){ return '<option value="'+tfEsc(p.id)+'">'+tfEsc(p.nome)+'</option>'; }).join('') /* anti-XSS: nome vem do banco */
     + '</select><div id="adm-extrato-lista"></div>';
 }
 
@@ -51293,8 +51382,9 @@ async function admCarregarExtrato(pessoaId){
         var cor = p.origem === 'manual' ? '#1AB8F0' : '#1D9E75';
         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">'
           + '<div style="width:55px;color:var(--text3);font-size:10px">'+(p.data_acao||'').slice(5)+'</div>'
-          + '<div style="flex:1"><div style="font-weight:600">'+(p.descricao||p.tipo_acao||'—')+'</div><div style="color:var(--text3);font-size:9px">'+p.tipo_acao+(p.origem==='manual'?' · manual':'')+'</div></div>'
-          + '<div style="font-weight:800;color:'+cor+'">+'+p.pontos+'</div>'
+          /* anti-XSS: descrição/tipo vêm do banco (texto livre do motivo) */
+          + '<div style="flex:1"><div style="font-weight:600">'+tfEsc(p.descricao||p.tipo_acao||'—')+'</div><div style="color:var(--text3);font-size:9px">'+tfEsc(p.tipo_acao)+(p.origem==='manual'?' · manual':'')+'</div></div>'
+          + '<div style="font-weight:800;color:'+cor+'">+'+tfEsc(p.pontos)+'</div>'
           + '</div>';
       }).join('')
     + '</div>';
@@ -51445,7 +51535,8 @@ async function hookLoginDiario(pessoaId){
   // 🆕 Trava local de 1x/dia — permite chamar no login E na restauração de
   // sessão (boot) sem rede redundante. O limite_dia do Supabase é a 2ª barreira.
   try {
-    var hojeStr = new Date().toISOString().split('T')[0];
+    // Data LOCAL (antes era UTC: depois das 21h a trava já contava como "amanhã")
+    var hojeStr = (typeof tfHojeLocal === 'function') ? tfHojeLocal() : new Date().toISOString().split('T')[0];
     var kGuard = 'gami_login_pts_dia_' + pessoaId;
     if(localStorage.getItem(kGuard) === hojeStr) return;
     localStorage.setItem(kGuard, hojeStr);
@@ -51497,7 +51588,8 @@ async function hookTarefaConcluida(tarefa){
   if(!user || !user.id) return;
   // 🆕 v27.89: só pontua se concluída NO PRAZO (ou sem prazo). Atrasada limpa a pendência mas NÃO pontua.
   try {
-    var hojeStr = new Date().toISOString().slice(0,10);
+    // Data LOCAL (antes era UTC: tarefa com prazo de hoje concluída depois das 21h contava como atrasada)
+    var hojeStr = (typeof tfHojeLocal === 'function') ? tfHojeLocal() : new Date().toISOString().slice(0,10);
     if(tarefa && tarefa.prazo && tarefa.prazo < hojeStr) return; // atrasada → 0 ponto
   } catch(e){}
   await atribuirPontos(user.id, 'tarefa_concluida', { descricao: 'Tarefa: '+(tarefa.titulo||tarefa.text||tarefa.texto||'').slice(0,50) });
@@ -52225,16 +52317,16 @@ function renderCultureGratidao(){
     return '<div class="culture-grat-card" id="'+gratId+'" style="background:white;border:1px solid #FFB30033;border-radius:10px;padding:12px;position:relative">'+
       '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">'+
         '<div style="width:38px;height:38px;border-radius:50%;background:'+ac.bg+';color:'+ac.color+';display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;overflow:hidden;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,.06)">'+
-          (foto ? '<img src="'+foto+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' : getInicial(g.para))+
+          (foto ? '<img src="'+tfEsc(foto)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%"/>' : tfEsc(getInicial(g.para)))+ /* anti-XSS */
         '</div>'+
         '<div style="flex:1;min-width:0">'+
           '<div style="font-size:11px;color:#854F0B;font-weight:700;margin-bottom:1px">Para</div>'+
-          '<div style="font-size:13px;font-weight:700;color:#451A03;line-height:1.2">'+(g.para||'?')+'</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#451A03;line-height:1.2">'+tfEsc(g.para||'?')+'</div>'+
         '</div>'+
       '</div>'+
-      '<div style="font-size:12px;color:#3F2417;line-height:1.5;margin-bottom:10px;font-style:italic">"'+(g.motivo||'')+'"</div>'+
+      '<div style="font-size:12px;color:#3F2417;line-height:1.5;margin-bottom:10px;font-style:italic">"'+tfEsc(g.motivo||'')+'"</div>'+
       '<div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid #FFE4B5">'+
-        '<div style="font-size:10px;color:#92400E;opacity:.85">— '+(g.de||'Anônimo')+' · '+fmtData(g.data)+'</div>'+
+        '<div style="font-size:10px;color:#92400E;opacity:.85">— '+tfEsc(g.de||'Anônimo')+' · '+fmtData(g.data)+'</div>'+
         '<div style="display:flex;gap:8px;font-size:14px" data-grat-id="'+gratId+'">'+
           '<span class="culture-grat-reacao" data-reacao="heart" onclick="cultureGratidaoReagir('+idx+',\'heart\',this)" title="Curtir">❤️ <span style="font-size:10px;color:#92400E;font-weight:600">'+(nHearts||'')+'</span></span>'+
           '<span class="culture-grat-reacao" data-reacao="pray" onclick="cultureGratidaoReagir('+idx+',\'pray\',this)" title="Agradecer">🙏 <span style="font-size:10px;color:#92400E;font-weight:600">'+(nPrays||'')+'</span></span>'+
@@ -53462,8 +53554,10 @@ async function _recadosCarregarSupa(){
     if(!Array.isArray(arr)) return;
     saveRecados(arr.map(_recadosMapDoSupa)); // atualiza o cache que renderRecados lê
     if(typeof renderRecados === 'function') renderRecados();
-    // Limpeza best-effort: apaga da tabela os recados com mais de 2 dias
-    try { _syncEscrever({ tabela:'recados', operacao:'delete', filtro:'created_at=lt.'+encodeURIComponent(corteISO) }).catch(function(){}); } catch(e){}
+    // 🛡️ Auditoria: REMOVIDA a limpeza que apagava do banco os recados "com mais de 2 dias".
+    // O corte vinha do relógio DESTE aparelho: um celular com a data errada (adiantada)
+    // apagava o mural de todo mundo. Agora o cliente só FILTRA a exibição (o select acima
+    // já traz apenas os últimos 2 dias). Limpeza de recado antigo, se precisar, é no servidor.
   } catch(e){ console.warn('[Recados] carregar:', e && e.message); }
 }
 async function _recadosSalvarSupa(recado){
@@ -53493,10 +53587,10 @@ function _muralAvatar(autorNome, autorFoto, tamanho){
   tamanho = tamanho || 36;
   var style = 'width:'+tamanho+'px;height:'+tamanho+'px;border-radius:50%;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.1);flex-shrink:0';
   if(autorFoto){
-    return '<img src="'+autorFoto+'" style="'+style+';object-fit:cover" alt="'+(autorNome||'')+'">';
+    return '<img src="'+tfEsc(autorFoto)+'" style="'+style+';object-fit:cover" alt="'+tfEsc(autorNome||'')+'">'; // anti-XSS: foto/nome vêm do banco
   }
   var inicial = ((autorNome||'?').trim().charAt(0) || '?').toUpperCase();
-  return '<div style="'+style+';background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));display:flex;align-items:center;justify-content:center;font-size:'+Math.round(tamanho*0.42)+'px;font-weight:700;color:white">'+inicial+'</div>';
+  return '<div style="'+style+';background:linear-gradient(135deg,var(--gami-blue),var(--gami-blue-d));display:flex;align-items:center;justify-content:center;font-size:'+Math.round(tamanho*0.42)+'px;font-weight:700;color:white">'+tfEsc(inicial)+'</div>';
 }
 
 /* Verifica se o usuario logado pode remover o recado (autor ou super_admin) */
@@ -53764,9 +53858,10 @@ function _muralRespostasHTML(r){
     var txt = tfEsc(x.texto||'').replace(/@([\wÀ-ÿ]+)/g,'<strong style="color:var(--gami-blue)">@$1</strong>');
     return '<div style="display:flex;gap:7px;margin-top:7px">'
       + _muralAvatar(x.autor, x.autorFoto, 24)
-      + '<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#854F0B;font-weight:600">'+(x.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
+      + '<div style="flex:1;min-width:0"><div style="font-size:10.5px;color:#854F0B;font-weight:600">'+tfEsc(x.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
         + (txt ? '<div style="font-size:11.5px;color:var(--text);line-height:1.4;overflow-wrap:break-word">'+txt+'</div>' : '')
-        + (x.gif ? '<div style="margin-top:4px"><img src="'+x.gif+'" style="max-width:100%;max-height:170px;border-radius:8px" alt="gif"></div>' : '')
+        /* anti-XSS: GIF só entra se for URL http/https (vem do banco) */
+        + (tfUrlHttp(x.gif) ? '<div style="margin-top:4px"><img src="'+tfUrlHttp(x.gif)+'" style="max-width:100%;max-height:170px;border-radius:8px" alt="gif"></div>' : '')
       + '</div>'
     + '</div>';
   }).join('');
@@ -54115,13 +54210,14 @@ function renderRecados(){
         + _muralAvatar(r.autor, r.autorFoto, 32)
         + '<div style="flex:1;min-width:0">'
           + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px">'
-            + '<div style="font-size:11px;color:#854F0B;font-weight:600">'+(r.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
+            + '<div style="font-size:11px;color:#854F0B;font-weight:600">'+tfEsc(r.autor||'Anônimo')+' <span style="color:var(--text3);font-weight:400">· '+quando+'</span></div>'
             + (podeRemover ? '<button onclick="removerRecado(\''+r.id+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0;line-height:1" title="Remover recado">×</button>' : '')
           + '</div>'
           + (textoFmt ? '<div style="font-size:12px;color:var(--text);line-height:1.5">'+textoFmt+'</div>' : '')
-          + (r.imagem ? '<div style="margin-top:8px"><img src="'+r.imagem+'" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block" alt="foto"></div>' : '')
-          + (r.gif ? '<div style="margin-top:8px"><img src="'+r.gif+'" style="max-width:100%;max-height:280px;border-radius:8px;display:block" alt="gif"></div>' : '')
-          + (r.audio ? '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;max-width:320px"><span style="font-size:16px">🎤</span><audio controls preload="none" src="'+r.audio+'" style="height:34px;flex:1;min-width:0"></audio></div>' : '')
+          /* anti-XSS: imagem/áudio escapados pra atributo; GIF só http/https */
+          + (r.imagem ? '<div style="margin-top:8px"><img src="'+tfEsc(r.imagem)+'" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);display:block" alt="foto"></div>' : '')
+          + (tfUrlHttp(r.gif) ? '<div style="margin-top:8px"><img src="'+tfUrlHttp(r.gif)+'" style="max-width:100%;max-height:280px;border-radius:8px;display:block" alt="gif"></div>' : '')
+          + (r.audio ? '<div style="margin-top:8px;display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:6px 10px;max-width:320px"><span style="font-size:16px">🎤</span><audio controls preload="none" src="'+tfEsc(r.audio)+'" style="height:34px;flex:1;min-width:0"></audio></div>' : '')
           + '<div class="gami-reactions" data-react-target="recado-'+r.id+'">'+_muralReacoesHTML(r)+'</div>'
           + _muralRespostasHTML(r)
         + '</div>'
@@ -57703,9 +57799,13 @@ async function estExportarRelatorio(tipo, sep){
     var mes = document.getElementById('est-rel-mes').value;
     if(!mes){ alert('Escolha o mês.'); return; }
     ini = mes + '-01';
-    var d = new Date(mes + '-01');
-    d.setMonth(d.getMonth() + 1); d.setDate(0);
-    fim = d.toISOString().slice(0,10);
+    // Último dia do mês calculado em data LOCAL. Antes: new Date('AAAA-MM-01') é lido como
+    // UTC e, no fuso BR, cai no dia anterior; com toISOString o fim do período saía errado
+    // (ex.: novembro terminava em 01/12 e pegava venda do mês seguinte).
+    var _pm = String(mes).split('-');
+    var _anoRel = parseInt(_pm[0], 10), _mesRel = parseInt(_pm[1], 10);
+    var d = new Date(_anoRel, _mesRel, 0); // dia 0 do mês seguinte = último dia do mês escolhido
+    fim = _pm[0] + '-' + String(_mesRel).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   } else {
     ini = document.getElementById('est-rel-ini').value;
     fim = document.getElementById('est-rel-fim').value;
@@ -59760,7 +59860,7 @@ function pgPopularSelects(){
   if(!sel) return;
   sel.innerHTML = '<option value="">Selecione a colaboradora...</option>'
     + PG_COLABORADORAS.map(function(c){
-        return '<option value="' + c.pessoa_id + '">' + c.nome + '</option>';
+        return '<option value="' + tfEsc(c.pessoa_id) + '">' + tfEsc(c.nome) + '</option>'; // anti-XSS
       }).join('');
 }
 
@@ -60244,10 +60344,10 @@ async function pgApagarBatida(id, pessoaNome, tipo, dataFmt, hora){
 
 function pgAbrirAdicionarBatida(){
   var pessoasOpts = PG_COLABORADORAS.map(function(c){
-    return '<option value="'+c.pessoa_id+'">'+c.nome+'</option>';
+    return '<option value="'+tfEsc(c.pessoa_id)+'">'+tfEsc(c.nome)+'</option>'; // anti-XSS
   }).join('');
   
-  var hojeStr = new Date().toISOString().slice(0,10);
+  var hojeStr = tfHojeLocal(); // data LOCAL como padrão do campo
   
   var modal = document.createElement('div');
   modal.id = 'pg-ad-modal';
@@ -60621,14 +60721,14 @@ async function pgCarregarExcecoes(){
 
 function pgAbrirModalExcecao(pessoaIdInicial, dataInicial){
   pessoaIdInicial = pessoaIdInicial || '';
-  dataInicial = dataInicial || new Date().toISOString().slice(0,10);
+  dataInicial = dataInicial || tfHojeLocal(); // data LOCAL como padrão do campo
   
   var overlay = document.createElement('div');
   overlay.id = 'modal-excecao';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
   
   var opcoesPessoas = PG_COLABORADORAS.map(function(c){
-    return '<option value="' + c.pessoa_id + '"' + (c.pessoa_id === pessoaIdInicial ? ' selected' : '') + '>' + c.nome + '</option>';
+    return '<option value="' + tfEsc(c.pessoa_id) + '"' + (c.pessoa_id === pessoaIdInicial ? ' selected' : '') + '>' + tfEsc(c.nome) + '</option>'; // anti-XSS
   }).join('');
   
   overlay.innerHTML = ''
@@ -62785,8 +62885,8 @@ function _notifMostrarToast(notif){
   toast.innerHTML = ''
     + '<div style="font-size:24px;line-height:1;flex-shrink:0">' + icone + '</div>'
     + '<div style="flex:1;min-width:0">'
-      + '<div style="font-size:13px;font-weight:700;color:#0D2B5C;margin-bottom:2px">' + (notif.titulo || 'Notificação') + '</div>'
-      + (notif.mensagem ? '<div style="font-size:11px;color:#5A6678;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + notif.mensagem + '</div>' : '')
+      + '<div style="font-size:13px;font-weight:700;color:#0D2B5C;margin-bottom:2px">' + tfEsc(notif.titulo || 'Notificação') + '</div>' /* anti-XSS: texto vem do banco */
+      + (notif.mensagem ? '<div style="font-size:11px;color:#5A6678;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + tfEsc(notif.mensagem) + '</div>' : '')
     + '</div>'
     + '<button onclick="event.stopPropagation();this.parentNode.remove()" style="border:none;background:transparent;font-size:16px;color:#5A6678;cursor:pointer;padding:0;line-height:1;flex-shrink:0">✕</button>';
   

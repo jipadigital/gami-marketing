@@ -104,27 +104,34 @@ function headersMachine(cred) {
 }
 
 // Lista TODOS os IDs do público (condutores status A, ou empresas status A), paginado (100/pág).
-async function listarIds(publico, cred, tempoMaxMs) {
+async function listarIds(publico, cred, tempoMaxMs, paginaInicial) {
   const path = publico === 'empresas' ? '/empresas' : '/condutores';
   const ids = [];
   const inicio = Date.now();
   let completo = true;
-  for (let pg = 1; pg <= 500; pg++) {
-    if (Date.now() - inicio > tempoMaxMs) { completo = false; break; }
+  // 13/11/2026: quando o tempo acabava, a lista vinha "parcial" e rodar de novo recomeçava
+  // da página 1 (os primeiros recebiam 2x, os últimos nunca). Agora devolve a página onde
+  // parou (proxima) e aceita recomeçar dela.
+  const pgIni = (Number.isInteger(paginaInicial) && paginaInicial >= 1 && paginaInicial <= 500) ? paginaInicial : 1;
+  let proxima = null;
+  for (let pg = pgIni; pg <= 500; pg++) {
+    if (Date.now() - inicio > tempoMaxMs) { completo = false; proxima = pg; break; }
     const url = BASE + path + '?pagina=' + pg + '&limite=100' + (publico === 'empresas' ? '' : '&status_condutor=A');
     let r, j;
     try {
       r = await fetch(url, { headers: headersMachine(cred) });
       j = await r.json();
     } catch (e) {
-      if (pg === 1) throw new Error('Não consegui listar ' + publico + ' na Machine.');
+      if (pg === pgIni) throw new Error('Não consegui listar ' + publico + ' na Machine.');
       completo = false;
+      proxima = pg;
       break;
     }
     if (r.status === 404) break; // sem registros / fim
     if (!r.ok || !j || j.success === false) {
-      if (pg === 1) throw new Error('Falha ao listar ' + publico + ' (HTTP ' + r.status + '). Confira a permissão "API - Corrida" da chave.');
+      if (pg === pgIni) throw new Error('Falha ao listar ' + publico + ' (HTTP ' + r.status + '). Confira a permissão "API - Corrida" da chave.');
       completo = false;
+      proxima = pg;
       break;
     }
     const lote = Array.isArray(j.data) ? j.data : [];
@@ -136,7 +143,7 @@ async function listarIds(publico, cred, tempoMaxMs) {
     }
     if (lote.length < 100) break;
   }
-  return { ids: Array.from(new Set(ids)), completo };
+  return { ids: Array.from(new Set(ids)), completo, proxima };
 }
 
 // Dispara 1 lote (<=1000 ids) pro endpoint certo. Trata 207 (parcial) lendo data.falhas.
@@ -218,7 +225,7 @@ exports.handler = async function (event) {
   const titulo = String(b.titulo || '').slice(0, 40);
   const mensagem = String(b.mensagem || '').trim().slice(0, 255);
   const testeIds = Array.isArray(b.teste_ids)
-    ? b.teste_ids.map((x) => parseInt(x, 10)).filter((x) => Number.isInteger(x) && x > 0).slice(0, 1000)
+    ? b.teste_ids.map((x) => parseInt(x, 10)).filter((x) => Number.isInteger(x) && x > 0).slice(0, 3) // teste = no máximo 3 pessoas
     : null;
 
   if (!cidade) return { statusCode: 400, headers: cors, body: JSON.stringify({ success: false, error: 'Informe a cidade.' }) };
@@ -231,13 +238,16 @@ exports.handler = async function (event) {
   try {
     let alvos;
     let listaCompleta = true;
+    let proximaPagina = null;
+    const paginaInicial = parseInt(b.pagina_inicial, 10);
     const testeAuto = b.teste_auto === true; // lista e manda só pro PRIMEIRO (teste sem precisar de ID)
     if (testeIds && testeIds.length) {
       alvos = testeIds;
     } else {
-      const lista = await listarIds(publico, cred, 7500);
+      const lista = await listarIds(publico, cred, 7500, Number.isInteger(paginaInicial) ? paginaInicial : 1);
       alvos = lista.ids;
       listaCompleta = lista.completo;
+      proximaPagina = lista.proxima;
       if (testeAuto) alvos = alvos.slice(0, 1); // teste: só o primeiro da lista
     }
     const ehTeste = !!((testeIds && testeIds.length) || testeAuto);
@@ -251,7 +261,11 @@ exports.handler = async function (event) {
     let ultimoErro = null;
     for (let k = 0; k < alvos.length; k += 1000) {
       const lote = alvos.slice(k, k + 1000);
-      const res = await enviarLote(publico, cred, lote, titulo, mensagem);
+      let res = await enviarLote(publico, cred, lote, titulo, mensagem);
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 2000));
+        res = await enviarLote(publico, cred, lote, titulo, mensagem);
+      }
       lotes++;
       enviados += res.enviados;
       falhas += res.falhas;
@@ -295,6 +309,7 @@ exports.handler = async function (event) {
         falhas,
         lotes,
         lista_completa: ehTeste ? true : listaCompleta,
+        ...(!ehTeste && !listaCompleta && proximaPagina ? { proxima_pagina: proximaPagina } : {}),
         ...(testeAuto ? { alvo_teste: alvos[0] } : {}),
         ...(ultimoErro ? { aviso: 'Alguns lotes falharam: ' + ultimoErro } : {}),
       }),
