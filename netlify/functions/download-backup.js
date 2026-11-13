@@ -39,12 +39,14 @@ async function validarSessao(userId, token){
     const u = arr[0];
     if(u.ativo === false) return { valido: false, erro: 'Usuário desativado' };
     
-    if(token){
-      if(!u.token_atual) return { valido: false, erro: 'Sessão não encontrada' };
-      if(u.token_atual !== token) return { valido: false, erro: 'Token inválido' };
-      if(u.token_expira_em && new Date(u.token_expira_em) < new Date()){
-        return { valido: false, erro: 'Sessão expirada' };
-      }
+    // SEGURANÇA (auditoria 13/11/2026): o token era OPCIONAL ("if(token){...}"), então sem o
+    // header a sessão passava só com o X-Gami-User e o backup (com usuarios_login) saía pra
+    // qualquer um que soubesse o id do super_admin. Agora o token é obrigatório.
+    if(!token) return { valido: false, erro: 'Sessão não informada' };
+    if(!u.token_atual) return { valido: false, erro: 'Sessão não encontrada' };
+    if(u.token_atual !== token) return { valido: false, erro: 'Token inválido' };
+    if(u.token_expira_em && new Date(u.token_expira_em) < new Date()){
+      return { valido: false, erro: 'Sessão expirada' };
     }
     
     const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,super_admin&limit=1', {

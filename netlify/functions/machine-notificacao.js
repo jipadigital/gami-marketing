@@ -77,11 +77,14 @@ async function nivelDaPessoa(pessoaId) {
 const DISPARO_BLOQUEADOS_EMAIL = ['matheus@mfedrizziconsultoria.com'];
 const DISPARO_BLOQUEADOS_ID = ['pecarlosvinicius', 'pematheusfedrizzi'];
 function autorizadoDisparo(pessoa, emailLogin, pessoaId) {
-  const email = String((pessoa && pessoa.email) || emailLogin || '').toLowerCase();
-  if (email === SUPER_ADMIN_EMAIL) return true;
+  // SEGURANÇA (auditoria 13/11/2026): o e-mail vinha de `pessoas.email`, que qualquer logado
+  // consegue editar no próprio cadastro (dava pra se passar pelo dono e furar o bloqueio).
+  // Agora vale SÓ o e-mail do LOGIN (usuarios_login, fechado pro cliente) e o bloqueio vem antes.
+  const email = String(emailLogin || '').toLowerCase().trim();
   // Exclusões explícitas (pedido do dono 12/11): Carlos e Matheus NÃO, mesmo sendo diretoria/gerência.
   if (DISPARO_BLOQUEADOS_EMAIL.indexOf(email) >= 0) return false;
   if (DISPARO_BLOQUEADOS_ID.indexOf(String(pessoaId || '')) >= 0) return false;
+  if (email && email === SUPER_ADMIN_EMAIL) return true;
   const np = String((pessoa && pessoa.nivel_permissao) || '').toLowerCase().trim();
   if (np === 'super_admin' || np === 'diretoria' || np === 'gerencia') return true;
   if (np) return false; // nível canônico definido e não é diretoria/gerência → nega

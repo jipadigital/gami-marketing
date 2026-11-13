@@ -65,15 +65,27 @@ exports.handler = async function(event){
     return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Preencha usuário e PIN' }) };
   }
 
+  // SEGURANÇA (auditoria 13/11/2026): o identificador entrava cru no filtro or=() do PostgREST.
+  // encodeURIComponent não protege: o PostgREST decodifica e trata vírgula/parênteses como
+  // operadores e "*"/"%" como curinga. Dava pra (a) casar qualquer usuário com "*" e (b) usar
+  // a resposta do login como oráculo pra extrair token de sessão e hash de PIN de qualquer conta.
+  // Agora: caractere de filtro/curinga é recusado e, depois da busca, o registro só vale se o
+  // email ou o username forem EXATAMENTE o que foi digitado (fecha também o "_" do ILIKE).
+  const NAO_ACHOU = { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Email ou username não encontrado' }) };
+  if(identificador.length > 120 || /[,()*%"\\]/.test(identificador)) return NAO_ACHOU;
+  const _igual = function(v){ return String(v || '').toLowerCase().trim() === identificador; };
+
   try {
     // 1) Busca por email OU username (case-insensitive)
     const idEnc = encodeURIComponent(identificador);
-    const query = SUPA_URL + '/rest/v1/usuarios_login?or=(email.ilike.' + idEnc + ',username.ilike.' + idEnc + ')&select=*&limit=1';
+    const query = SUPA_URL + '/rest/v1/usuarios_login?or=(email.ilike.' + idEnc + ',username.ilike.' + idEnc + ')&select=*&limit=5';
     const r = await fetch(query, { headers: svcHeaders() });
     if(!r.ok){
       return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Erro de conexão (HTTP ' + r.status + '). Tente novamente.' }) };
     }
     let lista = await r.json();
+    // Confere igualdade exata no servidor (o ILIKE é só a busca sem diferenciar maiúsculas).
+    if(Array.isArray(lista)) lista = lista.filter(function(u){ return u && (_igual(u.email) || _igual(u.username)); });
     if(!Array.isArray(lista) || !lista.length){
       // v32.12: AUTO-PROVISIONA o login no 1º acesso a partir do cadastro de Pessoas.
       // Se o identificador é um EMAIL de alguém já cadastrado em `pessoas` (mas sem
@@ -85,7 +97,7 @@ exports.handler = async function(event){
           const rPess = await fetch(SUPA_URL + '/rest/v1/pessoas?email=ilike.' + idEnc + '&select=id,nome,email&limit=1', { headers: svcHeaders() });
           if(rPess.ok){
             const lp = await rPess.json();
-            if(Array.isArray(lp) && lp.length && lp[0] && lp[0].email){
+            if(Array.isArray(lp) && lp.length && lp[0] && lp[0].email && _igual(lp[0].email)){
               const p = lp[0];
               const rIns = await fetch(SUPA_URL + '/rest/v1/usuarios_login', {
                 method: 'POST',

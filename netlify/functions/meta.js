@@ -56,6 +56,11 @@ exports.handler = async (event) => {
 
     } else if (endpoint === 'adsets') {
       const campId = event.queryStringParameters?.campaign_id || '';
+      // SEGURANÇA (auditoria 13/11/2026): campaign_id entrava cru no caminho da Graph API
+      // (dava pra trocar a chamada por outra e ler tokens de página). Só dígitos.
+      if (!/^\d{5,25}$/.test(String(campId))) {
+        return { statusCode: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ error: 'campaign_id inválido' }) };
+      }
       const url = `https://${API}/v19.0/${campId}/adsets?fields=id,name,status,daily_budget,targeting&access_token=${TOKEN}`;
       data = await fetchURL(url);
 

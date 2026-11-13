@@ -54,8 +54,17 @@ exports.handler = async (event) => {
 
   const action = body.action || 'test';
   const baseUrl = (body.url || process.env.WP_BASE_URL || '').replace(/\/$/, '');
-  const user    = body.user || process.env.WP_USER || '';
-  const pass    = body.pass || process.env.WP_APP_PASSWORD || '';
+  // SEGURANÇA (auditoria 13/11/2026): se o cliente mandava só `url`, a credencial guardada no
+  // servidor (WP_USER/WP_APP_PASSWORD) era enviada pro endereço que ele escolhesse. Agora a
+  // credencial do servidor só acompanha o host configurado no servidor (WP_BASE_URL).
+  const _hostDe = (u) => { try { return new URL(u).host.toLowerCase(); } catch (e) { return ''; } };
+  const _envBase = (process.env.WP_BASE_URL || '').replace(/\/$/, '');
+  const _hostServidor = !!_envBase && _hostDe(baseUrl) === _hostDe(_envBase);
+  if (baseUrl && !/^https:\/\//i.test(baseUrl)) {
+    return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'URL inválida (use https://)' }) };
+  }
+  const user    = body.user || (_hostServidor ? process.env.WP_USER : '') || '';
+  const pass    = body.pass || (_hostServidor ? process.env.WP_APP_PASSWORD : '') || '';
 
   if (!baseUrl || !user || !pass) {
     return {

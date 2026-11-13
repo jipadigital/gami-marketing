@@ -66,12 +66,18 @@ exports.handler = async function(event){
 
   try {
     // Lê o usuário (service key)
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=pin_hash,ativo&limit=1', { headers: svcHeaders() });
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=pin_hash,ativo,tentativas_falhas,bloqueado_ate&limit=1', { headers: svcHeaders() });
     if(!r.ok) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Erro de conexão. Tente novamente.' }) };
     const lista = await r.json();
     if(!Array.isArray(lista) || !lista.length) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Usuário não encontrado' }) };
     const u = lista[0];
     if(u.ativo === false) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Usuário desativado' }) };
+    // SEGURANÇA (auditoria 13/11/2026): esta rota não tinha limite de tentativas, então dava
+    // pra testar PIN sem parar por aqui e contornar o bloqueio do login. Agora usa o MESMO
+    // contador/bloqueio do login (5 erros = 15 min).
+    if(u.bloqueado_ate && new Date(u.bloqueado_ate) > new Date()){
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Conta bloqueada temporariamente por tentativas. Tente em alguns minutos.' }) };
+    }
 
     // Valida PIN atual (mesma regra: default = gami2026)
     let atualValido = false;
@@ -80,7 +86,19 @@ exports.handler = async function(event){
     } else {
       atualValido = (hashPin(pinAtual) === u.pin_hash);
     }
-    if(!atualValido) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'PIN atual incorreto' }) };
+    if(!atualValido){
+      const tent = (u.tentativas_falhas || 0) + 1;
+      const patchErr = { tentativas_falhas: tent };
+      if(tent >= 5) patchErr.bloqueado_ate = new Date(Date.now() + 15 * 60000).toISOString();
+      try {
+        await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId), {
+          method: 'PATCH',
+          headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+          body: JSON.stringify(patchErr)
+        });
+      } catch(e){}
+      return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'PIN atual incorreto' }) };
+    }
 
     // Grava o novo PIN
     const upd = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId), {

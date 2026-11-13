@@ -85,7 +85,8 @@ exports.handler = async (event) => {
 
     if (action === 'conversations') {
       const igId = params.ig_id;
-      if (!igId) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'ig_id obrigatório' }) };
+      // SEGURANÇA (auditoria 13/11/2026): ig_id entra no caminho da Graph API; só dígitos.
+      if (!igId || !/^\d{5,25}$/.test(String(igId))) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'ig_id obrigatório (numérico)' }) };
 
       const pages = await httpsGet(
         `https://graph.facebook.com/v19.0/me/accounts?fields=id,access_token,instagram_business_account&access_token=${token}`
@@ -102,7 +103,8 @@ exports.handler = async (event) => {
 
     if (action === 'insights') {
       const igId = params.ig_id;
-      if (!igId) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'ig_id obrigatório' }) };
+      // SEGURANÇA (auditoria 13/11/2026): ig_id entra no caminho da Graph API; só dígitos.
+      if (!igId || !/^\d{5,25}$/.test(String(igId))) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'ig_id obrigatório (numérico)' }) };
 
       const insights = await httpsGet(
         `https://graph.facebook.com/v19.0/${igId}/insights?metric=reach,impressions,profile_views&period=day&access_token=${token}`
@@ -114,11 +116,10 @@ exports.handler = async (event) => {
     // Renovar token
     if (action === 'refresh_token') {
       if (!META_APP_SECRET) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'META_APP_SECRET não configurado' }) };
-      const newToken = await getLongLivedToken(META_USER_TOKEN);
-      return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ 
-        access_token: newToken,
-        message: 'Atualize META_USER_TOKEN no Netlify com esse token'
-      })};
+      // SEGURANÇA (auditoria 13/11/2026): esta ação devolvia o token da Meta no corpo da
+      // resposta, e a função é pública. Token NUNCA sai do servidor: renove pelo painel da Meta
+      // e cole direto na variável META_USER_TOKEN do Netlify.
+      return { statusCode: 410, headers: HEADERS, body: JSON.stringify({ error: 'Ação desativada por segurança. Renove o token no painel da Meta e atualize META_USER_TOKEN no Netlify.' }) };
     }
 
     return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'action inválida' }) };
