@@ -2,12 +2,14 @@
 // PWA Gâmi Marketing — v23.182
 // SEGURANÇA: cache só de assets estáticos. APIs sempre fresh.
 
-const CACHE_VERSION = 'v23-351-2026-11-12';
+const CACHE_VERSION = 'v23-352-2026-11-13';
 const CACHE_NAME = 'gami-' + CACHE_VERSION;
 
 // 🚫 NUNCA cacheia: APIs, functions, autenticação
 const NEVER_CACHE = [
   /\.netlify\/functions\//i,
+  /^https?:\/\/[^/]+\/api\//i,   // apelido das functions (13/11/2026)
+  /\/crmpro\//i,                  // CRM Pro (sessão por cookie): nunca guardar resposta
   /supabase\.co/i,
   /graph\.facebook\.com/i,
   /taximachine\.com\.br/i,

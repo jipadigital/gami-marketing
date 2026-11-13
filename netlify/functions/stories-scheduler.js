@@ -62,10 +62,15 @@ const HEADERS_CORS = {
   'Content-Type': 'application/json'
 };
 
+const { exigirSessao } = require('../lib/sessao');
 exports.handler = async function(event, context) {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: HEADERS_CORS, body: '' };
   }
+  // SEGURANÇA (auditoria 13/11/2026): esta função era pública. Agora exige a sessão do
+  // painel (X-Gami-User + X-Gami-Token) ou chamada interna de outra function.
+  const _acesso = await exigirSessao(event);
+  if (!_acesso.ok) return _acesso.resposta(HEADERS_CORS);
 
   // Body opcional (pra teste manual)
   let body = {};

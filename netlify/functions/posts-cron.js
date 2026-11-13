@@ -8,9 +8,12 @@
 // (não importamos '@netlify/functions' aqui pra evitar dependência;
 //  o Netlify dispara handlers normais quando vê schedule no toml)
 
+const { headersInternos } = require('../lib/sessao');
+
 async function callPublicar(host){
   const url = host + '/.netlify/functions/posts-publicar?cron=1';
-  const r = await fetch(url, { method: 'GET' });
+  // identifica a chamada como interna (o publicador agora exige sessão ou este header)
+  const r = await fetch(url, { method: 'GET', headers: headersInternos() });
   return await r.json();
 }
 

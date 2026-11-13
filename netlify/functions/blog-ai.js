@@ -13,8 +13,13 @@ const HEADERS = {
 // rapida, Sonnet pra legenda/blog. Se nao mandar, usa o default abaixo.
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
+const { exigirSessao } = require('../lib/sessao');
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: HEADERS, body: '' };
+  // SEGURANÇA (auditoria 13/11/2026): esta função era pública. Agora exige a sessão do
+  // painel (X-Gami-User + X-Gami-Token) ou chamada interna de outra function.
+  const _acesso = await exigirSessao(event);
+  if (!_acesso.ok) return _acesso.resposta(HEADERS);
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: HEADERS, body: JSON.stringify({ error: 'Method not allowed' }) };
 
   if (!ANTHROPIC_API_KEY) {
@@ -28,8 +33,12 @@ exports.handler = async (event) => {
   const { prompt } = body;
   if (!prompt) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'prompt obrigatorio' }) };
 
-  const max_tokens = body.max_tokens || 2500;
-  const model = (typeof body.model === 'string' && body.model.trim()) ? body.model.trim() : DEFAULT_MODEL;
+  // Teto de custo: no máximo 4000 tokens de resposta, prompt de até 60 mil caracteres e só
+  // modelos das linhas Haiku/Sonnet (o painel não usa outros). Fora disso cai no padrão.
+  if (String(prompt).length > 60000) return { statusCode: 400, headers: HEADERS, body: JSON.stringify({ error: 'prompt muito longo' }) };
+  const max_tokens = Math.max(1, Math.min(4000, parseInt(body.max_tokens, 10) || 2500));
+  const _modeloPedido = (typeof body.model === 'string') ? body.model.trim() : '';
+  const model = /^claude-(haiku|sonnet)-[a-z0-9.-]{1,40}$/.test(_modeloPedido) ? _modeloPedido : DEFAULT_MODEL;
 
   const payload = JSON.stringify({
     model: model,

@@ -9,12 +9,14 @@
   window.__gamiAuthFetch = true;
   var original = window.fetch;
   if(typeof original !== 'function') return;
-  var ALVOS = ['/.netlify/functions/machine'];
+  // 13/11/2026: TODAS as functions do painel passaram a exigir sessão (auditoria), então a
+  // sessão vai em toda chamada para as functions DESTE domínio (e o apelido /api/).
+  var PREFIXOS = ['/.netlify/functions/', '/api/'];
   function precisa(url){
     try {
       var u = new URL(url, location.href);
       if(u.origin !== location.origin) return false;   // nunca manda a sessão pra fora
-      return ALVOS.some(function(a){ return u.pathname === a; });
+      return PREFIXOS.some(function(p){ return u.pathname.indexOf(p) === 0; });
     } catch(e){ return false; }
   }
   window.fetch = function(entrada, opcoes){

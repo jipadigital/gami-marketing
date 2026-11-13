@@ -98,6 +98,15 @@ exports.handler = async function(event){
       const txt = await updateResp.text();
       return { statusCode: 500, headers: cors, body: JSON.stringify({error:'Erro ao salvar: '+txt.substring(0,200)}) };
     }
+    // 13/11/2026: quem redefiniu o PIN pelo e-mail derruba TODOS os aparelhos logados (antes
+    // só o último login caía). Melhor esforço: se a coluna não existir, a troca acima já valeu.
+    try {
+      await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(u.pessoa_id), {
+        method: 'PATCH',
+        headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ sessoes_ativas: [] })
+      });
+    } catch(e){}
     
     return { statusCode: 200, headers: cors, body: JSON.stringify({
       ok: true, 

@@ -36,6 +36,7 @@ function corsHeaders(origin){
 }
 function svc(extra){ return Object.assign({ 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }, extra||{}); }
 
+const { tokenAtivo: _tokenAtivoLib } = require('../lib/sessao');
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -49,14 +50,15 @@ exports.handler = async function(event){
 
   try {
     // 1) Valida a sessão (token ativo, não expirado) e pega o e-mail do chamador
-    const rC = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(callerId) + '&select=pessoa_id,email,token_atual,token_expira_em,ativo&limit=1', { headers: svc() });
+    const rC = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(callerId) + '&select=*&limit=1', { headers: svc() });
     if(!rC.ok) return { statusCode: 500, headers: cors, body: JSON.stringify({ ok:false, erro:'Falha ao validar sessão' }) };
     const arrC = await rC.json();
     if(!Array.isArray(arrC) || !arrC.length) return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Sessão não encontrada' }) };
     const caller = arrC[0];
     if(caller.ativo === false) return { statusCode: 403, headers: cors, body: JSON.stringify({ ok:false, erro:'Usuário desativado' }) };
-    if(!caller.token_atual || caller.token_atual !== callerToken) return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Token inválido (faça login de novo)' }) };
-    if(caller.token_expira_em && new Date(caller.token_expira_em) < new Date()) return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Sessão expirada' }) };
+    // 13/11/2026: valia só o ÚLTIMO login (token_atual); quem entrava no celular derrubava o
+    // notebook só nesta tela. Agora aceita qualquer sessão ativa da pessoa (igual ao resto).
+    if(!callerToken || !_tokenAtivoLib(caller, callerToken)) return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Sessão inválida ou expirada (faça login de novo)' }) };
 
     // 2) AUTORIZAÇÃO: super_admin OU pessoa_id na allowlist
     const emailCaller = String(caller.email || '').toLowerCase();

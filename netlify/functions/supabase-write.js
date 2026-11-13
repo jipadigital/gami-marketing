@@ -361,6 +361,27 @@ exports.handler = async function(event){
     }
   }
 
+  // 🔒 Auditoria 13/11/2026: travas pra quem NÃO é super_admin. Não mudam nenhum fluxo que
+  // o painel usa hoje (todo patch/delete do painel filtra por `coluna=eq.` ou `id=in.(...)`);
+  // só fecham o que dava pra fazer chamando esta função direto pelo console.
+  if(!usuario.super_admin && operacao !== 'rpc'){
+    // (a) Trilha de auditoria só ACRESCENTA: ninguém altera nem apaga o próprio rastro.
+    if((tabela === 'audit_log' || tabela === 'acessos_log') && (operacao === 'patch' || operacao === 'delete')){
+      alertar('trilha_alteracao_bloqueada', 'alerta', 'Tentativa de alterar/apagar a trilha de auditoria (bloqueado)', { userId, tabela, operacao, ip });
+      return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada: a trilha de auditoria não pode ser alterada.'}) };
+    }
+    // (b) Alterar/apagar só linha(s) apontada(s) por igualdade. Barra "apaga tudo"/"atualiza
+    //     tudo" (ex.: id=not.is.null, created_at=lt.X, id=neq.x).
+    if(operacao === 'patch' || operacao === 'delete'){
+      var _f = String(filtro || '');
+      var _filtroOk = /^[a-z_]+=(eq\.[^&]+|in\.\([^&]+\))(&[a-z_]+=(eq\.[^&]+|in\.\([^&]+\)))*$/.test(_f);
+      if(!_filtroOk){
+        alertar('escrita_em_massa_bloqueada', 'alerta', 'Patch/delete sem filtro de igualdade (bloqueado)', { userId, tabela, operacao, filtro: _f.substring(0, 120), ip });
+        return { statusCode: 403, headers: cors, body: JSON.stringify({error:'Permissão negada: alteração em massa só para super_admin.'}) };
+      }
+    }
+  }
+
   // Constrói chamada ao Supabase com SERVICE_KEY (bypassa RLS)
   const supaHeaders = {
     'apikey': SUPA_SERVICE_KEY,

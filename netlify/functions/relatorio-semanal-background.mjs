@@ -1,3 +1,4 @@
+import sessao from '../lib/sessao.js';
 // netlify/functions/relatorio-semanal-background.mjs
 // =============================================================================
 // RELATÓRIO SEMANAL DA REDE — Gâmi Marketing Dashboard
@@ -103,7 +104,7 @@ async function notificar(pessoaId, titulo, mensagem) {
   if (SITE) {
     try {
       await fetch(SITE + '/.netlify/functions/send-push', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: sessao.headersInternos({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ pessoa_id: pessoaId, titulo: titulo, mensagem: mensagem, tipo: 'relatorio_semanal', url: '/?aba=cidades' })
       });
     } catch (e) {}
@@ -112,6 +113,9 @@ async function notificar(pessoaId, titulo, mensagem) {
 
 // =============================================================================
 export default async (req) => {
+  // SEGURANÇA (auditoria 13/11/2026): era uma URL pública que gastava IA e notificava a
+  // diretoria a cada chamada. Agora só o agendador (relatorio-semanal) consegue disparar.
+  if (!sessao.ehChamadaInterna(req)) return new Response('Acesso negado', { status: 401 });
   if (!SUPA_KEY || !ANTHROPIC_KEY) {
     return new Response('Faltam env vars (SUPABASE_SERVICE_KEY / ANTHROPIC_API_KEY)', { status: 500 });
   }

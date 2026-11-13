@@ -21,11 +21,16 @@ function corsHeaders(origin){
   };
 }
 
+const { exigirSessao } = require('../lib/sessao');
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
 
   if(event.httpMethod === 'OPTIONS') return { statusCode: 204, headers: cors, body: '' };
+  // SEGURANÇA (auditoria 13/11/2026): esta função era pública. Agora exige a sessão do
+  // painel (X-Gami-User + X-Gami-Token) ou chamada interna de outra function.
+  const _acesso = await exigirSessao(event);
+  if (!_acesso.ok) return _acesso.resposta(cors);
   if(event.httpMethod !== 'POST') return { statusCode: 405, headers: cors, body: JSON.stringify({ ok:false, erro:'Use POST' }) };
 
   let body;

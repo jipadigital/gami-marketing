@@ -21,6 +21,7 @@ function fetchURL(url) {
   });
 }
 
+const { exigirSessao } = require('../lib/sessao');
 exports.handler = async (event) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -31,6 +32,10 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers, body: '' };
   }
+  // SEGURANÇA (auditoria 13/11/2026): esta função era pública. Agora exige a sessão do
+  // painel (X-Gami-User + X-Gami-Token) ou chamada interna de outra function.
+  const _acesso = await exigirSessao(event);
+  if (!_acesso.ok) return _acesso.resposta(headers);
 
   if (!TOKEN) {
     return {

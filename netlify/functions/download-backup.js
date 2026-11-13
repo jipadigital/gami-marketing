@@ -29,7 +29,7 @@ async function validarSessao(userId, token){
   if(!userId) return { valido: false, erro: 'Usuário não informado' };
   
   try {
-    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=pessoa_id,nome,token_atual,token_expira_em,ativo&limit=1', {
+    const r = await fetch(SUPA_URL+'/rest/v1/usuarios_login?pessoa_id=eq.'+encodeURIComponent(userId)+'&select=*&limit=1', {
       headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
     });
     if(!r.ok) return { valido: false, erro: 'Falha ao validar' };
@@ -43,11 +43,7 @@ async function validarSessao(userId, token){
     // header a sessão passava só com o X-Gami-User e o backup (com usuarios_login) saía pra
     // qualquer um que soubesse o id do super_admin. Agora o token é obrigatório.
     if(!token) return { valido: false, erro: 'Sessão não informada' };
-    if(!u.token_atual) return { valido: false, erro: 'Sessão não encontrada' };
-    if(u.token_atual !== token) return { valido: false, erro: 'Token inválido' };
-    if(u.token_expira_em && new Date(u.token_expira_em) < new Date()){
-      return { valido: false, erro: 'Sessão expirada' };
-    }
+    if(!_tokenAtivoLib(u, token)) return { valido: false, erro: 'Sessão inválida ou expirada' };
     
     const rP = await fetch(SUPA_URL+'/rest/v1/pessoas?id=eq.'+encodeURIComponent(userId)+'&select=id,nome,nivel,super_admin&limit=1', {
       headers: { 'apikey': SUPA_SERVICE_KEY, 'Authorization': 'Bearer '+SUPA_SERVICE_KEY }
@@ -66,6 +62,7 @@ async function validarSessao(userId, token){
   } catch(e){ return { valido: false, erro: 'Erro ao validar' }; }
 }
 
+const { tokenAtivo: _tokenAtivoLib } = require('../lib/sessao');
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);

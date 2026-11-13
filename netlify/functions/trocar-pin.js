@@ -66,7 +66,7 @@ exports.handler = async function(event){
 
   try {
     // Lê o usuário (service key)
-    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=pin_hash,ativo,tentativas_falhas,bloqueado_ate&limit=1', { headers: svcHeaders() });
+    const r = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId) + '&select=*&limit=1', { headers: svcHeaders() });
     if(!r.ok) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Erro de conexão. Tente novamente.' }) };
     const lista = await r.json();
     if(!Array.isArray(lista) || !lista.length) return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Usuário não encontrado' }) };
@@ -87,7 +87,8 @@ exports.handler = async function(event){
       atualValido = (hashPin(pinAtual) === u.pin_hash);
     }
     if(!atualValido){
-      const tent = (u.tentativas_falhas || 0) + 1;
+      const _bloqVencido = !!u.bloqueado_ate && new Date(u.bloqueado_ate) <= new Date();
+      const tent = (_bloqVencido ? 0 : (u.tentativas_falhas || 0)) + 1;
       const patchErr = { tentativas_falhas: tent };
       if(tent >= 5) patchErr.bloqueado_ate = new Date(Date.now() + 15 * 60000).toISOString();
       try {
@@ -104,12 +105,32 @@ exports.handler = async function(event){
     const upd = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId), {
       method: 'PATCH',
       headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
-      body: JSON.stringify({ pin_hash: hashPin(pinNovo), pin_trocado: true, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ pin_hash: hashPin(pinNovo), pin_trocado: true, tentativas_falhas: 0, bloqueado_ate: null, updated_at: new Date().toISOString() })
     });
     if(!upd.ok){
       const t = await upd.text();
       return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:false, erro:'Falha ao salvar: ' + t.substring(0,160) }) };
     }
+    // 13/11/2026: trocar o PIN derruba os OUTROS aparelhos logados e mantém só o que fez a
+    // troca. Só acontece quando o navegador manda a sessão atual e ela é válida; sem isso
+    // (ex.: tela de primeiro acesso) ninguém é deslogado. Melhor esforço, não falha a troca.
+    try {
+      const tokSessao = String(event.headers['x-gami-token'] || event.headers['X-Gami-Token'] || '').trim();
+      if(tokSessao && Array.isArray(u.sessoes_ativas)){
+        const agora = new Date();
+        const naLista = u.sessoes_ativas.filter(function(s){ return s && s.t === tokSessao && (!s.e || new Date(s.e) >= agora); });
+        const ehAtual = !!u.token_atual && u.token_atual === tokSessao && (!u.token_expira_em || new Date(u.token_expira_em) >= agora);
+        if(naLista.length || ehAtual){
+          const novo = { sessoes_ativas: naLista };
+          if(!ehAtual) novo.token_atual = null;   // o último login era de outro aparelho: cai junto
+          await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(pessoaId), {
+            method: 'PATCH',
+            headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+            body: JSON.stringify(novo)
+          });
+        }
+      }
+    } catch(e){}
     return { statusCode: 200, headers: cors, body: JSON.stringify({ sucesso:true }) };
 
   } catch(err){

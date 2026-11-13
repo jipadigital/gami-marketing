@@ -32,6 +32,7 @@ function svcHeaders(extra){
   }, extra || {});
 }
 
+const { tokenAtivo: _tokenAtivoLib } = require('../lib/sessao');
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -62,7 +63,7 @@ exports.handler = async function(event){
 
   try {
     // 1) Valida o chamador: sessão ativa + token + é super_admin (jipadigital)
-    const rC = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(callerId) + '&select=pessoa_id,nome,email,token_atual,token_expira_em,ativo&limit=1', {
+    const rC = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(callerId) + '&select=*&limit=1', {
       headers: svcHeaders()
     });
     if(!rC.ok) return { statusCode: 500, headers: cors, body: JSON.stringify({ ok:false, erro:'Falha ao validar sessão' }) };
@@ -75,11 +76,9 @@ exports.handler = async function(event){
     if(caller.ativo === false){
       return { statusCode: 403, headers: cors, body: JSON.stringify({ ok:false, erro:'Usuário desativado' }) };
     }
-    if(!caller.token_atual || caller.token_atual !== callerToken){
-      return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Token inválido (faça login de novo)' }) };
-    }
-    if(caller.token_expira_em && new Date(caller.token_expira_em) < new Date()){
-      return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Sessão expirada (faça login de novo)' }) };
+    // 13/11/2026: aceita qualquer sessão ativa de quem chama (não só o último login).
+    if(!callerToken || !_tokenAtivoLib(caller, callerToken)){
+      return { statusCode: 401, headers: cors, body: JSON.stringify({ ok:false, erro:'Sessão inválida ou expirada (faça login de novo)' }) };
     }
     if(String(caller.email || '').toLowerCase() !== SUPER_ADMIN_EMAIL){
       return { statusCode: 403, headers: cors, body: JSON.stringify({ ok:false, erro:'Apenas o administrador pode resetar PINs' }) };
@@ -115,6 +114,16 @@ exports.handler = async function(event){
       const txt = await rU.text().catch(function(){ return ''; });
       return { statusCode: 500, headers: cors, body: JSON.stringify({ ok:false, erro:'Falha ao resetar: ' + txt.substring(0,200) }) };
     }
+    // 13/11/2026: o reset zerava só o último login (token_atual); os outros aparelhos da pessoa
+    // (lista sessoes_ativas) continuavam logados por até 7 dias. Agora derruba todos.
+    // Melhor esforço: se a coluna não existir, o reset acima já valeu.
+    try {
+      await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(alvo.pessoa_id), {
+        method: 'PATCH',
+        headers: svcHeaders({ 'Content-Type':'application/json', 'Prefer':'return=minimal' }),
+        body: JSON.stringify({ sessoes_ativas: [] })
+      });
+    } catch(e){}
 
     // 4) Auditoria (não bloqueia)
     try {

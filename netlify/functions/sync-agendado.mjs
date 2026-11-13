@@ -26,17 +26,21 @@ export const config = {
   schedule: "0 9-23/2 * * *"
 };
 
+import sessao from '../lib/sessao.js';
+
 export default async (req) => {
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
   if (!base) {
     return new Response("URL do site não encontrada no ambiente", { status: 500 });
   }
 
-  const alvo = base + "/.netlify/functions/sync-diario-background";
+  // 13/11/2026: antes chamava sync-diario-background, que é função AGENDADA e o Netlify não
+  // deixa chamar por URL (este agendador nunca fez nada). Agora chama a versão sob demanda.
+  const alvo = base + "/.netlify/functions/sync-agora-background";
 
   try {
     // dispara a função de background existente (ela roda async, 5-15 min)
-    await fetch(alvo, { method: "GET" });
+    await fetch(alvo, { method: "GET", headers: sessao.headersInternos() });
     console.log("[sync-agendado] disparado:", alvo, new Date().toISOString());
     return new Response("sync-diario-background disparado com sucesso", { status: 200 });
   } catch (e) {

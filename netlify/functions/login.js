@@ -171,7 +171,11 @@ exports.handler = async function(event){
     }
 
     if(!pinValido){
-      const tentativas = (usuario.tentativas_falhas || 0) + 1;
+      // 13/11/2026: o contador não zerava quando o bloqueio vencia, então UM erro a cada 15 min
+      // deixava a conta bloqueada pra sempre (dava pra travar o login de qualquer colega).
+      // Bloqueio vencido = contagem recomeça do zero.
+      const _bloqueioVencido = !!usuario.bloqueado_ate && new Date(usuario.bloqueado_ate) <= new Date();
+      const tentativas = (_bloqueioVencido ? 0 : (usuario.tentativas_falhas || 0)) + 1;
       const bloquearAte = tentativas >= 5 ? new Date(Date.now() + 15*60*1000).toISOString() : null;
       try {
         await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(usuario.pessoa_id), {

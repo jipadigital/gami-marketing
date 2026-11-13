@@ -17,12 +17,14 @@ export const config = {
   schedule: "30 10 * * 1"
 };
 
+import sessao from '../lib/sessao.js';
+
 export default async (req) => {
   const base = process.env.URL || process.env.DEPLOY_PRIME_URL || "";
   if (!base) return new Response("URL do site não encontrada", { status: 500 });
   try {
     // dispara o background (responde na hora; o trabalho roda async, até 15 min)
-    await fetch(base + "/.netlify/functions/relatorio-semanal-background", { method: "GET" });
+    await fetch(base + "/.netlify/functions/relatorio-semanal-background", { method: "GET", headers: sessao.headersInternos() });
     console.log("[relatorio-semanal] disparado", new Date().toISOString());
     return new Response("relatorio-semanal-background disparado", { status: 200 });
   } catch (e) {

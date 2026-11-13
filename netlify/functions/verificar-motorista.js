@@ -59,8 +59,21 @@ async function storageSignUpload(path){
   const j = await r.json();                 // { url: '/object/upload/sign/<bucket>/<path>?token=...' }
   return SUPA_URL + '/storage/v1' + (j.url || j.signedUrl || '');
 }
+// SEGURANCA (auditoria 13/11/2026): o caminho do arquivo vinha do navegador e ia direto pra
+// URL do Storage com a service key. Com '../' dava pra assinar ou APAGAR arquivo de OUTRO
+// bucket (ex.: backup do financeiro). So vale caminho simples, dentro da pasta do CPF.
+function caminhoDocSeguro(p){
+  p = String(p == null ? '' : p);
+  if(!p || p.length > 400) return false;
+  if(p.indexOf('\\') >= 0 || p.charAt(0) === '/' || p.indexOf('//') >= 0) return false;
+  var _arq = p.split('/').pop();
+  if(_arq === '..' || _arq === '.') return false;
+  if(/%2e|%2f|%5c/i.test(p) || /[\u0000-\u001f?#]/.test(p)) return false;
+  return /^\d{11}\/[^\/]+$/.test(p);   // <cpf>/<arquivo>, um nivel so
+}
 // Cria uma URL assinada de LEITURA (curta duracao)
 async function storageSignView(path, expiresIn){
+  if(!caminhoDocSeguro(path)) return null;
   const r = await fetch(SUPA_URL + '/storage/v1/object/sign/' + DOCS_BUCKET + '/' + encodeURI(path), {
     method: 'POST', headers: svcHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ expiresIn: expiresIn || 300 })
@@ -70,6 +83,7 @@ async function storageSignView(path, expiresIn){
   return SUPA_URL + '/storage/v1' + (j.signedURL || j.signedUrl || '');
 }
 async function storageRemover(path){
+  if(!caminhoDocSeguro(path)) return;
   await fetch(SUPA_URL + '/storage/v1/object/' + DOCS_BUCKET + '/' + encodeURI(path), {
     method: 'DELETE', headers: svcHeaders()
   }).catch(function(){});
@@ -395,6 +409,7 @@ async function consultarAgregador(cpf, nome, extra){
   return out;
 }
 
+const { tokenAtivo: _tokenAtivoLib } = require('../lib/sessao');
 exports.handler = async function(event){
   const origin = event.headers.origin || event.headers.Origin || '';
   const cors = corsHeaders(origin);
@@ -414,14 +429,14 @@ exports.handler = async function(event){
 
   try {
     // ---- 1) valida sessao + super_admin (igual admin-reset-pin) ----
-    const rC = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(callerId) + '&select=pessoa_id,nome,email,token_atual,token_expira_em,ativo&limit=1', { headers: svcHeaders() });
+    const rC = await fetch(SUPA_URL + '/rest/v1/usuarios_login?pessoa_id=eq.' + encodeURIComponent(callerId) + '&select=*&limit=1', { headers: svcHeaders() });
     if(!rC.ok) return json(cors, { ok:false, erro:'Falha ao validar sessao' }, 500);
     const arrC = await rC.json();
     if(!Array.isArray(arrC) || !arrC.length) return json(cors, { ok:false, erro:'Sessao nao encontrada' }, 401);
     const caller = arrC[0];
     if(caller.ativo === false) return json(cors, { ok:false, erro:'Usuario desativado' }, 403);
-    if(!caller.token_atual || caller.token_atual !== callerToken) return json(cors, { ok:false, erro:'Token invalido (faca login de novo)' }, 401);
-    if(caller.token_expira_em && new Date(caller.token_expira_em) < new Date()) return json(cors, { ok:false, erro:'Sessao expirada (faca login de novo)' }, 401);
+    // 13/11/2026: aceita qualquer sessao ativa de quem chama (nao so o ultimo login).
+    if(!_tokenAtivoLib(caller, callerToken)) return json(cors, { ok:false, erro:'Sessao invalida ou expirada (faca login de novo)' }, 401);
     // Acesso liberado para QUALQUER usuario Gami com sessao valida (subido pra todos).
     // (Pra restringir a um papel no futuro, checar caller/pessoa aqui.)
 
@@ -507,6 +522,8 @@ exports.handler = async function(event){
       const cpfD = soDigitos(body.cpf);
       if(!cpfValido(cpfD)) return json(cors, { ok:false, erro:'cpf_invalido' }, 400);
       if(!body.storage_path) return json(cors, { ok:false, erro:'storage_path_ausente' }, 400);
+      // o arquivo tem que estar na pasta DESTE cpf (o servidor gera assim no doc_sign_upload)
+      if(!caminhoDocSeguro(body.storage_path) || String(body.storage_path).indexOf(cpfD + '/') !== 0) return json(cors, { ok:false, erro:'storage_path_invalido' }, 400);
       const tipo = DOC_TIPOS.indexOf(body.tipo) >= 0 ? body.tipo : 'outro';
       const rIns = await fetch(SUPA_URL + '/rest/v1/motorista_documentos', {
         method: 'POST',

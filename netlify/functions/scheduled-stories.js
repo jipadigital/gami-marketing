@@ -31,6 +31,7 @@ const REGRAS_HORARIO = {
 
 const DIAS_NOME = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
+const { headersInternos } = require('../lib/sessao');
 exports.handler = async function(event, context) {
   // Pega hora UTC e ajusta pra BRT (-3h Brasília)
   const agoraUTC = new Date();
@@ -89,7 +90,8 @@ exports.handler = async function(event, context) {
     const siteUrl = process.env.URL || 'https://gami-marketing.netlify.app';
     const r = await fetch(`${siteUrl}/.netlify/functions/post-instagram-stories`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // identifica a chamada como interna (o publicador agora exige sessão ou este header)
+      headers: headersInternos({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         horario: melhorHorario,
         categoria: categoria,
