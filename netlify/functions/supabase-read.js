@@ -161,6 +161,14 @@ async function rateLimit(userId){
 function querySegura(q){
   if(typeof q !== 'string') return false;
   if(q.length > 4000) return false;
+  // 13/11/2026: o NOME do parâmetro nunca precisa de % (só o valor). Sem isso, escrever
+  // "%73elect=" no lugar de "select=" passava pelo teste abaixo e o PostgREST aceitava
+  // como select, furando o bloqueio de embed de outra tabela.
+  var partes = q.split('&');
+  for(var i=0;i<partes.length;i++){
+    var nome = partes[i].split('=')[0];
+    if(nome.indexOf('%') >= 0 || nome.indexOf('+') >= 0 || nome.indexOf('#') >= 0) return false;
+  }
   // No select: "palavra(" que NÃO seja função de agregação = embed de recurso
   // relacionado (ex.: machine_corridas(*)) → recusa. count()/sum()/avg()/min()/max() ok.
   var m = /(?:^|&)select=([^&]*)/i.exec(q);
