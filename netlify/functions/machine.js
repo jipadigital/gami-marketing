@@ -89,6 +89,7 @@ async function sessaoValida(userId, token){
 }
 function SUPA_SERVICE_KEY_AUTH(){ return process.env.SUPA_SERVICE_KEY || ''; }
 
+const { podeVerValores, ocultarValores } = require('../lib/valores');
 exports.handler = async function(event){
   var origem = event.headers.origin || event.headers.Origin || '';
   var origemPermitida = corsPermitido(origem);
@@ -115,6 +116,15 @@ exports.handler = async function(event){
   if(!(await sessaoValida(hdr['x-gami-user'] || hdr['X-Gami-User'], hdr['x-gami-token'] || hdr['X-Gami-Token']))){
     return { statusCode:401, headers:cors, body: JSON.stringify({ success:false, error:'Sessão inválida ou expirada. Faça login de novo.' }) };
   }
+
+  // 💰 Valores em R$ (decisão do dono, 13/11/2026): só super admin, diretoria, gerência,
+  // gestor e financeiro recebem. Pros demais níveis a resposta sai com os campos de dinheiro
+  // zerados (em CÓPIA: o cache é compartilhado e não pode ser alterado).
+  var _verValores = await podeVerValores(hdr['x-gami-user'] || hdr['X-Gami-User']);
+  if(_verValores === null){
+    return { statusCode:503, headers:cors, body: JSON.stringify({ success:false, error:'Não consegui conferir sua permissão agora. Tente de novo em instantes.' }) };
+  }
+  function _saida(dados){ return _verValores === true ? dados : ocultarValores(JSON.parse(JSON.stringify(dados))); }
   
   // Rate limit por IP (60 chamadas/minuto)
   var ip = event.headers['x-forwarded-for'] || event.headers['x-nf-client-connection-ip'] || 'desconhecido';
@@ -187,7 +197,7 @@ exports.handler = async function(event){
     return { statusCode:200, headers:cors, body: JSON.stringify({
       success:true, cidade:cidade, recurso:recurso, cache:true,
       atualizado_em: new Date(_cache[cacheKey].ts).toISOString(),
-      response: _cache[cacheKey].data
+      response: _saida(_cache[cacheKey].data)
     }) };
   }
 
@@ -372,7 +382,7 @@ exports.handler = async function(event){
       truncado: truncado,
       filtro_data: (dataInicio||dataFim) ? {inicio:dataInicio, fim:dataFim, aplicado:filtroAplicado} : null,
       atualizado_em: new Date(agora).toISOString(),
-      response: todos
+      response: _saida(todos)
     }) };
   }catch(err){
     return { statusCode:502, headers:cors, body: JSON.stringify({

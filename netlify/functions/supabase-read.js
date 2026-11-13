@@ -53,6 +53,27 @@ const RPCS_LEITURA = [
   'listar_backups_diarios'
 ];
 
+// 💰 Fontes que carregam VALOR em R$ (decisão do dono, 13/11/2026): só super admin,
+// diretoria, gerência, gestor e financeiro recebem os valores. Pros demais níveis o proxy
+// devolve os mesmos dados com os campos de dinheiro zerados (a tela deles já não mostra).
+const { podeVerValores, ocultarValores, chavesAgregadasDeDinheiro, zerarChaves } = require('../lib/valores');
+const TABELAS_COM_VALOR = ['machine_corridas','machine_empresas','machine_condutores','mv_empresas_raiox','mv_prospeccao_mapa','crm_leads'];
+const RPCS_COM_VALOR = [
+  'acoes_gestor_semana','calendario_demanda_rede','clientes_onboarding','contar_corridas_por_cidade',
+  'empresas_ativas_periodos','empresas_atividade_real','empresas_churn_inteligente','empresas_fantasmas',
+  'empresas_pararam_30d','empresas_pararam_60d','empresas_pararam_90d','empresas_pararam_intervalo',
+  'empresas_periodo_comparado','empresas_raiox_cidade','indicadores_cidade','mapa_empresas_cidade',
+  'metricas_mensais_cidade','metricas_semanais_cidade','motoboys_atividade_real','motoboys_periodo_comparado',
+  'prospeccao_sinal_machine','ranking_cidades_mes'
+];
+// Devolve { erro: resposta503 } se não deu pra conferir, ou { ocultar: true|false }.
+async function regraDeValores(userId, ehFonteComValor, cors){
+  if(!ehFonteComValor) return { ocultar: false };
+  const ver = await podeVerValores(userId);
+  if(ver === null) return { erro: { statusCode:503, headers:cors, body:JSON.stringify({error:'Não consegui conferir sua permissão agora. Tente de novo em instantes.'}) } };
+  return { ocultar: ver !== true };
+}
+
 const ORIGENS_PERMITIDAS = [
   'https://gami-marketing.netlify.app',
   'http://localhost:8888',
@@ -223,7 +244,11 @@ exports.handler = async function(event){
       const cr = r.headers.get('content-range') || '';
       const txt = await r.text();
       if(!r.ok) return { statusCode:r.status, headers:cors, body:JSON.stringify({error:'Supabase HTTP '+r.status, detalhe:txt.slice(0,300)}) };
-      return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: txt ? JSON.parse(txt) : [], content_range: cr }) };
+      let resRpc = txt ? JSON.parse(txt) : [];
+      const rvRpc = await regraDeValores(userId, RPCS_COM_VALOR.indexOf(body.rpc) >= 0, cors);
+      if(rvRpc.erro) return rvRpc.erro;
+      if(rvRpc.ocultar) resRpc = ocultarValores(resRpc);
+      return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: resRpc, content_range: cr }) };
     }
 
     // ---- SELECT ----
@@ -242,7 +267,14 @@ exports.handler = async function(event){
     const txt = await r.text();
     const contentRange = r.headers.get('content-range') || '';
     if(!r.ok) return { statusCode:r.status, headers:cors, body:JSON.stringify({error:'Supabase HTTP '+r.status, detalhe:txt.slice(0,300)}) };
-    return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: txt ? JSON.parse(txt) : [], content_range: contentRange }) };
+    let resSel = txt ? JSON.parse(txt) : [];
+    const rvSel = await regraDeValores(userId, TABELAS_COM_VALOR.indexOf(tabela) >= 0, cors);
+    if(rvSel.erro) return rvSel.erro;
+    if(rvSel.ocultar){
+      resSel = ocultarValores(resSel);
+      resSel = zerarChaves(resSel, chavesAgregadasDeDinheiro(q)); // somas/médias de valor também
+    }
+    return { statusCode:200, headers:cors, body:JSON.stringify({ ok:true, resultado: resSel, content_range: contentRange }) };
 
   } catch(err){
     console.error('[supabase-read]', err);
