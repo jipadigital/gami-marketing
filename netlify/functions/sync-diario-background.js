@@ -222,7 +222,13 @@ async function syncCidade(cidade, diasForcar){
       cidade_slug: cidade.slug,
       id_solicitacao: String(c.id || c.id_solicitacao || ''),
       data_hora_solicitacao: c.data_hora_solicitacao || c.data || null,
-      nome_passageiro: c.nome_passageiro || '',
+      // 13/11/2026: em Campo Grande (e um pouco em João Pessoa) a Machine devolve
+      // nome_passageiro = "Empresa" (genérico) em parte das corridas; o nome real da loja
+      // vem em nome_cliente (nas corridas normais os dois são iguais). Sem isso, dezenas de
+      // lojas por dia caíam num único "Empresa" e sumiam de ativação, churn, LTV e mapa.
+      nome_passageiro: (String(c.nome_passageiro || '').trim().toLowerCase() === 'empresa' && String(c.nome_cliente || '').trim())
+        ? String(c.nome_cliente).trim()
+        : (c.nome_passageiro || ''),
       valor_corrida: parseFloat(c.valor_corrida || c.valor || 0),
       status_solicitacao: c.status_solicitacao || c.status || '',
       condutor_id: (c.condutor_id && String(c.condutor_id).trim() !== '') ? String(c.condutor_id) : null,
