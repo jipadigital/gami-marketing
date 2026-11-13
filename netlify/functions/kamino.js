@@ -61,6 +61,21 @@ function credenciais() {
   };
 }
 
+// Mensagem de erro do Kamino, curta e LIMPA: qualquer trecho igual a uma das nossas chaves
+// vira [oculto] (caso a resposta ecoe cabeçalhos).
+function mensagemErro(cred, corpo, trecho) {
+  let m = '';
+  if (corpo && typeof corpo === 'object') {
+    m = corpo.Mensagem || corpo.mensagem || corpo.Message || corpo.message || corpo.title || corpo.Erro || corpo.erro || '';
+    if (!m && Array.isArray(corpo.Erros)) m = corpo.Erros.join('; ');
+    if (!m && corpo.errors) m = JSON.stringify(corpo.errors);
+    if (!m) m = JSON.stringify(corpo);
+  } else m = trecho || '';
+  m = String(m).slice(0, 400);
+  for (const v of Object.values(cred.headers)) { if (v && v.length >= 6) m = m.split(v).join('[oculto]'); }
+  return m.slice(0, 240);
+}
+
 async function kaminoGet(cred, caminho) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 9000);
@@ -103,7 +118,10 @@ exports.handler = async function (event) {
       }
       if (r.status === 429) return { statusCode: 200, headers: H, body: JSON.stringify({ ok: false, etapa: 'limite', status: 429, erro: 'Limite de 20 chamadas por minuto do Kamino. Tente em 1 minuto.' }) };
       if (r.status < 200 || r.status >= 300 || !r.corpo) {
-        return { statusCode: 200, headers: H, body: JSON.stringify({ ok: false, etapa: 'resposta', status: r.status, erro: 'Resposta inesperada do Kamino.', trecho: r.trecho }) };
+        // Diagnóstico: tenta um segundo endereço simples pra separar "chave errada" de "esse endereço deu erro".
+        let outro = null;
+        try { const r2 = await kaminoGet(c.cred, '/api/financeiro/planoconta/lista'); outro = { endereco: 'planoconta/lista', status: r2.status, mensagem: (r2.status >= 200 && r2.status < 300) ? 'ok' : mensagemErro(c.cred, r2.corpo, r2.trecho) }; } catch (e) { outro = { endereco: 'planoconta/lista', erro: 'sem resposta' }; }
+        return { statusCode: 200, headers: H, body: JSON.stringify({ ok: false, etapa: 'resposta', status: r.status, erro: 'Resposta inesperada do Kamino.', mensagem_kamino: mensagemErro(c.cred, r.corpo, r.trecho), segundo_teste: outro }) };
       }
       // A lista pode vir direto ou dentro de um campo; pegamos só nome/banco (sem saldo nem número da conta).
       const lista = Array.isArray(r.corpo) ? r.corpo : (Array.isArray(r.corpo.Dados) ? r.corpo.Dados : Array.isArray(r.corpo.dados) ? r.corpo.dados : Array.isArray(r.corpo.Lista) ? r.corpo.Lista : []);
