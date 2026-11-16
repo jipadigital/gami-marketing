@@ -788,7 +788,7 @@ T.receber_dash = async function(el){
     var varMes = n(d.venc_mes_ant) ? Math.round((n(d.venc_mes) / n(d.venc_mes_ant) - 1) * 100) : null;
     var h = '<div class="fin-row" style="justify-content:space-between;margin-bottom:10px"><select class="fin-in" id="rd-un" style="max-width:260px">' + optsLista(F.base.unidades, un, 'Todas as unidades') + '</select>' + (pode('conferente') ? '<button class="fin-bt ok" id="rd-novo">+ Novo recebimento</button>' : '') + '</div>';
     h += '<div class="fin-kpis">' + kpi('Vencimentos no mês', moeda(d.venc_mes), '', varMes == null ? '' : (varMes >= 0 ? '▲ ' : '▼ ') + Math.abs(varMes) + '% em relação ao mês anterior') +
-      kpi('Inadimplência atual', moeda(d.inadimplencia), n(d.inadimplencia) ? '#C0392B' : '#1D9E75', d.qtd_inadimplentes + ' cliente(s) com atraso') + '</div>';
+      '<div id="rd-inad" style="cursor:pointer" title="Clique para ver quem está em atraso">' + kpi('Inadimplência atual', moeda(d.inadimplencia), n(d.inadimplencia) ? '#C0392B' : '#1D9E75', d.qtd_inadimplentes + ' cliente(s) com atraso · <u>clique para ver</u>') + '</div>' + '</div>';
     h += '<div class="fin-grid2"><div class="fin-card"><b style="font-size:13px">Últimos recebimentos</b>' + tabelaMini(d.ultimos_recebidos, true) + '</div><div class="fin-card"><b style="font-size:13px">Últimos em atraso</b>' + tabelaMini(d.ultimos_atrasados, false) + '</div></div>';
     h += '<div class="fin-grid2" style="margin-top:10px"><div class="fin-card"><b style="font-size:13px">Últimos 6 meses</b><div class="fin-sub">Emitido x recebido (por vencimento)</div>' + barras6(d.meses) + '</div>' +
       '<div class="fin-card" style="overflow-x:auto"><b style="font-size:13px">Atrasos por cliente (dias em atraso)</b><table class="fin-tbl" style="margin-top:6px"><thead><tr><th>Pessoa</th><th class="fin-num">1-30</th><th class="fin-num">31-60</th><th class="fin-num">61-90</th><th class="fin-num">&gt;90</th><th class="fin-num">%</th><th class="fin-num">% acum.</th></tr></thead><tbody>';
@@ -797,6 +797,8 @@ T.receber_dash = async function(el){
     h += '</tbody></table></div></div>';
     el.innerHTML = h;
     $('rd-un').onchange = function(){ F.receber_un = this.value; T.receber_dash(el); };
+    // (16/11/2026) clicar na inadimplência abre a lista por empresa (Receber › Recorrências, só com atraso, maior dívida primeiro)
+    if($('rd-inad')) $('rd-inad').onclick = function(){ F.kmnRecreceber = { so: 'atraso', busca: '', pagina: 0 }; U.irPara('kmn_rec_receber'); };
     if($('rd-novo')) $('rd-novo').onclick = function(){ formLanc('receber', null, { aoSalvar: function(){ T.receber_dash(el); } }); };
     el.querySelectorAll('[data-lanc]').forEach(function(tr){ tr.onclick = function(){ verLanc(Number(tr.getAttribute('data-lanc')), function(){ T.receber_dash(el); }); }; });
   } catch(e){ erroEm(el, e); }
