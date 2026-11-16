@@ -178,6 +178,21 @@ exports.handler = async function (event) {
     return { statusCode: 200, headers: H, body: JSON.stringify(r) };
   }
 
+  // 'ponte_agora' (16/11/2026): copia o espelho pras telas antigas em lotes, até ~20 s (só banco, sem Kamino)
+  if (acao === 'ponte_agora') {
+    const key = process.env.FIN_SUPA_SERVICE_KEY || '';
+    const t0 = Date.now(); let tot = { copiados: 0, erros: 0, faltam: null, lotes: 0 };
+    while (Date.now() - t0 < 20000) {
+      const r = await fetch('https://vyjjdirlgvysbalrmmih.supabase.co/rest/v1/rpc/fin_kmn_ponte_pendentes', { method: 'POST',
+        headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_limite: 400 }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j) return { statusCode: 200, headers: H, body: JSON.stringify({ ok: false, erro: (j && (j.message || j.hint)) || ('HTTP ' + r.status), tot }) };
+      tot.copiados += j.copiados || 0; tot.erros += j.erros || 0; tot.faltam = j.faltam; tot.lotes++;
+      if (!j.faltam) break;
+    }
+    return { statusCode: 200, headers: H, body: JSON.stringify({ ok: true, tot, ms: Date.now() - t0 }) };
+  }
+
   // 'explorar' (16/11/2026): raio-x do que a API entrega, SÓ LEITURA (GET em listas), pra decidir
   // o que entra no módulo financeiro. Devolve contagens, campos e totais; nada de CPF/CNPJ, Pix
   // ou conta bancária. ~12 chamadas (o limite do Kamino é 20/min).

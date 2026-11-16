@@ -192,6 +192,12 @@ async function rodada(opcoes) {
     if (!o.seco) { try { await salvarEstado('pessoas', sp, e.message); } catch (x) { /* banco fora */ } }
   }
 
+  // ---------- 5) ponte: espelho -> telas (Pagar, Receber, Relatórios, Empresas semanal). Só banco, sem Kamino ----------
+  if (!o.seco && Date.now() - ini < 24000) {
+    try { stats.ponte = await rpc('fin_kmn_ponte_pendentes', { p_limite: o.ponteLimite || 600 }); }
+    catch (e) { log.push('ponte: ' + e.message); }
+  }
+
   return { ok: true, chamadas, ms: Date.now() - ini, parado, log, stats, estado: o.seco ? estado : undefined };
 }
 
