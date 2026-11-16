@@ -50,7 +50,7 @@ function diffHtml(m){
 
 /* ================= CONFERIR ================= */
 T.kmn_conferir = async function(el){
-  var f = F.kmnF = F.kmnF || { tipo: 'pagar', campo: 'data_pagamento', ini: addDias(hoje(), -6), fim: hoje(), conf: 'falta', situacao: 'pagos', unidade: '', busca: '', pagina: 0 };
+  var f = F.kmnF = F.kmnF || { tipo: 'pagar', campo: 'data_pagamento', ini: addDias(hoje(), -29), fim: hoje(), conf: 'falta', situacao: 'pagos', unidade: '', busca: '', pagina: 0 };
   el.innerHTML = '<div class="fin-filtros">' +
     '<select id="kf-tipo"><option value="pagar"' + (f.tipo === 'pagar' ? ' selected' : '') + '>💸 Pagamentos</option><option value="receber"' + (f.tipo === 'receber' ? ' selected' : '') + '>💰 Recebimentos</option></select>' +
     '<select id="kf-campo"><option value="data_pagamento"' + (f.campo === 'data_pagamento' ? ' selected' : '') + '>Data em que foi pago/recebido</option><option value="vencimento"' + (f.campo === 'vencimento' ? ' selected' : '') + '>Data de vencimento</option></select>' +
@@ -59,10 +59,21 @@ T.kmn_conferir = async function(el){
     '<select id="kf-sit">' + [['pagos', 'Só pagos/recebidos'], ['pendentes', 'Só pendentes'], ['', 'Pagos e pendentes']].map(function(o){ return '<option value="' + o[0] + '"' + (f.situacao === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
     '<select id="kf-un"><option value="">Todas as cidades</option></select>' +
     '<input id="kf-busca" placeholder="Favorecido, descrição, classificação" value="' + esc(f.busca) + '" style="min-width:200px">' +
-    '<button class="fin-bt pri" id="kf-ok">Filtrar</button></div><div id="kf-kpis"></div><div id="kf-bar"></div><div id="kf-out"><div class="fin-vazio">Carregando...</div></div>';
+    '<button class="fin-bt pri" id="kf-ok">Filtrar</button></div>' +
+    '<div class="fin-filtros" style="margin-top:-4px"><span class="fin-sub">Período rápido:</span>' +
+    [['7', 'Últimos 7 dias'], ['30', 'Últimos 30 dias'], ['mes', 'Este mês'], ['ant', 'Mês passado'], ['tudo', 'Tudo (desde jun/2026)']].map(function(o){ return '<button class="fin-bt" data-per="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+    '<div id="kf-kpis"></div><div id="kf-bar"></div><div id="kf-out"><div class="fin-vazio">Carregando...</div></div>';
   var ler = function(){ f.tipo = $('kf-tipo').value; f.campo = $('kf-campo').value; f.ini = $('kf-ini').value; f.fim = $('kf-fim').value; f.conf = $('kf-conf').value; f.situacao = $('kf-sit').value; f.unidade = $('kf-un').value; f.busca = $('kf-busca').value.trim(); f.pagina = 0; };
   var rec = function(){ T.kmn_conferir(el); };
   $('kf-ok').onclick = function(){ ler(); rec(); };
+  el.querySelectorAll('[data-per]').forEach(function(b){ b.onclick = function(){
+    ler(); var p = b.getAttribute('data-per'), h = hoje();
+    if(p === '7'){ f.ini = addDias(h, -6); f.fim = h; }
+    else if(p === '30'){ f.ini = addDias(h, -29); f.fim = h; }
+    else if(p === 'mes'){ f.ini = h.slice(0, 8) + '01'; f.fim = h; }
+    else if(p === 'ant'){ var i = addDias(h.slice(0, 8) + '01', -1); f.ini = i.slice(0, 8) + '01'; f.fim = i; }
+    else { f.ini = '2026-01-01'; f.fim = addDias(h, 90); }
+    rec(); }; });
   $('kf-busca').onkeydown = function(e){ if(e.key === 'Enter'){ ler(); rec(); } };
   ['kf-tipo', 'kf-campo', 'kf-conf', 'kf-sit', 'kf-un'].forEach(function(id){ $(id).onchange = function(){ ler(); rec(); }; });
 
@@ -87,7 +98,8 @@ T.kmn_conferir = async function(el){
       kpi('Divergentes e suspeitos', String(g('divergente').qtd + g('suspeito').qtd), (g('divergente').qtd + g('suspeito').qtd) ? '#C0392B' : '', moeda(g('divergente').valor + g('suspeito').valor)) +
       kpi('Mudou depois de conferido', String(g('mudou').qtd), g('mudou').qtd ? '#D68910' : '', 'precisa conferir de novo') +
       kpi('Excluídos no Kamino', String(r.sumidos || 0), r.sumidos ? '#C0392B' : '', (r.total_espelho || 0) + ' no espelho') +
-      '</div>';
+      '</div><div class="fin-sub" style="margin:-6px 0 8px">Mostrando ' + (f.campo === 'vencimento' ? 'vencimentos' : (f.tipo === 'pagar' ? 'pagamentos feitos' : 'recebimentos')) + ' de ' + dataBR(f.ini) + ' a ' + dataBR(f.fim) +
+      '. O espelho tem <b>' + (r.total_espelho || 0) + '</b> ' + (f.tipo === 'pagar' ? 'pagamentos' : 'recebimentos') + ' no total: use o período rápido ou "Todos" na conferência para ver mais.</div>';
     if(!r.total_espelho){ $('kf-out').innerHTML = '<div class="fin-vazio">O espelho do Kamino ainda está carregando (a primeira carga leva algumas horas e corre sozinha a cada 10 minutos). Veja o andamento em Sincronização.</div>'; return; }
 
     var linhas = j.linhas || [];
