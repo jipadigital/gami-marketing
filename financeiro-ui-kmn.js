@@ -229,23 +229,28 @@ T.kmn_mudancas = async function(el){
 // receber: o Kamino não usa contrato; a recorrência é a cobrança semanal de cada empresa.
 function telaRec(el, tipo){
   var receber = tipo === 'receber';
-  var f = F['kmnRec' + tipo] = F['kmnRec' + tipo] || { so: receber ? '' : 'ativas', busca: '', pagina: 0 };
+  var f = F['kmnRec' + tipo] = F['kmnRec' + tipo] || { so: receber ? '' : 'ativas', busca: '', unidade: '', pagina: 0 };
   el.innerHTML = '<div class="fin-sub" style="margin-bottom:8px">' + (receber
       ? 'Cobranças recorrentes vindas do Kamino: cada empresa cobrada semana a semana, por cidade. Só leitura: qualquer mudança é feita no Kamino.'
       : 'Contas recorrentes vindas do Kamino (aluguel, salários, sistemas...), agrupadas pela série que o Kamino cria. Só leitura: qualquer mudança é feita no Kamino.') + '</div>' +
     '<div class="fin-filtros"><select id="kr-so">' + (receber
       ? [['', 'Todas as empresas'], ['atraso', 'Só com cobrança atrasada']]
       : [['ativas', 'Com parcelas a vencer'], ['', 'Todas'], ['varia', 'Valor mudou entre parcelas']]).map(function(o){ return '<option value="' + o[0] + '"' + (f.so === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+    '<select id="kr-un"><option value="">Todas as cidades</option></select>' +
     '<input id="kr-busca" placeholder="' + (receber ? 'Empresa' : 'Favorecido') + '" value="' + esc(f.busca) + '"><button class="fin-bt pri" id="kr-ok">Filtrar</button></div><div id="kr-out"><div class="fin-vazio">Carregando...</div></div>';
   var rec = function(){ telaRec(el, tipo); };
-  $('kr-ok').onclick = function(){ f.so = $('kr-so').value; f.busca = $('kr-busca').value.trim(); f.pagina = 0; rec(); };
-  $('kr-so').onchange = $('kr-ok').onclick;
+  $('kr-ok').onclick = function(){ f.so = $('kr-so').value; f.unidade = $('kr-un').value; f.busca = $('kr-busca').value.trim(); f.pagina = 0; rec(); };
+  $('kr-so').onchange = $('kr-ok').onclick; $('kr-un').onchange = $('kr-ok').onclick;
   $('kr-busca').onkeydown = function(e){ if(e.key === 'Enter') $('kr-ok').onclick(); };
   (async function(){
     try {
-      var j = await api('kmn_recorrencias', { tipo: tipo, so: f.so, busca: f.busca, pagina: f.pagina });
+      // cidades (as mesmas unidades do Kamino), carregadas uma vez
+      if(!F.kmnUnidades){ try { F.kmnUnidades = ((await api('base')).unidades || []).map(function(u){ return u.nome; }); } catch(e){ F.kmnUnidades = []; } }
+      var sel = $('kr-un'); if(sel) F.kmnUnidades.forEach(function(nm){ var o = document.createElement('option'); o.value = nm; o.textContent = nm; if(nm === f.unidade) o.selected = true; sel.appendChild(o); });
+      var j = await api('kmn_recorrencias', { tipo: tipo, so: f.so, busca: f.busca, unidade: f.unidade, pagina: f.pagina });
       var ls = j.linhas || [];
-      var h = '<div class="fin-sub" style="margin:6px 0">' + j.total + (receber ? ' empresa(s)' : ' conta(s) recorrente(s)') + '</div><div class="fin-card" style="overflow-x:auto"><table class="fin-tbl"><thead><tr>';
+      var somaAtr = ls.reduce(function(a, r){ return a + (Number(r.total_atrasado) || 0); }, 0);
+      var h = '<div class="fin-sub" style="margin:6px 0">' + j.total + (receber ? ' empresa(s)' + (f.unidade ? ' em ' + esc(f.unidade) : '') + (somaAtr ? ' · em atraso nesta página: <b style="color:#C0392B">' + moeda(somaAtr) + '</b>' : '') : ' conta(s) recorrente(s)') + '</div><div class="fin-card" style="overflow-x:auto"><table class="fin-tbl"><thead><tr>';
       if(receber){
         h += '<th>Empresa</th><th>Cidade</th><th style="text-align:right">Cobranças</th><th style="text-align:right">Recebidas</th><th style="text-align:right">Atrasadas</th><th style="text-align:right">Valor médio</th><th style="text-align:right">Em atraso</th><th>Última</th></tr></thead><tbody>';
         if(!ls.length) h += '<tr><td colspan="8" class="fin-vazio">Nada neste filtro.</td></tr>';
