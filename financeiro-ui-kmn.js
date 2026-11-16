@@ -66,14 +66,16 @@ T.kmn_conferir = async function(el){
   $('kf-busca').onkeydown = function(e){ if(e.key === 'Enter'){ ler(); rec(); } };
   ['kf-tipo', 'kf-campo', 'kf-conf', 'kf-sit', 'kf-un'].forEach(function(id){ $(id).onchange = function(){ ler(); rec(); }; });
 
+  var meu = F.kmnReq = (F.kmnReq || 0) + 1; // se a tela recarregar no meio, só a última resposta desenha
   try {
     var res = await Promise.all([
       api('kmn_resumo', { tipo: f.tipo, campo: f.campo, ini: f.ini, fim: f.fim }),
       api('kmn_listar', { tipo: f.tipo, campo: f.campo, ini: f.ini, fim: f.fim, conf: f.conf, situacao: f.situacao, unidade: f.unidade, busca: f.busca, pagina: f.pagina })
     ]);
+    if(meu !== F.kmnReq) return;
     var r = res[0].resumo || {}, j = res[1];
     // cidades
-    var un = $('kf-un'); (r.unidades || []).forEach(function(u){ var o = document.createElement('option'); o.value = u; o.textContent = u; if(u === f.unidade) o.selected = true; un.appendChild(o); });
+    var un = $('kf-un'); while(un.options.length > 1) un.remove(1); (r.unidades || []).forEach(function(u){ var o = document.createElement('option'); o.value = u; o.textContent = u; if(u === f.unidade) o.selected = true; un.appendChild(o); });
     // KPIs do período (todas as conferências, não só o filtro de status)
     var ps = r.por_status || {}; var g = function(k){ return ps[k] || { qtd: 0, valor: 0 }; };
     var falta = g('pendente').qtd + g('mudou').qtd + g('aguardando_2a').qtd;
