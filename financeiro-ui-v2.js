@@ -605,38 +605,107 @@ function barrasMes(lista){
   }).join('') + '</div><div class="fin-sub" style="margin-top:4px"><span style="color:#E24B4A">■</span> realizado <span style="color:#F5B041">■</span> previsto</div>';
 }
 
-/* ================= PAGAR / RECEBER: CENTRAL (cards por dia) ================= */
+/* ================= PAGAR / RECEBER: CENTRAL (agenda por semana) ================= */
+// (16/11/2026) refeita: em vez da grade de cartões, uma agenda limpa. Números do período no topo,
+// dias agrupados por semana, um dia por linha (data · quem · total); clicar abre o dia ali mesmo.
+function cssAgenda(){
+  if(document.getElementById('fin-agenda-css')) return;
+  var s = document.createElement('style'); s.id = 'fin-agenda-css';
+  s.textContent = [
+    '.ag-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:4px 0 16px}',
+    '.ag-kpi{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface)}',
+    '.ag-kpi .l{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);font-weight:700}',
+    '.ag-kpi .v{font-size:22px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}',
+    '.ag-kpi .s{font-size:12px;color:var(--text3);margin-top:2px}',
+    '.ag-kpi.clic{cursor:pointer}.ag-kpi.clic:hover{border-color:#C0392B}',
+    '.ag-rapido{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}',
+    '.ag-rapido button{border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer}',
+    '.ag-rapido button.on{background:#0E7AB8;border-color:#0E7AB8;color:#fff}',
+    '.ag-sem{margin-top:18px}',
+    '.ag-sem-h{display:flex;justify-content:space-between;align-items:baseline;padding:0 4px 6px;border-bottom:2px solid var(--border);margin-bottom:6px}',
+    '.ag-sem-h b{font-size:13px}.ag-sem-h span{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}',
+    '.ag-dia{display:grid;grid-template-columns:64px 1fr auto;gap:14px;align-items:center;padding:10px 8px;border-radius:10px;cursor:pointer}',
+    '.ag-dia:hover{background:var(--surface2)}',
+    '.ag-data{text-align:center;border-radius:10px;padding:6px 0;background:var(--surface2)}',
+    '.ag-data .d{font-size:20px;font-weight:800;line-height:1}.ag-data .w{font-size:10px;text-transform:uppercase;color:var(--text3);margin-top:2px}',
+    '.ag-dia.hoje .ag-data{background:#0E7AB8;color:#fff}.ag-dia.hoje .ag-data .w{color:#DCEBF5}',
+    '.ag-dia.atr .ag-data{background:#FDECEA;color:#C0392B}',
+    '.ag-quem{min-width:0}.ag-quem .p{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ag-quem .c{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '.ag-tot{text-align:right}.ag-tot .v{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}.ag-tot .q{font-size:11px;color:var(--text3)}',
+    '.ag-itens{margin:0 8px 8px 86px;border-left:2px solid var(--border);padding-left:12px}',
+    '.ag-item{display:flex;justify-content:space-between;gap:12px;padding:7px 6px;border-radius:8px;cursor:pointer;font-size:13px}',
+    '.ag-item:hover{background:var(--surface2)}.ag-item .n{min-width:0}.ag-item .n div{font-size:12px;color:var(--text3)}',
+    '.ag-item .vv{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}',
+    '@media (max-width:640px){.ag-itens{margin-left:8px}.ag-dia{grid-template-columns:52px 1fr auto;gap:10px}}'
+  ].join('');
+  document.head.appendChild(s);
+}
 function central(tipo){
   return async function(el){
-    css2();
-    var f = F['central_' + tipo] = F['central_' + tipo] || { ini: hoje(), fim: addDias(hoje(), 30), situacao: 'pendentes', q: '' };
-    el.innerHTML = '<div class="fin-filtros"><input id="ce-q" placeholder="Buscar pessoa ou descrição" value="' + esc(f.q) + '" style="min-width:200px">' +
-      '<button class="fin-bt" id="ce-ant">‹</button><input type="date" id="ce-ini" value="' + f.ini + '"><input type="date" id="ce-fim" value="' + f.fim + '"><button class="fin-bt" id="ce-prox">›</button>' +
-      '<select id="ce-sit"><option value="pendentes"' + (f.situacao === 'pendentes' ? ' selected' : '') + '>Situação: pendentes</option><option value="pagos"' + (f.situacao === 'pagos' ? ' selected' : '') + '>' + (tipo === 'pagar' ? 'Pagos' : 'Recebidos') + '</option><option value="todos"' + (f.situacao === 'todos' ? ' selected' : '') + '>Todos</option></select>' +
-      '<button class="fin-bt pri" id="ce-ok">Filtrar</button><div style="flex:1"></div>' + (pode('conferente') ? '<button class="fin-bt ok" id="ce-novo">+ ' + (tipo === 'pagar' ? 'Novo pagamento' : 'Novo recebimento') + '</button>' : '') + '</div><div id="ce-out"></div>';
-    var ap = function(){ f.q = $('ce-q').value.trim(); f.ini = $('ce-ini').value; f.fim = $('ce-fim').value; f.situacao = $('ce-sit').value; central(tipo)(el); };
+    css2(); cssAgenda();
+    var f = F['central_' + tipo] = F['central_' + tipo] || { ini: hoje(), fim: addDias(hoje(), 30), situacao: 'pendentes', q: '', rap: '30' };
+    var nomeItem = tipo === 'pagar' ? 'pagamento' : 'recebimento';
+    el.innerHTML = '<div class="fin-filtros"><input id="ce-q" placeholder="Buscar pessoa ou descrição" value="' + esc(f.q) + '" style="min-width:220px">' +
+      '<input type="date" id="ce-ini" value="' + f.ini + '"><input type="date" id="ce-fim" value="' + f.fim + '">' +
+      '<select id="ce-sit"><option value="pendentes"' + (f.situacao === 'pendentes' ? ' selected' : '') + '>' + (tipo === 'pagar' ? 'A pagar' : 'A receber') + '</option><option value="pagos"' + (f.situacao === 'pagos' ? ' selected' : '') + '>' + (tipo === 'pagar' ? 'Já pagos' : 'Já recebidos') + '</option><option value="todos"' + (f.situacao === 'todos' ? ' selected' : '') + '>Todos</option></select>' +
+      '<button class="fin-bt pri" id="ce-ok">Filtrar</button></div>' +
+      '<div class="ag-rapido">' + [['7', 'Próximos 7 dias'], ['30', 'Próximos 30 dias'], ['mes', 'Este mês'], ['prox', 'Mês que vem']].map(function(o){ return '<button data-rap="' + o[0] + '"' + (f.rap === o[0] ? ' class="on"' : '') + '>' + o[1] + '</button>'; }).join('') + '</div>' +
+      '<div id="ce-out"></div>';
+    var ap = function(){ f.q = $('ce-q').value.trim(); f.ini = $('ce-ini').value; f.fim = $('ce-fim').value; f.situacao = $('ce-sit').value; f.rap = ''; central(tipo)(el); };
     $('ce-ok').onclick = ap; $('ce-q').onkeydown = function(e){ if(e.key === 'Enter') ap(); };
-    var datasOk = function(){ if(!f.ini || !f.fim || f.fim < f.ini){ toast('Preencha as duas datas (início antes do fim)', 'aviso'); return false; } return true; };
-    $('ce-ant').onclick = function(){ if(!datasOk()) return; var d = (new Date(f.fim) - new Date(f.ini)) / 864e5 + 1; f.ini = addDias(f.ini, -d); f.fim = addDias(f.fim, -d); central(tipo)(el); };
-    $('ce-prox').onclick = function(){ if(!datasOk()) return; var d = (new Date(f.fim) - new Date(f.ini)) / 864e5 + 1; f.ini = addDias(f.ini, d); f.fim = addDias(f.fim, d); central(tipo)(el); };
-    if($('ce-novo')) $('ce-novo').onclick = function(){ formLanc(tipo, null, { aoSalvar: function(){ central(tipo)(el); } }); };
+    $('ce-sit').onchange = ap;
+    el.querySelectorAll('[data-rap]').forEach(function(b){ b.onclick = function(){
+      var r = b.getAttribute('data-rap'), h0 = hoje();
+      if(r === '7'){ f.ini = h0; f.fim = addDias(h0, 6); }
+      else if(r === '30'){ f.ini = h0; f.fim = addDias(h0, 30); }
+      else if(r === 'mes'){ f.ini = h0.slice(0, 8) + '01'; f.fim = addDias(addDias(h0.slice(0, 8) + '01', 32).slice(0, 8) + '01', -1); }
+      else { var p1 = addDias(h0.slice(0, 8) + '01', 32).slice(0, 8) + '01'; f.ini = p1; f.fim = addDias(addDias(p1, 32).slice(0, 8) + '01', -1); }
+      f.rap = r; f.q = $('ce-q').value.trim(); central(tipo)(el); }; });
     var out = $('ce-out'); carregando(out);
     try {
       try { await base(); } catch(e){ toast(e.message, 'erro'); return; }
       var j = await api('central', f);
-      var h = '';
-      if(j.atrasados_antes.qtd) h += '<div class="fin-erro" style="cursor:pointer" id="ce-atr">⏰ ' + j.atrasados_antes.qtd + ' lançamento(s) atrasado(s) antes deste período, total ' + moeda(j.atrasados_antes.total) + '. Clique para ver.</div>';
-      if(!j.dias.length) h += '<div class="fin-vazio">Nada no período.</div>';
-      h += '<div class="fin-dias">' + j.dias.map(function(d, k){
-        var cls = Object.keys(d.por_class).sort(function(a, b){ return d.por_class[b] - d.por_class[a]; });
-        var status = d.pendentes + d.atrasados === 0 ? chipSit('pago', tipo) : (d.atrasados ? chipSit('atrasado') : chipSit('pendente'));
-        return '<div class="fin-dia"><div class="fin-row" style="justify-content:space-between"><div><b>' + dataBR(d.dia).slice(0, 5) + '</b><div class="fin-sub">' + diaSemana(d.dia) + '</div></div>' + status + '</div>' +
-          '<div style="text-align:center;margin:4px 0"><div class="fin-sub">Valor total do lote</div><div style="font-size:18px;font-weight:800">' + moeda(d.total) + '</div><div class="fin-sub">' + d.qtd + ' ' + (tipo === 'pagar' ? 'pagamento(s)' : 'recebimento(s)') + '</div></div>' +
-          cls.slice(0, 4).map(function(c){ return '<div class="fin-row" style="justify-content:space-between;font-size:11px"><span>' + esc(c) + '</span><span class="fin-num">' + moeda(d.por_class[c]) + '</span></div>'; }).join('') + (cls.length > 4 ? '<div class="fin-sub">+' + (cls.length - 4) + ' classificações</div>' : '') +
-          '<div style="flex:1"></div><button class="fin-bt pri" data-dia="' + k + '">Ver lançamentos</button></div>';
-      }).join('') + '</div>';
+      var dias = j.dias || [];
+      var total = dias.reduce(function(a, d){ return a + n(d.total); }, 0), qtd = dias.reduce(function(a, d){ return a + n(d.qtd); }, 0);
+      var h0 = hoje(), fim7 = addDias(h0, 6);
+      var sem7 = dias.filter(function(d){ return d.dia >= h0 && d.dia <= fim7; }).reduce(function(a, d){ return a + n(d.total); }, 0);
+      var maior = dias.slice().sort(function(a, b){ return n(b.total) - n(a.total); })[0];
+      var h = '<div class="ag-kpis">' +
+        (j.atrasados_antes.qtd ? '<div class="ag-kpi clic" id="ce-atr" title="Clique para ver os atrasados"><div class="l">Atrasado</div><div class="v" style="color:#C0392B">' + moeda(j.atrasados_antes.total) + '</div><div class="s">' + j.atrasados_antes.qtd + ' ' + nomeItem + '(s) · clique para ver</div></div>' : '') +
+        '<div class="ag-kpi"><div class="l">No período</div><div class="v">' + moeda(total) + '</div><div class="s">' + qtd + ' ' + nomeItem + '(s) · ' + dataBR(f.ini).slice(0, 5) + ' a ' + dataBR(f.fim).slice(0, 5) + '</div></div>' +
+        '<div class="ag-kpi"><div class="l">Próximos 7 dias</div><div class="v">' + moeda(sem7) + '</div><div class="s">até ' + dataBR(fim7).slice(0, 5) + '</div></div>' +
+        (maior ? '<div class="ag-kpi"><div class="l">Dia mais pesado</div><div class="v">' + moeda(maior.total) + '</div><div class="s">' + dataBR(maior.dia).slice(0, 5) + ', ' + diaSemana(maior.dia) + '</div></div>' : '') +
+        '</div>';
+      if(!dias.length) h += '<div class="fin-vazio">Nada neste período.</div>';
+      // agrupa por semana (segunda a domingo)
+      var semanas = [], idx = {};
+      dias.forEach(function(d, k){
+        var t = new Date(d.dia + 'T12:00:00Z'), w = (t.getUTCDay() + 6) % 7; t.setUTCDate(t.getUTCDate() - w);
+        var seg = t.toISOString().slice(0, 10);
+        if(idx[seg] == null){ idx[seg] = semanas.length; semanas.push({ seg: seg, dias: [], total: 0 }); }
+        var s = semanas[idx[seg]]; s.dias.push({ d: d, k: k }); s.total += n(d.total);
+      });
+      semanas.forEach(function(s){
+        h += '<div class="ag-sem"><div class="ag-sem-h"><b>Semana de ' + dataBR(s.seg).slice(0, 5) + ' a ' + dataBR(addDias(s.seg, 6)).slice(0, 5) + '</b><span>' + moeda(s.total) + '</span></div>';
+        s.dias.forEach(function(x){
+          var d = x.d, itens = (d.itens || []).slice().sort(function(a, b){ return n(b.valor_final) - n(a.valor_final); });
+          var nomes = itens.map(function(l){ return l.pessoa_nome || l.descricao || '-'; });
+          var quem = nomes.slice(0, 2).join(', ') + (nomes.length > 2 ? ' e mais ' + (nomes.length - 2) : '');
+          var cls = Object.keys(d.por_class || {}).sort(function(a, b){ return d.por_class[b] - d.por_class[a]; }).slice(0, 3).join(' · ');
+          var classe = d.dia === h0 ? ' hoje' : (d.atrasados ? ' atr' : '');
+          h += '<div class="ag-dia' + classe + '" data-k="' + x.k + '"><div class="ag-data"><div class="d">' + d.dia.slice(8, 10) + '</div><div class="w">' + diaSemana(d.dia).slice(0, 3) + (d.dia === h0 ? ' · hoje' : '') + '</div></div>' +
+            '<div class="ag-quem"><div class="p">' + esc(quem) + '</div><div class="c">' + esc(cls) + '</div></div>' +
+            '<div class="ag-tot"><div class="v">' + moeda(d.total) + '</div><div class="q">' + d.qtd + ' ' + nomeItem + (d.qtd > 1 ? 's' : '') + (d.atrasados ? ' · <span style="color:#C0392B">' + d.atrasados + ' atrasado(s)</span>' : '') + '</div></div></div>' +
+            '<div class="ag-itens" data-itens="' + x.k + '" style="display:none">' + itens.map(function(l){
+              return '<div class="ag-item" data-id="' + l.id + '"><div class="n"><b>' + esc(l.pessoa_nome || '-') + '</b>' + chipRec(l) + '<div>' + esc([l.descricao, l.classificacao_nome].filter(Boolean).join(' · ')) + '</div></div><div class="vv">' + moeda(l.valor_final) + ' ' + chipSit(l.situacao_calc, tipo) + '</div></div>';
+            }).join('') + '</div>';
+        });
+        h += '</div>';
+      });
       out.innerHTML = h;
-      out.querySelectorAll('[data-dia]').forEach(function(b){ b.onclick = function(){ listaDia(j.dias[Number(b.getAttribute('data-dia'))], tipo, function(){ central(tipo)(el); }); }; });
+      out.querySelectorAll('.ag-dia').forEach(function(r){ r.onclick = function(){ var b = out.querySelector('[data-itens="' + r.getAttribute('data-k') + '"]'); if(b) b.style.display = b.style.display === 'none' ? '' : 'none'; }; });
+      out.querySelectorAll('.ag-item').forEach(function(it){ it.onclick = function(){ verLanc(Number(it.getAttribute('data-id')), function(){ central(tipo)(el); }); }; });
       if($('ce-atr')) $('ce-atr').onclick = function(){ F['lista_' + tipo] = { situacao: ['atrasado'] }; U.irPara(tipo === 'pagar' ? 'pagar_lista' : 'receber_lista'); };
     } catch(e){ erroEm(out, e); }
   };
