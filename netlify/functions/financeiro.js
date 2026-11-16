@@ -401,6 +401,14 @@ if(FLYP){
   Object.keys(FLYP.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); if(!FLYP.perm[k]) throw new Error('Ação sem permissão: ' + k); ACOES[k] = FLYP.acoes[k]; PERM[k] = FLYP.perm[k]; });
 }
 
+// ---------- v9: CONFERÊNCIA DO KAMINO (espelho automático fin_kmn_*, preenchido pelo kamino-sync)
+let KMN = null;
+try { KMN = require('../lib/fin-acoes-kmn')({ rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc }); }
+catch(e){ console.error('[financeiro] kamino indisponível:', e.message); }
+if(KMN){
+  Object.keys(KMN.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); if(!KMN.perm[k]) throw new Error('Ação sem permissão: ' + k); ACOES[k] = KMN.acoes[k]; PERM[k] = KMN.perm[k]; });
+}
+
 async function nomesPessoas(ids){
   const uniq = [...new Set(ids.filter(x => x && /^[A-Za-z0-9_\-]+$/.test(x)))];
   if(!uniq.length) return {};

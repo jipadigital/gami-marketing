@@ -454,6 +454,33 @@ BEGIN
   RETURN jsonb_build_object('conferidos', n, 'pulados', pul, 'motivos', to_jsonb(motivos[1:5]));
 END $$;
 
+-- O que mudou no Kamino (cada versão com a anterior ao lado)
+CREATE OR REPLACE VIEW fin_kmn_v_mudancas AS
+SELECT v.id, v.lanc_id, v.versao, v.visto_em, v.mudou, v.dados AS depois,
+       lag(v.dados) OVER (PARTITION BY v.lanc_id ORDER BY v.versao) AS antes,
+       l.tipo, l.kamino_id, l.pessoa, l.unidade, l.sumiu_em
+  FROM fin_kmn_versoes v JOIN fin_kmn_lanc l ON l.id = v.lanc_id;
+REVOKE ALL ON fin_kmn_v_mudancas FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON fin_kmn_v_mudancas TO service_role;
+
+-- Resumo da tela de conferência (período por data de pagamento ou de vencimento)
+CREATE OR REPLACE FUNCTION fin_kmn_resumo(p_tipo text, p_campo text, p_ini date, p_fim date)
+RETURNS jsonb LANGUAGE sql STABLE AS $$
+  WITH b AS (
+    SELECT * FROM fin_kmn_v
+     WHERE tipo = p_tipo AND sumiu_em IS NULL
+       AND CASE WHEN p_campo = 'vencimento' THEN vencimento ELSE data_pagamento END BETWEEN p_ini AND p_fim)
+  SELECT jsonb_build_object(
+    'qtd', (SELECT count(*) FROM b),
+    'valor', (SELECT coalesce(sum(coalesce(valor_pago, valor)),0) FROM b),
+    'por_status', coalesce((SELECT jsonb_object_agg(conf_status, jsonb_build_object('qtd', q, 'valor', v))
+                              FROM (SELECT conf_status, count(*) q, sum(coalesce(valor_pago, valor)) v FROM b GROUP BY 1) x), '{}'::jsonb),
+    'alterados', (SELECT count(*) FROM b WHERE versao > 1),
+    'unidades', coalesce((SELECT jsonb_agg(u ORDER BY u) FROM (SELECT DISTINCT unidade u FROM fin_kmn_lanc WHERE tipo = p_tipo AND unidade IS NOT NULL) z), '[]'::jsonb),
+    'sumidos', (SELECT count(*) FROM fin_kmn_lanc WHERE tipo = p_tipo AND sumiu_em IS NOT NULL),
+    'total_espelho', (SELECT count(*) FROM fin_kmn_lanc WHERE tipo = p_tipo))
+$$;
+
 -- ---------------- Regras diárias (pg_cron) ----------------
 CREATE OR REPLACE FUNCTION fin_kmn_regras_diarias() RETURNS jsonb
 LANGUAGE plpgsql AS $$

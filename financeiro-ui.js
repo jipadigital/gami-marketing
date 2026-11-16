@@ -141,7 +141,12 @@ var REGRA = {
   FAVORECIDO_EQUIPE: 'Favorecido é da equipe', ACIMA_DA_MEDIA: 'Acima da média', FIM_DE_SEMANA: 'Fim de semana',
   IDA_E_VOLTA: 'Entrou e saiu', LACUNA_SALDO: 'Saldo não fecha', CONTA_SEM_EXTRATO: 'Conta sem extrato',
   SEM_CONFERENCIA: 'Sem conferência', SAIDA_SEM_LANCAMENTO: 'Saída sem lançamento', PAGO_SEM_SAIDA: 'Pago sem saída',
-  CONF_SUSPEITO: 'Marcado suspeito', CONF_DIVERGENTE: 'Marcado divergente'
+  CONF_SUSPEITO: 'Marcado suspeito', CONF_DIVERGENTE: 'Marcado divergente',
+  // v9: espelho do Kamino
+  KMN_ALTERADO_APOS_PAGO: 'Kamino: alterado depois de pago', KMN_PAGAMENTO_DESFEITO: 'Kamino: pagamento desfeito', KMN_MUDOU_APOS_CONFERIDO: 'Kamino: mudou depois de conferido',
+  KMN_DESTINO_DE_OUTRA_PESSOA: 'Kamino: Pix/conta de outra pessoa', KMN_DESTINO_NOVO: 'Kamino: Pix/conta diferente do habitual', KMN_FAVORECIDO_DO_FINANCEIRO: 'Kamino: favorecido é do financeiro',
+  KMN_POSSIVEL_DUPLICIDADE: 'Kamino: possível duplicidade', KMN_EXCLUIDO_NO_KAMINO: 'Kamino: excluído', KMN_PIX_ALTERADO: 'Kamino: chave Pix trocada', KMN_DOCUMENTO_ALTERADO: 'Kamino: CPF/CNPJ trocado',
+  KMN_MARCADO_SUSPEITO: 'Kamino: marcado suspeito', KMN_MARCADO_DIVERGENTE: 'Kamino: marcado divergente', KMN_PAGO_SEM_CONCILIACAO: 'Kamino: pago sem conciliação', KMN_PAGO_SEM_ANEXO: 'Kamino: pago sem anexo'
 };
 
 /* ---------- entrada da aba ---------- */
@@ -170,6 +175,7 @@ function menu(){
   var t = function(id){ return T[id] || TELAS_V1[id]; };
   var M = [
     { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel'], ['geral', 'Conferência do mês']] },
+    { id: 'kamino', t: '🔎 Conferência Kamino', p: 'leitor', subs: [['kmn_conferir', 'Conferir'], ['kmn_mudancas', 'O que mudou no Kamino'], ['kmn_sync', 'Sincronização']] },
     { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['pagar_recorrencias', '🔁 Recorrências'], ['entradas', 'Caixa de entrada']] },
     { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças'], ['receber_recorrencias', '🔁 Recorrências']] },
     { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
@@ -472,6 +478,7 @@ async function telaAlertas(el){
         '<div class="fin-sub">' + dataHoraBR(a.criado_em) + '</div></div>' +
         (a.detalhe && a.detalhe.explicacao ? '<div class="fin-sub" style="margin-top:4px">' + esc(a.detalhe.explicacao) + '</div>' : '') +
         detalheAlerta(a) +
+        (a.kmn_lanc_id && window._FIN_KMN_ABRIR ? '<div style="margin-top:6px;font-size:12px;cursor:pointer;text-decoration:underline dotted" data-kmn="' + a.kmn_lanc_id + '">Abrir o lançamento do Kamino (histórico e conferências)</div>' : '') +
         (ln ? '<div style="margin-top:6px;font-size:12px;cursor:pointer;text-decoration:underline dotted" data-linha="' + ln.id + '">' + dataBR(ln.data) + ' · ' + esc(ln.conta_nome) + ' · ' + esc(ln.contraparte || ln.descricao) + ' · <span class="' + (ln.valor > 0 ? 'fin-ent' : 'fin-sai') + '">' + moeda(ln.valor) + '</span> ' + chipStatus(ln.status) + '</div>' : '') +
         (a.status !== 'aberto' ? '<div class="fin-sub" style="margin-top:6px">✔️ ' + esc({ resolvido: 'Resolvido', falso_positivo: 'Falso positivo', fraude_confirmada: 'FRAUDE CONFIRMADA' }[a.status] || a.status) + ' por <b>' + esc(nome(a.resolvido_por)) + '</b> em ' + dataHoraBR(a.resolvido_em) + ': ' + esc(a.justificativa) + '</div>' :
           (pode('gestor') && (a.severidade !== 'critico' || F.papel === 'super') ? '<div style="margin-top:8px"><button class="fin-bt" data-res="' + a.id + '">Resolver</button></div>' : (a.severidade === 'critico' ? '<div class="fin-sub" style="margin-top:6px">Crítico: só o super admin resolve.</div>' : ''))) +
@@ -479,6 +486,7 @@ async function telaAlertas(el){
     });
     out.innerHTML = h;
     out.querySelectorAll('[data-linha]').forEach(function(x){ x.onclick = function(){ abrirLinha(Number(x.getAttribute('data-linha')), function(){ telaAlertas(el); }); }; });
+    out.querySelectorAll('[data-kmn]').forEach(function(x){ x.onclick = function(){ window._FIN_KMN_ABRIR(Number(x.getAttribute('data-kmn')), function(){ telaAlertas(el); }); }; });
     out.querySelectorAll('[data-res]').forEach(function(b){ b.onclick = function(){ resolverAlerta(Number(b.getAttribute('data-res')), function(){ telaAlertas(el); }); }; });
   } catch(e){ erroEm(out, e); }
 }
@@ -488,6 +496,17 @@ function detalheAlerta(a){
   if(a.regra === 'DUPLICIDADE') p.push('Pagamento igual em ' + dataBR(d.outra_data) + ' (' + esc(d.outra_conta) + ', linha #' + d.outro_extrato_id + ').');
   if(a.regra === 'FRACIONAMENTO') p.push('Soma no dia: <b>' + moeda(d.soma) + '</b> em ' + (d.ids || []).length + ' pagamentos.');
   if(a.regra === 'ACIMA_DA_MEDIA') p.push('Média anterior: ' + moeda(d.media_anterior) + ' em ' + d.qtd_anteriores + ' pagamentos.');
+  if(/^KMN_/.test(a.regra)){
+    var CN = { valor: 'valor', valor_pago: 'valor pago', pessoa: 'favorecido', pessoa_doc: 'CPF/CNPJ', destino_hash: 'Pix/conta de destino', conta: 'conta', data_pagamento: 'data do pagamento', vencimento: 'vencimento', situacao: 'situação', forma: 'forma' };
+    if(d.campos) p.push('Mudou: <b>' + d.campos.filter(function(k){ return CN[k]; }).map(function(k){ return CN[k]; }).join(', ') + '</b>' +
+      (d.antes && d.depois && (d.campos.indexOf('valor') >= 0 || d.campos.indexOf('valor_pago') >= 0) ? ' (valor ' + moeda(d.antes.valor_pago != null ? d.antes.valor_pago : d.antes.valor) + ' → ' + moeda(d.depois.valor_pago != null ? d.depois.valor_pago : d.depois.valor) + ')' : '') +
+      (d.antes && d.depois && d.campos.indexOf('destino_hash') >= 0 ? ' (destino ' + esc(d.antes.destino_desc || '?') + ' → ' + esc(d.depois.destino_desc || '?') + ')' : ''));
+    if(d.destino) p.push('Destino: <b>' + esc(d.destino) + '</b>');
+    if(d.outras_pessoas) p.push('Esse mesmo Pix/conta já recebeu como: <b>' + esc(d.outras_pessoas) + '</b>');
+    if(d.pix_antes || d.pix_depois) p.push('Pix: ' + esc(d.pix_antes || '?') + ' → <b>' + esc(d.pix_depois || '(sem chave)') + '</b>' + (d.pagamentos_180d ? ' · ' + d.pagamentos_180d + ' pagamento(s) nos últimos 180 dias' : ''));
+    if(d.observacao) p.push('Marcado por <b>' + esc(nome(d.por)) + '</b>: "' + esc(d.observacao) + '"');
+    if(d.classificacao) p.push('Classificação: ' + esc(d.classificacao));
+  }
   if(a.regra === 'CONF_SUSPEITO' || a.regra === 'CONF_DIVERGENTE') p.push('Marcado por <b>' + esc(nome(d.conferido_por)) + '</b>: "' + esc(d.observacao) + '"');
   return p.length ? '<div style="font-size:12px;margin-top:4px">' + p.join('<br>') + '</div>' : '';
 }

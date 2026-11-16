@@ -167,11 +167,13 @@ exports.handler = async function (event) {
     const core = require('../lib/kamino-sync-core');
     const seco = acao === 'sync_seco';
     const vAte = /^\d{4}-\d{2}-\d{2}$/.test(String(body.v_ate || '')) ? body.v_ate : null;
+    const horas = Math.min(Math.max(Number(body.cursor_horas) || 2, 1), 24 * 30);
+    const tipos = body.tipo === 'pagar' || body.tipo === 'receber' ? [body.tipo] : undefined;
     const teste = seco ? {
-      pagar: Object.assign({ cursor: new Date(Date.now() - 2 * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
-      receber: Object.assign({ cursor: new Date(Date.now() - 2 * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
+      pagar: Object.assign({ cursor: new Date(Date.now() - horas * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
+      receber: Object.assign({ cursor: new Date(Date.now() - horas * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
     } : undefined;
-    const r = await core.rodada({ seco, orcamento: seco ? 8 : 14, estadoTeste: teste });
+    const r = await core.rodada({ seco, orcamento: seco ? 8 : 14, estadoTeste: teste, tipos: seco ? tipos : undefined });
     if (seco && r.estado) Object.keys(r.estado).forEach((k) => { if (r.estado[k]) { delete r.estado[k].v_vistos; } });
     return { statusCode: 200, headers: H, body: JSON.stringify(r) };
   }

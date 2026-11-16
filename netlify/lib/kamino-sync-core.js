@@ -91,7 +91,7 @@ async function rodada(opcoes) {
   const estado = o.seco ? (o.estadoTeste || {}) : await lerEstado();
   const stats = {};
 
-  for (const tipo of ['pagar', 'receber']) {
+  for (const tipo of (o.tipos || ['pagar', 'receber'])) {
     const cfg = CFG[tipo];
     const st = Object.assign({ volta: 1 }, estado[tipo] || {});
     const s = stats[tipo] = { incremental: 0, varridos: 0, novos: 0, mudaram: 0, sumiram: 0 };
