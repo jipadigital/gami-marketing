@@ -161,5 +161,61 @@ exports.handler = async function (event) {
     }
   }
 
+  // 'explorar' (16/11/2026): raio-x do que a API entrega, SÓ LEITURA (GET em listas), pra decidir
+  // o que entra no módulo financeiro. Devolve contagens, campos e totais; nada de CPF/CNPJ, Pix
+  // ou conta bancária. ~12 chamadas (o limite do Kamino é 20/min).
+  if (acao === 'explorar') {
+    const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+    const menos = (d) => new Date(Date.now() - 3 * 3600000 - d * 86400000).toISOString().slice(0, 10);
+    const d30 = menos(30);
+    const d7 = menos(7);
+    const API = '/api/financeiro';
+    const listaDe = (corpo) => (Array.isArray(corpo) ? corpo : corpo && (Array.isArray(corpo.Dados) ? corpo.Dados : Array.isArray(corpo.dados) ? corpo.dados : Array.isArray(corpo.Lista) ? corpo.Lista : []));
+    const num = (v) => (typeof v === 'number' ? v : Number(String(v == null ? '' : v).replace(',', '.')) || 0);
+    const contar = (lista, campo) => {
+      const m = {};
+      lista.forEach((x) => { const k = String(x[campo] == null ? '(vazio)' : x[campo]).slice(0, 60); m[k] = (m[k] || 0) + 1; });
+      return m;
+    };
+    const somar = (lista, campo) => Math.round(lista.reduce((s, x) => s + num(x[campo]), 0) * 100) / 100;
+    const preenchidos = (lista) => {
+      // quais campos vêm preenchidos (em quantos itens), sem mostrar o conteúdo
+      const m = {};
+      lista.forEach((x) => Object.keys(x || {}).forEach((k) => { const v = x[k]; if (v !== null && v !== '' && v !== undefined && !(Array.isArray(v) && !v.length)) m[k] = (m[k] || 0) + 1; }));
+      return m;
+    };
+    const consultas = {
+      contas: { cam: `${API}/contabanco/lista?ApenasAtivas=true`, resumo: (l) => ({ itens: l.length, saldos: l.map((x) => ({ conta: String(x.Nome || x.Descricao || '').slice(0, 50), saldo: num(x.SaldoAtual), kamino: x.Kamino })) }) },
+      pagamentos_30d: { cam: `${API}/pagamento/lista/paginada?PagtoDe=${d30}&PagtoAte=${hoje}&_pagina=1&_tamanhoPagina=100`, resumo: (l) => ({ por_situacao: contar(l, 'DescricaoSituacao'), por_forma: contar(l, 'DescricaoFormaPagamento'), por_usuario_inclusao: contar(l, 'UsuarioInclusao'), soma_pago_amostra: somar(l, 'ValorPagamento') }) },
+      pagamentos_pendentes_vencidos: { cam: `${API}/pagamento/lista/paginada?Situacao=1&VencAte=${menos(1)}&_pagina=1&_tamanhoPagina=100`, resumo: (l) => ({ soma_amostra: somar(l, 'ValorVencimento'), por_unidade: contar(l, 'NomeUnidadeNegocio') }) },
+      pagamentos_a_vencer_7d: { cam: `${API}/pagamento/lista/paginada?Situacao=1&VencDe=${hoje}&VencAte=${new Date(Date.now() - 3 * 3600000 + 7 * 86400000).toISOString().slice(0, 10)}&_pagina=1&_tamanhoPagina=100`, resumo: (l) => ({ soma_amostra: somar(l, 'ValorVencimento') }) },
+      pagamentos_sem_classificacao: { cam: `${API}/pagamento/lista/paginada?ApenasSemClassificacao=true&PagtoDe=${d30}&PagtoAte=${hoje}&_pagina=1&_tamanhoPagina=50`, resumo: (l) => ({ soma_amostra: somar(l, 'ValorPagamento') }) },
+      recebimentos_30d: { cam: `${API}/recebimentos/paginada?VencDe=${d30}&VencAte=${hoje}&_pagina=1&_tamanhoPagina=100`, resumo: (l) => ({ por_situacao: contar(l, 'DescricaoSituacao'), por_unidade: contar(l, 'NomeUnidadeNegocio') }) },
+      pagamentos_excluidos_30d: { cam: `${API}/pagamento/excluido/lista/paginada?PeriodoDe=${d30}&PeriodoAte=${hoje}&_pagina=1&_tamanhoPagina=100`, resumo: (l) => ({ por_usuario: contar(l, 'Usuario'), por_motivo: contar(l, 'Motivo') }) },
+      recebimentos_excluidos_30d: { cam: `${API}/recebimento/excluido/lista/paginada?PeriodoDe=${d30}&PeriodoAte=${hoje}&_pagina=1&_tamanhoPagina=100`, resumo: (l) => ({ por_usuario: contar(l, 'Usuario'), por_motivo: contar(l, 'Motivo') }) },
+      transferencias_30d: { cam: `${API}/transferencia/lista?PeriodoDe=${d30}&PeriodoAte=${hoje}`, resumo: (l) => ({ itens: l.length }) },
+      movimento_rateado_7d: { cam: `${API}/movimentoFinanceiro/listaRateada/paginada?PeriodoDe=${d7}&PeriodoAte=${hoje}&_pagina=1&_tamanhoPagina=50`, resumo: (l) => ({ por_tipo: contar(l, 'Tipo'), conciliado_origem: contar(l, 'ConciliadoOrigem') }) },
+      pessoas: { cam: `/api/pessoa/lista/paginada?ApenasAtivos=true&_pagina=1&_tamanhoPagina=50`, resumo: () => ({}) },
+      cadastros: { cam: `${API}/planoconta/lista?ApenasAtivos=true`, resumo: (l) => ({ itens: l.length }) },
+      centros_custo: { cam: `${API}/centrocusto/lista?ApenasAtivos=true`, resumo: (l) => ({ itens: l.length }) },
+      unidades: { cam: `${API}/unidadenegocio/lista?ApenasAtivos=true`, resumo: (l) => ({ itens: l.length, nomes: l.map((x) => String(x.Nome || x.Descricao || '').slice(0, 40)) }) },
+    };
+    const nomes = Object.keys(consultas);
+    const res = await Promise.all(nomes.map(async (n) => {
+      try {
+        const r = await kaminoGet(c.cred, consultas[n].cam);
+        if (r.status < 200 || r.status >= 300) return [n, { status: r.status, erro: mensagemErro(c.cred, r.corpo, r.trecho) }];
+        const l = listaDe(r.corpo);
+        const meta = r.corpo && !Array.isArray(r.corpo) ? { total_linhas: r.corpo.TotalLinhas, total_paginas: r.corpo.TotalPaginas } : {};
+        return [n, Object.assign({ status: r.status }, meta, { na_amostra: l.length, campos_preenchidos: preenchidos(l) }, consultas[n].resumo(l))];
+      } catch (e) {
+        return [n, { erro: e && e.name === 'AbortError' ? 'sem resposta em 9s' : 'falha de rede' }];
+      }
+    }));
+    const out = {};
+    res.forEach(([n, v]) => (out[n] = v));
+    return { statusCode: 200, headers: H, body: JSON.stringify({ ok: true, hoje, desde: d30, resultado: out }) };
+  }
+
   return { statusCode: 400, headers: H, body: JSON.stringify({ ok: false, erro: 'Ação desconhecida.' }) };
 };
