@@ -174,9 +174,10 @@ function menu(){
   var T = window._FIN_TELAS || {};
   var t = function(id){ return T[id] || TELAS_V1[id]; };
   var M = [
-    // (16/11/2026) sem Cora/extrato: 'Conferência do mês' e a aba Contas (saldos, conciliação, extrato) saíram do menu; o código continua
-    { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel']] },
+    // (16/11/2026) a Cora não é integrada: as meninas SOBEM o extrato. Saldos (Painel e "Contas e saldos") saíram a pedido do dono.
+    { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel'], ['geral', 'Conferência do extrato no mês']] },
     { id: 'kamino', t: '🔎 Conferência Kamino', p: 'leitor', subs: [['kmn_conferir', 'Conferir'], ['kmn_mudancas', 'O que mudou no Kamino'], ['kmn_sync', 'Sincronização']] },
+    { id: 'contas', t: '🏦 Extrato', p: 'leitor', subs: [['importar', 'Enviar extrato', 'conferente'], ['extrato', 'Conferência do extrato'], ['conciliacao', 'Conciliação']] },
     { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['kmn_rec_pagar', '🔁 Recorrências'], ['entradas', 'Caixa de entrada']] },
     { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças'], ['kmn_rec_receber', '🔁 Recorrências']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
