@@ -16499,6 +16499,9 @@ function _ehRankingTeste(row){
   if(!row) return false;
   if(row._impersonacao === true) return true;
   if(_ehIdTeste(row.pessoa_id) || _ehIdTeste(row.id) || _ehIdTeste(row.email)) return true;
+  // 16/11/2026: quem saiu da empresa (PESSOAS_DESLIGADAS) também sai do ranking. Os pontos
+  // continuam no banco (histórico), só não aparecem na disputa.
+  if(typeof PESSOAS_DESLIGADAS !== 'undefined' && PESSOAS_DESLIGADAS.indexOf(String(row.pessoa_id || row.id || '')) >= 0) return true;
   var nome = String(row.nome || row.nome_pessoa || row.pessoa_nome || '');
   return /\bteste\b/i.test(nome); // 🆕 v27.91: pega "Teste manual", "Teste", etc — não só "(teste)"
 }
@@ -39692,6 +39695,8 @@ async function renderCampeaoMesBanner(){
     var soma = {};
     linhas.forEach(function(x){
       if(!x.pessoa_id) return;
+      // 16/11/2026: desligado e perfil de teste não concorrem a campeão do mês
+      if(typeof _ehRankingTeste === 'function' && _ehRankingTeste(x)) return;
       if(!soma[x.pessoa_id]) soma[x.pessoa_id] = { nome: x.pessoa_nome || '', pts: 0 };
       soma[x.pessoa_id].pts += (x.pontos || 0);
     });
