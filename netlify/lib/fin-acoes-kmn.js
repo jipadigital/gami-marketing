@@ -15,7 +15,7 @@ module.exports = function(h){
   function periodo(b){
     const ini = dataOk(b.ini), fim = dataOk(b.fim);
     if(!ini || !fim || fim < ini) throw new ErroUsuario('Período inválido');
-    if((Date.parse(fim) - Date.parse(ini)) / 864e5 > 400) throw new ErroUsuario('Período grande demais (máx. 400 dias)');
+    if((Date.parse(fim) - Date.parse(ini)) / 864e5 > 800) throw new ErroUsuario('Período grande demais (máx. 800 dias)');
     return { ini, fim };
   }
   async function pagina(path, pag, tam){
