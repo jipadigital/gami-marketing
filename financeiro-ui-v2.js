@@ -17,6 +17,19 @@ var T = window._FIN_TELAS = window._FIN_TELAS || {};
 function n(v){ return Number(v) || 0; }
 function moedaCurta(v){ var x = n(v); return (x < 0 ? '-' : '') + Math.abs(x).toLocaleString('pt-BR', { maximumFractionDigits: 0 }); }
 function addDias(iso, d){ var t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); }
+// (16/11/2026) a cidade escolhida em Receber vale nas 3 telas: Central, Cobranças e Recorrências
+function cidadeReceber(id){
+  id = id ? String(id) : '';
+  var u = (F.base && F.base.unidades || []).filter(function(x){ return String(x.id) === id; })[0];
+  F.receber_un = id;
+  F.lista_receber = Object.assign({ situacao: ['pendente', 'atrasado'] }, F.lista_receber || {}, { unidade_id: id });
+  F.kmnRecreceber = Object.assign({ so: '', busca: '', pagina: 0 }, F.kmnRecreceber || {}, { unidade: u ? u.nome : '', pagina: 0 });
+}
+window._FIN_CIDADE_RECEBER_NOME = function(nome){
+  if(!nome){ cidadeReceber(''); return; }
+  var u = (F.base && F.base.unidades || []).filter(function(x){ return x.nome === nome; })[0];
+  if(u) cidadeReceber(u.id);
+};
 function fimMes(iso){ var p = iso.split('-').map(Number); return new Date(Date.UTC(p[0], p[1], 0)).toISOString().slice(0, 10); }
 function diaSemana(iso){ return ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][new Date(iso + 'T12:00:00Z').getUTCDay()]; }
 var MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -809,6 +822,7 @@ function lista(tipo){
         venc_de: g('venc_de'), venc_ate: g('venc_ate'), pag_de: g('pag_de'), pag_ate: g('pag_ate'), comp_de: g('comp_de'), comp_ate: g('comp_ate'), codigo: g('codigo'), valor: g('valor'),
         descricao: g('descricao'), forma: g('forma'), conciliado: g('conciliado'), anexo: g('anexo'), nf: g('nf'), observacao: g('observacao'), classificacao_id: g('class'),
         centro_custo_id: g('cc'), unidade_id: g('un'), ordem: g('ordem'), q: g('q') };
+      if(tipo === 'receber') cidadeReceber(g('un'));
       F['pag_' + tipo] = 0;
     }
     $('li-buscar').onclick = $('li-qok').onclick = function(){ ler(); lista(tipo)(el); };
@@ -914,7 +928,7 @@ T.receber_dash = async function(el){
     h += d.aging.map(function(a){ var p = n(d.inadimplencia) ? n(a.total) / n(d.inadimplencia) * 100 : 0; acum += p; return '<tr><td>' + esc(a.pessoa) + '</td><td class="fin-num">' + (a.d30 ? moedaCurta(a.d30) : '-') + '</td><td class="fin-num">' + (a.d60 ? moedaCurta(a.d60) : '-') + '</td><td class="fin-num">' + (a.d90 ? moedaCurta(a.d90) : '-') + '</td><td class="fin-num">' + (a.d90mais ? moedaCurta(a.d90mais) : '-') + '</td><td class="fin-num">' + p.toFixed(0) + '%</td><td class="fin-num">' + acum.toFixed(0) + '%</td></tr>'; }).join('') || '<tr><td colspan="7" class="fin-vazio">Ninguém em atraso 🎉</td></tr>';
     h += '</tbody></table></div></div>';
     el.innerHTML = h;
-    $('rd-un').onchange = function(){ F.receber_un = this.value; T.receber_dash(el); };
+    $('rd-un').onchange = function(){ cidadeReceber(this.value); T.receber_dash(el); };
     // (16/11/2026) clicar na inadimplência abre a lista por empresa (Receber › Recorrências, só com atraso, maior dívida primeiro)
     if($('rd-inad')) $('rd-inad').onclick = function(){ F.kmnRecreceber = { so: 'atraso', busca: '', pagina: 0 }; U.irPara('kmn_rec_receber'); };
     if($('rd-novo')) $('rd-novo').onclick = function(){ formLanc('receber', null, { aoSalvar: function(){ T.receber_dash(el); } }); };

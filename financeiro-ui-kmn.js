@@ -239,7 +239,9 @@ function telaRec(el, tipo){
     '<select id="kr-un"><option value="">Todas as cidades</option></select>' +
     '<input id="kr-busca" placeholder="' + (receber ? 'Empresa' : 'Favorecido') + '" value="' + esc(f.busca) + '"><button class="fin-bt pri" id="kr-ok">Filtrar</button></div><div id="kr-out"><div class="fin-vazio">Carregando...</div></div>';
   var rec = function(){ telaRec(el, tipo); };
-  $('kr-ok').onclick = function(){ f.so = $('kr-so').value; f.unidade = $('kr-un').value; f.busca = $('kr-busca').value.trim(); f.pagina = 0; rec(); };
+  $('kr-ok').onclick = function(){ f.so = $('kr-so').value; f.unidade = $('kr-un').value; f.busca = $('kr-busca').value.trim(); f.pagina = 0;
+    if(receber && window._FIN_CIDADE_RECEBER_NOME) window._FIN_CIDADE_RECEBER_NOME(f.unidade); // a mesma cidade vale em Central e Cobranças
+    rec(); };
   $('kr-so').onchange = $('kr-ok').onclick; $('kr-un').onchange = $('kr-ok').onclick;
   $('kr-busca').onkeydown = function(e){ if(e.key === 'Enter') $('kr-ok').onclick(); };
   (async function(){
