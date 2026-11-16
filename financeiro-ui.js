@@ -146,7 +146,7 @@ var REGRA = {
   KMN_ALTERADO_APOS_PAGO: 'Kamino: alterado depois de pago', KMN_PAGAMENTO_DESFEITO: 'Kamino: pagamento desfeito', KMN_MUDOU_APOS_CONFERIDO: 'Kamino: mudou depois de conferido',
   KMN_DESTINO_DE_OUTRA_PESSOA: 'Kamino: Pix/conta de outra pessoa', KMN_DESTINO_NOVO: 'Kamino: Pix/conta diferente do habitual', KMN_FAVORECIDO_DO_FINANCEIRO: 'Kamino: favorecido é do financeiro',
   KMN_POSSIVEL_DUPLICIDADE: 'Kamino: possível duplicidade', KMN_EXCLUIDO_NO_KAMINO: 'Kamino: excluído', KMN_PIX_ALTERADO: 'Kamino: chave Pix trocada', KMN_DOCUMENTO_ALTERADO: 'Kamino: CPF/CNPJ trocado',
-  KMN_MARCADO_SUSPEITO: 'Kamino: marcado suspeito', KMN_MARCADO_DIVERGENTE: 'Kamino: marcado divergente', KMN_PAGO_SEM_CONCILIACAO: 'Kamino: pago sem conciliação', KMN_PAGO_SEM_ANEXO: 'Kamino: pago sem anexo'
+  KMN_MARCADO_SUSPEITO: 'Kamino: marcado suspeito', KMN_MARCADO_DIVERGENTE: 'Kamino: marcado divergente', KMN_PAGO_SEM_CONCILIACAO: 'Kamino: pago sem conciliação', KMN_PAGO_SEM_ANEXO: 'Kamino: pago sem anexo', KMN_RECORRENTE_VALOR_FORA: 'Kamino: recorrente acima do valor de sempre'
 };
 
 /* ---------- entrada da aba ---------- */
@@ -176,8 +176,8 @@ function menu(){
   var M = [
     { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel'], ['geral', 'Conferência do mês']] },
     { id: 'kamino', t: '🔎 Conferência Kamino', p: 'leitor', subs: [['kmn_conferir', 'Conferir'], ['kmn_mudancas', 'O que mudou no Kamino'], ['kmn_sync', 'Sincronização']] },
-    { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['pagar_recorrencias', '🔁 Recorrências'], ['entradas', 'Caixa de entrada']] },
-    { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças'], ['receber_recorrencias', '🔁 Recorrências']] },
+    { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['kmn_rec_pagar', '🔁 Recorrências'], ['entradas', 'Caixa de entrada']] },
+    { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças'], ['kmn_rec_receber', '🔁 Recorrências']] },
     { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
     { id: 'controles', t: '📋 Controles', p: 'leitor', subs: [['ctl_empresas', 'Empresas (semanal)'], ['ctl_creditos', 'Créditos'], ['pl_motoboy_semanal', 'Motoboys (semanal)'], ['pl_moto_novo', 'Motoboys novos'], ['pl_bag', 'Bags'], ['pl_camiseta', 'Camisetas'], ['pl_descontos', 'Descontos'], ['ctl_importar', 'Importar planilhas', 'conferente']] },

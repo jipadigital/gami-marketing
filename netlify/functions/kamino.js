@@ -173,7 +173,9 @@ exports.handler = async function (event) {
       pagar: Object.assign({ cursor: new Date(Date.now() - horas * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
       receber: Object.assign({ cursor: new Date(Date.now() - horas * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
     } : undefined;
-    const r = await core.rodada({ seco, orcamento: seco ? 8 : 14, estadoTeste: teste, tipos: seco ? tipos : undefined });
+    // pagar_completo: revarre os pagamentos de uma vez (ex.: passou a ler um campo novo)
+    const extra = !seco && body.pagar_completo === true ? { tipos: ['pagar'], tetoVar: { pagar: 13 }, orcamento: 15 } : {};
+    const r = await core.rodada(Object.assign({ seco, orcamento: seco ? 8 : 14, estadoTeste: teste, tipos: seco ? tipos : undefined }, extra));
     if (seco && r.estado) Object.keys(r.estado).forEach((k) => { if (r.estado[k]) { delete r.estado[k].v_vistos; } });
     return { statusCode: 200, headers: H, body: JSON.stringify(r) };
   }

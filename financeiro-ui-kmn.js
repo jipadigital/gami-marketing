@@ -224,6 +224,70 @@ T.kmn_mudancas = async function(el){
   } catch(e){ $('km-out').innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }
 };
 
+/* ================= RECORRÊNCIAS DO KAMINO (só leitura) ================= */
+// pagar: contas que o Kamino lança em série (SequenciaParcelas): aluguel, salário, sistemas...
+// receber: o Kamino não usa contrato; a recorrência é a cobrança semanal de cada empresa.
+function telaRec(el, tipo){
+  var receber = tipo === 'receber';
+  var f = F['kmnRec' + tipo] = F['kmnRec' + tipo] || { so: receber ? '' : 'ativas', busca: '', pagina: 0 };
+  el.innerHTML = '<div class="fin-sub" style="margin-bottom:8px">' + (receber
+      ? 'Cobranças recorrentes vindas do Kamino: cada empresa cobrada semana a semana, por cidade. Só leitura: qualquer mudança é feita no Kamino.'
+      : 'Contas recorrentes vindas do Kamino (aluguel, salários, sistemas...), agrupadas pela série que o Kamino cria. Só leitura: qualquer mudança é feita no Kamino.') + '</div>' +
+    '<div class="fin-filtros"><select id="kr-so">' + (receber
+      ? [['', 'Todas as empresas'], ['atraso', 'Só com cobrança atrasada']]
+      : [['ativas', 'Com parcelas a vencer'], ['', 'Todas'], ['varia', 'Valor mudou entre parcelas']]).map(function(o){ return '<option value="' + o[0] + '"' + (f.so === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+    '<input id="kr-busca" placeholder="' + (receber ? 'Empresa' : 'Favorecido') + '" value="' + esc(f.busca) + '"><button class="fin-bt pri" id="kr-ok">Filtrar</button></div><div id="kr-out"><div class="fin-vazio">Carregando...</div></div>';
+  var rec = function(){ telaRec(el, tipo); };
+  $('kr-ok').onclick = function(){ f.so = $('kr-so').value; f.busca = $('kr-busca').value.trim(); f.pagina = 0; rec(); };
+  $('kr-so').onchange = $('kr-ok').onclick;
+  $('kr-busca').onkeydown = function(e){ if(e.key === 'Enter') $('kr-ok').onclick(); };
+  (async function(){
+    try {
+      var j = await api('kmn_recorrencias', { tipo: tipo, so: f.so, busca: f.busca, pagina: f.pagina });
+      var ls = j.linhas || [];
+      var h = '<div class="fin-sub" style="margin:6px 0">' + j.total + (receber ? ' empresa(s)' : ' conta(s) recorrente(s)') + '</div><div class="fin-card" style="overflow-x:auto"><table class="fin-tbl"><thead><tr>';
+      if(receber){
+        h += '<th>Empresa</th><th>Cidade</th><th style="text-align:right">Cobranças</th><th style="text-align:right">Recebidas</th><th style="text-align:right">Atrasadas</th><th style="text-align:right">Valor médio</th><th style="text-align:right">Em atraso</th><th>Última</th></tr></thead><tbody>';
+        if(!ls.length) h += '<tr><td colspan="8" class="fin-vazio">Nada neste filtro.</td></tr>';
+        ls.forEach(function(r){ h += '<tr><td><b>' + esc(r.pessoa) + '</b></td><td>' + esc(r.unidade || '-') + '</td><td style="text-align:right">' + r.cobrancas + '</td><td style="text-align:right">' + r.recebidas + '</td><td style="text-align:right' + (r.atrasadas ? ';color:#C0392B;font-weight:700' : '') + '">' + r.atrasadas + '</td><td style="text-align:right">' + moeda(r.valor_medio) + '</td><td style="text-align:right;font-weight:700">' + moeda(r.total_atrasado || 0) + '</td><td>' + dataBR(r.ultima) + '</td></tr>'; });
+      } else {
+        h += '<th>Favorecido</th><th>Conta / classificação</th><th>Frequência</th><th style="text-align:right">Valor</th><th style="text-align:right">Parcelas</th><th>Próximo vencimento</th><th style="text-align:right">Em aberto</th></tr></thead><tbody>';
+        if(!ls.length) h += '<tr><td colspan="7" class="fin-vazio">Nada neste filtro.</td></tr>';
+        ls.forEach(function(r){
+          var val = Number(r.valor_min) === Number(r.valor_max) ? moeda(r.valor_tipico) : moeda(r.valor_min) + ' a ' + moeda(r.valor_max);
+          h += '<tr class="clic" data-serie="' + esc(r.serie) + '"><td><b>' + esc(r.pessoa || '-') + '</b>' + (Number(r.qtd_pessoas) > 1 ? ' <span class="fin-chip" style="background:#FDECEA;color:#C0392B">' + r.qtd_pessoas + ' favorecidos</span>' : '') + '</td>' +
+            '<td>' + esc(r.descricao || '') + '<div class="fin-sub">' + esc(r.classificacao || 'sem classificação') + ' · ' + esc(r.unidade || '') + '</div></td>' +
+            '<td>' + esc(r.frequencia) + '</td><td style="text-align:right;font-weight:700">' + val + (r.valor_varia ? '<div><span class="fin-chip" style="background:#FFF3CD;color:#8A6D00">valor mudou</span></div>' : '') + '</td>' +
+            '<td style="text-align:right">' + r.pagas + ' pagas de ' + r.parcelas + (Number(r.atrasadas) ? '<div style="color:#C0392B;font-size:12px">' + r.atrasadas + ' atrasada(s)</div>' : '') + '</td>' +
+            '<td>' + (r.proximo_venc ? dataBR(r.proximo_venc) : '<span class="fin-sub">nenhum</span>') + '</td><td style="text-align:right">' + moeda(r.total_aberto || 0) + '</td></tr>';
+        });
+      }
+      h += '</tbody></table>';
+      if(j.total > j.tamanho){ var pags = Math.ceil(j.total / j.tamanho); h += '<div class="fin-filtros" style="margin-top:8px"><span class="fin-sub">Página ' + (j.pagina + 1) + ' de ' + pags + '</span>' + (j.pagina > 0 ? '<button class="fin-bt" id="kr-ant">‹ Anterior</button>' : '') + (j.pagina + 1 < pags ? '<button class="fin-bt" id="kr-prox">Próxima ›</button>' : '') + '</div>'; }
+      $('kr-out').innerHTML = h + '</div>';
+      if($('kr-ant')) $('kr-ant').onclick = function(){ f.pagina--; rec(); };
+      if($('kr-prox')) $('kr-prox').onclick = function(){ f.pagina++; rec(); };
+      $('kr-out').querySelectorAll('tr[data-serie]').forEach(function(tr){ tr.onclick = function(){ parcelas(tr.getAttribute('data-serie'), rec); }; });
+    } catch(e){ $('kr-out').innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }
+  })();
+}
+async function parcelas(serie, depois){
+  var m = modal('<div class="fin-vazio">Carregando...</div>');
+  try {
+    var j = await api('kmn_listar', { tipo: 'pagar', campo: 'vencimento', ini: '2025-01-01', fim: addDias(hoje(), 700), conf: '', situacao: '', serie: serie });
+    var h = '<div style="display:flex;justify-content:space-between"><div style="font-weight:800;font-size:15px">🔁 Parcelas da conta recorrente</div><button class="fin-bt" id="kp-x">✕</button></div>' +
+      '<table class="fin-tbl" style="margin-top:10px"><thead><tr><th>Vencimento</th><th>Pago em</th><th style="text-align:right">Valor</th><th>Situação</th><th>Conferência</th></tr></thead><tbody>';
+    (j.linhas || []).slice().sort(function(a, b){ return String(a.vencimento).localeCompare(String(b.vencimento)); }).forEach(function(l){
+      h += '<tr class="clic" data-id="' + l.id + '"><td>' + dataBR(l.vencimento) + '</td><td>' + dataBR(l.data_pagamento) + '</td><td style="text-align:right;font-weight:700">' + moeda(l.valor_pago != null ? l.valor_pago : l.valor) + '</td><td>' + esc(l.situacao || '') + '</td><td>' + chipConf(l) + '</td></tr>';
+    });
+    m.fechar(); m = modal(h + '</tbody></table><div class="fin-sub" style="margin-top:8px">Clique numa parcela para ver os detalhes e conferir.</div>');
+    $('kp-x').onclick = m.fechar;
+    m.el.querySelectorAll('tr[data-id]').forEach(function(tr){ tr.onclick = function(){ m.fechar(); abrir(Number(tr.getAttribute('data-id')), depois); }; });
+  } catch(e){ m.fechar(); toast(e.message, 'erro'); }
+}
+T.kmn_rec_pagar = function(el){ telaRec(el, 'pagar'); };
+T.kmn_rec_receber = function(el){ telaRec(el, 'receber'); };
+
 /* ================= SINCRONIZAÇÃO ================= */
 T.kmn_sync = async function(el){
   el.innerHTML = '<div class="fin-vazio">Carregando...</div>';

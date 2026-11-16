@@ -131,7 +131,7 @@ async function rodada(opcoes) {
       if (!st.v_ate) { st.v_ate = addDias(hojeBR(), FUTURO_DIAS); st.v_pag = 1; st.v_vistos = []; st.carga_inicio = st.carga_inicio || new Date().toISOString(); }
       // teto da varredura por tipo: na carga inicial anda rápido; depois só 2 chamadas por rodada
       // (o incremental já pega o que muda; a varredura serve pra achar exclusão)
-      const tetoVar = st.volta === 1 ? (tipo === 'pagar' ? 5 : 8) : 2;
+      const tetoVar = (o.tetoVar && o.tetoVar[tipo]) || (st.volta === 1 ? (tipo === 'pagar' ? 5 : 8) : 2);
       const inicioVar = chamadas;
       while (chamadas - inicioVar < tetoVar && podeChamar(1)) {
         const vDe = addDias(st.v_ate, -(cfg.janela - 1));

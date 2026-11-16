@@ -8,7 +8,7 @@
 module.exports = function(h){
   const { rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc } = h;
 
-  const PERM = { kmn_resumo: 'leitor', kmn_listar: 'leitor', kmn_ver: 'leitor', kmn_mudancas: 'leitor', kmn_conferir: 'conferente', kmn_sync_status: 'leitor' };
+  const PERM = { kmn_resumo: 'leitor', kmn_listar: 'leitor', kmn_ver: 'leitor', kmn_mudancas: 'leitor', kmn_conferir: 'conferente', kmn_sync_status: 'leitor', kmn_recorrencias: 'leitor' };
   const STATUS = ['pendente', 'mudou', 'aguardando_2a', 'ok', 'divergente', 'suspeito'];
   const tipoOk = v => (v === 'receber' ? 'receber' : 'pagar');
   const campoOk = v => (v === 'vencimento' ? 'vencimento' : 'data_pagamento');
@@ -44,6 +44,7 @@ module.exports = function(h){
       if(b.situacao === 'pagos') f.push('data_pagamento=not.is.null');
       if(b.situacao === 'pendentes') f.push('data_pagamento=is.null');
       if(b.alterados === true) f.push('versao=gt.1');
+      const serie = txt(b.serie, 60); if(serie && /^[A-Za-z0-9_.-]+$/.test(serie)) f.push('dados->>serie=eq.' + encodeURIComponent(serie));
       const un = txt(b.unidade, 120);
       if(un) f.push('unidade=eq.' + encodeURIComponent(un));
       const q = textoBusca(b.busca);
@@ -79,6 +80,20 @@ module.exports = function(h){
       const obs = txt(b.observacao, 1000);
       if(res !== 'ok' && obs.length < 10) throw new ErroUsuario('Escreva o que está errado (mín. 10 letras)');
       return rpc('fin_kmn_conferir', { p_ator: ctx.pessoaId, p_ids: ids, p_resultado: res, p_obs: obs || null });
+    },
+
+    // Recorrências do Kamino (só leitura). pagar: por série do Kamino; receber: por empresa + cidade
+    async kmn_recorrencias(b){
+      const receber = b.tipo === 'receber';
+      const f = [];
+      const un = txt(b.unidade, 120); if(un) f.push('unidade=eq.' + encodeURIComponent(un));
+      const q = textoBusca(b.busca); if(q) f.push('pessoa=ilike.*' + encodeURIComponent(q) + '*');
+      if(!receber && b.so === 'ativas') f.push('futuras=gt.0');
+      if(!receber && b.so === 'varia') f.push('valor_varia=is.true');
+      if(receber && b.so === 'atraso') f.push('atrasadas=gt.0');
+      const view = receber ? 'fin_kmn_v_rec_receber' : 'fin_kmn_v_rec_pagar';
+      const ordem = receber ? 'total_atrasado.desc.nullslast,pessoa.asc' : 'proximo_venc.asc.nullslast,pessoa.asc';
+      return pagina(view + '?select=*' + (f.length ? '&' + f.join('&') : '') + '&order=' + ordem, b.pagina, 200);
     },
 
     async kmn_sync_status(){
