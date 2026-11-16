@@ -6,7 +6,53 @@
 'use strict';
 
 module.exports = function(h){
-  const { rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc } = h;
+  const { rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc, lerTodosMain } = h;
+
+  // MODALIDADE DA EMPRESA (16/11/2026): vem do cadastro da Machine (machine_empresas.raw.tipos_pagamento,
+  // espelho diário no banco do dashboard). Códigos da Machine: F faturado, R carteira de créditos
+  // (pré-pago), D dinheiro, B débito, C cartão de crédito, X Pix. Casamento por nome + cidade.
+  // Cache de 30 min por instância (são ~9 mil empresas).
+  const MOD_NOME = { F: 'Faturado', R: 'Carteira', D: 'Dinheiro', B: 'Débito', C: 'Cartão', X: 'Pix', P: 'PicPay', H: 'WhatsApp' };
+  const normNome = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  let cacheMod = null, cacheModEm = 0;
+  async function mapaModalidades(){
+    if(cacheMod && Date.now() - cacheModEm < 30 * 60e3) return cacheMod;
+    if(!lerTodosMain) return {};
+    const [emp, uns] = await Promise.all([
+      lerTodosMain('machine_empresas?select=cidade_slug,nome,status_empresa,raw->tipos_pagamento', 30000),
+      rest('fin_unidades?select=nome,cidade_slug').then(r => r.data || []),
+    ]);
+    const m = {};
+    emp.forEach(e => {
+      let t = e.tipos_pagamento;
+      if(t && !Array.isArray(t) && typeof t === 'object') t = Object.values(t); // às vezes vem como objeto {0:'R',3:'D'}
+      t = (Array.isArray(t) ? t : []).filter(x => typeof x === 'string');
+      m[(e.cidade_slug || '') + '|' + normNome(e.nome)] = { tipos: t, ativa: e.status_empresa === 'S' };
+    });
+    const slugDe = {}; uns.forEach(u => { slugDe[u.nome] = u.cidade_slug || ''; });
+    cacheMod = { m, slugDe }; cacheModEm = Date.now();
+    return cacheMod;
+  }
+  // resumo pra tela: 'Faturado', 'Carteira', 'Faturado + Carteira', 'Todas as formas' etc.
+  function rotuloModalidade(tipos){
+    if(!tipos || !tipos.length) return { cod: 'sem', nome: 'Sem modalidade' };
+    const tem = c => tipos.indexOf(c) >= 0;
+    if(['D', 'B', 'C', 'F', 'X', 'R'].every(tem)) return { cod: 'todas', nome: 'Todas as formas' };
+    if(tem('F') && tem('R')) return { cod: 'fat_cart', nome: 'Faturado + Carteira' };
+    if(tem('F')) return { cod: 'faturado', nome: tipos.length === 1 ? 'Faturado' : 'Faturado + ' + tipos.filter(c => c !== 'F').map(c => MOD_NOME[c] || c).join(', ') };
+    if(tem('R')) return { cod: 'carteira', nome: tipos.length === 1 ? 'Carteira' : 'Carteira + ' + tipos.filter(c => c !== 'R').map(c => MOD_NOME[c] || c).join(', ') };
+    return { cod: 'outras', nome: tipos.map(c => MOD_NOME[c] || c).join(', ') };
+  }
+  async function comModalidade(linhas){
+    let mp; try { mp = await mapaModalidades(); } catch(e){ mp = null; }
+    return linhas.map(r => {
+      if(!mp || !mp.m) return Object.assign({}, r, { modalidade: null });
+      const slug = mp.slugDe[r.unidade] || '';
+      const achado = mp.m[slug + '|' + normNome(r.pessoa)];
+      if(!achado) return Object.assign({}, r, { modalidade: { cod: 'nao_achada', nome: 'Não achada na Machine' } });
+      return Object.assign({}, r, { modalidade: Object.assign(rotuloModalidade(achado.tipos), { codigos: achado.tipos, ativa_machine: achado.ativa }) });
+    });
+  }
 
   const PERM = { kmn_resumo: 'leitor', kmn_listar: 'leitor', kmn_ver: 'leitor', kmn_mudancas: 'leitor', kmn_conferir: 'conferente', kmn_sync_status: 'leitor', kmn_recorrencias: 'leitor', kmn_painel: 'leitor' };
   const STATUS = ['pendente', 'mudou', 'aguardando_2a', 'ok', 'divergente', 'suspeito'];
@@ -124,7 +170,16 @@ module.exports = function(h){
       if(receber && b.so === 'atraso') f.push('atrasadas=gt.0');
       const view = receber ? 'fin_kmn_v_rec_receber' : 'fin_kmn_v_rec_pagar';
       const ordem = receber ? 'total_atrasado.desc.nullslast,pessoa.asc' : 'proximo_venc.asc.nullslast,pessoa.asc';
-      return pagina(view + '?select=*' + (f.length ? '&' + f.join('&') : '') + '&order=' + ordem, b.pagina, 200);
+      if(!receber) return pagina(view + '?select=*' + (f.length ? '&' + f.join('&') : '') + '&order=' + ordem, b.pagina, 200);
+      // receber: traz tudo (são algumas centenas de empresas), junta a modalidade da Machine, filtra e pagina aqui
+      const { data } = await rest(view + '?select=*' + (f.length ? '&' + f.join('&') : '') + '&order=' + ordem, { headers: svc({ 'Range-Unit': 'items', Range: '0-4999' }) });
+      let todas = await comModalidade(data || []);
+      const MODS = ['faturado', 'carteira', 'fat_cart', 'todas', 'outras', 'nao_achada', 'sem'];
+      if(MODS.indexOf(b.modalidade) >= 0) todas = todas.filter(r => r.modalidade && r.modalidade.cod === b.modalidade);
+      const contagem = {};
+      todas.forEach(r => { const k = r.modalidade ? r.modalidade.cod : 'nao_achada'; contagem[k] = (contagem[k] || 0) + 1; });
+      const p = Math.min(Math.max(0, parseInt(b.pagina, 10) || 0), 1000), t = 200;
+      return { linhas: todas.slice(p * t, p * t + t), total: todas.length, pagina: p, tamanho: t, contagem };
     },
 
     async kmn_sync_status(){

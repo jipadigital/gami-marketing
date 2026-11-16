@@ -403,7 +403,7 @@ if(FLYP){
 
 // ---------- v9: CONFERÊNCIA DO KAMINO (espelho automático fin_kmn_*, preenchido pelo kamino-sync)
 let KMN = null;
-try { KMN = require('../lib/fin-acoes-kmn')({ rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc }); }
+try { KMN = require('../lib/fin-acoes-kmn')({ rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc, restMain, lerTodosMain }); }
 catch(e){ console.error('[financeiro] kamino indisponível:', e.message); }
 if(KMN){
   Object.keys(KMN.acoes).forEach(k => { if(ACOES[k]) throw new Error('Ação duplicada: ' + k); if(!KMN.perm[k]) throw new Error('Ação sem permissão: ' + k); ACOES[k] = KMN.acoes[k]; PERM[k] = KMN.perm[k]; });
