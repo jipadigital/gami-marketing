@@ -576,7 +576,7 @@ T.painel = async function(el){
     var p = (await api('painel')).painel;
     var saldo = p.saldos.reduce(function(a, s){ return a + n(s.saldo); }, 0);
     var h = '<div class="fin-row" style="justify-content:flex-end;margin-bottom:10px">' + (pode('conferente') ? '<button class="fin-bt pri" id="pn-np">+ Novo pagamento</button><button class="fin-bt ok" id="pn-nr">+ Novo recebimento</button>' : '') + '</div>';
-    h += '<div class="fin-kpis">' + kpi('Saldo nas contas', moeda(saldo), saldo < 0 ? '#E24B4A' : '', p.saldos.length + ' contas ativas') +
+    h += '<div class="fin-kpis">' +
       kpi('A pagar atrasado', moeda(p.pagar.atrasado), n(p.pagar.atrasado) ? '#C0392B' : '', p.pagar.qtd_atrasado + ' lançamento(s)') +
       kpi('A pagar hoje', moeda(p.pagar.hoje), '', p.pagar.qtd_hoje + ' · próximos 7 dias ' + moeda(p.pagar.semana)) +
       kpi('A receber atrasado', moeda(p.receber.atrasado), n(p.receber.atrasado) ? '#C0392B' : '', p.receber.qtd_atrasado + ' lançamento(s)') +
@@ -587,7 +587,7 @@ T.painel = async function(el){
     h += p.top_classificacoes.length ? p.top_classificacoes.map(function(c, k){ return '<div style="margin-top:8px;font-size:12px"><div class="fin-row" style="justify-content:space-between"><span><b>' + (k + 1) + '</b> ' + esc(c.nome || '(Sem classificação)') + '</span><span class="fin-num"><b>' + moeda(c.atual) + '</b><br><span class="fin-sub">' + moeda(c.anterior) + '</span></span></div>' +
       '<div class="fin-bar" style="margin-top:2px"><i style="width:' + (n(c.atual) / max * 100) + '%;background:#0E7AB8"></i></div><div class="fin-bar" style="margin-top:2px;height:5px"><i style="width:' + (n(c.anterior) / max * 100) + '%;background:#9DB4D6"></i></div></div>'; }).join('') : '<div class="fin-vazio">Sem despesas lançadas.</div>';
     h += '</div><div class="fin-card"><b style="font-size:13px">Evolução das despesas</b><div class="fin-sub">Realizado (pago) e previsto, por mês de competência</div>' + barrasMes(p.evolucao) + '</div></div>';
-    h += '<div class="fin-card" style="margin-top:12px;overflow-x:auto"><b style="font-size:13px">Saldos</b><table class="fin-tbl" style="margin-top:6px"><tbody>' + p.saldos.map(function(s){ return '<tr><td>' + esc(s.nome) + '<div class="fin-sub">' + esc(s.banco || '') + '</div></td><td class="fin-num" style="font-weight:700' + (n(s.saldo) < 0 ? ';color:#E24B4A' : '') + '">' + moeda(s.saldo) + '</td><td class="fin-sub">' + (s.origem === 'extrato' ? 'extrato de ' + dataBR(s.saldo_data) : 'calculado pelo sistema') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    // (16/11/2026) bloco Saldos retirado a pedido do dono: sem Cora integrada, os saldos ficavam zerados
     el.innerHTML = h;
     if($('pn-np')) $('pn-np').onclick = function(){ formLanc('pagar', null, { aoSalvar: function(){ T.painel(el); } }); };
     if($('pn-nr')) $('pn-nr').onclick = function(){ formLanc('receber', null, { aoSalvar: function(){ T.painel(el); } }); };

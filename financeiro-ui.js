@@ -174,11 +174,11 @@ function menu(){
   var T = window._FIN_TELAS || {};
   var t = function(id){ return T[id] || TELAS_V1[id]; };
   var M = [
-    { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel'], ['geral', 'Conferência do mês']] },
+    // (16/11/2026) sem Cora/extrato: 'Conferência do mês' e a aba Contas (saldos, conciliação, extrato) saíram do menu; o código continua
+    { id: 'painel', t: '📊 Painel', p: 'leitor', subs: [['painel', 'Painel']] },
     { id: 'kamino', t: '🔎 Conferência Kamino', p: 'leitor', subs: [['kmn_conferir', 'Conferir'], ['kmn_mudancas', 'O que mudou no Kamino'], ['kmn_sync', 'Sincronização']] },
     { id: 'pagar', t: '💸 Pagar', p: 'leitor', subs: [['pagar_central', 'Central de pagamentos'], ['pagar_lista', 'Lista de pagamentos'], ['kmn_rec_pagar', '🔁 Recorrências'], ['entradas', 'Caixa de entrada']] },
     { id: 'receber', t: '💰 Receber', p: 'leitor', subs: [['receber_dash', 'Central de recebimentos'], ['receber_lista', 'Cobranças'], ['kmn_rec_receber', '🔁 Recorrências']] },
-    { id: 'contas', t: '🏦 Contas', p: 'leitor', subs: [['contas_saldos', 'Contas e saldos'], ['conciliacao', 'Conciliação'], ['extrato', 'Conferência do extrato'], ['importar', 'Importar extrato / Kamino', 'conferente']] },
     { id: 'relatorios', t: '📈 Relatórios', p: 'leitor', subs: [['rel_dre', 'DRE gerencial'], ['rel_fluxo_diario', 'Fluxo diário'], ['rel_fluxo_mensal', 'Fluxo mensal'], ['rel_resultado', 'Resultado da operação']] },
     { id: 'controles', t: '📋 Controles', p: 'leitor', subs: [['ctl_empresas', 'Empresas (semanal)'], ['ctl_creditos', 'Créditos'], ['pl_motoboy_semanal', 'Motoboys (semanal)'], ['pl_moto_novo', 'Motoboys novos'], ['pl_bag', 'Bags'], ['pl_camiseta', 'Camisetas'], ['pl_descontos', 'Descontos'], ['ctl_importar', 'Importar planilhas', 'conferente']] },
     { id: 'flyp', t: '🛵 FLYP', p: 'leitor', flyp: true, subs: [['flyp_resumo', 'Saques e recargas por dia'], ['flyp_lista', 'Transações'], ['flyp_importar', 'Importar da FLYP', 'conferente'], ['flyp_acessos', 'Quem vê e quem consultou', 'super']] },
