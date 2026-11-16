@@ -164,6 +164,7 @@ function mapPagamento(x) {
     enviado_banco: x.EnviadoAoBanco === true,
     incluido_por: str(x.UsuarioInclusao), incluido_em: dataHora(x.DataHoraInclusao),
     situacao_em: dataHora(x.DataHoraSituacao), codigo_externo: str(x.CodigoExterno),
+    serie: str(x.SequenciaParcelas), // liga as parcelas da mesma conta mensal/parcelada (Recorrências)
   };
   return Object.assign({ kamino_id: Number(x.ID) }, itemDe(dados, CONF));
 }

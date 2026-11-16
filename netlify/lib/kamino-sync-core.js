@@ -138,6 +138,11 @@ async function rodada(opcoes) {
         const corpo = await kget(cfg.lista + '?VencDe=' + vDe + '&VencAte=' + st.v_ate + '&_pagina=' + st.v_pag + '&_tamanhoPagina=' + PAGINA);
         if (!corpo) break;
         const itens = K.listaDe(corpo).map(cfg.map).filter(Boolean);
+        if (o.seco && tipo === 'pagar') {
+          s.series = s.series || {};
+          itens.forEach((x) => { const k = x.dados.serie || '(sem)'; const g = s.series[k] = s.series[k] || { n: 0, pessoas: [], valores: [], venc: [] };
+            g.n++; if (g.pessoas.indexOf(x.dados.pessoa) < 0) g.pessoas.push(x.dados.pessoa); g.valores.push(x.dados.valor); g.venc.push(x.dados.vencimento); });
+        }
         if (o.seco && !s.amostra && itens.length) { s.amostra = itens[0].dados; s.total_kamino = corpo && corpo.TotalLinhas; s.paginas_kamino = corpo && corpo.TotalPaginas; s.itens_pagina = itens.length; s.janela = vDe + ' a ' + st.v_ate; }
         const r = await aplicar(tipo, itens, st.volta === 1);
         s.varridos += itens.length; s.novos += r.novos || 0; s.mudaram += r.mudaram || 0;
