@@ -161,6 +161,21 @@ exports.handler = async function (event) {
     }
   }
 
+  // 'sync_seco' (16/11/2026): roda uma rodada da sincronização SEM GRAVAR NADA (diagnóstico).
+  // 'sync_agora': roda uma rodada de verdade (a mesma que o agendador roda a cada 10 min).
+  if (acao === 'sync_seco' || acao === 'sync_agora') {
+    const core = require('../lib/kamino-sync-core');
+    const seco = acao === 'sync_seco';
+    const vAte = /^\d{4}-\d{2}-\d{2}$/.test(String(body.v_ate || '')) ? body.v_ate : null;
+    const teste = seco ? {
+      pagar: Object.assign({ cursor: new Date(Date.now() - 2 * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
+      receber: Object.assign({ cursor: new Date(Date.now() - 2 * 3600e3).toISOString() }, vAte ? { v_ate: vAte, v_pag: 1, v_vistos: [] } : {}),
+    } : undefined;
+    const r = await core.rodada({ seco, orcamento: seco ? 8 : 14, estadoTeste: teste });
+    if (seco && r.estado) Object.keys(r.estado).forEach((k) => { if (r.estado[k]) { delete r.estado[k].v_vistos; } });
+    return { statusCode: 200, headers: H, body: JSON.stringify(r) };
+  }
+
   // 'explorar' (16/11/2026): raio-x do que a API entrega, SÓ LEITURA (GET em listas), pra decidir
   // o que entra no módulo financeiro. Devolve contagens, campos e totais; nada de CPF/CNPJ, Pix
   // ou conta bancária. ~12 chamadas (o limite do Kamino é 20/min).
