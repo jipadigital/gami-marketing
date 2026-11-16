@@ -568,6 +568,45 @@ function baixaModal(lancs, aoMudar){
   };
 }
 
+// (16/11/2026) bloco de controle do Painel: conferência, alertas, mudanças no Kamino, sincronização,
+// inadimplência por cidade e próximos pagamentos. Cada item abre a tela de detalhe.
+async function painelControle(el){
+  var box = $('pn-kmn'); if(!box) return;
+  try {
+    var j = await api('kmn_painel');
+    var c = j.conferencia, a = j.alertas;
+    var nAl = a.critico + a.alto + a.medio + a.baixo;
+    var syncOk = j.sync.length && j.sync.every(function(s){ return !s.erro && s.ultimo_ok && (Date.now() - new Date(s.ultimo_ok)) < 40 * 60e3; });
+    var ult = j.sync.map(function(s){ return s.ultimo_ok; }).filter(Boolean).sort().pop();
+    var pct = c.total ? Math.round(c.ok / c.total * 100) : 0;
+    var h = '<div class="pn-blk"><div class="fin-sub" style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Controle</div><div class="fin-kpis">' +
+      '<div class="pn-clic" id="pn-c1" title="Clique para conferir">' + kpi('Falta conferir (30 dias)', String(c.falta), c.falta ? '#B7791F' : '#1D9E75', moeda(c.falta_valor) + ' · ' + pct + '% conferido') + '</div>' +
+      '<div class="pn-clic" id="pn-c2" title="Clique para ver os alertas">' + kpi('Alertas abertos', String(nAl), (a.critico || a.alto) ? '#C0392B' : (nAl ? '#B7791F' : '#1D9E75'), (a.critico ? a.critico + ' crítico · ' : '') + a.alto + ' alto · ' + (a.medio + a.baixo) + ' médio/baixo') + '</div>' +
+      '<div class="pn-clic" id="pn-c3" title="Clique para ver o que mudou">' + kpi('Mudanças no Kamino (7 dias)', String(j.mudancas_7d), j.mudancas_7d ? '#B7791F' : '', 'alterações depois de lançado') + '</div>' +
+      '<div class="pn-clic" id="pn-c4" title="Clique para ver a sincronização">' + kpi('Leitura do Kamino', syncOk ? 'Em dia' : 'Atenção', syncOk ? '#1D9E75' : '#C0392B', ult ? 'última às ' + dataHoraBR(ult).slice(-5) : 'sem leitura') + '</div>' +
+      (c.problema ? '<div class="pn-clic" id="pn-c5">' + kpi('Divergentes e suspeitos', String(c.problema), '#C0392B', 'marcados na conferência') + '</div>' : '') +
+      '</div></div>';
+    var maxC = Math.max.apply(null, j.inad_cidades.map(function(x){ return x.total; }).concat([1]));
+    h += '<div class="fin-grid2 pn-blk"><div class="fin-card"><b style="font-size:13px">Inadimplência por cidade</b><div class="fin-sub">Clique na cidade para ver as empresas em atraso</div>' +
+      (j.inad_cidades.length ? '<table class="fin-tbl pn-tab" style="margin-top:6px"><tbody>' + j.inad_cidades.map(function(x){
+        return '<tr data-un="' + esc(x.unidade) + '"><td style="width:42%"><b>' + esc(x.unidade.replace(/^Gam[iy] (Delivery )?/i, '')) + '</b><div class="fin-sub">' + x.empresas + ' empresa(s)</div></td><td><div class="fin-bar"><i style="width:' + (x.total / maxC * 100) + '%;background:#C0392B"></i></div></td><td class="fin-num" style="font-weight:700">' + moeda(x.total) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="fin-vazio">Nenhuma cobrança em atraso.</div>') + '</div>' +
+      '<div class="fin-card"><b style="font-size:13px">Próximos pagamentos</b><div class="fin-sub">Os próximos a vencer no Kamino</div>' +
+      (j.proximos.length ? '<table class="fin-tbl pn-tab" style="margin-top:6px"><tbody>' + j.proximos.map(function(x){
+        return '<tr data-kid="' + x.id + '"><td style="width:70px"><b>' + dataBR(x.vencimento).slice(0, 5) + '</b><div class="fin-sub">' + diaSemana(x.vencimento).slice(0, 3) + '</div></td><td><b>' + esc(x.pessoa || '-') + '</b><div class="fin-sub">' + esc([x.classificacao, x.unidade].filter(Boolean).join(' · ')) + '</div></td><td class="fin-num" style="font-weight:700">' + moeda(x.valor) + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="fin-vazio">Nada a vencer.</div>') + '</div></div>';
+    box.innerHTML = h;
+    var ir = function(sub, filtro){ if(filtro) Object.keys(filtro).forEach(function(k){ F[k] = filtro[k]; }); U.irPara(sub); };
+    $('pn-c1').onclick = function(){ ir('kmn_conferir', { kmnF: { tipo: 'pagar', campo: 'data_pagamento', ini: addDias(hoje(), -29), fim: hoje(), conf: 'falta', situacao: 'pagos', unidade: '', busca: '', pagina: 0 } }); };
+    $('pn-c2').onclick = function(){ ir('alertas'); };
+    $('pn-c3').onclick = function(){ ir('kmn_mudancas', { kmnM: { tipo: '', ini: addDias(hoje(), -6), fim: hoje(), pagina: 0, importantes: true } }); };
+    $('pn-c4').onclick = function(){ ir('kmn_sync'); };
+    if($('pn-c5')) $('pn-c5').onclick = function(){ ir('kmn_conferir', { kmnF: { tipo: 'pagar', campo: 'data_pagamento', ini: addDias(hoje(), -29), fim: hoje(), conf: 'problema', situacao: '', unidade: '', busca: '', pagina: 0 } }); };
+    box.querySelectorAll('tr[data-un]').forEach(function(tr){ tr.onclick = function(){ ir('kmn_rec_receber', { kmnRecreceber: { so: 'atraso', busca: '', unidade: tr.getAttribute('data-un'), pagina: 0 } }); }; });
+    box.querySelectorAll('tr[data-kid]').forEach(function(tr){ tr.onclick = function(){ if(window._FIN_KMN_ABRIR) window._FIN_KMN_ABRIR(Number(tr.getAttribute('data-kid')), function(){ T.painel(el); }); }; });
+  } catch(e){ box.innerHTML = '<div class="fin-erro">' + esc(e.message) + '</div>'; }
+}
+
 /* ================= PAINEL ================= */
 T.painel = async function(el){
   css2(); carregando(el);
@@ -576,12 +615,16 @@ T.painel = async function(el){
     var p = (await api('painel')).painel;
     var saldo = p.saldos.reduce(function(a, s){ return a + n(s.saldo); }, 0);
     var h = '<div class="fin-row" style="justify-content:flex-end;margin-bottom:10px">' + (pode('conferente') ? '<button class="fin-bt pri" id="pn-np">+ Novo pagamento</button><button class="fin-bt ok" id="pn-nr">+ Novo recebimento</button>' : '') + '</div>';
+    // (16/11/2026) cada card abre a lista por trás do número
+    var clic = function(id, html){ return '<div class="pn-clic" id="' + id + '" title="Clique para ver">' + html + '</div>'; };
+    h += '<style>.pn-clic{cursor:pointer;border-radius:12px;transition:box-shadow .15s}.pn-clic:hover{box-shadow:0 0 0 2px #0E7AB8}.pn-blk{margin-top:12px}.pn-tab td{padding:6px 8px;font-size:13px}.pn-tab tr{cursor:pointer}.pn-tab tr:hover td{background:var(--surface2)}</style>';
     h += '<div class="fin-kpis">' +
-      kpi('A pagar atrasado', moeda(p.pagar.atrasado), n(p.pagar.atrasado) ? '#C0392B' : '', p.pagar.qtd_atrasado + ' lançamento(s)') +
-      kpi('A pagar hoje', moeda(p.pagar.hoje), '', p.pagar.qtd_hoje + ' · próximos 7 dias ' + moeda(p.pagar.semana)) +
-      kpi('A receber atrasado', moeda(p.receber.atrasado), n(p.receber.atrasado) ? '#C0392B' : '', p.receber.qtd_atrasado + ' lançamento(s)') +
-      kpi('A receber 7 dias', moeda(p.receber.semana), '#1D9E75', 'hoje ' + moeda(p.receber.hoje)) +
+      clic('pn-k1', kpi('A pagar atrasado', moeda(p.pagar.atrasado), n(p.pagar.atrasado) ? '#C0392B' : '', p.pagar.qtd_atrasado + ' lançamento(s) · ver')) +
+      clic('pn-k2', kpi('A pagar hoje', moeda(p.pagar.hoje), '', p.pagar.qtd_hoje + ' · próximos 7 dias ' + moeda(p.pagar.semana))) +
+      clic('pn-k3', kpi('A receber atrasado', moeda(p.receber.atrasado), n(p.receber.atrasado) ? '#C0392B' : '', p.receber.qtd_atrasado + ' cobrança(s) · ver por empresa')) +
+      clic('pn-k4', kpi('A receber 7 dias', moeda(p.receber.semana), '#1D9E75', 'hoje ' + moeda(p.receber.hoje))) +
       (p.entradas_pendentes ? kpi('Caixa de entrada', String(p.entradas_pendentes), '#D68910', 'documento(s) esperando lançamento') : '') + '</div>';
+    h += '<div id="pn-kmn"><div class="fin-vazio">Carregando conferência e alertas...</div></div>';
     h += '<div class="fin-grid2"><div class="fin-card"><b style="font-size:13px">Classificações mais utilizadas</b><div class="fin-sub">Mês atual x mês anterior (despesas por competência)</div>';
     var max = Math.max.apply(null, p.top_classificacoes.map(function(c){ return Math.max(n(c.atual), n(c.anterior)); }).concat([1]));
     h += p.top_classificacoes.length ? p.top_classificacoes.map(function(c, k){ return '<div style="margin-top:8px;font-size:12px"><div class="fin-row" style="justify-content:space-between"><span><b>' + (k + 1) + '</b> ' + esc(c.nome || '(Sem classificação)') + '</span><span class="fin-num"><b>' + moeda(c.atual) + '</b><br><span class="fin-sub">' + moeda(c.anterior) + '</span></span></div>' +
@@ -590,6 +633,12 @@ T.painel = async function(el){
     // (16/11/2026) bloco Saldos retirado a pedido do dono: sem Cora integrada, os saldos ficavam zerados
     el.innerHTML = h;
     if($('pn-np')) $('pn-np').onclick = function(){ formLanc('pagar', null, { aoSalvar: function(){ T.painel(el); } }); };
+    var ir = function(sub, filtro){ if(filtro) Object.keys(filtro).forEach(function(k){ F[k] = filtro[k]; }); U.irPara(sub); };
+    $('pn-k1').onclick = function(){ ir('pagar_lista', { lista_pagar: { situacao: ['atrasado'] } }); };
+    $('pn-k2').onclick = function(){ ir('pagar_central', { central_pagar: { ini: hoje(), fim: addDias(hoje(), 6), situacao: 'pendentes', q: '', rap: '7' } }); };
+    $('pn-k3').onclick = function(){ ir('kmn_rec_receber', { kmnRecreceber: { so: 'atraso', busca: '', unidade: '', pagina: 0 } }); };
+    $('pn-k4').onclick = function(){ ir('receber_lista', { lista_receber: { situacao: ['pendente'], venc_de: hoje(), venc_ate: addDias(hoje(), 6) } }); };
+    painelControle(el);
     if($('pn-nr')) $('pn-nr').onclick = function(){ formLanc('receber', null, { aoSalvar: function(){ T.painel(el); } }); };
   } catch(e){ erroEm(el, e); }
 };

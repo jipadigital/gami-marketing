@@ -8,7 +8,7 @@
 module.exports = function(h){
   const { rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc } = h;
 
-  const PERM = { kmn_resumo: 'leitor', kmn_listar: 'leitor', kmn_ver: 'leitor', kmn_mudancas: 'leitor', kmn_conferir: 'conferente', kmn_sync_status: 'leitor', kmn_recorrencias: 'leitor' };
+  const PERM = { kmn_resumo: 'leitor', kmn_listar: 'leitor', kmn_ver: 'leitor', kmn_mudancas: 'leitor', kmn_conferir: 'conferente', kmn_sync_status: 'leitor', kmn_recorrencias: 'leitor', kmn_painel: 'leitor' };
   const STATUS = ['pendente', 'mudou', 'aguardando_2a', 'ok', 'divergente', 'suspeito'];
   const tipoOk = v => (v === 'receber' ? 'receber' : 'pagar');
   const campoOk = v => (v === 'vencimento' ? 'vencimento' : 'data_pagamento');
@@ -80,6 +80,37 @@ module.exports = function(h){
       const obs = txt(b.observacao, 1000);
       if(res !== 'ok' && obs.length < 10) throw new ErroUsuario('Escreva o que está errado (mín. 10 letras)');
       return rpc('fin_kmn_conferir', { p_ator: ctx.pessoaId, p_ids: ids, p_resultado: res, p_obs: obs || null });
+    },
+
+    // Painel (16/11/2026): o bloco de controle do Painel numa chamada só
+    async kmn_painel(){
+      const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+      const menos = (d) => new Date(Date.parse(hoje + 'T12:00:00Z') - d * 864e5).toISOString().slice(0, 10);
+      const contar = async (path) => {
+        const { headers } = await rest(path, { headers: svc({ 'Range-Unit': 'items', Range: '0-0', Prefer: 'count=exact' }) });
+        return Number(String(headers.get('content-range') || '').split('/')[1]) || 0;
+      };
+      const [conf, alertas, mudancas, sync, inad, proximos] = await Promise.all([
+        rpc('fin_kmn_resumo', { p_tipo: 'pagar', p_campo: 'pagamento', p_ini: menos(29), p_fim: hoje }),
+        rest('fin_alertas?status=eq.aberto&select=severidade').then(r => r.data || []),
+        contar('fin_kmn_versoes?versao=gt.1&visto_em=gte.' + menos(6) + 'T00:00:00-03:00&select=id'),
+        rest('fin_kmn_sync?select=chave,ultimo_ok,ultimo_erro,ultimo_erro_em').then(r => r.data || []),
+        rest('fin_kmn_v_rec_receber?atrasadas=gt.0&select=unidade,total_atrasado', { headers: svc({ 'Range-Unit': 'items', Range: '0-4999' }) }).then(r => r.data || []),
+        rest('fin_kmn_lanc?tipo=eq.pagar&sumiu_em=is.null&data_pagamento=is.null&vencimento=gte.' + hoje + '&select=id,pessoa,valor,vencimento,classificacao,unidade&order=vencimento.asc,valor.desc&limit=6').then(r => r.data || []),
+      ]);
+      const sev = { critico: 0, alto: 0, medio: 0, baixo: 0 };
+      alertas.forEach(a => { if(sev[a.severidade] != null) sev[a.severidade]++; });
+      const cid = {};
+      inad.forEach(r => { const k = r.unidade || '(sem cidade)'; const c = cid[k] = cid[k] || { unidade: k, empresas: 0, total: 0 }; c.empresas++; c.total += Number(r.total_atrasado) || 0; });
+      const ps = (conf && conf.por_status) || {};
+      const g = k => ps[k] || { qtd: 0, valor: 0 };
+      return {
+        conferencia: { total: conf.qtd || 0, falta: g('pendente').qtd + g('mudou').qtd + g('aguardando_2a').qtd, falta_valor: (g('pendente').valor || 0) + (g('mudou').valor || 0) + (g('aguardando_2a').valor || 0), ok: g('ok').qtd, problema: g('divergente').qtd + g('suspeito').qtd },
+        alertas: sev, mudancas_7d: mudancas,
+        sync: sync.map(s => ({ chave: s.chave, ultimo_ok: s.ultimo_ok, erro: s.ultimo_erro && (!s.ultimo_ok || s.ultimo_erro_em > s.ultimo_ok) ? s.ultimo_erro : null })),
+        inad_cidades: Object.values(cid).sort((a, b) => b.total - a.total),
+        proximos,
+      };
     },
 
     // Recorrências do Kamino (só leitura). pagar: por série do Kamino; receber: por empresa + cidade
