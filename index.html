@@ -16231,6 +16231,41 @@ function _mesesDeCasa(pessoa){
   var hoje = new Date();
   return (hoje.getFullYear()-d.getFullYear())*12 + (hoje.getMonth()-d.getMonth());
 }
+// 🎂 Pontos do aniversário de empresa (catálogo: aniversario_empresa_1ano no 1º ano,
+// aniversario_empresa_ano nos seguintes). Roda no login da própria pessoa (motorBadges).
+// 1x por ano de casa (referencia_id = 'aniv_empresa_N', conferido no servidor). Só paga o
+// aniversário RECENTE (até 30 dias): os antigos, de quando a regra não existia, não caem de uma vez.
+async function _pontosAniversarioEmpresa(pessoa){
+  var ini = pessoa && (pessoa.data_admissao || pessoa.entrada || pessoa.admissao);
+  if(!ini || typeof atribuirPontos !== 'function') return;
+  var d = new Date(String(ini).slice(0,10) + 'T00:00:00');
+  if(isNaN(d.getTime())) return;
+  var hoje = new Date();
+  var anos = hoje.getFullYear() - d.getFullYear();
+  var aniv = new Date(d.getTime()); aniv.setFullYear(d.getFullYear() + anos);
+  if(aniv > hoje){ anos--; aniv = new Date(d.getTime()); aniv.setFullYear(d.getFullYear() + anos); }
+  if(anos < 1) return;
+  if((hoje - aniv) / 86400000 > 30) return;
+  var ref = 'aniv_empresa_' + anos;
+  var chaveLocal = 'gami_aniv_emp_' + pessoa.id + '_' + anos;
+  try { if(localStorage.getItem(chaveLocal)) return; } catch(e){}
+  // confere no servidor; se não der pra conferir, NÃO paga agora (tenta no próximo login)
+  try {
+    var url = SUPA_URL + '/rest/v1/pontos_log?pessoa_id=eq.' + encodeURIComponent(pessoa.id)
+      + '&referencia_id=eq.' + encodeURIComponent(ref) + '&select=id&limit=1';
+    var r = await fetch(url, { headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }, cache: 'no-store' });
+    if(!r.ok) return;
+    var j = await r.json();
+    if(!Array.isArray(j)) return;
+    if(j.length){ try { localStorage.setItem(chaveLocal, '1'); } catch(e){} return; }
+  } catch(e){ return; }
+  var tipo = anos === 1 ? 'aniversario_empresa_1ano' : 'aniversario_empresa_ano';
+  var ok = await atribuirPontos(pessoa.id, tipo, { referencia_id: ref, descricao: (anos === 1 ? '1 ano' : anos + ' anos') + ' de Gâmi 🎂', pessoa_nome: pessoa.nome });
+  if(ok){
+    try { localStorage.setItem(chaveLocal, '1'); } catch(e){}
+    try { if(typeof toast === 'function') toast('🎂 Parabéns pelos ' + (anos === 1 ? '1 ano' : anos + ' anos') + ' de Gâmi! +' + (PONTOS_CATALOGO[tipo] ? PONTOS_CATALOGO[tipo].pontos : '') + ' pts', 'success'); } catch(e){}
+  }
+}
 // Dias de casa (pro badge "Bem-vindo" = 1ª semana)
 function _diasDeCasa(pessoa){
   var ini = pessoa && (pessoa.data_admissao || pessoa.entrada || pessoa.admissao);
@@ -16312,6 +16347,8 @@ async function motorBadges(pessoa){
     if(meses >= 24) await desbloquearBadge(pessoa, 'veterano_2anos');
     if(meses >= 36) await desbloquearBadge(pessoa, 'lendario_3anos');
   }
+  // 1b) Pontos do ANIVERSÁRIO DE EMPRESA (17/11/2026: estavam só no catálogo, ninguém nunca recebeu)
+  try { await _pontosAniversarioEmpresa(pessoa); } catch(e){}
   // Bem-vindo (1ª semana completa)
   var dias = _diasDeCasa(pessoa);
   if(dias != null && dias >= 7) await desbloquearBadge(pessoa, 'bem_vindo');
