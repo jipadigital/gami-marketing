@@ -9491,6 +9491,18 @@ function _campoKm(aLat,aLng,bLat,bLng){
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
 }
 function _campoRotaStopLL(p){ var a=parseFloat(p.lat),b=parseFloat(p.lng); return (isFinite(a)&&isFinite(b)&&(a!==0||b!==0))?[a,b]:null; }
+/* Endereço "de porta" da parada pro Google Maps: só de PROSPECT (tipo loja, coordenada aproximada)
+   e só se tiver número. iFood grava "Rua X, 123 | Bairro | CIDADE - UF | CEP". null = usa coordenada. */
+function _campoRotaEndereco(p){
+  if(!p || p.tipo!=='loja') return null;
+  var e=String(p.endereco||'').trim(); if(!e || !/\d/.test(e.split('|')[0]||'')) return null;
+  var partes=e.split('|').map(function(s){ return s.trim(); }).filter(Boolean);
+  var txt=partes.join(', ');
+  // no banco o endereço costuma vir só "Rua X, 123": completa com bairro e cidade
+  if(partes.length<2 && p.bairro) txt+=', '+p.bairro;
+  if(p.cidade && txt.toLowerCase().indexOf(String(p.cidade).toLowerCase())<0) txt+=', '+p.cidade;
+  return txt;
+}
 /* otimiza a ordem: vizinho mais próximo a partir do GPS (ou da 1ª parada) */
 function _campoRotaOtimizar(){
   var r=_campoRotaGarantir(); if(r.paradas.length<3){ if(typeof toast==='function') toast('Precisa de 3+ paradas pra otimizar'); return; }
@@ -9556,14 +9568,18 @@ function _campoRotaLimparTudo(){
 /* Google Maps: rota com TODAS as paradas não visitadas (ordem atual). */
 function _campoRotaAbrirMaps(){
   var r=_campoRotaGarantir();
-  var pts=r.paradas.filter(function(p){ return !p.visitado && _campoRotaStopLL(p); });
-  if(!pts.length) pts=r.paradas.filter(function(p){ return _campoRotaStopLL(p); });
-  if(!pts.length){ if(typeof toast==='function') toast('Nenhuma parada com coordenada ainda'); return; }
+  var temLugar=function(p){ return _campoRotaStopLL(p) || _campoRotaEndereco(p); };
+  var pts=r.paradas.filter(function(p){ return !p.visitado && temLugar(p); });
+  if(!pts.length) pts=r.paradas.filter(temLugar);
+  if(!pts.length){ if(typeof toast==='function') toast('Nenhuma parada com endereço ou coordenada ainda'); return; }
   var truncou=false;
   if(pts.length>10){ pts=pts.slice(0,10); truncou=true; } // o Maps do celular aguenta ~10 paradas
-  var ll=pts.map(function(p){ var c=_campoRotaStopLL(p); return c[0]+','+c[1]; });
+  // 17/11/2026: prospect do iFood tem coordenada APROXIMADA (geocodificada pela rua/bairro,
+  // às vezes o centro da cidade), e a rota levava o vendedor pro lugar errado. Quando a parada
+  // tem endereço com número, manda o ENDEREÇO pro Google Maps (ele acha a porta certa).
+  var ll=pts.map(function(p){ var e=_campoRotaEndereco(p); if(e) return e; var c=_campoRotaStopLL(p); return c[0]+','+c[1]; });
   var destino=ll[ll.length-1];
-  var meio=ll.slice(0,-1).join('%7C'); // origem = localização do aparelho
+  var meio=ll.slice(0,-1).map(encodeURIComponent).join('%7C'); // origem = localização do aparelho
   var url='https://www.google.com/maps/dir/?api=1&travelmode=driving&destination='+encodeURIComponent(destino)+(meio?'&waypoints='+meio:'');
   window.open(url,'_blank','noopener');
   if(truncou && typeof toast==='function') toast('Abri as 10 primeiras paradas (limite do Maps)');
