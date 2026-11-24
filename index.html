@@ -9546,6 +9546,27 @@ function _campoRotaVisitado(key){
     if(o!==null && o.trim()) p.obs=o.trim();
   }
   _campoRotaSalvar(); _campoRenderRota(); _campoRotaAtualizarBadge();
+  // 24/11/2026: o ponto do prospect do iFood é APROXIMADO (rua/bairro/centro). Na visita, quem
+  // está na porta pode corrigir o ponto com o GPS do celular: a loja fica certa no mapa pra sempre.
+  if(p.visitado && p.tipo==='loja' && p.loja_id) _campoRotaCorrigirPontoGPS(p);
+}
+function _campoRotaCorrigirPontoGPS(p){
+  if(!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    var la=+pos.coords.latitude.toFixed(6), lo=+pos.coords.longitude.toFixed(6), prec=Math.round(pos.coords.accuracy||9999);
+    if(prec>60) return; // GPS impreciso (dentro de prédio, sinal fraco): não mexe no ponto
+    var atual=_campoRotaStopLL(p);
+    var dist = atual ? Math.round(_campoKm(atual[0],atual[1],la,lo)*1000) : null;
+    if(dist!==null && dist<30) return; // o ponto já está certo
+    if(!confirm('📍 Você está na porta de "'+(p.nome||'loja')+'"?\n\nO ponto dessa loja no mapa está '+(dist!==null?('a '+(dist>=1000?(Math.round(dist/100)/10)+' km':dist+' m')+' daqui'):'sem localização')+'. Atualizar o ponto com o seu GPS (precisão de '+prec+' m)?\n\nSó confirme se estiver na loja agora.')) return;
+    try {
+      await _syncEscrever({ tabela:'prospeccao_lojas', operacao:'patch', filtro:'id=eq.'+encodeURIComponent(p.loja_id), patch:{ lat:la, lng:lo, updated_at:new Date().toISOString() } });
+      p.lat=String(la); p.lng=String(lo); _campoRotaSalvar();
+      try { var l=(_CAMPO.lojas||[]).find(function(x){ return x.id===p.loja_id; }); if(l){ l.lat=la; l.lng=lo; } } catch(e){}
+      try { _campoRepintar(); _campoRenderRota(); } catch(e){}
+      if(typeof toast==='function') toast('📍 Ponto da loja corrigido no mapa','success');
+    } catch(e){ if(typeof toast==='function') toast('Não consegui salvar o ponto agora. Tente pela ficha da loja (Usar GPS).','error'); }
+  }, function(){}, { enableHighAccuracy:true, timeout:12000, maximumAge:0 });
 }
 /* observação da parada (o gestor anota: loja fechada, falar com fulano, retornar terça...) */
 function _campoRotaObs(key){
@@ -16233,8 +16254,8 @@ function _mesesDeCasa(pessoa){
 }
 // 🎂 Pontos do aniversário de empresa (catálogo: aniversario_empresa_1ano no 1º ano,
 // aniversario_empresa_ano nos seguintes). Roda no login da própria pessoa (motorBadges).
-// 1x por ano de casa (referencia_id = 'aniv_empresa_N', conferido no servidor). Só paga o
-// aniversário RECENTE (até 30 dias): os antigos, de quando a regra não existia, não caem de uma vez.
+// 1x por ano de casa (referencia_id = 'aniv_empresa_N', conferido no servidor). Paga só o
+// aniversário MAIS RECENTE de cada pessoa (os anos anteriores a ele não são pagos).
 async function _pontosAniversarioEmpresa(pessoa){
   var ini = pessoa && (pessoa.data_admissao || pessoa.entrada || pessoa.admissao);
   if(!ini || typeof atribuirPontos !== 'function') return;
@@ -16245,7 +16266,8 @@ async function _pontosAniversarioEmpresa(pessoa){
   var aniv = new Date(d.getTime()); aniv.setFullYear(d.getFullYear() + anos);
   if(aniv > hoje){ anos--; aniv = new Date(d.getTime()); aniv.setFullYear(d.getFullYear() + anos); }
   if(anos < 1) return;
-  if((hoje - aniv) / 86400000 > 30) return;
+  // 24/11/2026: paga o aniversário MAIS RECENTE mesmo que antigo (quem fez antes da regra existir
+  // recebe 1 vez, 50 pts). Os anos anteriores a esse não são pagos.
   var ref = 'aniv_empresa_' + anos;
   var chaveLocal = 'gami_aniv_emp_' + pessoa.id + '_' + anos;
   try { if(localStorage.getItem(chaveLocal)) return; } catch(e){}
