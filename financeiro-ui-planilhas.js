@@ -13,6 +13,14 @@ var F = window._FIN;
 var T = window._FIN_TELAS = window._FIN_TELAS || {};
 
 function n(v){ return Number(v) || 0; }
+// % da Gâmi no semanal dos motoboys, por cidade (definido pelo financeiro em 25/11/2026)
+var PCT_CIDADE = { maceio: 23, natal: 20, fortaleza: 20, 'sao-luis': 22, 'campo-grande': 6, 'joao-pessoa': 21, aracaju: 22, recife: 20, teresina: 20 };
+function pctDaUnidade(id){
+  var u = ((F.ctlBase && F.ctlBase.unidades) || []).filter(function(x){ return String(x.id) === String(id); })[0] || {};
+  if(u.cidade_slug && PCT_CIDADE[u.cidade_slug] != null) return PCT_CIDADE[u.cidade_slug];
+  if(/juma|campo grande/i.test(u.nome || '')) return PCT_CIDADE['campo-grande'];
+  return 21;
+}
 function eu(){ var u = (typeof getUsuarioLogado === 'function') ? getUsuarioLogado() : null; return u && u.id; }
 function addDias(iso, d){ var t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + d); return t.toISOString().slice(0, 10); }
 function segunda(iso){ var t = new Date(iso + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() - (t.getUTCDay() + 6) % 7); return t.toISOString().slice(0, 10); }
@@ -161,6 +169,7 @@ function tela(chaveP){
       // linha nova: Enter salva; o que foi digitado só some depois de salvar
       var nova = $('pl-out').querySelector('.pl-nova');
       if(nova){
+        var pc = nova.querySelector('[data-k=percentual]'); if(pc){ pc.value = pc.defaultValue = String(pctDaUnidade(st.unidade_id)).replace('.', ','); }
         var dt = nova.querySelector('[data-k=data]'); if(dt){ dt.value = (st.ini <= hoje() && hoje() <= (def.semanal ? addDias(st.ini, 6) : st.fim)) ? hoje() : st.ini; dt.max = hoje(); }
         var salvar = function(){
           travado($('pl-salvar'), async function(){
@@ -211,7 +220,7 @@ function calcularMachine(st, aoMudar){
   var m = modal('<div style="font-weight:800;font-size:16px">⚡ Motoboys da semana pela Machine</div>' +
     '<div class="fin-sub" style="margin:4px 0 10px">' + esc(nomeCid) + ' · semana ' + dataBR(ini) + ' a ' + dataBR(fim) + '. Soma as corridas FINALIZADAS de cada motoboy (é a mesma conta da planilha).' +
     (fechada ? '' : '<br><b style="color:#C0392B">Esta semana ainda não terminou: dá pra ver a prévia, mas só gera depois de domingo.</b>') + '</div>' +
-    '<div class="fin-filtros"><label class="fin-sub">% da Gâmi <input id="mq-pct" value="21" inputmode="decimal" style="width:60px"></label>' +
+    '<div class="fin-filtros"><label class="fin-sub">% da Gâmi <input id="mq-pct" value="' + String(pctDaUnidade(st.unidade_id)).replace('.', ',') + '" inputmode="decimal" style="width:60px"></label>' +
     '<button class="fin-bt pri" id="mq-buscar">1. Buscar os 7 dias na Machine</button><button class="fin-bt" id="mq-ver">Só ver a prévia</button></div>' +
     '<div id="mq-dias" style="margin-top:8px"></div><div id="mq-prev"></div>');
   var de = function(sel){ return m.el.querySelector(sel); };

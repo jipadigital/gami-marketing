@@ -8,6 +8,14 @@ const crypto = require('crypto');
 const X = require('./xlsx-mini');
 const PL = require('./fin-planilhas');
 const MQ = require('./machine-api');
+// % da Gâmi no semanal dos motoboys, por cidade (financeiro, 25/11/2026). Vale quando o % vem vazio.
+const PCT_CIDADE = { maceio: 23, natal: 20, fortaleza: 20, 'sao-luis': 22, 'campo-grande': 6, 'joao-pessoa': 21, aracaju: 22, recife: 20, teresina: 20 };
+async function pctPadrao(rest, un){
+  const [u] = (await rest('fin_unidades?id=eq.' + un + '&select=nome,cidade_slug')).data || [];
+  if(u && u.cidade_slug && PCT_CIDADE[u.cidade_slug] != null) return PCT_CIDADE[u.cidade_slug];
+  if(u && /juma|campo grande/i.test(u.nome || '')) return PCT_CIDADE['campo-grande'];
+  return 21;
+}
 
 module.exports = function(h){
   const { rest, rpc, ErroUsuario, txt, dataOk, intOk, textoBusca, svc, NIVEL } = h;
@@ -268,13 +276,13 @@ module.exports = function(h){
     },
     async ctl_moto_previa(b){
       const un = unidade(b.unidade_id), ini = dataOk(b.semana_ini); if(!ini) throw new ErroUsuario('Semana inválida');
-      const pct = b.percentual === '' || b.percentual == null ? 21 : Number(String(b.percentual).replace(',', '.'));
+      const pct = b.percentual === '' || b.percentual == null ? await pctPadrao(rest, un) : Number(String(b.percentual).replace(',', '.'));
       if(!(pct >= 0 && pct <= 100)) throw new ErroUsuario('Percentual inválido');
       return { previa: await rpc('fin_ctl_moto_previa', { p_unidade: un, p_ini: ini, p_pct: pct }) };
     },
     async ctl_moto_gerar(b, ctx){
       const un = unidade(b.unidade_id), ini = dataOk(b.semana_ini); if(!ini) throw new ErroUsuario('Semana inválida');
-      const pct = b.percentual === '' || b.percentual == null ? 21 : Number(String(b.percentual).replace(',', '.'));
+      const pct = b.percentual === '' || b.percentual == null ? await pctPadrao(rest, un) : Number(String(b.percentual).replace(',', '.'));
       if(!(pct >= 0 && pct <= 100)) throw new ErroUsuario('Percentual inválido');
       return rpc('fin_ctl_moto_gerar', { p_ator: ctx.pessoaId, p_unidade: un, p_ini: ini, p_pct: pct });
     },
